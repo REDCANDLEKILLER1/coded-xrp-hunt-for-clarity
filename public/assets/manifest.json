@@ -1,46 +1,49 @@
 {
   "ships": {
     "player": {
-      "src": "/assets/ships/player_green.svg",
+      "src": "/assets/ships/player_clarity_interceptor.real.svg",
       "type": "image",
-      "notes": "Phase 2A safe optimized vector placeholder"
+      "notes": "Phase 2B upgraded ship asset based on curated player_clarity_interceptor set"
     }
   },
   "enemies": {
     "regulator_drone": {
-      "src": "/assets/enemies/regulator_drone_red.svg",
+      "src": "/assets/enemies/regulator_drone.real.svg",
       "type": "image",
-      "notes": "Phase 2A safe optimized vector placeholder"
+      "notes": "Phase 2B upgraded enemy asset based on curated regulator drone set"
     }
   },
   "bosses": {},
   "weapons": {},
   "projectiles": {
     "bb_shot": {
-      "src": "/assets/projectiles/bb_shot_green.svg",
-      "type": "image"
+      "src": "/assets/projectiles/bb_shot.real.svg",
+      "type": "image",
+      "notes": "Phase 2B optimized projectile asset from curated weapon_lvl1_bb_shot"
     }
   },
   "vfx": {
     "burst_ring": {
-      "src": "/assets/vfx/burst_ring.svg",
-      "type": "spritesheet",
-      "sheet": {
-        "frameWidth": 64,
-        "frameHeight": 64,
-        "frames": 1,
-        "fps": 12
-      }
+      "src": "/assets/vfx/burst_real.svg",
+      "type": "image",
+      "notes": "Phase 2B upgraded impact burst asset"
     }
   },
-  "ui": {},
+  "ui": {
+    "hud_panel": {
+      "src": "/assets/ui/hud_real.svg",
+      "type": "image",
+      "notes": "Phase 2B HUD accent panel"
+    }
+  },
   "backgrounds": {},
   "hazards": {},
   "objectives": {},
   "special": {
     "clarity_pulse": {
-      "src": "/assets/special/clarity_pulse_ring.svg",
-      "type": "image"
+      "src": "/assets/special/pulse_real.svg",
+      "type": "image",
+      "notes": "Phase 2B upgraded clarity pulse ring"
     }
   },
   "base": {},
