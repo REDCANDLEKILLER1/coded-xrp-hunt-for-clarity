@@ -12,13 +12,7 @@ export type Rect = {
   h: number;
 };
 
-export type AssetEntry = {
-  id: string;
-  src: string;
-  notes?: string;
-};
-
-export type AssetManifest = Record<string, AssetEntry[]>;
+export type AssetManifest = Record<string, Record<string, string>>;
 
 export type Scene = {
   enter?: () => void;
