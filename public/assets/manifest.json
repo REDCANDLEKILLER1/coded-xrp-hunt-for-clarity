@@ -1,24 +1,47 @@
 {
   "ships": {
-    "player_placeholder": "/assets/ships/player_placeholder.png"
+    "player": {
+      "src": "/assets/ships/player_green.svg",
+      "type": "image",
+      "notes": "Phase 2A safe optimized vector placeholder"
+    }
   },
   "enemies": {
-    "enemy_placeholder": "/assets/enemies/enemy_placeholder.png"
+    "regulator_drone": {
+      "src": "/assets/enemies/regulator_drone_red.svg",
+      "type": "image",
+      "notes": "Phase 2A safe optimized vector placeholder"
+    }
   },
   "bosses": {},
   "weapons": {},
   "projectiles": {
-    "player_shot_placeholder": "/assets/projectiles/player_shot_placeholder.png"
+    "bb_shot": {
+      "src": "/assets/projectiles/bb_shot_green.svg",
+      "type": "image"
+    }
   },
   "vfx": {
-    "burst_placeholder": "/assets/vfx/burst_placeholder.png"
+    "burst_ring": {
+      "src": "/assets/vfx/burst_ring.svg",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 64,
+        "frameHeight": 64,
+        "frames": 1,
+        "fps": 12
+      }
+    }
   },
   "ui": {},
   "backgrounds": {},
   "hazards": {},
   "objectives": {},
   "special": {
-    "clarity_pulse_placeholder": "/assets/special/clarity_pulse_placeholder.png"
+    "clarity_pulse": {
+      "src": "/assets/special/clarity_pulse_ring.svg",
+      "type": "image"
+    }
   },
   "base": {},
   "campaign": {}
