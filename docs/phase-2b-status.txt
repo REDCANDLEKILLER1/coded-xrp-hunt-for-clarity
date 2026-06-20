@@ -1,0 +1,1 @@
+Phase 2B status: selected asset files are wired through manifest.json. No large archive committed.
