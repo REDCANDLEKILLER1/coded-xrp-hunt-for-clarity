@@ -1,0 +1,25 @@
+{
+  "ships": {
+    "player_placeholder": "/assets/ships/player_placeholder.png"
+  },
+  "enemies": {
+    "enemy_placeholder": "/assets/enemies/enemy_placeholder.png"
+  },
+  "bosses": {},
+  "weapons": {},
+  "projectiles": {
+    "player_shot_placeholder": "/assets/projectiles/player_shot_placeholder.png"
+  },
+  "vfx": {
+    "burst_placeholder": "/assets/vfx/burst_placeholder.png"
+  },
+  "ui": {},
+  "backgrounds": {},
+  "hazards": {},
+  "objectives": {},
+  "special": {
+    "clarity_pulse_placeholder": "/assets/special/clarity_pulse_placeholder.png"
+  },
+  "base": {},
+  "campaign": {}
+}
