@@ -1,6 +1,7 @@
 import { AssetLoader } from './AssetLoader';
 import { Input } from './Input';
 import { Loop } from './Loop';
+import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
 
 type Mode = 'title' | 'play' | 'results';
@@ -14,7 +15,9 @@ export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly input: Input;
   private readonly assets = new AssetLoader();
+  private readonly sprites: SpriteRenderer;
   private readonly loop = new Loop((dt) => this.frame(dt));
+  private clock = 0;
   private mode: Mode = 'title';
   private paused = false;
   private player: Actor = this.newPlayer();
@@ -34,6 +37,7 @@ export class Game2A {
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D context unavailable.');
     this.ctx = ctx;
+    this.sprites = new SpriteRenderer(ctx, this.assets);
     this.input = new Input(canvas);
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -67,6 +71,7 @@ export class Game2A {
   }
 
   private frame(dt: number): void {
+    this.clock += dt;
     this.actions();
     this.update(dt);
     this.render();
@@ -241,8 +246,7 @@ export class Game2A {
   }
 
   private drawPlayer(): void {
-    const image = this.assets.getImage('ships', 'player');
-    if (image) return void this.ctx.drawImage(image, this.player.x - 20, this.player.y - 24, 40, 48);
+    if (this.sprites.draw('ships', 'player', this.player.x - 20, this.player.y - 24, 40, 48, this.clock)) return;
     this.ctx.save();
     this.ctx.translate(this.player.x, this.player.y);
     this.ctx.strokeStyle = '#00ff88';
@@ -259,8 +263,7 @@ export class Game2A {
   }
 
   private drawDrone(drone: Actor): void {
-    const image = this.assets.getImage('enemies', 'regulator_drone');
-    if (image) return void this.ctx.drawImage(image, drone.x - 18, drone.y - 18, 36, 36);
+    if (this.sprites.draw('enemies', 'regulator_drone', drone.x - 18, drone.y - 18, 36, 36, this.clock)) return;
     this.ctx.save();
     this.ctx.translate(drone.x, drone.y);
     this.ctx.strokeStyle = '#ff3355';
@@ -277,8 +280,7 @@ export class Game2A {
   }
 
   private drawBolt(bolt: Actor): void {
-    const image = this.assets.getImage('projectiles', 'bb_shot');
-    if (image) return void this.ctx.drawImage(image, bolt.x - 4, bolt.y - 12, 8, 24);
+    if (this.sprites.draw('projectiles', 'bb_shot', bolt.x - 4, bolt.y - 12, 8, 24, this.clock)) return;
     this.ctx.strokeStyle = '#00ff88';
     this.ctx.lineWidth = 3;
     line(this.ctx, bolt.x, bolt.y + 10, bolt.x, bolt.y - 10);
@@ -286,10 +288,16 @@ export class Game2A {
 
   private drawRing(item: Actor): void {
     const alpha = Math.max(0, (item.life ?? 0) / 0.28);
+    const radius = (1 - alpha) * 28 + 4;
+    this.ctx.save();
+    this.ctx.globalAlpha = Math.min(1, alpha);
+    const drawn = this.sprites.draw('vfx', 'burst_ring', item.x - radius, item.y - radius, radius * 2, radius * 2, this.clock);
+    this.ctx.restore();
+    if (drawn) return;
     this.ctx.strokeStyle = `rgba(0,255,136,${alpha})`;
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    this.ctx.arc(item.x, item.y, (1 - alpha) * 28 + 4, 0, Math.PI * 2);
+    this.ctx.arc(item.x, item.y, radius, 0, Math.PI * 2);
     this.ctx.stroke();
   }
 

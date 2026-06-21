@@ -1,4 +1,4 @@
-import type { AssetDefinition, AssetDiagnostic, AssetManifest } from './Types';
+import type { AssetDefinition, AssetDiagnostic, AssetManifest, SpriteSheetMeta } from './Types';
 
 type ResolvedAsset = {
   id: string;
@@ -11,6 +11,7 @@ type ResolvedAsset = {
 export class AssetLoader {
   manifest: AssetManifest | null = null;
   images = new Map<string, HTMLImageElement>();
+  sheets = new Map<string, SpriteSheetMeta>();
   diagnostics: AssetDiagnostic[] = [];
   manifestError: string | null = null;
 
@@ -33,6 +34,10 @@ export class AssetLoader {
 
   getImage(category: string, id: string): HTMLImageElement | undefined {
     return this.images.get(`${category}:${id}`);
+  }
+
+  getSheet(category: string, id: string): SpriteSheetMeta | undefined {
+    return this.sheets.get(`${category}:${id}`);
   }
 
   counts(): { total: number; loaded: number; missing: number; error: number } {
@@ -93,6 +98,7 @@ export class AssetLoader {
 
       image.onload = () => {
         this.images.set(key, image);
+        if (asset.type === 'spritesheet' && asset.sheet) this.sheets.set(key, asset.sheet);
         this.diagnostics.push({ ...asset, status: 'loaded' });
         resolve();
       };
