@@ -1,0 +1,505 @@
+filename,width,height,size_mb,decision,storage_tier,category,proposed_manifest_key,notes
+12591.png,1536,1536,0.2464,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12592.png,1536,1536,0.3024,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12593.png,1536,1536,0.2625,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12594.png,1536,1536,0.2359,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12595.png,1536,1536,0.4079,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12596.png,1536,1536,0.3916,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12597.png,1536,1536,0.2475,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12598.png,1536,1536,0.288,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12599.png,1536,1229,0.4314,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+12606.png,1536,1536,0.23,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+Screenshot_20260622_134044_Claude.jpg,709,1536,0.197,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+a_clean_black_background_with_a_grid_like_arrangem.png,1024,1536,1.7105,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+a_detailed_concept_art_ui_reference_sheet_a_dar.png,1402,1122,2.0306,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+alien_starship_with_neon_accents.png,1254,1254,0.9947,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+boss_contact.png,1200,320,0.3052,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+boss_pack_contact.jpg,640,1050,0.067,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+campaign_fx_contact.jpg,640,1050,0.0518,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+clarity_restored_victory_interface_display.png,941,1672,2.0192,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+boss_clarity_destroyer_phase3.png,170,180,0.0612,KEEP,game repo,gameplay-crop,bosses.clarity_destroyer_phase3,curated game-sized crop; maps to manifest
+boss_final_clarity.png,170,180,0.072,KEEP,game repo,gameplay-crop,bosses.final_clarity,curated game-sized crop; maps to manifest
+boss_gary_fog_phase1.png,170,180,0.0648,KEEP,game repo,gameplay-crop,bosses.gary_fog_phase1,curated game-sized crop; maps to manifest
+boss_regulatory_behemoth_phase2.png,170,180,0.0627,KEEP,game repo,gameplay-crop,bosses.regulatory_behemoth_phase2,curated game-sized crop; maps to manifest
+enemy_bear_trapper.png,126,122,0.0276,KEEP,game repo,gameplay-crop,enemies.bear_trapper,curated game-sized crop; maps to manifest
+enemy_bull_market_bomber.png,116,136,0.0304,KEEP,game repo,gameplay-crop,enemies.bull_market_bomber,curated game-sized crop; maps to manifest
+enemy_court_cruiser.png,130,144,0.0358,KEEP,game repo,gameplay-crop,enemies.court_cruiser,curated game-sized crop; maps to manifest
+enemy_fog_raider.png,130,142,0.0331,KEEP,game repo,gameplay-crop,enemies.fog_raider,curated game-sized crop; maps to manifest
+enemy_gary_gunship.png,130,145,0.0361,KEEP,game repo,gameplay-crop,enemies.gary_gunship,curated game-sized crop; maps to manifest
+enemy_liquidity_leech.png,130,141,0.0302,KEEP,game repo,gameplay-crop,enemies.liquidity_leech,curated game-sized crop; maps to manifest
+enemy_regulator_drone.png,130,136,0.0299,KEEP,game repo,gameplay-crop,enemies.regulator_drone (LIVE),curated game-sized crop; maps to manifest
+enemy_rug_fighter.png,130,145,0.0305,KEEP,game repo,gameplay-crop,enemies.rug_fighter,curated game-sized crop; maps to manifest
+enemy_sec_enforcer.png,130,145,0.0376,KEEP,game repo,gameplay-crop,enemies.sec_enforcer,curated game-sized crop; maps to manifest
+enemy_whale_scout.png,128,140,0.0333,KEEP,game repo,gameplay-crop,enemies.whale_scout,curated game-sized crop; maps to manifest
+env_asteroid.png,100,150,0.0189,KEEP,game repo,gameplay-crop,environments.asteroid,curated game-sized crop; maps to manifest
+env_data_spire.png,100,150,0.0218,KEEP,game repo,gameplay-crop,environments.data_spire,curated game-sized crop; maps to manifest
+env_defense_turret.png,100,150,0.0218,KEEP,game repo,gameplay-crop,environments.defense_turret,curated game-sized crop; maps to manifest
+env_energy_barrier.png,100,150,0.0225,KEEP,game repo,gameplay-crop,environments.energy_barrier,curated game-sized crop; maps to manifest
+env_mega_tower.png,100,150,0.0217,KEEP,game repo,gameplay-crop,environments.mega_tower,curated game-sized crop; maps to manifest
+env_regulatory_outpost.png,100,150,0.0264,KEEP,game repo,gameplay-crop,environments.regulatory_outpost,curated game-sized crop; maps to manifest
+env_xrp_billboard.png,100,150,0.0232,KEEP,game repo,gameplay-crop,environments.xrp_billboard,curated game-sized crop; maps to manifest
+fx_enemy_bullet.png,76,110,0.0131,KEEP,game repo,gameplay-crop,vfx.enemy_bullet,curated game-sized crop; maps to manifest
+fx_enemy_missile.png,76,58,0.0066,KEEP,game repo,gameplay-crop,vfx.enemy_missile,curated game-sized crop; maps to manifest
+fx_explosion.png,76,110,0.0084,KEEP,game repo,gameplay-crop,vfx.explosion,curated game-sized crop; maps to manifest
+fx_laser.png,76,110,0.0117,KEEP,game repo,gameplay-crop,vfx.laser,curated game-sized crop; maps to manifest
+fx_plasma_ball.png,76,110,0.0108,KEEP,game repo,gameplay-crop,vfx.plasma_ball,curated game-sized crop; maps to manifest
+fx_player_bb.png,76,110,0.0097,KEEP,game repo,gameplay-crop,vfx.player_bb,curated game-sized crop; maps to manifest
+fx_pulse_shot.png,76,110,0.0118,KEEP,game repo,gameplay-crop,vfx.pulse_shot,curated game-sized crop; maps to manifest
+fx_rocket.png,76,110,0.0126,KEEP,game repo,gameplay-crop,vfx.rocket,curated game-sized crop; maps to manifest
+fx_twin_beam.png,76,110,0.011,KEEP,game repo,gameplay-crop,vfx.twin_beam,curated game-sized crop; maps to manifest
+ground_basic_turret.png,124,149,0.0266,KEEP,game repo,gameplay-crop,ground.basic_turret,curated game-sized crop; maps to manifest
+ground_cannon_tower.png,124,139,0.0275,KEEP,game repo,gameplay-crop,ground.cannon_tower,curated game-sized crop; maps to manifest
+ground_laser_tower.png,124,143,0.0263,KEEP,game repo,gameplay-crop,ground.laser_tower,curated game-sized crop; maps to manifest
+ground_missile_silo.png,124,142,0.0275,KEEP,game repo,gameplay-crop,ground.missile_silo,curated game-sized crop; maps to manifest
+ground_plasma_turret.png,124,146,0.0316,KEEP,game repo,gameplay-crop,ground.plasma_turret,curated game-sized crop; maps to manifest
+pickup_clarity.png,80,105,0.0131,KEEP,game repo,gameplay-crop,pickups.clarity,curated game-sized crop; maps to manifest
+pickup_critical_chance.png,80,105,0.0139,KEEP,game repo,gameplay-crop,pickups.critical_chance,curated game-sized crop; maps to manifest
+pickup_extra_life.png,80,105,0.0138,KEEP,game repo,gameplay-crop,pickups.extra_life,curated game-sized crop; maps to manifest
+pickup_invincibility.png,80,105,0.0148,KEEP,game repo,gameplay-crop,pickups.invincibility,curated game-sized crop; maps to manifest
+pickup_rapid_fire.png,80,105,0.0131,KEEP,game repo,gameplay-crop,pickups.rapid_fire,curated game-sized crop; maps to manifest
+pickup_repair.png,80,105,0.0128,KEEP,game repo,gameplay-crop,pickups.repair,curated game-sized crop; maps to manifest
+pickup_shield.png,80,105,0.013,KEEP,game repo,gameplay-crop,pickups.shield,curated game-sized crop; maps to manifest
+pickup_speed_boost.png,80,105,0.0134,KEEP,game repo,gameplay-crop,pickups.speed_boost,curated game-sized crop; maps to manifest
+pickup_weapon_upgrade.png,80,105,0.014,KEEP,game repo,gameplay-crop,pickups.weapon_upgrade,curated game-sized crop; maps to manifest
+player_apex_guardian.png,124,145,0.0346,KEEP,game repo,gameplay-crop,ships.apex_guardian,curated game-sized crop; maps to manifest
+player_clarity_interceptor.png,116,145,0.0318,KEEP,game repo,gameplay-crop,ships.player (LIVE),curated game-sized crop; maps to manifest
+player_clarity_prime.png,124,145,0.0376,KEEP,game repo,gameplay-crop,ships.clarity_prime,curated game-sized crop; maps to manifest
+player_flare_rider.png,124,145,0.0291,KEEP,game repo,gameplay-crop,ships.flare_rider,curated game-sized crop; maps to manifest
+player_genesis_vanguard.png,124,140,0.0363,KEEP,game repo,gameplay-crop,ships.genesis_vanguard,curated game-sized crop; maps to manifest
+player_infinity_warden.png,124,144,0.0347,KEEP,game repo,gameplay-crop,ships.infinity_warden,curated game-sized crop; maps to manifest
+player_ledger_hawk.png,124,145,0.031,KEEP,game repo,gameplay-crop,ships.ledger_hawk,curated game-sized crop; maps to manifest
+player_odl_phantom.png,124,144,0.0307,KEEP,game repo,gameplay-crop,ships.odl_phantom,curated game-sized crop; maps to manifest
+player_ripple_runner.png,124,145,0.029,KEEP,game repo,gameplay-crop,ships.ripple_runner,curated game-sized crop; maps to manifest
+player_xrpl_striker.png,124,145,0.0309,KEEP,game repo,gameplay-crop,ships.xrpl_striker,curated game-sized crop; maps to manifest
+weapon_lvl1_bb_shot.png,70,125,0.0089,KEEP,game repo,gameplay-crop,projectiles.bb_shot (LIVE),curated game-sized crop; maps to manifest
+weapon_lvl2_twin_beam.png,70,125,0.0103,KEEP,game repo,gameplay-crop,weapons.lvl2_twin_beam,curated game-sized crop; maps to manifest
+weapon_lvl3_tri_shot.png,70,125,0.0117,KEEP,game repo,gameplay-crop,weapons.lvl3_tri_shot,curated game-sized crop; maps to manifest
+weapon_lvl4_wide_spread.png,70,125,0.0113,KEEP,game repo,gameplay-crop,weapons.lvl4_wide_spread,curated game-sized crop; maps to manifest
+weapon_lvl5_pulse_wave.png,70,125,0.0132,KEEP,game repo,gameplay-crop,weapons.lvl5_pulse_wave,curated game-sized crop; maps to manifest
+weapon_lvl6_rocket_barrage.png,70,125,0.0116,KEEP,game repo,gameplay-crop,weapons.lvl6_rocket_barrage,curated game-sized crop; maps to manifest
+weapon_lvl7_plasma_cannon.png,70,125,0.0135,KEEP,game repo,gameplay-crop,weapons.lvl7_plasma_cannon,curated game-sized crop; maps to manifest
+weapon_lvl8_ledger_storm.png,70,125,0.0134,KEEP,game repo,gameplay-crop,weapons.lvl8_ledger_storm,curated game-sized crop; maps to manifest
+weapon_lvl9_hyper_pulse.png,70,124,0.0144,KEEP,game repo,gameplay-crop,weapons.lvl9_hyper_pulse,curated game-sized crop; maps to manifest
+01_player_ships_contact_sheet.png,958,520,0.2299,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+02_enemies_contact_sheet.png,958,520,0.2131,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+03_weapon_ladder_contact_sheet.png,958,520,0.0951,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+04_pickups_powerups_contact_sheet.png,958,520,0.1181,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+05_vfx_projectiles_contact_sheet.png,958,520,0.091,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+06_environments_hazards_contact_sheet.png,958,520,0.1211,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+07_ground_turrets_contact_sheet.png,958,304,0.0961,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+08_bosses_contact_sheet.png,770,304,0.1347,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+coded_xrp_the_hunt_for_clarity.png,941,1672,1.7642,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+corrupted_cosmic_portal_with_neon_barriers.png,1122,1402,1.4384,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+corrupted_tech_emblem_with_glowing_core.png,1254,1254,1.4097,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+cybernetic_chip_unlocking_animation_stages.png,2172,724,0.956,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+cyberpunk_energy_burst_sequence.png,2172,724,0.8613,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+cyberpunk_energy_gauge_interface.png,1086,1448,0.9616,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+cyberpunk_hud_interface_with_neon_accents.png,1448,1086,0.9776,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+cyberpunk_pause_menu_interface.png,1448,1086,1.0194,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+cyberpunk_portal_with_neon_accents.png,1122,1402,1.4054,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+damaged_energy_core_in_darkness.png,1254,1254,1.6026,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+digital_energy_ring_sequence.png,2172,724,0.9753,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+electric_barrier_energy_sequence.png,2172,724,1.1214,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+electric_core_medallion_with_lightning_energy.png,1254,1254,1.6685,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+electric_energy_chain_progression.png,2172,724,0.8984,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+electric_energy_portal_in_the_void.png,1254,1254,1.5196,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+electric_explosion_sequence_progression.png,2172,724,0.8773,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+electric_power_core_in_the_void.png,1254,1254,1.0763,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+enemy_contact.png,1200,520,0.4315,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+energy_beam_progression_sequence.png,2172,724,0.6301,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_burst_animation_sequence.png,2172,724,0.9355,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_burst_sequence_in_neon_glow.png,2172,724,0.7916,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_burst_sequence_in_neon_hues.png,2172,724,0.719,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_cloud_evolution_in_neon_glow.png,2172,724,0.943,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+energy_column_progression_in_vfx_stages.png,2172,724,1.006,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_core_activation_sequence.png,2172,724,1.1448,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_core_detonation_explosion.png,1254,1254,1.5462,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_device_disintegration_sequence.png,2172,724,1.0397,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_evolution_cybernetic_burst_sequence.png,2172,724,0.721,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_explosion_sequence_in_neon_hues.png,2172,724,1.2354,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_hazard_sequence_in_glowing_cracks.png,2172,724,0.9191,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_portal_progression_sequence.png,2172,724,1.0041,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_pulse_progression_in_neon_colors.png,2172,724,0.8191,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_pulse_progression_in_neon_hues.png,2172,724,1.1344,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_pulse_progression_on_black.png,2172,724,0.8671,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_ring_destruction_sequence.png,2172,724,0.797,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_rupture_sequence_in_space.png,2172,724,0.9343,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_shield_break_sequence.png,2172,724,0.9698,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_shield_progression_sequence.png,1916,821,0.9726,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+energy_turret_progression_in_neon_sci_fi.png,2172,724,1.1222,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+evolution_of_a_sci_fi_portal.png,2172,724,0.9895,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+explosive_cosmic_energy_burst.png,1254,1254,1.5551,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+file_000000000340720c85c77622a1f3a71e.png,1536,1536,0.288,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_000000000b9c722fa46ecf66b0e0f4c0.png,1536,1536,0.3916,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_000000000eac71f8b83b3fb6801db06e.png,1536,1024,2.4785,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_000000001ad871f5ac6e3aec20d52dd5.png,1536,1536,0.2625,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_0000000045f871fda02533d3fbefe7e2.png,1536,1024,2.5073,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_000000004c5c720cb88d5d060a8f719e.png,1055,1491,2.5982,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000659071f584949bec6a9bf35b.png,1535,1024,2.1447,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_000000007a7471fda6d3dc82e79612cb.png,1491,1055,2.3589,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000842c722fb3a8a4c159739dbf.png,1536,1024,2.4537,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_000000008ecc722f8888a84d1b3fefdb.png,1536,1024,2.4918,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000ac5471f790fea4c38035bf3b.png,1536,1536,0.3024,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000ae08722fa1b82b451050a789.png,1536,1024,2.5547,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000ba4871fdbff678ce2302c42e.png,1024,1536,2.3762,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000c60c720c9b94b1131455b365.png,1536,1536,0.2475,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000c654720cad073ba0c532c4ec.png,1536,1536,0.2359,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000ea18720c9bf3ac1a3be61862.png,1536,1536,0.4079,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+file_00000000f5c4722fbf36d182b45785d3.png,1536,1536,0.2464,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+floating_asteroid_with_neon_crystals_and_energy.png,1254,1254,1.6712,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_alien_turret_with_neon_effects.png,1254,1254,1.2885,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_alien_warship_design.png,1254,1254,1.2837,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_angular_spaceship_in_dark_void.png,1254,1254,0.9869,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_arena_with_glowing_energy_rings.png,941,1672,2.2012,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_armored_spaceship_concept_art.png,1254,1254,1.3687,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_armored_spaceship_in_void.png,1254,1254,1.6703,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_armored_starship_concept_design.png,1254,1254,1.4096,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_armored_starship_in_space.png,1254,1254,1.1784,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_armored_starship_in_the_void.png,1254,1254,1.3974,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_battle_ready_starship_design.png,1254,1254,1.4497,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_black_and_green_spaceship_design.png,1254,1254,1.2321,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_circular_interface_with_neon_glow.png,1254,1254,1.3697,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_construction_crane_ui_emblem.png,1254,1254,1.5217,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_crystal_reactor_with_blue_energy.png,1254,1254,1.4837,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_cyber_lock_interface.png,1254,1254,1.1914,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyber_lock_interface_panel.png,1122,1402,1.65,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cybernetic_key_with_neon_arcs.png,1254,1254,1.2181,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_cybernetic_lock_on_dark_backdrop.png,1254,1254,1.3562,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_cyberpunk_battleship_concept_art.png,1254,1254,1.7811,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_cyberpunk_control_panel_interface.png,1122,1402,1.1103,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_data_core_tower.png,1254,1254,0.8312,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_cyberpunk_energy_tower.png,1254,1254,1.3137,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_cyberpunk_game_interface_hud.png,941,1672,0.8139,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_game_ui_frame.png,1672,941,1.3711,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_hud_interface.png,1254,1254,0.871,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_hud_interface_design.png,1254,1254,1.0698,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_locked_interface.png,1254,1254,1.2118,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_platform_with_glowing_circuit.png,1254,1254,1.6373,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_cyberpunk_platform_with_neon_accents.png,1254,1254,1.5589,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_cyberpunk_shield_emblem.png,1254,1254,1.6158,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_targeting_interface.png,1254,1254,1.3288,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_tech_interface_dashboard.png,1536,1024,1.3905,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_cyberpunk_tower_on_black_background.png,1254,1254,0.8399,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_cyberpunk_user_interface_panel.png,1448,1086,1.0347,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_defense_turret_on_dark_void.png,1254,1254,1.2926,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_defense_turret_with_neon_accents.png,1254,1254,1.3668,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_defensive_turret_with_neon_accents.png,1254,1254,1.2096,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_digital_portal_interface_frame.png,1254,1254,1.3238,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_drone_in_neon_glow.png,1254,1254,0.9796,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_energy_barrier_with_electric_arcs.png,1254,1254,1.1229,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_barrier_with_hud_elements.png,1672,941,0.4033,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_barrier_with_mechanical_emitters.png,1254,1254,0.7457,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_barrier_with_mechanical_supports.png,1254,1254,1.3922,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_beam_with_shattered_shield.png,1254,1254,1.6617,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_energy_burst_with_neon_glow.png,1254,1254,0.8473,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_energy_cannon_emblem.png,1254,1254,1.5511,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_core_activation_stages.png,2172,724,1.0464,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_core_emblem.png,1254,1254,1.5389,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_core_in_dark_void.png,1254,1254,0.7936,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_core_in_space.png,1254,1254,1.2461,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_core_in_tech_frame.png,1122,1402,1.6052,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_core_in_the_dark.png,1254,1254,0.9374,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_core_with_glowing_arcs.png,1254,1254,1.1947,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_core_with_glowing_rings.png,1254,1254,1.5142,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_crate_with_glowing_accents.png,1254,1254,1.457,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_energy_defense_platform.png,1254,1254,1.4925,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_energy_fortress_in_space.png,1122,1402,1.6643,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_energy_gauge_with_warning_symbols.png,887,1774,0.9231,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_gauntlet_corridor.png,1122,1402,1.4591,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_energy_impact_emblem.png,1254,1254,1.6065,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_key_with_mechanical_housing.png,1254,1254,1.2189,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_energy_lance_in_darkness.png,1254,1254,0.5284,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_energy_node_in_space.png,1254,1254,1.4885,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_energy_nodes_in_sequence.png,2172,724,0.6792,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_energy_portal_hub.png,1254,1254,1.8474,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_energy_portal_progression.png,2172,724,1.0006,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_energy_portal_with_neon_accents.png,1254,1254,1.4249,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_energy_pulse_emblem.png,1254,1254,1.4169,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_reactor_core_design.png,1254,1254,1.2618,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_reactor_emblem.png,1254,1254,1.3498,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_ring_with_neon_projectiles.png,1254,1254,1.1237,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_energy_shield_emblem.png,1254,1254,1.52,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_shield_evolution_sequence.png,2172,724,1.154,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_energy_shield_generator_model.png,1254,1254,1.4021,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_energy_shield_panel_sequence.png,2172,724,1.0442,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_energy_shield_portal_design.png,1254,1254,1.7002,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_energy_shield_tower.png,1254,1254,1.2515,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_shuriken_with_neon_accents.png,1254,1254,1.1945,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_energy_spire_emitter_design.png,1254,1254,1.1773,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_tower_with_neon_glow.png,1254,1254,0.7179,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_energy_trail_progression.png,2172,724,0.8906,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_energy_turret_in_sci_fi_style.png,1254,1254,1.748,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_energy_turret_with_neon_accents.png,1254,1254,1.2234,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_energy_vault_with_glowing_crystals.png,1254,1254,1.2351,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_energy_weapon_emblem.png,1254,1254,1.3075,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_fighter_ship_in_cosmic_void.png,1254,1254,1.1185,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_fighter_ship_on_black_backdrop.png,1254,1254,0.907,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_fortress_in_deep_space.png,941,1672,2.4798,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_game_inventory_ui_panel.png,1448,1086,1.0167,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_gesture_controlled_tutorial_interface.png,1254,1254,1.0079,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_cybernetic_cube.png,1254,1254,1.5511,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_glowing_cyberpunk_user_interface.png,1448,1086,1.0133,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_drone_in_darkness.png,1254,1254,1.3162,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_glowing_energy_orbs_interface.png,2172,724,1.0689,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_energy_portal.png,1254,1254,1.2416,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_glowing_hexagonal_power_up_icon.png,1254,1254,1.287,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_power_core_emblem.png,1254,1254,1.6714,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_tech_core_emblem.png,1254,1254,1.8016,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_tech_emblem.png,1254,1254,1.3161,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_tech_interface_design.png,1254,1254,1.4161,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_glowing_techno_medallion.png,1254,1254,1.6069,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_gothic_mech_spaceship_design.png,1254,1254,1.2761,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_hangar_with_glowing_accents.png,1254,1254,1.3257,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_health_status_interface_bar.png,2172,724,0.7422,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_hexagonal_energy_shield_emblem.png,1254,1254,1.3656,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_hexagonal_tech_interface_design.png,1254,1254,1.1582,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_high_tech_hud_frame.png,1122,1402,1.1714,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_holographic_construction_hub.png,1254,1254,1.1202,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_hovering_control_panel_with_neon_lights.png,1254,1254,1.2025,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_hud_control_panel.png,1774,887,1.1685,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_hud_interface_with_neon_energy.png,1254,1254,1.19,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_hud_interface_with_neon_glow.png,1448,1086,1.0493,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_loot_reveal_hud_interface.png,1448,1086,1.3256,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_loot_reward_interface_design.png,1122,1402,1.6616,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_magnet_core_tech_emblem.png,1254,1254,1.6419,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_magnet_energy_emblem.png,1254,1254,1.4122,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_mech_spaceship_with_glowing_accents.png,1254,1254,1.1842,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_mech_starship_on_dark_backdrop.png,1254,1254,1.2984,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_mechanical_energy_shield_crest.png,1254,1254,1.0764,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_mechanical_nexus_icon.png,1254,1254,1.5933,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_med_pods_illuminated_in_neon.png,2172,724,1.0609,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_missile_with_fiery_trail.png,1254,1254,0.6444,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_missile_with_glowing_hexagon_frame.png,1254,1254,0.8357,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_mission_complete_badge.png,1254,1254,1.6075,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_circuit_panels.png,2172,724,1.1595,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_emblem_with_crystalline_core.png,1254,1254,1.3492,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_energy_emblem.png,1254,1254,1.5571,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_energy_gauge_interface.png,1254,1254,1.2609,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_energy_grid_panels.png,2172,724,1.2999,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_hud_control_panel.png,1122,1402,1.4567,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_hud_interface_design.png,1448,1086,1.0594,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_hud_interface_frame.png,941,1672,1.2218,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_hud_interface_panel.png,2172,724,0.8351,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_hud_interface_ring.png,1254,1254,1.1041,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_indicator_panel.png,941,1672,0.9874,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_interface_panel.png,1254,1254,0.8417,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_lit_military_spaceship_design.png,1254,1254,1.4025,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_neon_lit_space_corridor.png,941,1672,2.1803,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_neon_lit_starfighter_design.png,1254,1254,0.7268,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_neon_lit_starfighter_in_space.png,1254,1254,0.9862,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_neon_power_up_icon.png,1254,1254,1.2747,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_sci_fi_interface_panel.png,1672,941,0.7168,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_spire_tower.png,1254,1254,1.1597,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_neon_starfighter_concept_design.png,1254,1254,1.1559,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_neon_targeting_interface.png,1254,1254,0.5933,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_tech_emblem.png,1254,1254,1.0806,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_tech_interface_element.png,1254,1254,1.4524,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_tech_interface_panel.png,2172,724,0.7191,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_tech_interface_ring.png,1254,1254,1.44,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_tech_ui_display.png,1254,1254,1.1142,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_neon_tech_ui_panel.png,1672,941,1.0121,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_orbital_city_interface.png,1122,1402,1.5107,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_portal_activation_sequence.png,2172,724,0.9674,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_power_conduit_hub_in_black_void.png,1254,1254,1.7262,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_power_core_emblem.png,1254,1254,1.5971,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_power_core_with_crystal_energy.png,1254,1254,1.3951,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_progress_tracker_interface.png,1672,941,0.7763,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_propulsion_engine_emblem.png,1254,1254,1.1496,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_radar_scanner_with_glowing_crystal.png,1254,1254,1.4472,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_radar_towers_with_neon_accents.png,2172,724,1.2189,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_rapid_fire_power_up_badge.png,1254,1254,1.1176,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_reactor_core_icon.png,1254,1254,1.7367,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_red_arrow_with_digital_glitches.png,1254,1254,0.9799,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_repair_station_with_holographic_craft.png,1254,1254,1.3526,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_rescue_pod_with_glowing_accents.png,1254,1254,0.9938,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_reward_chest_interface_panel.png,1448,1086,1.1981,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_robotic_mine_with_glowing_accents.png,1254,1254,1.4809,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_rocket_cluster_with_energy_aura.png,1254,1254,1.4104,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_rocket_in_neon_frame.png,1254,1254,1.2491,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_rocket_silo_with_neon_accents.png,1254,1254,1.4936,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_rocket_with_fiery_exhaust.png,1254,1254,0.6259,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_rocket_with_neon_glow.png,1254,1254,1.0154,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_scanning_tower_with_neon_accents.png,1254,1254,1.3071,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_sci_fi_control_interface.png,1254,1254,1.4144,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_control_panel.png,2172,724,1.3072,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_corner_platform_piece.png,1254,1254,1.2581,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_sci_fi_corridor_platform_tile.png,1254,1254,1.1308,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_sci_fi_defense_turret.png,1254,1254,1.0791,MAYBE,private master,ground/turret,ground.*,turret/ground concept — extra variants beyond curated set
+futuristic_sci_fi_emblem_with_energy_glow.png,1254,1254,1.2459,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_energy_reactor_core.png,1254,1254,1.6157,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_sci_fi_energy_weapon_design.png,1254,1254,1.2388,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_sci_fi_game_interface_frame.png,1122,1402,1.3676,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_display.png,2172,724,0.5989,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_emblem.png,1672,941,1.3141,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_frame_design.png,1254,1254,1.1382,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_interface.png,1448,1086,0.961,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_interface_design.png,1254,1254,1.1476,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_targeting_interface.png,1254,1254,0.8676,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_hud_with_glowing_details.png,2172,724,0.9614,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_interface_panel.png,1122,1402,0.942,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_interface_with_glowing_accents.png,1448,1086,0.7832,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_interface_with_neon_accents.png,1122,1402,1.5986,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_landing_pad_design.png,1254,1254,1.8121,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_sci_fi_mech_starfighter.png,1254,1254,1.2804,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_sci_fi_metallic_platform.png,1254,1254,1.3191,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_sci_fi_portal_with_glowing_patterns.png,1122,1402,1.3933,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_sci_fi_status_comparison_panel.png,1672,941,0.9771,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_status_panel.png,2172,724,0.6443,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_tech_interface_design.png,1254,1254,1.3779,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_ui_panel.png,2172,724,0.9924,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_sci_fi_ui_panel_design.png,1774,887,0.8147,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_security_core_with_neon_accents.png,1254,1254,1.5266,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_shield_on_neon_backdrop.png,1254,1254,1.356,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_ship_with_neon_accents.png,1254,1254,1.3606,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_space_corridor_with_neon_glow.png,941,1672,1.9773,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_spacecraft_in_neon_glow.png,1254,1254,1.274,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_spacecraft_with_neon_lights.png,1254,1254,1.1926,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_spaceship_selection_interface.png,1448,1086,1.0853,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_starfighter_in_neon_glow.png,1254,1254,1.1647,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_starfighter_with_neon_accents.png,1254,1254,1.2309,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_stealth_fighter_in_dark_space.png,1254,1254,0.9145,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_stealth_spaceship_concept_art.png,1254,1254,1.0128,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_targeting_beacon_in_darkness.png,1254,1254,1.1892,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_targeting_emblem_with_neon_effects.png,1254,1254,1.4847,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_targeting_interface_hud_design.png,1254,1254,1.5124,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_badge_with_glowing_rings.png,1254,1254,1.6756,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_capsules_unlocking_energy.png,2172,724,1.3504,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+futuristic_tech_core_with_glowing_accents.png,1254,1254,1.4774,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+futuristic_tech_emblem_with_glowing_green_core.png,1254,1254,1.464,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_interface_in_dark_void.png,2172,724,0.7518,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_interface_with_neon_glow.png,1254,1254,1.0128,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_junction_platform.png,1254,1254,1.2393,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_tech_power_up_emblem.png,1254,1254,1.2399,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_ring_interface_design.png,1254,1254,1.0372,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_shield_emblem.png,1254,1254,1.4027,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_tech_tree_with_neon_accents.png,1448,1086,1.5994,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_tech_ui_panel_design.png,1448,1086,0.9303,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_teleportation_chamber_sequence.png,2172,724,1.2258,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_teleportation_gateway_with_neon_accents.png,1254,1254,1.318,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+futuristic_triad_of_glowing_shards.png,1254,1254,1.2238,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+futuristic_ui_control_panel_with_red_accents.png,1448,1086,1.3348,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_upgrade_panel_interface_design.png,1448,1086,1.3652,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_vault_with_glowing_crystal_towers.png,1254,1254,1.6137,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+futuristic_warning_hud_interface_ring.png,1254,1254,1.1247,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_warning_interface_design.png,941,1672,1.2304,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_warning_panel_with_glitch_effects.png,1448,1086,1.2407,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+futuristic_warship_in_the_void.png,1254,1254,1.6922,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_warship_with_neon_accents.png,1254,1254,1.4128,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+futuristic_weapon_schematic_ui_design.png,1254,1254,1.1734,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+game_over_system_failure_in_space.png,941,1672,2.1381,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+glitchy_portal_sequence_with_energy_borders.png,2172,724,0.9379,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+glow_and_chaos_a_burst_sequence.png,2172,724,0.8865,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+glowing_asteroid_with_neon_spikes.png,1254,1254,1.854,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+glowing_core_reactor_tower_design.png,1254,1254,1.2634,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+glowing_crystal_numeric_tech_shards.png,1254,1254,1.3269,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+glowing_cyberpunk_interface_with_red_portal.png,1254,1254,1.1349,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+glowing_energy_bursts_in_sequence.png,2172,724,0.652,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+glowing_energy_core_in_dark_tech_frame.png,1254,1254,1.2526,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+glowing_energy_orb_in_dark_void.png,1254,1254,0.4269,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+glowing_energy_portal_sequence.png,2172,724,0.9715,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+glowing_heart_core_energy_device.png,1254,1254,1.2506,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+glowing_red_failure_on_tech_panel.png,1254,1254,1.5757,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+glowing_sci_fi_energy_core_shield.png,1254,1254,1.5067,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+glowing_sci_fi_portal_tunnel_design.png,1122,1402,1.4561,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+high_score_cyberpunk_dashboard_display.png,1254,1254,0.9945,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+high_tech_energy_barrier_in_deep_space.png,1254,1254,1.3862,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+imagegen.png,1254,1254,1.6065,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+molten_core_and_shattered_circuitry.png,1254,1254,1.8094,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+neon_arrow_in_digital_void.png,1254,1254,0.9785,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_crystal_asteroid_portal_frame.png,1122,1402,1.6265,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_cyberpunk_data_corridor_dynamics.png,941,1672,2.1039,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+neon_cyberpunk_hud_interface_design.png,1086,1448,1.0928,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_digital_corridor_with_circuit_frame.png,941,1672,1.0948,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_digital_rain_in_panels.png,2172,724,1.2744,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_digital_wave_progression.png,2172,724,0.9947,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_beam_in_dark_space.png,2172,724,0.6216,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_blast_with_shattered_shield.png,1254,1254,1.3248,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+neon_energy_burst_sequence.png,2172,724,0.6357,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_bursts_in_motion.png,2172,724,0.8765,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_charge_progression.png,2172,724,0.6542,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_core_and_shockwave_icon.png,1254,1254,1.6523,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_energy_core_emblem.png,1254,1254,1.8725,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_energy_core_in_mechanical_frame.png,1254,1254,1.5249,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_energy_core_portal_device.png,1254,1254,1.499,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+neon_energy_core_with_dynamic_arcs.png,1254,1254,1.5414,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+neon_energy_core_with_tech_interface.png,1254,1254,1.3973,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_energy_corridor_in_the_void.png,941,1672,1.3015,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+neon_energy_emitter_with_glowing_beams.png,1254,1254,0.8594,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_emitters_in_space.png,1254,1254,1.0022,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_glyph_progression.png,2172,724,1.0438,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_portal_in_a_dark_void.png,1254,1254,1.5249,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_portal_with_circuit_patterns.png,1672,941,1.434,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_portal_with_circuitry_details.png,1122,1402,1.5743,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_portals_in_a_digital_grid.png,2172,724,1.3123,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_rift_progression.png,1916,821,1.2112,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_rings_in_digital_progression.png,2172,724,0.9407,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_energy_rings_in_motion.png,2172,724,1.0992,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_surge_in_dark_space.png,941,1672,2.2836,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_energy_sweep_with_digital_glitch.png,2172,724,1.0307,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_explosion_sequence_on_black.png,2172,724,0.6073,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_futuristic_portal_lock_interface.png,1254,1254,1.3224,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_glitch_energy_panels.png,2172,724,1.6303,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_grid_activation_sequence.png,2172,724,1.047,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_interface_with_holographic_ring.png,1254,1254,1.0768,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_laser_beam_shattering_barrier.png,1672,941,0.8368,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_laser_sequence_in_progress.png,2172,724,0.6235,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_lit_cyberpunk_starfighter_in_space.png,1254,1254,0.8823,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+neon_lit_futuristic_starfighter_design.png,1254,1254,1.2262,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+neon_lit_futuristic_weapon_assembly_facility.png,1254,1254,1.6977,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_medkit_in_futuristic_darkness.png,1254,1254,0.985,MAYBE,private master,pickup-variant,pickups.*,pickup/powerup concept variant
+neon_plasma_thruster_sequence.png,1916,821,0.6281,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_portal_energy_progression.png,2172,724,1.292,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_powered_energy_icon.png,1254,1254,1.2148,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_rings_with_electric_arcs.png,2172,724,1.0957,MAYBE,private master,uncategorized,-,"needs human/GPT eye — descriptive concept, likely reference"
+neon_sci_fi_explosion_sequence.png,2172,724,0.6305,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+neon_sci_fi_hud_progress_meter.png,1672,941,0.6588,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_sci_fi_targeting_corridor_hud.png,941,1672,1.1726,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_tech_cores_in_cosmic_eruption.png,2172,724,1.1694,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+neon_tech_medallion_with_hud_details.png,1254,1254,1.3764,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_tech_network_emblem.png,1254,1254,1.7367,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_tech_platform_with_geometric_detailing.png,1254,1254,1.4335,MAYBE,private master,world-builder/env,environments.*,world-builder / environment concept — future systems
+neon_tech_ui_pulse_animation.png,2172,724,0.9345,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_warning_interface_in_cyberspace.png,941,1672,1.4588,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+neon_warp_speed_data_stream_effect.png,2172,724,1.3492,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+ornate_futuristic_battleship_concept_art.png,1254,1254,1.8972,MAYBE,private master,ship/enemy-variant,ships.*/enemies.*,extra ship/enemy concept beyond the 10+10 roster — art-direction pick later
+overheated_core_with_glowing_circuitry.png,1254,1254,1.3626,MAYBE,private master,environment-variant,environments.*,environment/hazard concept variant
+panel_contact.jpg,960,420,0.0429,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+pending_contact_sheet.jpg,880,1470,0.1509,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+phase2b_asset_contact.png,540,280,0.0578,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+phase2b_contact.png,1440,210,0.1175,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+bb_shot.png,32,64,0.0035,MAYBE,private master,raw-source,-,phase2b PR asset set (verify vs live slots)
+burst_ring_sheet.png,256,64,0.0137,MAYBE,private master,raw-source,-,phase2b PR asset set (verify vs live slots)
+clarity_pulse.png,96,96,0.0149,MAYBE,private master,raw-source,-,phase2b PR asset set (verify vs live slots)
+hud_panel.png,512,160,0.0833,MAYBE,private master,raw-source,-,phase2b PR asset set (verify vs live slots)
+player_clarity_interceptor.png,96,120,0.0188,MAYBE,private master,raw-source,-,phase2b PR asset set (verify vs live slots)
+regulator_drone.png,96,96,0.018,MAYBE,private master,raw-source,-,phase2b PR asset set (verify vs live slots)
+player_contact.png,1200,520,0.4027,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+progressive_energy_interface_panels.png,2172,724,1.0141,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+progressive_energy_orbs_sequence.png,2172,724,0.8857,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+progressive_tech_lock_activation_sequence.png,2172,724,1.0292,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+sci_fi_energy_blast_progression_sequence.png,2172,724,0.7658,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+sci_fi_explosion_sequence_with_neon_effects.png,2172,724,0.8672,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+sci_fi_hud_device_progression_row.png,2172,724,0.9017,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+shattered_shield_medallion_with_glowing_core.png,1254,1254,1.5845,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+special_packs_contact.jpg,560,1900,0.0992,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+stunned_status_icon_with_glowing_circuits.png,1254,1254,1.5316,MAYBE,private master,menus/UI,ui.*,"UI/menu/icon concept — future UI & polls work, not gameplay batch"
+tech_circle_sequence_on_black.png,2172,724,0.9111,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+tech_reactor_destruction_sequence_in_neon.png,2172,724,1.3527,MAYBE,private master,fx-variant,vfx.*,"FX/animation-sequence concept — spritesheet candidate, select best later"
+panel_contact.jpg,960,420,0.0429,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+pending_contact_sheet.jpg,880,1470,0.1509,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+boss_pack_contact.jpg,640,1050,0.067,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+campaign_fx_contact.jpg,640,1050,0.0518,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+special_packs_contact.jpg,560,1900,0.0992,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+enemy_regulator_drone.png,130,136,0.0299,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+fx_explosion.png,76,110,0.0084,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+pickup_clarity.png,80,105,0.0131,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+player_clarity_interceptor.png,116,145,0.0318,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+player_xrpl_striker.png,124,145,0.0309,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+weapon_lvl1_bb_shot.png,70,125,0.0089,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+futuristic_neon_hud_interface_panel.png,2172,724,0.8351,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+neon_energy_burst_sequence.png,2172,724,0.7387,MAYBE,private master,raw-source,-,"raw/source generation; keep in master, select later"
+phase2b_asset_contact.png,540,280,0.0578,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+boss_contact.png,1200,320,0.3052,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+enemy_contact.png,1200,520,0.4315,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+player_contact.png,1200,520,0.4027,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
+phase2b_contact.png,1440,210,0.1175,DROP,private master,reference/contact,-,contact sheet / screenshot / scratch — not a game asset
