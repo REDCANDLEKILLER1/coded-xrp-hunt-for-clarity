@@ -3,13 +3,18 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
+import { ENEMIES, FX, PROJECTILES, SHIPS, SPECIALS } from '../content/registry';
+import type { SpriteRef } from '../content/types';
 
 type Mode = 'title' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 
-const SPEED = 340;
-const BOLT_RATE = 0.14;
-const DRONE_RATE = 0.72;
+// Phase A: live content is sourced from the data registry rather than loose constants.
+const PLAYER = SHIPS.player;
+const DRONE = ENEMIES.regulator_drone;
+const BOLT = PROJECTILES.bb_shot;
+const BURST_RING = FX.burst_ring;
+const CLARITY_PULSE = SPECIALS.clarity_pulse;
 
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
@@ -108,8 +113,8 @@ export class Game2A {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
     } else {
-      this.player.x += axis.x * SPEED * dt;
-      this.player.y += axis.y * SPEED * dt;
+      this.player.x += axis.x * PLAYER.speed * dt;
+      this.player.y += axis.y * PLAYER.speed * dt;
     }
     this.player.x = clamp(this.player.x, 28, this.w - 28);
     this.player.y = clamp(this.player.y, this.h * 0.34, this.h - 96);
@@ -118,8 +123,8 @@ export class Game2A {
   private updateBolts(dt: number): void {
     this.boltClock -= dt;
     if (this.boltClock <= 0) {
-      this.boltClock = BOLT_RATE;
-      this.bolts.push({ x: this.player.x, y: this.player.y - 24, w: 5, h: 20, vx: 0, vy: -720 });
+      this.boltClock = PLAYER.fireRate;
+      this.bolts.push({ x: this.player.x, y: this.player.y - 24, w: BOLT.hitbox.w, h: BOLT.hitbox.h, vx: 0, vy: -BOLT.speed });
     }
     for (const bolt of this.bolts) {
       bolt.x += bolt.vx * dt;
@@ -131,8 +136,8 @@ export class Game2A {
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
     if (this.droneClock <= 0) {
-      this.droneClock = Math.max(0.28, DRONE_RATE - this.wave * 0.02);
-      this.drones.push({ x: 30 + Math.random() * (this.w - 60), y: -35, w: 28, h: 26, vx: Math.sin(performance.now() * 0.001) * 28, vy: 105 + this.wave * 8, hp: 1 });
+      this.droneClock = Math.max(0.28, DRONE.spawnRate - this.wave * 0.02);
+      this.drones.push({ x: 30 + Math.random() * (this.w - 60), y: -35, w: DRONE.hitbox.w, h: DRONE.hitbox.h, vx: Math.sin(performance.now() * 0.001) * 28, vy: DRONE.baseSpeed + this.wave * 8, hp: DRONE.hp });
     }
     for (const drone of this.drones) {
       drone.x += drone.vx * dt;
@@ -140,7 +145,7 @@ export class Game2A {
     }
     this.drones = this.drones.filter((drone) => {
       if (drone.y > this.h + 40) {
-        this.player.hp = (this.player.hp ?? 3) - 1;
+        this.player.hp = (this.player.hp ?? PLAYER.hp) - 1;
         return false;
       }
       return true;
@@ -154,7 +159,7 @@ export class Game2A {
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           bolt.life = 0;
           drone.hp = 0;
-          this.score += 100;
+          this.score += DRONE.score;
           this.special = Math.min(100, this.special + 8);
           this.ring(drone.x, drone.y);
         }
@@ -166,7 +171,7 @@ export class Game2A {
     for (const drone of this.drones) {
       if (overlap(box(drone, 0.62), box(this.player, 0.55))) {
         drone.hp = 0;
-        this.player.hp = (this.player.hp ?? 3) - 1;
+        this.player.hp = (this.player.hp ?? PLAYER.hp) - 1;
         this.ring(drone.x, drone.y);
       }
     }
@@ -179,7 +184,7 @@ export class Game2A {
     if (this.ringClock > 0) {
       this.ringClock -= dt;
       this.drones = this.drones.filter((drone) => {
-        const hit = Math.hypot(drone.x - this.player.x, drone.y - this.player.y) < 165;
+        const hit = Math.hypot(drone.x - this.player.x, drone.y - this.player.y) < CLARITY_PULSE.radius;
         if (hit) {
           this.score += 25;
           this.ring(drone.x, drone.y);
@@ -245,8 +250,13 @@ export class Game2A {
     if (this.paused) this.pause();
   }
 
+  /** Draws a manifest sprite centered on (cx, cy); returns false so callers keep procedural fallback. */
+  private drawCentered(ref: SpriteRef, cx: number, cy: number, dw: number, dh: number): boolean {
+    return this.sprites.draw(ref.category, ref.id, cx - dw / 2, cy - dh / 2, dw, dh, this.clock);
+  }
+
   private drawPlayer(): void {
-    if (this.sprites.draw('ships', 'player', this.player.x - 20, this.player.y - 24, 40, 48, this.clock)) return;
+    if (this.drawCentered(PLAYER.sprite, this.player.x, this.player.y, PLAYER.draw.w, PLAYER.draw.h)) return;
     this.ctx.save();
     this.ctx.translate(this.player.x, this.player.y);
     this.ctx.strokeStyle = '#00ff88';
@@ -263,7 +273,7 @@ export class Game2A {
   }
 
   private drawDrone(drone: Actor): void {
-    if (this.sprites.draw('enemies', 'regulator_drone', drone.x - 18, drone.y - 18, 36, 36, this.clock)) return;
+    if (this.drawCentered(DRONE.sprite, drone.x, drone.y, DRONE.draw.w, DRONE.draw.h)) return;
     this.ctx.save();
     this.ctx.translate(drone.x, drone.y);
     this.ctx.strokeStyle = '#ff3355';
@@ -280,7 +290,7 @@ export class Game2A {
   }
 
   private drawBolt(bolt: Actor): void {
-    if (this.sprites.draw('projectiles', 'bb_shot', bolt.x - 4, bolt.y - 12, 8, 24, this.clock)) return;
+    if (this.drawCentered(BOLT.sprite, bolt.x, bolt.y, BOLT.draw.w, BOLT.draw.h)) return;
     this.ctx.strokeStyle = '#00ff88';
     this.ctx.lineWidth = 3;
     line(this.ctx, bolt.x, bolt.y + 10, bolt.x, bolt.y - 10);
@@ -291,7 +301,7 @@ export class Game2A {
     const radius = (1 - alpha) * 28 + 4;
     this.ctx.save();
     this.ctx.globalAlpha = Math.min(1, alpha);
-    const drawn = this.sprites.draw('vfx', 'burst_ring', item.x - radius, item.y - radius, radius * 2, radius * 2, this.clock);
+    const drawn = this.drawCentered(BURST_RING.sprite, item.x, item.y, radius * 2, radius * 2);
     this.ctx.restore();
     if (drawn) return;
     this.ctx.strokeStyle = `rgba(0,255,136,${alpha})`;
@@ -306,7 +316,7 @@ export class Game2A {
     this.ctx.strokeStyle = `rgba(0,255,136,${alpha})`;
     this.ctx.lineWidth = 4;
     this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * 165, 0, Math.PI * 2);
+    this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * CLARITY_PULSE.radius, 0, Math.PI * 2);
     this.ctx.stroke();
   }
 
@@ -316,7 +326,7 @@ export class Game2A {
     this.ctx.font = '700 13px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, 16, 24);
     this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
-    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / 3, '#00ff88');
+    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / PLAYER.hp, '#00ff88');
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
@@ -391,7 +401,7 @@ export class Game2A {
   }
 
   private newPlayer(): Actor {
-    return { x: this.w / 2, y: this.h - 112, w: 38, h: 42, vx: 0, vy: 0, hp: 3 };
+    return { x: this.w / 2, y: this.h - 112, w: PLAYER.hitbox.w, h: PLAYER.hitbox.h, vx: 0, vy: 0, hp: PLAYER.hp };
   }
 
   private inControls(x: number, y: number): boolean {
