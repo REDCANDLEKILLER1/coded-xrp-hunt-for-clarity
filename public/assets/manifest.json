@@ -1,36 +1,32 @@
 {
   "ships": {
     "player": {
-      "src": "/assets/ships/player_green.svg",
+      "src": "/assets/ships/player.webp",
       "type": "image",
-      "notes": "Phase 2A safe optimized vector placeholder"
+      "notes": "Phase 2B Batch 0 optimized curated crop: player_clarity_interceptor"
     }
   },
   "enemies": {
     "regulator_drone": {
-      "src": "/assets/enemies/regulator_drone_red.svg",
+      "src": "/assets/enemies/regulator_drone.webp",
       "type": "image",
-      "notes": "Phase 2A safe optimized vector placeholder"
+      "notes": "Phase 2B Batch 0 optimized curated crop: enemy_regulator_drone"
     }
   },
   "bosses": {},
   "weapons": {},
   "projectiles": {
     "bb_shot": {
-      "src": "/assets/projectiles/bb_shot_green.svg",
-      "type": "image"
+      "src": "/assets/projectiles/bb_shot.webp",
+      "type": "image",
+      "notes": "Phase 2B Batch 0 optimized curated crop: weapon_lvl1_bb_shot"
     }
   },
   "vfx": {
     "burst_ring": {
-      "src": "/assets/vfx/burst_ring.svg",
-      "type": "spritesheet",
-      "sheet": {
-        "frameWidth": 64,
-        "frameHeight": 64,
-        "frames": 1,
-        "fps": 12
-      }
+      "src": "/assets/vfx/burst_ring.webp",
+      "type": "image",
+      "notes": "Phase 2B Batch 0 optimized curated crop: fx_explosion used for live burst slot"
     }
   },
   "ui": {},
@@ -39,8 +35,9 @@
   "objectives": {},
   "special": {
     "clarity_pulse": {
-      "src": "/assets/special/clarity_pulse_ring.svg",
-      "type": "image"
+      "src": "/assets/special/clarity_pulse.webp",
+      "type": "image",
+      "notes": "Phase 2B Batch 0 optimized curated crop: pickup_clarity; Phase A still renders pulse procedurally"
     }
   },
   "base": {},
