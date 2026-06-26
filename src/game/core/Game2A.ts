@@ -8,6 +8,15 @@ import type { SpriteRef } from '../content/types';
 
 type Mode = 'title' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
+type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
+
+// Hit-burst tuning: a bigger, longer ring that reveals the spark debris baked
+// into the art, plus a spray of short-lived shards flying outward on impact.
+const BURST_LIFE = 0.45;
+const BURST_MAX_RADIUS = 72;
+const BURST_MIN_RADIUS = 6;
+const DEBRIS_MIN = 10;
+const DEBRIS_VARY = 6;
 
 // Phase A: live content is sourced from the data registry rather than loose constants.
 const PLAYER = SHIPS.player;
@@ -29,6 +38,7 @@ export class Game2A {
   private drones: Actor[] = [];
   private bolts: Actor[] = [];
   private rings: Actor[] = [];
+  private debris: Particle[] = [];
   private score = 0;
   private wave = 1;
   private boltClock = 0;
@@ -102,6 +112,7 @@ export class Game2A {
     this.updateDrones(dt);
     this.collisions();
     this.updateRings(dt);
+    this.updateDebris(dt);
     this.special = Math.min(100, this.special + dt * 7);
     if ((this.player.hp ?? 0) <= 0) this.mode = 'results';
   }
@@ -194,6 +205,18 @@ export class Game2A {
     }
   }
 
+  private updateDebris(dt: number): void {
+    const drag = 1 - Math.min(1, dt * 3.5);
+    for (const p of this.debris) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= drag;
+      p.vy *= drag;
+      p.life -= dt;
+    }
+    this.debris = this.debris.filter((p) => p.life > 0);
+  }
+
   private render(): void {
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.background();
@@ -245,6 +268,7 @@ export class Game2A {
     for (const drone of this.drones) this.drawDrone(drone);
     for (const bolt of this.bolts) this.drawBolt(bolt);
     for (const item of this.rings) this.drawRing(item);
+    this.drawDebris();
     if (this.ringClock > 0) this.drawPulse();
     this.hud();
     if (this.paused) this.pause();
@@ -297,8 +321,8 @@ export class Game2A {
   }
 
   private drawRing(item: Actor): void {
-    const alpha = Math.max(0, (item.life ?? 0) / 0.28);
-    const radius = (1 - alpha) * 28 + 4;
+    const alpha = Math.max(0, (item.life ?? 0) / BURST_LIFE);
+    const radius = (1 - alpha) * BURST_MAX_RADIUS + BURST_MIN_RADIUS;
     this.ctx.save();
     this.ctx.globalAlpha = Math.min(1, alpha);
     const drawn = this.drawCentered(BURST_RING.sprite, item.x, item.y, radius * 2, radius * 2);
@@ -309,6 +333,21 @@ export class Game2A {
     this.ctx.beginPath();
     this.ctx.arc(item.x, item.y, radius, 0, Math.PI * 2);
     this.ctx.stroke();
+  }
+
+  private drawDebris(): void {
+    this.ctx.save();
+    this.ctx.lineCap = 'round';
+    for (const p of this.debris) {
+      const a = Math.max(0, p.life / p.max);
+      this.ctx.globalAlpha = a;
+      // streak tail oriented along velocity gives a flung-shard read
+      this.ctx.strokeStyle = `hsl(${p.hue}, 100%, ${55 + a * 25}%)`;
+      this.ctx.lineWidth = p.size * (0.4 + a * 0.6);
+      line(this.ctx, p.x, p.y, p.x - p.vx * 0.03, p.y - p.vy * 0.03);
+    }
+    this.ctx.globalAlpha = 1;
+    this.ctx.restore();
   }
 
   private drawPulse(): void {
@@ -384,7 +423,27 @@ export class Game2A {
   }
 
   private ring(x: number, y: number): void {
-    this.rings.push({ x, y, w: 1, h: 1, vx: 0, vy: 0, life: 0.28 });
+    this.rings.push({ x, y, w: 1, h: 1, vx: 0, vy: 0, life: BURST_LIFE });
+    this.spawnDebris(x, y);
+  }
+
+  private spawnDebris(x: number, y: number): void {
+    const count = DEBRIS_MIN + Math.floor(Math.random() * DEBRIS_VARY);
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const speed = 70 + Math.random() * 170;
+      const life = 0.35 + Math.random() * 0.3;
+      this.debris.push({
+        x,
+        y,
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed,
+        life,
+        max: life,
+        size: 1.5 + Math.random() * 2.5,
+        hue: 130 + Math.random() * 60,
+      });
+    }
   }
 
   private reset(): void {
@@ -395,6 +454,7 @@ export class Game2A {
     this.drones = [];
     this.bolts = [];
     this.rings = [];
+    this.debris = [];
     this.score = 0;
     this.wave = 1;
     this.special = 100;
