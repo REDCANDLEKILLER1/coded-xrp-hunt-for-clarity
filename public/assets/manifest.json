@@ -13,7 +13,28 @@
       "notes": "Phase 2B Batch 0 optimized curated crop: enemy_regulator_drone"
     }
   },
-  "bosses": {},
+  "bosses": {
+    "gary_fog_phase1": {
+      "src": "/assets/bosses/gary_fog_phase1.webp",
+      "type": "image",
+      "notes": "Phase L optimized top-down runtime boss sprite: Gary Fog"
+    },
+    "regulatory_behemoth_phase2": {
+      "src": "/assets/bosses/regulatory_behemoth_phase2.webp",
+      "type": "image",
+      "notes": "Phase L optimized top-down runtime boss sprite: Regulatory Behemoth"
+    },
+    "clarity_destroyer_phase3": {
+      "src": "/assets/bosses/clarity_destroyer_phase3.webp",
+      "type": "image",
+      "notes": "Phase L optimized top-down runtime boss sprite: Clarity Destroyer"
+    },
+    "final_clarity": {
+      "src": "/assets/bosses/final_clarity.webp",
+      "type": "image",
+      "notes": "Phase L optimized top-down runtime boss sprite: Final Clarity"
+    }
+  },
   "weapons": {},
   "projectiles": {
     "bb_shot": {
