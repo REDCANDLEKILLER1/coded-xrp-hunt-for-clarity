@@ -14,7 +14,7 @@ type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
-type HostileProjectile = Actor & { damage: number; color: string };
+type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
 type BossActor = Actor & {
   bossKey: string;
   state: 'intro' | 'fight';
@@ -318,6 +318,7 @@ export class Game2A {
         vy: (dy / length) * hazardDef.projectileSpeed,
         damage: 1,
         color: hazardDef.accent,
+        projectileKey: 'enemy_missile',
       });
       hazard.fireClock = hazardDef.fireRate;
     }
@@ -407,6 +408,7 @@ export class Game2A {
         vy: Math.sin(angle) * phase.projectileSpeed,
         damage: 1,
         color: phase.accent,
+        projectileKey: 'enemy_red_bullet',
       });
     }
   }
@@ -784,6 +786,17 @@ export class Game2A {
   }
 
   private drawHostileShot(shot: HostileProjectile): void {
+    const projectile = this.projectileDef(shot.projectileKey);
+    const image = this.assets.getImage(projectile.sprite.category, projectile.sprite.id);
+    if (image) {
+      this.ctx.save();
+      this.ctx.translate(shot.x, shot.y);
+      // Canon projectile masters point upward; align that nose with velocity.
+      this.ctx.rotate(Math.atan2(shot.vy, shot.vx) + Math.PI / 2);
+      this.ctx.drawImage(image, -projectile.draw.w / 2, -projectile.draw.h / 2, projectile.draw.w, projectile.draw.h);
+      this.ctx.restore();
+      return;
+    }
     this.ctx.save();
     this.ctx.strokeStyle = shot.color;
     this.ctx.shadowColor = shot.color;

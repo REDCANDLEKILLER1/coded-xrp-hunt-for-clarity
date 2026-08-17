@@ -65,14 +65,24 @@
     "bb_shot": {
       "src": "/assets/projectiles/bb_shot.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: weapon_lvl1_bb_shot"
+      "notes": "Phase Q optimized v16 canon master: projectile_player_bb"
+    },
+    "enemy_red_bullet": {
+      "src": "/assets/projectiles/enemy_red_bullet.webp",
+      "type": "image",
+      "notes": "Phase Q optimized v16 canon master: projectile_enemy_red_bullet"
+    },
+    "enemy_missile": {
+      "src": "/assets/projectiles/enemy_missile.webp",
+      "type": "image",
+      "notes": "Phase Q optimized v16 canon master: projectile_enemy_missile"
     }
   },
   "vfx": {
     "burst_ring": {
       "src": "/assets/vfx/burst_ring.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: fx_explosion used for live burst slot"
+      "notes": "Phase Q optimized v16 canon master: fx_explosion_impact"
     }
   },
   "ui": {},

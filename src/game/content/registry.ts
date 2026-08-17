@@ -116,9 +116,23 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
   bb_shot: {
     key: 'bb_shot',
     sprite: { category: 'projectiles', id: 'bb_shot' },
-    draw: { w: 8, h: 24 },
+    draw: { w: 10, h: 30 },
     hitbox: { w: 5, h: 20 },
     speed: 720,
+  },
+  enemy_red_bullet: {
+    key: 'enemy_red_bullet',
+    sprite: { category: 'projectiles', id: 'enemy_red_bullet' },
+    draw: { w: 12, h: 30 },
+    hitbox: { w: 10, h: 10 },
+    speed: 240,
+  },
+  enemy_missile: {
+    key: 'enemy_missile',
+    sprite: { category: 'projectiles', id: 'enemy_missile' },
+    draw: { w: 12, h: 42 },
+    hitbox: { w: 9, h: 9 },
+    speed: 235,
   },
 };
 
