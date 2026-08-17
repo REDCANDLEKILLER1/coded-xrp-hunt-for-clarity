@@ -27,7 +27,7 @@ export interface ShipDef {
   hp: number;
   /** Seconds between auto-fire shots. */
   fireRate: number;
-  /** ProjectileDef key this ship fires. */
+  /** WeaponDef key this ship starts with. */
   weaponKey: string;
 }
 
@@ -62,6 +62,34 @@ export interface ProjectileDef {
   hitbox: Size;
   /** Travel speed magnitude (px/s). */
   speed: number;
+}
+
+export interface WeaponShotDef {
+  /** Horizontal spawn offset from the ship center. */
+  offsetX: number;
+  /** Direction in radians from straight up; negative is left. */
+  angle: number;
+}
+
+export interface WeaponDef {
+  key: string;
+  label: string;
+  tier: number;
+  projectileKey: string;
+  /** Seconds between volleys. */
+  fireRate: number;
+  damage: number;
+  shots: WeaponShotDef[];
+}
+
+export interface PickupDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  hitbox: Size;
+  driftSpeed: number;
+  effect: 'weapon_upgrade';
 }
 
 export interface FxDef {

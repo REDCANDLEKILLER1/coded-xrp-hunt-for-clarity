@@ -1,4 +1,4 @@
-// Phase A content smoke test.
+// Data-driven content smoke test.
 //
 // Pure data validation of src/game/content/registry.ts — no DOM, no engine.
 // Bundles the TypeScript registry with the already-installed esbuild (a Vite

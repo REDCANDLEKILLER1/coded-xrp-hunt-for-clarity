@@ -3,13 +3,15 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
-import { ENEMIES, FX, PROJECTILES, SHIPS, SPECIALS } from '../content/registry';
+import { ENEMIES, FX, PICKUPS, PROJECTILES, SHIPS, SPECIALS, WEAPONS } from '../content/registry';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { EnemyDef, SpriteRef } from '../content/types';
+import type { EnemyDef, PickupDef, ProjectileDef, SpriteRef, WeaponDef } from '../content/types';
 
 type Mode = 'title' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
+type ProjectileActor = Actor & { damage: number; projectileKey: string };
+type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
 // Hit-burst tuning: a bigger, longer ring that reveals the spark debris baked
@@ -19,13 +21,14 @@ const BURST_MAX_RADIUS = 72;
 const BURST_MIN_RADIUS = 6;
 const DEBRIS_MIN = 10;
 const DEBRIS_VARY = 6;
+const UPGRADE_EVERY_KILLS = 7;
 
 // Phase A: live content is sourced from the data registry rather than loose constants.
 const PLAYER = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
-const BOLT = PROJECTILES.bb_shot;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
+const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
 
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
@@ -38,7 +41,8 @@ export class Game2A {
   private paused = false;
   private player: Actor = this.newPlayer();
   private drones: EnemyActor[] = [];
-  private bolts: Actor[] = [];
+  private bolts: ProjectileActor[] = [];
+  private pickups: PickupActor[] = [];
   private rings: Actor[] = [];
   private debris: Particle[] = [];
   private score = 0;
@@ -47,6 +51,8 @@ export class Game2A {
   private droneClock = 0;
   private special = 100;
   private ringClock = 0;
+  private weaponTier = 1;
+  private kills = 0;
   private showAssets = false;
   private reportAssets = false;
 
@@ -112,6 +118,7 @@ export class Game2A {
     this.movePlayer(dt);
     this.updateBolts(dt);
     this.updateDrones(dt);
+    this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
     this.updateDebris(dt);
@@ -136,14 +143,32 @@ export class Game2A {
   private updateBolts(dt: number): void {
     this.boltClock -= dt;
     if (this.boltClock <= 0) {
-      this.boltClock = PLAYER.fireRate;
-      this.bolts.push({ x: this.player.x, y: this.player.y - 24, w: BOLT.hitbox.w, h: BOLT.hitbox.h, vx: 0, vy: -BOLT.speed });
+      const weapon = this.currentWeapon();
+      const projectile = this.projectileDef(weapon.projectileKey);
+      this.boltClock = weapon.fireRate;
+      for (const shot of weapon.shots) {
+        this.bolts.push({
+          x: this.player.x + shot.offsetX,
+          y: this.player.y - 24,
+          w: projectile.hitbox.w,
+          h: projectile.hitbox.h,
+          vx: Math.sin(shot.angle) * projectile.speed,
+          vy: -Math.cos(shot.angle) * projectile.speed,
+          damage: weapon.damage,
+          projectileKey: weapon.projectileKey,
+        });
+      }
     }
     for (const bolt of this.bolts) {
       bolt.x += bolt.vx * dt;
       bolt.y += bolt.vy * dt;
     }
     this.bolts = this.bolts.filter((bolt) => bolt.y > -40);
+  }
+
+  private updatePickups(dt: number): void {
+    for (const pickup of this.pickups) pickup.y += pickup.vy * dt;
+    this.pickups = this.pickups.filter((pickup) => pickup.y < this.h + 40);
   }
 
   private updateDrones(dt: number): void {
@@ -200,13 +225,12 @@ export class Game2A {
   private collisions(): void {
     for (const bolt of this.bolts) {
       for (const drone of this.drones) {
+        if ((drone.hp ?? 0) <= 0) continue;
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           bolt.life = 0;
-          drone.hp = (drone.hp ?? 1) - 1;
+          drone.hp = (drone.hp ?? 1) - bolt.damage;
           if ((drone.hp ?? 0) <= 0) {
-            this.score += this.enemyDef(drone.enemyKey).score;
-            this.special = Math.min(100, this.special + 8);
-            this.ring(drone.x, drone.y);
+            this.registerKill(drone);
           }
           break;
         }
@@ -223,6 +247,14 @@ export class Game2A {
       }
     }
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
+
+    for (const pickup of this.pickups) {
+      if (overlap(box(pickup, 0.78), box(this.player, 0.62))) {
+        pickup.life = 0;
+        this.applyPickup(pickup.pickupKey);
+      }
+    }
+    this.pickups = this.pickups.filter((pickup) => pickup.life !== 0);
   }
 
   private updateRings(dt: number): void {
@@ -303,6 +335,7 @@ export class Game2A {
     this.drawPlayer();
     for (const drone of this.drones) this.drawDrone(drone);
     for (const bolt of this.bolts) this.drawBolt(bolt);
+    for (const pickup of this.pickups) this.drawPickup(pickup);
     for (const item of this.rings) this.drawRing(item);
     this.drawDebris();
     if (this.ringClock > 0) this.drawPulse();
@@ -362,11 +395,32 @@ export class Game2A {
     this.ctx.restore();
   }
 
-  private drawBolt(bolt: Actor): void {
-    if (this.drawCentered(BOLT.sprite, bolt.x, bolt.y, BOLT.draw.w, BOLT.draw.h)) return;
+  private drawBolt(bolt: ProjectileActor): void {
+    const projectile = this.projectileDef(bolt.projectileKey);
+    if (this.drawCentered(projectile.sprite, bolt.x, bolt.y, projectile.draw.w, projectile.draw.h)) return;
     this.ctx.strokeStyle = '#00ff88';
     this.ctx.lineWidth = 3;
-    line(this.ctx, bolt.x, bolt.y + 10, bolt.x, bolt.y - 10);
+    line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);
+  }
+
+  private drawPickup(pickup: PickupActor): void {
+    const def = this.pickupDef(pickup.pickupKey);
+    if (this.drawCentered(def.sprite, pickup.x, pickup.y, def.draw.w, def.draw.h)) return;
+    this.ctx.save();
+    this.ctx.translate(pickup.x, pickup.y);
+    this.ctx.rotate(this.clock * 2.4);
+    this.ctx.fillStyle = 'rgba(0,255,0,0.18)';
+    this.ctx.strokeStyle = '#00ff00';
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, -14);
+    this.ctx.lineTo(14, 0);
+    this.ctx.lineTo(0, 14);
+    this.ctx.lineTo(-14, 0);
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.stroke();
+    this.ctx.restore();
   }
 
   private drawRing(item: Actor): void {
@@ -419,6 +473,9 @@ export class Game2A {
     this.ctx.font = '600 10px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
     this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
+    const weapon = this.currentWeapon();
+    this.ctx.fillStyle = '#00ff00';
+    this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / PLAYER.hp, '#00ff88');
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
@@ -481,6 +538,31 @@ export class Game2A {
     this.spawnDebris(x, y);
   }
 
+  private registerKill(drone: EnemyActor): void {
+    this.score += this.enemyDef(drone.enemyKey).score;
+    this.special = Math.min(100, this.special + 8);
+    this.kills += 1;
+    this.ring(drone.x, drone.y);
+
+    if (this.kills % UPGRADE_EVERY_KILLS === 0 && this.weaponTier < WEAPON_LADDER.length) {
+      const def = PICKUPS.weapon_upgrade;
+      this.pickups.push({
+        x: drone.x,
+        y: drone.y,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.driftSpeed,
+        pickupKey: def.key,
+      });
+    }
+  }
+
+  private applyPickup(key: string): void {
+    const def = this.pickupDef(key);
+    if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
+  }
+
   private spawnDebris(x: number, y: number): void {
     const count = DEBRIS_MIN + Math.floor(Math.random() * DEBRIS_VARY);
     for (let i = 0; i < count; i++) {
@@ -507,6 +589,7 @@ export class Game2A {
     this.player = this.newPlayer();
     this.drones = [];
     this.bolts = [];
+    this.pickups = [];
     this.rings = [];
     this.debris = [];
     this.score = 0;
@@ -515,6 +598,8 @@ export class Game2A {
     this.boltClock = 0;
     this.droneClock = 0;
     this.ringClock = 0;
+    this.weaponTier = 1;
+    this.kills = 0;
   }
 
   private newPlayer(): Actor {
@@ -527,6 +612,18 @@ export class Game2A {
 
   private enemyDef(key: string): EnemyDef {
     return ENEMIES[key] ?? DEFAULT_ENEMY;
+  }
+
+  private currentWeapon(): WeaponDef {
+    return WEAPON_LADDER[this.weaponTier - 1] ?? WEAPON_LADDER[0];
+  }
+
+  private projectileDef(key: string): ProjectileDef {
+    return PROJECTILES[key] ?? PROJECTILES.bb_shot;
+  }
+
+  private pickupDef(key: string): PickupDef {
+    return PICKUPS[key] ?? PICKUPS.weapon_upgrade;
   }
 }
 

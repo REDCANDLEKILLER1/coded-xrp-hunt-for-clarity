@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { EnemyDef, FxDef, ProjectileDef, ShipDef, SpecialDef } from './types';
+import type { EnemyDef, FxDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, WeaponDef } from './types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
 export const SHIPS: Record<string, ShipDef> = {
@@ -18,7 +18,7 @@ export const SHIPS: Record<string, ShipDef> = {
     speed: 340,
     hp: 3,
     fireRate: 0.14,
-    weaponKey: 'bb_shot',
+    weaponKey: 'tier_1_bb',
   },
 };
 
@@ -95,6 +95,55 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
   },
 };
 
+export const WEAPONS: Record<string, WeaponDef> = {
+  tier_1_bb: {
+    key: 'tier_1_bb',
+    label: 'BB SHOT',
+    tier: 1,
+    projectileKey: 'bb_shot',
+    fireRate: 0.14,
+    damage: 1,
+    shots: [{ offsetX: 0, angle: 0 }],
+  },
+  tier_2_twin: {
+    key: 'tier_2_twin',
+    label: 'TWIN BEAM',
+    tier: 2,
+    projectileKey: 'bb_shot',
+    fireRate: 0.13,
+    damage: 1,
+    shots: [
+      { offsetX: -9, angle: 0 },
+      { offsetX: 9, angle: 0 },
+    ],
+  },
+  tier_3_spread: {
+    key: 'tier_3_spread',
+    label: 'TRI-SPREAD',
+    tier: 3,
+    projectileKey: 'bb_shot',
+    fireRate: 0.16,
+    damage: 1,
+    shots: [
+      { offsetX: -7, angle: -0.18 },
+      { offsetX: 0, angle: 0 },
+      { offsetX: 7, angle: 0.18 },
+    ],
+  },
+};
+
+export const PICKUPS: Record<string, PickupDef> = {
+  weapon_upgrade: {
+    key: 'weapon_upgrade',
+    label: 'WEAPON UP',
+    sprite: { category: 'pickups', id: 'weapon_upgrade' },
+    draw: { w: 30, h: 30 },
+    hitbox: { w: 24, h: 24 },
+    driftSpeed: 92,
+    effect: 'weapon_upgrade',
+  },
+};
+
 export const FX: Record<string, FxDef> = {
   burst_ring: {
     key: 'burst_ring',
@@ -136,7 +185,7 @@ export function validateContent(): string[] {
     if (!(def.speed > 0)) errors.push(`ships.${key}: speed must be > 0`);
     if (!(def.hp > 0)) errors.push(`ships.${key}: hp must be > 0`);
     if (!(def.fireRate > 0)) errors.push(`ships.${key}: fireRate must be > 0`);
-    if (!PROJECTILES[def.weaponKey]) errors.push(`ships.${key}: weaponKey "${def.weaponKey}" has no ProjectileDef`);
+    if (!WEAPONS[def.weaponKey]) errors.push(`ships.${key}: weaponKey "${def.weaponKey}" has no WeaponDef`);
   }
 
   for (const [key, def] of Object.entries(ENEMIES)) {
@@ -161,6 +210,30 @@ export function validateContent(): string[] {
     checkSize(`projectiles.${key}.draw`, def.draw);
     checkSize(`projectiles.${key}.hitbox`, def.hitbox);
     if (!(def.speed > 0)) errors.push(`projectiles.${key}: speed must be > 0`);
+  }
+
+  const weaponTiers = Object.values(WEAPONS).map((weapon) => weapon.tier).sort((a, b) => a - b);
+  for (const [key, def] of Object.entries(WEAPONS)) {
+    if (def.key !== key) errors.push(`weapons.${key}: key mismatch ("${def.key}")`);
+    if (!def.label) errors.push(`weapons.${key}: label is empty`);
+    if (!(Number.isInteger(def.tier) && def.tier >= 1)) errors.push(`weapons.${key}: tier must be a positive integer`);
+    if (!PROJECTILES[def.projectileKey]) errors.push(`weapons.${key}: projectileKey "${def.projectileKey}" has no ProjectileDef`);
+    if (!(def.fireRate > 0)) errors.push(`weapons.${key}: fireRate must be > 0`);
+    if (!(def.damage > 0)) errors.push(`weapons.${key}: damage must be > 0`);
+    if (def.shots.length === 0) errors.push(`weapons.${key}: shots must not be empty`);
+    for (const shot of def.shots) {
+      if (!Number.isFinite(shot.offsetX) || !Number.isFinite(shot.angle)) errors.push(`weapons.${key}: shot values must be finite`);
+    }
+  }
+  if (weaponTiers.some((tier, index) => tier !== index + 1)) errors.push('weapons: tiers must be contiguous starting at 1');
+
+  for (const [key, def] of Object.entries(PICKUPS)) {
+    if (def.key !== key) errors.push(`pickups.${key}: key mismatch ("${def.key}")`);
+    if (!def.label) errors.push(`pickups.${key}: label is empty`);
+    checkSprite(`pickups.${key}`, def.sprite);
+    checkSize(`pickups.${key}.draw`, def.draw);
+    checkSize(`pickups.${key}.hitbox`, def.hitbox);
+    if (!(def.driftSpeed > 0)) errors.push(`pickups.${key}: driftSpeed must be > 0`);
   }
 
   for (const [key, def] of Object.entries(FX)) {
