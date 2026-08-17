@@ -3,61 +3,61 @@
     "player": {
       "src": "/assets/ships/player.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: player_clarity_interceptor"
+      "notes": "Phase O optimized v16 canon master: player_clarity_interceptor"
     },
     "xrpl_striker": {
       "src": "/assets/ships/xrpl_striker.webp",
       "type": "image",
-      "notes": "Phase N optimized roster sprite from the audited handoff master"
+      "notes": "Phase O optimized v16 canon master: player_xrpl_striker"
     },
     "ledger_warden": {
       "src": "/assets/ships/ledger_warden.webp",
       "type": "image",
-      "notes": "Phase N optimized roster sprite from the audited handoff master"
+      "notes": "Phase O optimized v16 canon master: player_infinity_warden used for Ledger Warden"
     }
   },
   "enemies": {
     "regulator_drone": {
       "src": "/assets/enemies/regulator_drone.webp",
       "type": "image",
-      "notes": "Phase M optimized top-down runtime sprite: Regulator Drone"
+      "notes": "Phase O optimized v16 canon master: enemy_regulator_drone"
     },
     "fog_raider": {
       "src": "/assets/enemies/fog_raider.webp",
       "type": "image",
-      "notes": "Phase M optimized top-down runtime sprite: Fog Raider"
+      "notes": "Phase O optimized v16 canon master: enemy_fog_raider"
     },
     "whale_scout": {
       "src": "/assets/enemies/whale_scout.webp",
       "type": "image",
-      "notes": "Phase M optimized top-down runtime sprite: Whale Scout"
+      "notes": "Phase O optimized v16 canon master: enemy_whale_scout"
     },
     "rug_fighter": {
       "src": "/assets/enemies/rug_fighter.webp",
       "type": "image",
-      "notes": "Phase M optimized top-down runtime sprite: Rug Fighter"
+      "notes": "Phase O optimized v16 canon master: enemy_rug_fighter"
     }
   },
   "bosses": {
     "gary_fog_phase1": {
       "src": "/assets/bosses/gary_fog_phase1.webp",
       "type": "image",
-      "notes": "Phase L optimized top-down runtime boss sprite: Gary Fog"
+      "notes": "Phase O optimized v16 canon master: boss_gary_fog_phase1"
     },
     "regulatory_behemoth_phase2": {
       "src": "/assets/bosses/regulatory_behemoth_phase2.webp",
       "type": "image",
-      "notes": "Phase L optimized top-down runtime boss sprite: Regulatory Behemoth"
+      "notes": "Phase O optimized v16 canon master: boss_regulatory_behemoth_phase2"
     },
     "clarity_destroyer_phase3": {
       "src": "/assets/bosses/clarity_destroyer_phase3.webp",
       "type": "image",
-      "notes": "Phase L optimized top-down runtime boss sprite: Clarity Destroyer"
+      "notes": "Phase O optimized v16 canon master: boss_clarity_destroyer_phase3"
     },
     "final_clarity": {
       "src": "/assets/bosses/final_clarity.webp",
       "type": "image",
-      "notes": "Phase L optimized top-down runtime boss sprite: Final Clarity"
+      "notes": "Phase O optimized v16 canon master: boss_final_clarity"
     }
   },
   "weapons": {},
@@ -81,24 +81,24 @@
     "defense_turret": {
       "src": "/assets/hazards/defense_turret.webp",
       "type": "image",
-      "notes": "Phase M optimized runtime sprite from the audited handoff master"
+      "notes": "Phase O optimized v16 canon master: ground_basic_turret"
     }
   },
   "pickups": {
     "weapon_upgrade": {
       "src": "/assets/pickups/weapon_upgrade.webp",
       "type": "image",
-      "notes": "Phase M optimized runtime weapon-up sprite from the audited handoff master"
+      "notes": "Phase O optimized v16 canon master: pickup_weapon_upgrade"
     },
     "bomb": {
       "src": "/assets/pickups/bomb.webp",
       "type": "image",
-      "notes": "Phase M optimized runtime clarity-bomb sprite from the audited handoff master"
+      "notes": "Phase O optimized v16 canon master: pickup_pulse_weapon used for Clarity Bomb"
     },
     "repair": {
       "src": "/assets/pickups/repair.webp",
       "type": "image",
-      "notes": "Phase M optimized runtime hull-repair sprite"
+      "notes": "Phase O optimized v16 canon master: pickup_repair"
     }
   },
   "objectives": {},
