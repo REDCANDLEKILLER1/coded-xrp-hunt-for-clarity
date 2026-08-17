@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { EnemyDef, FxDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
+import type { EnemyDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
 export const SHIPS: Record<string, ShipDef> = {
@@ -209,6 +209,23 @@ export const STAGES: Record<string, StageDef> = {
   },
 };
 
+export const HAZARDS: Record<string, HazardDef> = {
+  defense_turret: {
+    key: 'defense_turret',
+    label: 'DEFENSE TURRET',
+    sprite: { category: 'hazards', id: 'defense_turret' },
+    draw: { w: 44, h: 44 },
+    hitbox: { w: 36, h: 36 },
+    hp: 3,
+    minWave: 3,
+    spawnRate: 7.5,
+    fireRate: 1.65,
+    projectileSpeed: 235,
+    score: 350,
+    accent: '#ff8a3d',
+  },
+};
+
 export const FX: Record<string, FxDef> = {
   burst_ring: {
     key: 'burst_ring',
@@ -312,6 +329,19 @@ export function validateContent(): string[] {
     if (!(def.scrollSpeed > 0)) errors.push(`stages.${key}: scrollSpeed must be > 0`);
   }
   if (stageWaves[0] !== 1) errors.push('stages: first stage must unlock at wave 1');
+
+  for (const [key, def] of Object.entries(HAZARDS)) {
+    if (def.key !== key) errors.push(`hazards.${key}: key mismatch ("${def.key}")`);
+    if (!def.label) errors.push(`hazards.${key}: label is empty`);
+    checkSprite(`hazards.${key}`, def.sprite);
+    checkSize(`hazards.${key}.draw`, def.draw);
+    checkSize(`hazards.${key}.hitbox`, def.hitbox);
+    if (!(def.hp > 0)) errors.push(`hazards.${key}: hp must be > 0`);
+    if (!(Number.isInteger(def.minWave) && def.minWave >= 1)) errors.push(`hazards.${key}: minWave must be a positive integer`);
+    if (!(def.spawnRate > 0 && def.fireRate > 0 && def.projectileSpeed > 0)) errors.push(`hazards.${key}: timing and projectile speed must be > 0`);
+    if (!(def.score >= 0)) errors.push(`hazards.${key}: score must be >= 0`);
+    if (!def.accent) errors.push(`hazards.${key}: accent is empty`);
+  }
 
   for (const [key, def] of Object.entries(FX)) {
     if (def.key !== key) errors.push(`fx.${key}: key mismatch ("${def.key}")`);

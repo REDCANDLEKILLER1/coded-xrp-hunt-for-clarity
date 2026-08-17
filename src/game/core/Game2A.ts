@@ -3,13 +3,15 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
-import { ENEMIES, FX, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
+import { ENEMIES, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { EnemyDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
+import type { EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
+type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
+type HostileProjectile = Actor & { damage: number };
 type ProjectileActor = Actor & { damage: number; projectileKey: string };
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
@@ -29,6 +31,7 @@ const BOMB_LIFE = 0.55;
 // Phase A: live content is sourced from the data registry rather than loose constants.
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
+const DEFAULT_HAZARD = HAZARDS.defense_turret;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
@@ -46,6 +49,8 @@ export class Game2A {
   private selectedShipKey = DEFAULT_SHIP.key;
   private player: Actor = this.newPlayer();
   private drones: EnemyActor[] = [];
+  private hazards: HazardActor[] = [];
+  private hostileShots: HostileProjectile[] = [];
   private bolts: ProjectileActor[] = [];
   private pickups: PickupActor[] = [];
   private rings: Actor[] = [];
@@ -54,6 +59,7 @@ export class Game2A {
   private wave = 1;
   private boltClock = 0;
   private droneClock = 0;
+  private hazardClock = DEFAULT_HAZARD.spawnRate;
   private special = 100;
   private ringClock = 0;
   private weaponTier = 1;
@@ -130,6 +136,8 @@ export class Game2A {
     this.movePlayer(dt);
     this.updateBolts(dt);
     this.updateDrones(dt);
+    this.updateHazards(dt);
+    this.updateHostileShots(dt);
     this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
@@ -237,6 +245,61 @@ export class Game2A {
     this.wave = 1 + Math.floor(this.score / 500);
   }
 
+  private updateHazards(dt: number): void {
+    const def = DEFAULT_HAZARD;
+    if (this.wave < def.minWave) return;
+
+    this.hazardClock -= dt;
+    if (this.hazardClock <= 0) {
+      const side: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
+      this.hazards.push({
+        x: side < 0 ? 54 : this.w - 54,
+        y: -def.draw.h,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: this.currentStage().scrollSpeed,
+        hp: def.hp,
+        hazardKey: def.key,
+        fireClock: 0.8 + Math.random() * 0.65,
+        side,
+      });
+      this.hazardClock = Math.max(4.2, def.spawnRate - (this.wave - def.minWave) * 0.28);
+    }
+
+    for (const hazard of this.hazards) {
+      const hazardDef = this.hazardDef(hazard.hazardKey);
+      hazard.y += hazard.vy * dt;
+      hazard.fireClock -= dt;
+      if (hazard.y < 24 || hazard.y > this.h - 96 || hazard.fireClock > 0) continue;
+
+      const dx = this.player.x - hazard.x;
+      const dy = this.player.y - hazard.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      this.hostileShots.push({
+        x: hazard.x,
+        y: hazard.y,
+        w: 9,
+        h: 9,
+        vx: (dx / length) * hazardDef.projectileSpeed,
+        vy: (dy / length) * hazardDef.projectileSpeed,
+        damage: 1,
+      });
+      hazard.fireClock = hazardDef.fireRate;
+    }
+    this.hazards = this.hazards.filter((hazard) => hazard.y < this.h + 60);
+  }
+
+  private updateHostileShots(dt: number): void {
+    for (const shot of this.hostileShots) {
+      shot.x += shot.vx * dt;
+      shot.y += shot.vy * dt;
+    }
+    this.hostileShots = this.hostileShots.filter((shot) => (
+      shot.x > -30 && shot.x < this.w + 30 && shot.y > -30 && shot.y < this.h + 30
+    ));
+  }
+
   private collisions(): void {
     for (const bolt of this.bolts) {
       for (const drone of this.drones) {
@@ -250,9 +313,24 @@ export class Game2A {
           break;
         }
       }
+      if (bolt.life === 0) continue;
+      for (const hazard of this.hazards) {
+        if ((hazard.hp ?? 0) <= 0) continue;
+        if (overlap(box(bolt, 0.65), box(hazard, 0.78))) {
+          bolt.life = 0;
+          hazard.hp = (hazard.hp ?? 1) - bolt.damage;
+          if ((hazard.hp ?? 0) <= 0) {
+            this.score += this.hazardDef(hazard.hazardKey).score;
+            this.special = Math.min(100, this.special + 12);
+            this.ring(hazard.x, hazard.y);
+          }
+          break;
+        }
+      }
     }
     this.bolts = this.bolts.filter((bolt) => bolt.life !== 0);
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
+    this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
 
     for (const drone of this.drones) {
       if (overlap(box(drone, 0.62), box(this.player, 0.55))) {
@@ -262,6 +340,24 @@ export class Game2A {
       }
     }
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
+
+    for (const hazard of this.hazards) {
+      if (overlap(box(hazard, 0.76), box(this.player, 0.55))) {
+        hazard.hp = 0;
+        this.player.hp = (this.player.hp ?? this.playerDef().hp) - 1;
+        this.ring(hazard.x, hazard.y);
+      }
+    }
+    this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
+
+    for (const shot of this.hostileShots) {
+      if (overlap(box(shot, 0.8), box(this.player, 0.55))) {
+        shot.life = 0;
+        this.player.hp = (this.player.hp ?? this.playerDef().hp) - shot.damage;
+        this.ring(shot.x, shot.y);
+      }
+    }
+    this.hostileShots = this.hostileShots.filter((shot) => shot.life !== 0);
 
     for (const pickup of this.pickups) {
       if (overlap(box(pickup, 0.78), box(this.player, 0.62))) {
@@ -409,7 +505,9 @@ export class Game2A {
   private play(): void {
     this.drawPlayer();
     for (const drone of this.drones) this.drawDrone(drone);
+    for (const hazard of this.hazards) this.drawHazard(hazard);
     for (const bolt of this.bolts) this.drawBolt(bolt);
+    for (const shot of this.hostileShots) this.drawHostileShot(shot);
     for (const pickup of this.pickups) this.drawPickup(pickup);
     for (const item of this.rings) this.drawRing(item);
     this.drawDebris();
@@ -485,6 +583,39 @@ export class Game2A {
     this.ctx.strokeStyle = '#00ff88';
     this.ctx.lineWidth = 3;
     line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);
+  }
+
+  private drawHazard(hazard: HazardActor): void {
+    const def = this.hazardDef(hazard.hazardKey);
+    if (this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h)) return;
+
+    const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
+    this.ctx.save();
+    this.ctx.translate(hazard.x, hazard.y);
+    this.ctx.fillStyle = 'rgba(25,10,5,0.88)';
+    this.ctx.strokeStyle = def.accent;
+    this.ctx.lineWidth = 2;
+    this.ctx.fillRect(-18, -18, 36, 36);
+    this.ctx.strokeRect(-18, -18, 36, 36);
+    this.ctx.rotate(aim);
+    this.ctx.fillStyle = def.accent;
+    this.ctx.fillRect(0, -3, 24, 6);
+    this.ctx.beginPath();
+    this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.restore();
+
+    bar(this.ctx, hazard.x - 18, hazard.y - 27, 36, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+  }
+
+  private drawHostileShot(shot: HostileProjectile): void {
+    this.ctx.save();
+    this.ctx.strokeStyle = '#ff8a3d';
+    this.ctx.shadowColor = '#ff3355';
+    this.ctx.shadowBlur = 8;
+    this.ctx.lineWidth = 4;
+    line(this.ctx, shot.x - shot.vx * 0.025, shot.y - shot.vy * 0.025, shot.x, shot.y);
+    this.ctx.restore();
   }
 
   private drawPickup(pickup: PickupActor): void {
@@ -659,6 +790,12 @@ export class Game2A {
       this.ring(drone.x, drone.y);
     }
     this.drones = [];
+    for (const hazard of this.hazards) {
+      this.score += 75;
+      this.ring(hazard.x, hazard.y);
+    }
+    this.hazards = [];
+    this.hostileShots = [];
   }
 
   private ring(x: number, y: number): void {
@@ -730,6 +867,8 @@ export class Game2A {
     this.reportAssets = false;
     this.player = this.newPlayer();
     this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
     this.bolts = [];
     this.pickups = [];
     this.rings = [];
@@ -739,6 +878,7 @@ export class Game2A {
     this.special = 100;
     this.boltClock = 0;
     this.droneClock = 0;
+    this.hazardClock = DEFAULT_HAZARD.spawnRate;
     this.ringClock = 0;
     this.weaponTier = 1;
     this.kills = 0;
@@ -757,6 +897,10 @@ export class Game2A {
 
   private enemyDef(key: string): EnemyDef {
     return ENEMIES[key] ?? DEFAULT_ENEMY;
+  }
+
+  private hazardDef(key: string): HazardDef {
+    return HAZARDS[key] ?? DEFAULT_HAZARD;
   }
 
   private playerDef() {

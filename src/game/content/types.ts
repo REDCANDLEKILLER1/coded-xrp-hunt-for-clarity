@@ -104,6 +104,21 @@ export interface StageDef {
   scrollSpeed: number;
 }
 
+export interface HazardDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  hitbox: Size;
+  hp: number;
+  minWave: number;
+  spawnRate: number;
+  fireRate: number;
+  projectileSpeed: number;
+  score: number;
+  accent: string;
+}
+
 export interface FxDef {
   key: string;
   sprite: SpriteRef;
