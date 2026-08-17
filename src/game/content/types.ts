@@ -119,6 +119,32 @@ export interface HazardDef {
   accent: string;
 }
 
+export type BossAttackPattern = 'aimed' | 'spread' | 'sweep' | 'burst';
+
+export interface BossPhaseDef {
+  /** Remaining-health ratio at or below which this phase becomes active. */
+  hpThreshold: number;
+  moveSpeed: number;
+  fireRate: number;
+  projectileSpeed: number;
+  projectileCount: number;
+  spread: number;
+  pattern: BossAttackPattern;
+  accent: string;
+}
+
+export interface BossDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  hitbox: Size;
+  hp: number;
+  triggerWave: number;
+  score: number;
+  phases: BossPhaseDef[];
+}
+
 export interface FxDef {
   key: string;
   sprite: SpriteRef;

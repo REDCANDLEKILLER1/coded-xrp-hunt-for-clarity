@@ -3,15 +3,25 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
-import { ENEMIES, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
+import { BOSSES, ENEMIES, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
+import { bossPhaseIndex, nextBossKey } from '../content/BossDirector';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
+import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
-type HostileProjectile = Actor & { damage: number };
+type HostileProjectile = Actor & { damage: number; color: string };
+type BossActor = Actor & {
+  bossKey: string;
+  state: 'intro' | 'fight';
+  age: number;
+  fireClock: number;
+  contactClock: number;
+  phaseIndex: number;
+  targetX: number;
+};
 type ProjectileActor = Actor & { damage: number; projectileKey: string };
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
@@ -51,6 +61,8 @@ export class Game2A {
   private drones: EnemyActor[] = [];
   private hazards: HazardActor[] = [];
   private hostileShots: HostileProjectile[] = [];
+  private boss: BossActor | null = null;
+  private completedBosses = new Set<string>();
   private bolts: ProjectileActor[] = [];
   private pickups: PickupActor[] = [];
   private rings: Actor[] = [];
@@ -66,6 +78,9 @@ export class Game2A {
   private kills = 0;
   private bombs = 2;
   private bombClock = 0;
+  private bossClearClock = 0;
+  private pulseHitBoss = false;
+  private playerHitClock = 0;
   private showAssets = false;
   private reportAssets = false;
 
@@ -135,13 +150,20 @@ export class Game2A {
     if (this.mode !== 'play' || this.paused) return;
     this.movePlayer(dt);
     this.updateBolts(dt);
-    this.updateDrones(dt);
-    this.updateHazards(dt);
+    this.startBossIfReady();
+    if (this.boss) {
+      this.updateBoss(dt);
+    } else {
+      this.updateDrones(dt);
+      this.updateHazards(dt);
+    }
     this.updateHostileShots(dt);
     this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
     if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
+    if (this.bossClearClock > 0) this.bossClearClock = Math.max(0, this.bossClearClock - dt);
+    if (this.playerHitClock > 0) this.playerHitClock = Math.max(0, this.playerHitClock - dt);
     this.updateDebris(dt);
     this.special = Math.min(100, this.special + dt * 7);
     if ((this.player.hp ?? 0) <= 0) this.mode = 'results';
@@ -237,7 +259,7 @@ export class Game2A {
     }
     this.drones = this.drones.filter((drone) => {
       if (drone.y > this.h + 40) {
-        this.player.hp = (this.player.hp ?? this.playerDef().hp) - 1;
+        this.damagePlayer(1, drone.x, this.h - 18);
         return false;
       }
       return true;
@@ -284,6 +306,7 @@ export class Game2A {
         vx: (dx / length) * hazardDef.projectileSpeed,
         vy: (dy / length) * hazardDef.projectileSpeed,
         damage: 1,
+        color: hazardDef.accent,
       });
       hazard.fireClock = hazardDef.fireRate;
     }
@@ -298,6 +321,83 @@ export class Game2A {
     this.hostileShots = this.hostileShots.filter((shot) => (
       shot.x > -30 && shot.x < this.w + 30 && shot.y > -30 && shot.y < this.h + 30
     ));
+  }
+
+  private startBossIfReady(): void {
+    if (this.boss) return;
+    const bossKey = nextBossKey(BOSSES, this.wave, this.completedBosses);
+    if (!bossKey) return;
+    const def = this.bossDef(bossKey);
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.boss = {
+      x: this.w / 2,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: 0,
+      hp: def.hp,
+      bossKey,
+      state: 'intro',
+      age: 0,
+      fireClock: def.phases[0].fireRate,
+      contactClock: 0,
+      phaseIndex: 0,
+      targetX: this.w / 2,
+    };
+  }
+
+  private updateBoss(dt: number): void {
+    const boss = this.boss;
+    if (!boss) return;
+    const def = this.bossDef(boss.bossKey);
+    boss.age += dt;
+    boss.contactClock = Math.max(0, boss.contactClock - dt);
+
+    if (boss.state === 'intro') {
+      boss.y += (118 - boss.y) * Math.min(1, dt * 3.4);
+      if (boss.age >= 1.45) {
+        boss.state = 'fight';
+        boss.y = 118;
+        boss.age = 0;
+      }
+      return;
+    }
+
+    boss.phaseIndex = bossPhaseIndex(def, boss.hp ?? def.hp);
+    const phase = def.phases[boss.phaseIndex];
+    if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 76 + Math.random() * Math.max(1, this.w - 152);
+    boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
+    boss.y = 112 + Math.sin(boss.age * 1.7) * 20;
+
+    boss.fireClock -= dt;
+    if (boss.fireClock <= 0) {
+      this.fireBossVolley(boss, phase);
+      boss.fireClock = phase.fireRate;
+    }
+  }
+
+  private fireBossVolley(boss: BossActor, phase: BossPhaseDef): void {
+    const aimed = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+    const centerAngle = phase.pattern === 'sweep' ? aimed + Math.sin(boss.age * 2.2) * 0.55 : aimed;
+    const middle = (phase.projectileCount - 1) / 2;
+    for (let index = 0; index < phase.projectileCount; index += 1) {
+      const offset = (index - middle) * phase.spread;
+      const burstOffset = phase.pattern === 'burst' ? Math.sin(boss.age * 5 + index) * 0.08 : 0;
+      const angle = centerAngle + offset + burstOffset;
+      this.hostileShots.push({
+        x: boss.x,
+        y: boss.y + boss.h * 0.35,
+        w: 10,
+        h: 10,
+        vx: Math.cos(angle) * phase.projectileSpeed,
+        vy: Math.sin(angle) * phase.projectileSpeed,
+        damage: 1,
+        color: phase.accent,
+      });
+    }
   }
 
   private collisions(): void {
@@ -327,6 +427,11 @@ export class Game2A {
           break;
         }
       }
+      if (bolt.life === 0 || !this.boss || this.boss.state !== 'fight') continue;
+      if (overlap(box(bolt, 0.65), box(this.boss, 0.84))) {
+        bolt.life = 0;
+        this.damageBoss(bolt.damage);
+      }
     }
     this.bolts = this.bolts.filter((bolt) => bolt.life !== 0);
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
@@ -335,8 +440,7 @@ export class Game2A {
     for (const drone of this.drones) {
       if (overlap(box(drone, 0.62), box(this.player, 0.55))) {
         drone.hp = 0;
-        this.player.hp = (this.player.hp ?? this.playerDef().hp) - 1;
-        this.ring(drone.x, drone.y);
+        this.damagePlayer(1, drone.x, drone.y);
       }
     }
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
@@ -344,8 +448,7 @@ export class Game2A {
     for (const hazard of this.hazards) {
       if (overlap(box(hazard, 0.76), box(this.player, 0.55))) {
         hazard.hp = 0;
-        this.player.hp = (this.player.hp ?? this.playerDef().hp) - 1;
-        this.ring(hazard.x, hazard.y);
+        this.damagePlayer(1, hazard.x, hazard.y);
       }
     }
     this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
@@ -353,11 +456,15 @@ export class Game2A {
     for (const shot of this.hostileShots) {
       if (overlap(box(shot, 0.8), box(this.player, 0.55))) {
         shot.life = 0;
-        this.player.hp = (this.player.hp ?? this.playerDef().hp) - shot.damage;
-        this.ring(shot.x, shot.y);
+        this.damagePlayer(shot.damage, shot.x, shot.y);
       }
     }
     this.hostileShots = this.hostileShots.filter((shot) => shot.life !== 0);
+
+    if (this.boss && this.boss.state === 'fight' && this.boss.contactClock <= 0 && overlap(box(this.boss, 0.78), box(this.player, 0.55))) {
+      this.damagePlayer(1, this.player.x, this.player.y);
+      this.boss.contactClock = 0.9;
+    }
 
     for (const pickup of this.pickups) {
       if (overlap(box(pickup, 0.78), box(this.player, 0.62))) {
@@ -381,6 +488,13 @@ export class Game2A {
         }
         return !hit;
       });
+      if (this.boss && this.boss.state === 'fight' && !this.pulseHitBoss) {
+        const hit = Math.hypot(this.boss.x - this.player.x, this.boss.y - this.player.y) < CLARITY_PULSE.radius + this.boss.w * 0.35;
+        if (hit) {
+          this.pulseHitBoss = true;
+          this.damageBoss(4);
+        }
+      }
     }
   }
 
@@ -506,6 +620,7 @@ export class Game2A {
     this.drawPlayer();
     for (const drone of this.drones) this.drawDrone(drone);
     for (const hazard of this.hazards) this.drawHazard(hazard);
+    if (this.boss) this.drawBoss(this.boss);
     for (const bolt of this.bolts) this.drawBolt(bolt);
     for (const shot of this.hostileShots) this.drawHostileShot(shot);
     for (const pickup of this.pickups) this.drawPickup(pickup);
@@ -514,6 +629,7 @@ export class Game2A {
     if (this.ringClock > 0) this.drawPulse();
     if (this.bombClock > 0) this.drawBombWave();
     this.hud();
+    if (this.bossClearClock > 0) this.bossClearBanner();
     if (this.paused) this.pause();
   }
 
@@ -610,12 +726,56 @@ export class Game2A {
 
   private drawHostileShot(shot: HostileProjectile): void {
     this.ctx.save();
-    this.ctx.strokeStyle = '#ff8a3d';
-    this.ctx.shadowColor = '#ff3355';
+    this.ctx.strokeStyle = shot.color;
+    this.ctx.shadowColor = shot.color;
     this.ctx.shadowBlur = 8;
     this.ctx.lineWidth = 4;
     line(this.ctx, shot.x - shot.vx * 0.025, shot.y - shot.vy * 0.025, shot.x, shot.y);
     this.ctx.restore();
+  }
+
+  private drawBoss(boss: BossActor): void {
+    const def = this.bossDef(boss.bossKey);
+    const phase = def.phases[boss.phaseIndex];
+    const drawn = this.drawCentered(def.sprite, boss.x, boss.y, def.draw.w, def.draw.h);
+    if (!drawn) {
+      this.ctx.save();
+      this.ctx.translate(boss.x, boss.y);
+      this.ctx.rotate(Math.sin(boss.age * 1.4) * 0.06);
+      this.ctx.fillStyle = 'rgba(5,8,18,0.92)';
+      this.ctx.strokeStyle = phase.accent;
+      this.ctx.lineWidth = 4;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, 62);
+      this.ctx.lineTo(64, 18);
+      this.ctx.lineTo(48, -52);
+      this.ctx.lineTo(0, -68);
+      this.ctx.lineTo(-48, -52);
+      this.ctx.lineTo(-64, 18);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.fillStyle = `${phase.accent}55`;
+      this.ctx.fillRect(-34, -24, 68, 45);
+      this.ctx.strokeRect(-34, -24, 68, 45);
+      this.ctx.restore();
+    }
+
+    this.ctx.save();
+    this.ctx.strokeStyle = phase.accent;
+    this.ctx.globalAlpha = 0.5 + Math.sin(this.clock * 5) * 0.2;
+    this.ctx.lineWidth = 3;
+    this.ctx.beginPath();
+    this.ctx.arc(boss.x, boss.y, Math.max(def.draw.w, def.draw.h) * 0.48, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+
+    if (boss.state === 'intro') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = phase.accent;
+      this.ctx.font = '800 20px ui-sans-serif, system-ui';
+      this.ctx.fillText(`WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
+    }
   }
 
   private drawPickup(pickup: PickupActor): void {
@@ -725,10 +885,32 @@ export class Game2A {
     this.ctx.textAlign = 'left';
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
+    if (this.boss) {
+      const def = this.bossDef(this.boss.bossKey);
+      const phase = def.phases[this.boss.phaseIndex];
+      const bossBarWidth = Math.min(360, this.w - 64);
+      const bossBarX = (this.w - bossBarWidth) / 2;
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = phase.accent;
+      this.ctx.font = '800 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 46);
+      bar(this.ctx, bossBarX, 52, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
+    }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
     this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
     this.button(this.zone.assets, 'D', '#ffd24a');
+  }
+
+  private bossClearBanner(): void {
+    const alpha = Math.min(1, this.bossClearClock, 2.4 - this.bossClearClock);
+    this.ctx.save();
+    this.ctx.globalAlpha = Math.max(0, alpha);
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 24px ui-sans-serif, system-ui';
+    this.ctx.fillText('CLARITY GATE RESTORED', this.w / 2, this.h * 0.43);
+    this.ctx.restore();
   }
 
   private button(rect: Rect, label: string, color: string): void {
@@ -779,6 +961,7 @@ export class Game2A {
     if (this.special < 100) return;
     this.special = 0;
     this.ringClock = 0.35;
+    this.pulseHitBoss = false;
   }
 
   private useBomb(): void {
@@ -796,6 +979,33 @@ export class Game2A {
     }
     this.hazards = [];
     this.hostileShots = [];
+    if (this.boss?.state === 'fight') {
+      this.ring(this.boss.x, this.boss.y);
+      this.damageBoss(6);
+    }
+  }
+
+  private damageBoss(damage: number): void {
+    const boss = this.boss;
+    if (!boss || boss.state !== 'fight') return;
+    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage);
+    if ((boss.hp ?? 0) > 0) return;
+
+    const def = this.bossDef(boss.bossKey);
+    this.completedBosses.add(boss.bossKey);
+    this.score += def.score;
+    this.special = 100;
+    this.ring(boss.x, boss.y);
+    this.hostileShots = [];
+    this.boss = null;
+    this.bossClearClock = 2.4;
+  }
+
+  private damagePlayer(damage: number, impactX: number, impactY: number): void {
+    if (this.playerHitClock > 0) return;
+    this.player.hp = (this.player.hp ?? this.playerDef().hp) - damage;
+    this.playerHitClock = 0.55;
+    this.ring(impactX, impactY);
   }
 
   private ring(x: number, y: number): void {
@@ -869,6 +1079,8 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.boss = null;
+    this.completedBosses = new Set<string>();
     this.bolts = [];
     this.pickups = [];
     this.rings = [];
@@ -884,6 +1096,9 @@ export class Game2A {
     this.kills = 0;
     this.bombs = 2;
     this.bombClock = 0;
+    this.bossClearClock = 0;
+    this.pulseHitBoss = false;
+    this.playerHitClock = 0;
   }
 
   private newPlayer(): Actor {
@@ -901,6 +1116,10 @@ export class Game2A {
 
   private hazardDef(key: string): HazardDef {
     return HAZARDS[key] ?? DEFAULT_HAZARD;
+  }
+
+  private bossDef(key: string): BossDef {
+    return BOSSES[key] ?? BOSSES.gary_fog;
   }
 
   private playerDef() {
