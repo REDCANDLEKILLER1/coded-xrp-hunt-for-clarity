@@ -178,6 +178,15 @@ export const PICKUPS: Record<string, PickupDef> = {
     driftSpeed: 84,
     effect: 'bomb',
   },
+  repair: {
+    key: 'repair',
+    label: 'HULL REPAIR',
+    sprite: { category: 'pickups', id: 'repair' },
+    draw: { w: 30, h: 30 },
+    hitbox: { w: 24, h: 24 },
+    driftSpeed: 88,
+    effect: 'repair',
+  },
 };
 
 export const STAGES: Record<string, StageDef> = {
@@ -382,6 +391,7 @@ export function validateContent(): string[] {
     checkSize(`pickups.${key}.draw`, def.draw);
     checkSize(`pickups.${key}.hitbox`, def.hitbox);
     if (!(def.driftSpeed > 0)) errors.push(`pickups.${key}: driftSpeed must be > 0`);
+    if (!['weapon_upgrade', 'bomb', 'repair'].includes(def.effect)) errors.push(`pickups.${key}: unknown effect "${def.effect}"`);
   }
 
   const stageWaves = Object.values(STAGES).map((stage) => stage.minWave).sort((a, b) => a - b);

@@ -91,7 +91,7 @@ export interface PickupDef {
   draw: Size;
   hitbox: Size;
   driftSpeed: number;
-  effect: 'weapon_upgrade' | 'bomb';
+  effect: 'weapon_upgrade' | 'bomb' | 'repair';
 }
 
 export interface StageDef {

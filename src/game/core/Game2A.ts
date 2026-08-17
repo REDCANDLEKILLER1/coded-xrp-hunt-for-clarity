@@ -37,6 +37,7 @@ const DEBRIS_MIN = 10;
 const DEBRIS_VARY = 6;
 const UPGRADE_EVERY_KILLS = 7;
 const BOMB_EVERY_KILLS = 12;
+const REPAIR_EVERY_KILLS = 10;
 const MAX_BOMBS = 3;
 const BOMB_LIFE = 0.55;
 
@@ -815,11 +816,12 @@ export class Game2A {
     this.ctx.save();
     this.ctx.translate(pickup.x, pickup.y);
     this.ctx.rotate(this.clock * 2.4);
-    this.ctx.fillStyle = def.effect === 'bomb' ? 'rgba(255,210,74,0.2)' : 'rgba(0,255,0,0.18)';
-    this.ctx.strokeStyle = def.effect === 'bomb' ? '#ffd24a' : '#00ff00';
+    const pickupColor = def.effect === 'bomb' ? '#ffd24a' : def.effect === 'repair' ? '#36a3ff' : '#00ff00';
+    this.ctx.fillStyle = def.effect === 'bomb' ? 'rgba(255,210,74,0.2)' : def.effect === 'repair' ? 'rgba(54,163,255,0.2)' : 'rgba(0,255,0,0.18)';
+    this.ctx.strokeStyle = pickupColor;
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    if (def.effect === 'bomb') {
+    if (def.effect === 'bomb' || def.effect === 'repair') {
       this.ctx.arc(0, 0, 13, 0, Math.PI * 2);
     } else {
       this.ctx.moveTo(0, -14);
@@ -830,7 +832,7 @@ export class Game2A {
     this.ctx.closePath();
     this.ctx.fill();
     this.ctx.stroke();
-    if (def.effect === 'bomb') {
+    if (def.effect === 'bomb' || def.effect === 'repair') {
       this.ctx.beginPath();
       this.ctx.moveTo(-6, 0);
       this.ctx.lineTo(6, 0);
@@ -902,15 +904,17 @@ export class Game2A {
     const newestThreat = ENEMIES[threatKeys[threatKeys.length - 1]].label;
     this.ctx.font = '600 10px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
-    this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
-    const weapon = this.currentWeapon();
-    this.ctx.fillStyle = '#00ff00';
-    this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
     const ship = this.playerDef();
-    this.ctx.fillStyle = ship.accent;
-    this.ctx.fillText(ship.label, 16, 112);
-    this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
-    this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
+    if (!this.boss) {
+      this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
+      const weapon = this.currentWeapon();
+      this.ctx.fillStyle = '#00ff00';
+      this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
+      this.ctx.fillStyle = ship.accent;
+      this.ctx.fillText(ship.label, 16, 112);
+      this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+      this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
+    }
     const stage = this.currentStage();
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = stage.accent;
@@ -926,8 +930,8 @@ export class Game2A {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = phase.accent;
       this.ctx.font = '800 11px ui-sans-serif, system-ui';
-      this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 46);
-      bar(this.ctx, bossBarX, 52, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
+      this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 80);
+      bar(this.ctx, bossBarX, 86, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
     }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
@@ -1028,6 +1032,7 @@ export class Game2A {
     this.completedBosses.add(boss.bossKey);
     this.score += def.score;
     this.special = 100;
+    this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? this.playerDef().hp) + 1);
     this.ring(boss.x, boss.y);
     this.hostileShots = [];
     this.boss = null;
@@ -1101,12 +1106,26 @@ export class Game2A {
         pickupKey: def.key,
       });
     }
+
+    if (this.kills % REPAIR_EVERY_KILLS === 0 && (this.player.hp ?? 0) < this.playerDef().hp) {
+      const def = PICKUPS.repair;
+      this.pickups.push({
+        x: drone.x,
+        y: drone.y,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.driftSpeed,
+        pickupKey: def.key,
+      });
+    }
   }
 
   private applyPickup(key: string): void {
     const def = this.pickupDef(key);
     if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
     if (def.effect === 'bomb') this.bombs = Math.min(MAX_BOMBS, this.bombs + 1);
+    if (def.effect === 'repair') this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
   }
 
   private spawnDebris(x: number, y: number): void {
