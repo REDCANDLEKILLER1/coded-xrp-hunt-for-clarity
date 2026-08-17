@@ -4,6 +4,16 @@
       "src": "/assets/ships/player.webp",
       "type": "image",
       "notes": "Phase 2B Batch 0 optimized curated crop: player_clarity_interceptor"
+    },
+    "xrpl_striker": {
+      "src": "/assets/ships/xrpl_striker.webp",
+      "type": "image",
+      "notes": "Phase N optimized roster sprite from the audited handoff master"
+    },
+    "ledger_warden": {
+      "src": "/assets/ships/ledger_warden.webp",
+      "type": "image",
+      "notes": "Phase N optimized roster sprite from the audited handoff master"
     }
   },
   "enemies": {
