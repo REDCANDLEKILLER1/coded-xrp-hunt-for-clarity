@@ -94,6 +94,16 @@ export interface PickupDef {
   effect: 'weapon_upgrade' | 'bomb';
 }
 
+export interface StageDef {
+  key: string;
+  label: string;
+  minWave: number;
+  sky: string;
+  accent: string;
+  structure: string;
+  scrollSpeed: number;
+}
+
 export interface FxDef {
   key: string;
   sprite: SpriteRef;

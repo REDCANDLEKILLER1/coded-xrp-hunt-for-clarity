@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { EnemyDef, FxDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, WeaponDef } from './types';
+import type { EnemyDef, FxDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
 export const SHIPS: Record<string, ShipDef> = {
@@ -179,6 +179,36 @@ export const PICKUPS: Record<string, PickupDef> = {
   },
 };
 
+export const STAGES: Record<string, StageDef> = {
+  ledger_city: {
+    key: 'ledger_city',
+    label: 'LEDGER CITY',
+    minWave: 1,
+    sky: '#02060b',
+    accent: '#00ff00',
+    structure: '#082316',
+    scrollSpeed: 42,
+  },
+  data_canyon: {
+    key: 'data_canyon',
+    label: 'DATA CANYON',
+    minWave: 4,
+    sky: '#030817',
+    accent: '#36a3ff',
+    structure: '#0a1a36',
+    scrollSpeed: 58,
+  },
+  regulatory_outpost: {
+    key: 'regulatory_outpost',
+    label: 'REGULATORY OUTPOST',
+    minWave: 7,
+    sky: '#10050a',
+    accent: '#ff3355',
+    structure: '#321018',
+    scrollSpeed: 72,
+  },
+};
+
 export const FX: Record<string, FxDef> = {
   burst_ring: {
     key: 'burst_ring',
@@ -272,6 +302,16 @@ export function validateContent(): string[] {
     checkSize(`pickups.${key}.hitbox`, def.hitbox);
     if (!(def.driftSpeed > 0)) errors.push(`pickups.${key}: driftSpeed must be > 0`);
   }
+
+  const stageWaves = Object.values(STAGES).map((stage) => stage.minWave).sort((a, b) => a - b);
+  for (const [key, def] of Object.entries(STAGES)) {
+    if (def.key !== key) errors.push(`stages.${key}: key mismatch ("${def.key}")`);
+    if (!def.label) errors.push(`stages.${key}: label is empty`);
+    if (!(Number.isInteger(def.minWave) && def.minWave >= 1)) errors.push(`stages.${key}: minWave must be a positive integer`);
+    if (!def.sky || !def.accent || !def.structure) errors.push(`stages.${key}: colors must not be empty`);
+    if (!(def.scrollSpeed > 0)) errors.push(`stages.${key}: scrollSpeed must be > 0`);
+  }
+  if (stageWaves[0] !== 1) errors.push('stages: first stage must unlock at wave 1');
 
   for (const [key, def] of Object.entries(FX)) {
     if (def.key !== key) errors.push(`fx.${key}: key mismatch ("${def.key}")`);

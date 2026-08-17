@@ -3,9 +3,9 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
-import { ENEMIES, FX, PICKUPS, PROJECTILES, SHIPS, SPECIALS, WEAPONS } from '../content/registry';
+import { ENEMIES, FX, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { EnemyDef, PickupDef, ProjectileDef, SpriteRef, WeaponDef } from '../content/types';
+import type { EnemyDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -32,6 +32,7 @@ const DEFAULT_ENEMY = ENEMIES.regulator_drone;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
+const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
 
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
@@ -310,11 +311,40 @@ export class Game2A {
   }
 
   private background(): void {
-    this.ctx.fillStyle = '#02060b';
+    const stage = this.currentStage();
+    const sky = this.ctx.createLinearGradient(0, 0, 0, this.h);
+    sky.addColorStop(0, stage.sky);
+    sky.addColorStop(1, '#02060b');
+    this.ctx.fillStyle = sky;
     this.ctx.fillRect(0, 0, this.w, this.h);
-    this.ctx.strokeStyle = 'rgba(0,255,128,0.08)';
-    for (let y = 0; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
+    this.ctx.strokeStyle = `${stage.accent}18`;
+    const gridOffset = (this.clock * stage.scrollSpeed) % 46;
+    for (let y = gridOffset - 46; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
     for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
+    this.drawStageStructures(stage);
+  }
+
+  private drawStageStructures(stage: StageDef): void {
+    const spacing = 104;
+    const offset = (this.clock * stage.scrollSpeed) % spacing;
+    let index = 0;
+    for (let y = offset - spacing; y < this.h + spacing; y += spacing) {
+      const width = 34 + ((index * 17) % 38);
+      const height = 72 + ((index * 23) % 30);
+      this.ctx.fillStyle = stage.structure;
+      this.ctx.strokeStyle = `${stage.accent}66`;
+      this.ctx.fillRect(0, y, width, height);
+      this.ctx.strokeRect(0, y, width, height);
+      this.ctx.fillRect(this.w - width, y + 18, width, height);
+      this.ctx.strokeRect(this.w - width, y + 18, width, height);
+
+      this.ctx.fillStyle = `${stage.accent}88`;
+      for (let wy = y + 12; wy < y + height - 8; wy += 18) {
+        this.ctx.fillRect(Math.max(8, width - 18), wy, 6, 4);
+        this.ctx.fillRect(this.w - width + 10, wy + 18, 6, 4);
+      }
+      index += 1;
+    }
   }
 
   private title(): void {
@@ -557,6 +587,11 @@ export class Game2A {
     const ship = this.playerDef();
     this.ctx.fillStyle = ship.accent;
     this.ctx.fillText(ship.label, 16, 112);
+    const stage = this.currentStage();
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = stage.accent;
+    this.ctx.fillText(stage.label, this.w / 2, 24);
+    this.ctx.textAlign = 'left';
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
@@ -755,6 +790,13 @@ export class Game2A {
 
   private pickupDef(key: string): PickupDef {
     return PICKUPS[key] ?? PICKUPS.weapon_upgrade;
+  }
+
+  private currentStage(): StageDef {
+    for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
+      if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];
+    }
+    return STAGE_LADDER[0];
   }
 }
 
