@@ -76,7 +76,28 @@
     }
   },
   "ui": {},
-  "backgrounds": {},
+  "backgrounds": {
+    "ledger_city": {
+      "src": "/assets/backgrounds/ledger_city.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_space_city_tunnel_vertical"
+    },
+    "data_canyon": {
+      "src": "/assets/backgrounds/data_canyon.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_neon_data_tunnel_vertical"
+    },
+    "regulatory_outpost": {
+      "src": "/assets/backgrounds/regulatory_outpost.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_regulatory_fortress_approach_vertical"
+    },
+    "boss_arena": {
+      "src": "/assets/backgrounds/boss_arena.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_boss_arena_vertical"
+    }
+  },
   "hazards": {
     "defense_turret": {
       "src": "/assets/hazards/defense_turret.webp",

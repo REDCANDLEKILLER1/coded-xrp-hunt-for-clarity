@@ -193,6 +193,7 @@ export const STAGES: Record<string, StageDef> = {
   ledger_city: {
     key: 'ledger_city',
     label: 'LEDGER CITY',
+    background: { category: 'backgrounds', id: 'ledger_city' },
     minWave: 1,
     sky: '#02060b',
     accent: '#00ff00',
@@ -202,6 +203,7 @@ export const STAGES: Record<string, StageDef> = {
   data_canyon: {
     key: 'data_canyon',
     label: 'DATA CANYON',
+    background: { category: 'backgrounds', id: 'data_canyon' },
     minWave: 4,
     sky: '#030817',
     accent: '#36a3ff',
@@ -211,6 +213,7 @@ export const STAGES: Record<string, StageDef> = {
   regulatory_outpost: {
     key: 'regulatory_outpost',
     label: 'REGULATORY OUTPOST',
+    background: { category: 'backgrounds', id: 'regulatory_outpost' },
     minWave: 7,
     sky: '#10050a',
     accent: '#ff3355',
@@ -398,6 +401,7 @@ export function validateContent(): string[] {
   for (const [key, def] of Object.entries(STAGES)) {
     if (def.key !== key) errors.push(`stages.${key}: key mismatch ("${def.key}")`);
     if (!def.label) errors.push(`stages.${key}: label is empty`);
+    checkSprite(`stages.${key}`, def.background);
     if (!(Number.isInteger(def.minWave) && def.minWave >= 1)) errors.push(`stages.${key}: minWave must be a positive integer`);
     if (!def.sky || !def.accent || !def.structure) errors.push(`stages.${key}: colors must not be empty`);
     if (!(def.scrollSpeed > 0)) errors.push(`stages.${key}: scrollSpeed must be > 0`);

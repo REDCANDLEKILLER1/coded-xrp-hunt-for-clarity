@@ -97,6 +97,7 @@ export interface PickupDef {
 export interface StageDef {
   key: string;
   label: string;
+  background: SpriteRef;
   minWave: number;
   sky: string;
   accent: string;

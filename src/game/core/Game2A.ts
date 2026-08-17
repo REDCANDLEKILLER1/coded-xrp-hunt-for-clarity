@@ -539,11 +539,38 @@ export class Game2A {
     sky.addColorStop(1, '#02060b');
     this.ctx.fillStyle = sky;
     this.ctx.fillRect(0, 0, this.w, this.h);
-    this.ctx.strokeStyle = `${stage.accent}18`;
+    const illustrated = this.drawStageBackdrop(stage);
+    this.ctx.strokeStyle = `${stage.accent}${illustrated ? '0c' : '18'}`;
     const gridOffset = (this.clock * stage.scrollSpeed) % 46;
     for (let y = gridOffset - 46; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
     for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
-    this.drawStageStructures(stage);
+    if (!illustrated) this.drawStageStructures(stage);
+  }
+
+  private drawStageBackdrop(stage: StageDef): boolean {
+    const ref = this.boss ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
+    const image = this.assets.getImage(ref.category, ref.id);
+    if (!image || image.width <= 0 || image.height <= 0) return false;
+
+    const scale = Math.max(this.w / image.width, this.h / image.height);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+    const x = (this.w - drawWidth) / 2;
+    const offset = (this.clock * stage.scrollSpeed * 0.32) % drawHeight;
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.7;
+    this.ctx.drawImage(image, x, offset - drawHeight, drawWidth, drawHeight);
+    this.ctx.drawImage(image, x, offset, drawWidth, drawHeight);
+    this.ctx.globalAlpha = 1;
+    const shade = this.ctx.createLinearGradient(0, 0, 0, this.h);
+    shade.addColorStop(0, 'rgba(2,6,11,0.18)');
+    shade.addColorStop(0.55, 'rgba(2,6,11,0.34)');
+    shade.addColorStop(1, 'rgba(2,6,11,0.5)');
+    this.ctx.fillStyle = shade;
+    this.ctx.fillRect(0, 0, this.w, this.h);
+    this.ctx.restore();
+    return true;
   }
 
   private drawStageStructures(stage: StageDef): void {
