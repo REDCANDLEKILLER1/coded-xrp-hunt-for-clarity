@@ -113,6 +113,73 @@
       "src": "/assets/hazards/defense_turret.webp",
       "type": "image",
       "notes": "Phase O optimized v16 canon master: ground_basic_turret"
+    },
+    "basic_turret": {
+      "src": "/assets/hazards/basic_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_basic_turret"
+    },
+    "cannon_turret": {
+      "src": "/assets/hazards/cannon_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_cannon_turret"
+    },
+    "cannon_tower": {
+      "src": "/assets/hazards/cannon_tower.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_cannon_tower"
+    },
+    "laser_tower": {
+      "src": "/assets/hazards/laser_tower.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_laser_tower"
+    },
+    "missile_silo": {
+      "src": "/assets/hazards/missile_silo.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_missile_silo"
+    },
+    "plasma_turret": {
+      "src": "/assets/hazards/plasma_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_plasma_turret"
+    }
+  },
+  "environment": {
+    "mega_tower": {
+      "src": "/assets/environment/mega_tower.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_mega_tower"
+    },
+    "data_spire": {
+      "src": "/assets/environment/data_spire.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_data_spire"
+    },
+    "energy_barrier": {
+      "src": "/assets/environment/energy_barrier.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_energy_barrier"
+    },
+    "regulatory_outpost": {
+      "src": "/assets/environment/regulatory_outpost.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_regulatory_outpost"
+    },
+    "xrp_billboard": {
+      "src": "/assets/environment/xrp_billboard.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_xrp_billboard"
+    },
+    "defense_turret": {
+      "src": "/assets/environment/defense_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_defense_turret"
+    },
+    "asteroid": {
+      "src": "/assets/environment/asteroid.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_asteroid"
     }
   },
   "pickups": {
