@@ -17,6 +17,8 @@ export interface Size {
 
 export interface ShipDef {
   key: string;
+  label: string;
+  accent: string;
   sprite: SpriteRef;
   /** On-screen draw size. */
   draw: Size;

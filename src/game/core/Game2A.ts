@@ -7,7 +7,7 @@ import { ENEMIES, FX, PICKUPS, PROJECTILES, SHIPS, SPECIALS, WEAPONS } from '../
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { EnemyDef, PickupDef, ProjectileDef, SpriteRef, WeaponDef } from '../content/types';
 
-type Mode = 'title' | 'play' | 'results';
+type Mode = 'title' | 'select' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
 type ProjectileActor = Actor & { damage: number; projectileKey: string };
@@ -24,7 +24,7 @@ const DEBRIS_VARY = 6;
 const UPGRADE_EVERY_KILLS = 7;
 
 // Phase A: live content is sourced from the data registry rather than loose constants.
-const PLAYER = SHIPS.player;
+const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
@@ -39,6 +39,7 @@ export class Game2A {
   private clock = 0;
   private mode: Mode = 'title';
   private paused = false;
+  private selectedShipKey = DEFAULT_SHIP.key;
   private player: Actor = this.newPlayer();
   private drones: EnemyActor[] = [];
   private bolts: ProjectileActor[] = [];
@@ -107,7 +108,9 @@ export class Game2A {
 
     const tap = this.input.consumeTap();
     if (!tap) return;
-    if (this.mode === 'title' || this.mode === 'results') return this.reset();
+    if (this.mode === 'title') return void (this.mode = 'select');
+    if (this.mode === 'select') return this.selectShipAt(tap.x, tap.y);
+    if (this.mode === 'results') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
     if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
@@ -133,8 +136,9 @@ export class Game2A {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
     } else {
-      this.player.x += axis.x * PLAYER.speed * dt;
-      this.player.y += axis.y * PLAYER.speed * dt;
+      const ship = this.playerDef();
+      this.player.x += axis.x * ship.speed * dt;
+      this.player.y += axis.y * ship.speed * dt;
     }
     this.player.x = clamp(this.player.x, 28, this.w - 28);
     this.player.y = clamp(this.player.y, this.h * 0.34, this.h - 96);
@@ -145,7 +149,8 @@ export class Game2A {
     if (this.boltClock <= 0) {
       const weapon = this.currentWeapon();
       const projectile = this.projectileDef(weapon.projectileKey);
-      this.boltClock = weapon.fireRate;
+      const ship = this.playerDef();
+      this.boltClock = weapon.fireRate * (ship.fireRate / DEFAULT_SHIP.fireRate);
       for (const shot of weapon.shots) {
         this.bolts.push({
           x: this.player.x + shot.offsetX,
@@ -214,7 +219,7 @@ export class Game2A {
     }
     this.drones = this.drones.filter((drone) => {
       if (drone.y > this.h + 40) {
-        this.player.hp = (this.player.hp ?? PLAYER.hp) - 1;
+        this.player.hp = (this.player.hp ?? this.playerDef().hp) - 1;
         return false;
       }
       return true;
@@ -242,7 +247,7 @@ export class Game2A {
     for (const drone of this.drones) {
       if (overlap(box(drone, 0.62), box(this.player, 0.55))) {
         drone.hp = 0;
-        this.player.hp = (this.player.hp ?? PLAYER.hp) - 1;
+        this.player.hp = (this.player.hp ?? this.playerDef().hp) - 1;
         this.ring(drone.x, drone.y);
       }
     }
@@ -289,6 +294,7 @@ export class Game2A {
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.background();
     if (this.mode === 'title') this.title();
+    if (this.mode === 'select') this.shipSelect();
     if (this.mode === 'play') this.play();
     if (this.mode === 'results') this.results();
     if (this.reportAssets || this.showAssets) this.assetPanel();
@@ -331,6 +337,36 @@ export class Game2A {
     this.ctx.fillText('TAP TO RESTART', this.w / 2, this.h * 0.56);
   }
 
+  private shipSelect(): void {
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff00';
+    this.ctx.font = '700 22px ui-sans-serif, system-ui';
+    this.ctx.fillText('SELECT YOUR SHIP', this.w / 2, 54);
+
+    for (const card of this.shipCards()) {
+      const def = SHIPS[card.key];
+      const { x, y, w, h } = card.rect;
+      this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.lineWidth = 2;
+      this.ctx.fillRect(x, y, w, h);
+      this.ctx.strokeRect(x, y, w, h);
+      this.drawCentered(def.sprite, x + 42, y + h / 2, Math.min(34, def.draw.w), Math.min(42, def.draw.h));
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = def.accent;
+      this.ctx.font = '700 13px ui-sans-serif, system-ui';
+      this.ctx.fillText(def.label, x + 76, y + 26);
+      this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
+      this.ctx.font = '600 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`HP ${def.hp}   SPEED ${def.speed}   FIRE ${def.fireRate.toFixed(2)}`, x + 76, y + 49);
+    }
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.66)';
+    this.ctx.font = '12px ui-sans-serif, system-ui';
+    this.ctx.fillText('TAP A SHIP TO DEPLOY', this.w / 2, this.h - 34);
+  }
+
   private play(): void {
     this.drawPlayer();
     for (const drone of this.drones) this.drawDrone(drone);
@@ -349,20 +385,28 @@ export class Game2A {
   }
 
   private drawPlayer(): void {
-    if (this.drawCentered(PLAYER.sprite, this.player.x, this.player.y, PLAYER.draw.w, PLAYER.draw.h)) return;
-    this.ctx.save();
-    this.ctx.translate(this.player.x, this.player.y);
-    this.ctx.strokeStyle = '#00ff88';
-    this.ctx.fillStyle = 'rgba(0,255,128,0.15)';
+    const def = this.playerDef();
+    const drawn = this.drawCentered(def.sprite, this.player.x, this.player.y, def.draw.w, def.draw.h);
+    if (!drawn) {
+      this.ctx.save();
+      this.ctx.translate(this.player.x, this.player.y);
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.fillStyle = 'rgba(0,255,128,0.15)';
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, -24);
+      this.ctx.lineTo(18, 18);
+      this.ctx.lineTo(0, 10);
+      this.ctx.lineTo(-18, 18);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
+    this.ctx.strokeStyle = def.accent;
+    this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    this.ctx.moveTo(0, -24);
-    this.ctx.lineTo(18, 18);
-    this.ctx.lineTo(0, 10);
-    this.ctx.lineTo(-18, 18);
-    this.ctx.closePath();
-    this.ctx.fill();
+    this.ctx.arc(this.player.x, this.player.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
     this.ctx.stroke();
-    this.ctx.restore();
   }
 
   private drawDrone(drone: EnemyActor): void {
@@ -476,7 +520,10 @@ export class Game2A {
     const weapon = this.currentWeapon();
     this.ctx.fillStyle = '#00ff00';
     this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
-    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / PLAYER.hp, '#00ff88');
+    const ship = this.playerDef();
+    this.ctx.fillStyle = ship.accent;
+    this.ctx.fillText(ship.label, 16, 112);
+    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
@@ -603,7 +650,8 @@ export class Game2A {
   }
 
   private newPlayer(): Actor {
-    return { x: this.w / 2, y: this.h - 112, w: PLAYER.hitbox.w, h: PLAYER.hitbox.h, vx: 0, vy: 0, hp: PLAYER.hp };
+    const ship = this.playerDef();
+    return { x: this.w / 2, y: this.h - 112, w: ship.hitbox.w, h: ship.hitbox.h, vx: 0, vy: 0, hp: ship.hp };
   }
 
   private inControls(x: number, y: number): boolean {
@@ -612,6 +660,27 @@ export class Game2A {
 
   private enemyDef(key: string): EnemyDef {
     return ENEMIES[key] ?? DEFAULT_ENEMY;
+  }
+
+  private playerDef() {
+    return SHIPS[this.selectedShipKey] ?? DEFAULT_SHIP;
+  }
+
+  private shipCards(): Array<{ key: string; rect: Rect }> {
+    const keys = Object.keys(SHIPS);
+    const w = Math.min(this.w - 32, 430);
+    const h = 68;
+    const gap = 12;
+    const total = keys.length * h + (keys.length - 1) * gap;
+    const startY = Math.max(76, (this.h - total) / 2);
+    return keys.map((key, index) => ({ key, rect: { x: (this.w - w) / 2, y: startY + index * (h + gap), w, h } }));
+  }
+
+  private selectShipAt(x: number, y: number): void {
+    const selected = this.shipCards().find((card) => inside(card.rect, x, y));
+    if (!selected) return;
+    this.selectedShipKey = selected.key;
+    this.reset();
   }
 
   private currentWeapon(): WeaponDef {

@@ -12,12 +12,38 @@ import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirecto
 export const SHIPS: Record<string, ShipDef> = {
   player: {
     key: 'player',
+    label: 'CLARITY INTERCEPTOR',
+    accent: '#00ff00',
     sprite: { category: 'ships', id: 'player' },
     draw: { w: 40, h: 48 },
     hitbox: { w: 38, h: 42 },
     speed: 340,
     hp: 3,
     fireRate: 0.14,
+    weaponKey: 'tier_1_bb',
+  },
+  xrpl_striker: {
+    key: 'xrpl_striker',
+    label: 'XRPL STRIKER',
+    accent: '#36a3ff',
+    sprite: { category: 'ships', id: 'player' },
+    draw: { w: 38, h: 46 },
+    hitbox: { w: 35, h: 39 },
+    speed: 405,
+    hp: 2,
+    fireRate: 0.11,
+    weaponKey: 'tier_1_bb',
+  },
+  ledger_warden: {
+    key: 'ledger_warden',
+    label: 'LEDGER WARDEN',
+    accent: '#ffd24a',
+    sprite: { category: 'ships', id: 'player' },
+    draw: { w: 46, h: 54 },
+    hitbox: { w: 42, h: 47 },
+    speed: 285,
+    hp: 5,
+    fireRate: 0.17,
     weaponKey: 'tier_1_bb',
   },
 };
@@ -179,6 +205,8 @@ export function validateContent(): string[] {
 
   for (const [key, def] of Object.entries(SHIPS)) {
     if (def.key !== key) errors.push(`ships.${key}: key mismatch ("${def.key}")`);
+    if (!def.label) errors.push(`ships.${key}: label is empty`);
+    if (!def.accent) errors.push(`ships.${key}: accent is empty`);
     checkSprite(`ships.${key}`, def.sprite);
     checkSize(`ships.${key}.draw`, def.draw);
     checkSize(`ships.${key}.hitbox`, def.hitbox);
