@@ -4,11 +4,13 @@ import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
-import { bossPhaseIndex, nextBossKey } from '../content/BossDirector';
+import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
+import { parseCampaignProgress, recordCampaignRun } from '../content/CampaignProgress';
+import type { CampaignProgress } from '../content/CampaignProgress';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
 
-type Mode = 'title' | 'select' | 'play' | 'results';
+type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
@@ -46,6 +48,8 @@ const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
 const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
+const BOSS_LADDER = orderedBossKeys(BOSSES);
+const PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v1';
 
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
@@ -79,8 +83,10 @@ export class Game2A {
   private bombs = 2;
   private bombClock = 0;
   private bossClearClock = 0;
+  private victoryPendingClock = 0;
   private pulseHitBoss = false;
   private playerHitClock = 0;
+  private progress: CampaignProgress = this.loadProgress();
   private showAssets = false;
   private reportAssets = false;
 
@@ -139,7 +145,7 @@ export class Game2A {
     if (!tap) return;
     if (this.mode === 'title') return void (this.mode = 'select');
     if (this.mode === 'select') return this.selectShipAt(tap.x, tap.y);
-    if (this.mode === 'results') return this.reset();
+    if (this.mode === 'results' || this.mode === 'victory') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
     if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
@@ -153,7 +159,7 @@ export class Game2A {
     this.startBossIfReady();
     if (this.boss) {
       this.updateBoss(dt);
-    } else {
+    } else if (this.victoryPendingClock <= 0) {
       this.updateDrones(dt);
       this.updateHazards(dt);
     }
@@ -163,10 +169,14 @@ export class Game2A {
     this.updateRings(dt);
     if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
     if (this.bossClearClock > 0) this.bossClearClock = Math.max(0, this.bossClearClock - dt);
+    if (this.victoryPendingClock > 0) {
+      this.victoryPendingClock = Math.max(0, this.victoryPendingClock - dt);
+      if (this.victoryPendingClock === 0) this.finishRun(true);
+    }
     if (this.playerHitClock > 0) this.playerHitClock = Math.max(0, this.playerHitClock - dt);
     this.updateDebris(dt);
     this.special = Math.min(100, this.special + dt * 7);
-    if ((this.player.hp ?? 0) <= 0) this.mode = 'results';
+    if ((this.player.hp ?? 0) <= 0 && this.mode === 'play') this.finishRun(false);
   }
 
   private movePlayer(dt: number): void {
@@ -517,6 +527,7 @@ export class Game2A {
     if (this.mode === 'select') this.shipSelect();
     if (this.mode === 'play') this.play();
     if (this.mode === 'results') this.results();
+    if (this.mode === 'victory') this.victory();
     if (this.reportAssets || this.showAssets) this.assetPanel();
   }
 
@@ -583,7 +594,27 @@ export class Game2A {
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '600 16px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, this.w / 2, this.h * 0.46);
-    this.ctx.fillText('TAP TO RESTART', this.w / 2, this.h * 0.56);
+    this.ctx.fillText(`BEST ${this.progress.highScore} • HIGHEST WAVE ${this.progress.highestWave}`, this.w / 2, this.h * 0.51);
+    this.ctx.fillText('TAP TO RESTART', this.w / 2, this.h * 0.59);
+  }
+
+  private victory(): void {
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 28px ui-sans-serif, system-ui';
+    this.ctx.fillText('CLARITY RESTORED', this.w / 2, this.h * 0.32);
+    this.ctx.fillStyle = '#36a3ff';
+    this.ctx.font = '700 17px ui-sans-serif, system-ui';
+    this.ctx.fillText('THE LEDGER IS CLEAR', this.w / 2, this.h * 0.38);
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.font = '600 15px ui-sans-serif, system-ui';
+    this.ctx.fillText(`FINAL SCORE ${this.score}`, this.w / 2, this.h * 0.47);
+    this.ctx.fillText(`CAMPAIGN VICTORIES ${this.progress.victories}`, this.w / 2, this.h * 0.52);
+    this.ctx.strokeStyle = '#00ff88';
+    this.ctx.strokeRect(this.w / 2 - 92, this.h * 0.62 - 24, 184, 48);
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.font = '800 15px ui-sans-serif, system-ui';
+    this.ctx.fillText('RUN IT AGAIN', this.w / 2, this.h * 0.62 + 6);
   }
 
   private shipSelect(): void {
@@ -878,6 +909,8 @@ export class Game2A {
     const ship = this.playerDef();
     this.ctx.fillStyle = ship.accent;
     this.ctx.fillText(ship.label, 16, 112);
+    this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+    this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
     const stage = this.currentStage();
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = stage.accent;
@@ -999,6 +1032,7 @@ export class Game2A {
     this.hostileShots = [];
     this.boss = null;
     this.bossClearClock = 2.4;
+    if (this.completedBosses.size === BOSS_LADDER.length) this.victoryPendingClock = 2.4;
   }
 
   private damagePlayer(damage: number, impactX: number, impactY: number): void {
@@ -1006,6 +1040,29 @@ export class Game2A {
     this.player.hp = (this.player.hp ?? this.playerDef().hp) - damage;
     this.playerHitClock = 0.55;
     this.ring(impactX, impactY);
+  }
+
+  private finishRun(victory: boolean): void {
+    this.progress = recordCampaignRun(this.progress, this.score, this.wave, victory);
+    this.saveProgress();
+    this.mode = victory ? 'victory' : 'results';
+    this.paused = false;
+  }
+
+  private loadProgress(): CampaignProgress {
+    try {
+      return parseCampaignProgress(localStorage.getItem(PROGRESS_STORAGE_KEY));
+    } catch {
+      return parseCampaignProgress(null);
+    }
+  }
+
+  private saveProgress(): void {
+    try {
+      localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(this.progress));
+    } catch {
+      // Persistence is optional; private browsing or quota errors must not stop play.
+    }
   }
 
   private ring(x: number, y: number): void {
@@ -1097,6 +1154,7 @@ export class Game2A {
     this.bombs = 2;
     this.bombClock = 0;
     this.bossClearClock = 0;
+    this.victoryPendingClock = 0;
     this.pulseHitBoss = false;
     this.playerHitClock = 0;
   }
