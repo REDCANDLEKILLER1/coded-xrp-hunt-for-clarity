@@ -10,6 +10,8 @@
 
 The two full-size player candidates from the audited Opus handoff were processed outside the repository. Their black backgrounds were edge-keyed, then each craft was trimmed, centered, resized to two-times its runtime draw size, and optimized as transparent WebP.
 
+The two added runtime files total less than 7 KB.
+
 ## Verification
 
 - Confirm all three ship-select cards render distinct silhouettes.
