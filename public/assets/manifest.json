@@ -10,7 +10,22 @@
     "regulator_drone": {
       "src": "/assets/enemies/regulator_drone.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: enemy_regulator_drone"
+      "notes": "Phase M optimized top-down runtime sprite: Regulator Drone"
+    },
+    "fog_raider": {
+      "src": "/assets/enemies/fog_raider.webp",
+      "type": "image",
+      "notes": "Phase M optimized top-down runtime sprite: Fog Raider"
+    },
+    "whale_scout": {
+      "src": "/assets/enemies/whale_scout.webp",
+      "type": "image",
+      "notes": "Phase M optimized top-down runtime sprite: Whale Scout"
+    },
+    "rug_fighter": {
+      "src": "/assets/enemies/rug_fighter.webp",
+      "type": "image",
+      "notes": "Phase M optimized top-down runtime sprite: Rug Fighter"
     }
   },
   "bosses": {
@@ -52,7 +67,30 @@
   },
   "ui": {},
   "backgrounds": {},
-  "hazards": {},
+  "hazards": {
+    "defense_turret": {
+      "src": "/assets/hazards/defense_turret.webp",
+      "type": "image",
+      "notes": "Phase M optimized runtime sprite from the audited handoff master"
+    }
+  },
+  "pickups": {
+    "weapon_upgrade": {
+      "src": "/assets/pickups/weapon_upgrade.webp",
+      "type": "image",
+      "notes": "Phase M optimized runtime weapon-up sprite from the audited handoff master"
+    },
+    "bomb": {
+      "src": "/assets/pickups/bomb.webp",
+      "type": "image",
+      "notes": "Phase M optimized runtime clarity-bomb sprite from the audited handoff master"
+    },
+    "repair": {
+      "src": "/assets/pickups/repair.webp",
+      "type": "image",
+      "notes": "Phase M optimized runtime hull-repair sprite"
+    }
+  },
   "objectives": {},
   "special": {
     "clarity_pulse": {

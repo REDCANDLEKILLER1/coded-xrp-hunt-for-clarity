@@ -68,7 +68,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
   fog_raider: {
     key: 'fog_raider',
     label: 'FOG RAIDER',
-    sprite: { category: 'enemies', id: 'regulator_drone' },
+    sprite: { category: 'enemies', id: 'fog_raider' },
     draw: { w: 34, h: 34 },
     hitbox: { w: 27, h: 25 },
     hp: 1,
@@ -83,7 +83,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
   whale_scout: {
     key: 'whale_scout',
     label: 'WHALE SCOUT',
-    sprite: { category: 'enemies', id: 'regulator_drone' },
+    sprite: { category: 'enemies', id: 'whale_scout' },
     draw: { w: 42, h: 42 },
     hitbox: { w: 34, h: 30 },
     hp: 2,
@@ -98,7 +98,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
   rug_fighter: {
     key: 'rug_fighter',
     label: 'RUG FIGHTER',
-    sprite: { category: 'enemies', id: 'regulator_drone' },
+    sprite: { category: 'enemies', id: 'rug_fighter' },
     draw: { w: 38, h: 38 },
     hitbox: { w: 30, h: 28 },
     hp: 2,
