@@ -102,6 +102,11 @@
       "type": "image",
       "notes": "Original-build master: bg_regulatory_fortress_approach_vertical"
     },
+    "deep_space_lane": {
+      "src": "/assets/backgrounds/deep_space_lane.webp",
+      "type": "image",
+      "notes": "Phase T optimized original-build master: bg_deep_space_lane_vertical"
+    },
     "boss_arena": {
       "src": "/assets/backgrounds/boss_arena.webp",
       "type": "image",

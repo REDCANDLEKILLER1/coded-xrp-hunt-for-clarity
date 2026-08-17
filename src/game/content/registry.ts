@@ -234,6 +234,16 @@ export const STAGES: Record<string, StageDef> = {
     structure: '#321018',
     scrollSpeed: 72,
   },
+  deep_space_lane: {
+    key: 'deep_space_lane',
+    label: 'DEEP SPACE LANE',
+    background: { category: 'backgrounds', id: 'deep_space_lane' },
+    minWave: 11,
+    sky: '#01030a',
+    accent: '#7d7cff',
+    structure: '#0b0b24',
+    scrollSpeed: 86,
+  },
 };
 
 export const HAZARDS: Record<string, HazardDef> = {
