@@ -118,6 +118,17 @@ export interface HazardDef {
   projectileSpeed: number;
   score: number;
   accent: string;
+  spawnWeight: number;
+  placement: 'edge' | 'lane';
+  fires: boolean;
+}
+
+export interface EnvironmentPropDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  stages: string[];
 }
 
 export type BossAttackPattern = 'aimed' | 'spread' | 'sweep' | 'burst';

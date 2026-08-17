@@ -3,7 +3,7 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
-import { BOSSES, ENEMIES, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS } from '../content/registry';
+import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
 import { parseCampaignProgress, recordCampaignRun } from '../content/CampaignProgress';
 import type { CampaignProgress } from '../content/CampaignProgress';
@@ -44,7 +44,7 @@ const BOMB_LIFE = 0.55;
 // Phase A: live content is sourced from the data registry rather than loose constants.
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
-const DEFAULT_HAZARD = HAZARDS.defense_turret;
+const DEFAULT_HAZARD = HAZARDS.basic_turret;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
@@ -279,14 +279,14 @@ export class Game2A {
   }
 
   private updateHazards(dt: number): void {
-    const def = DEFAULT_HAZARD;
-    if (this.wave < def.minWave) return;
+    if (this.wave < DEFAULT_HAZARD.minWave) return;
 
     this.hazardClock -= dt;
     if (this.hazardClock <= 0) {
+      const def = HAZARDS[selectHazardKey(this.wave)] ?? DEFAULT_HAZARD;
       const side: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
       this.hazards.push({
-        x: side < 0 ? 54 : this.w - 54,
+        x: def.placement === 'lane' ? 70 + Math.random() * Math.max(1, this.w - 140) : side < 0 ? 54 : this.w - 54,
         y: -def.draw.h,
         w: def.hitbox.w,
         h: def.hitbox.h,
@@ -297,12 +297,13 @@ export class Game2A {
         fireClock: 0.8 + Math.random() * 0.65,
         side,
       });
-      this.hazardClock = Math.max(4.2, def.spawnRate - (this.wave - def.minWave) * 0.28);
+      this.hazardClock = Math.max(3.8, def.spawnRate - (this.wave - def.minWave) * 0.22);
     }
 
     for (const hazard of this.hazards) {
       const hazardDef = this.hazardDef(hazard.hazardKey);
       hazard.y += hazard.vy * dt;
+      if (!hazardDef.fires) continue;
       hazard.fireClock -= dt;
       if (hazard.y < 24 || hazard.y > this.h - 96 || hazard.fireClock > 0) continue;
 
@@ -547,6 +548,29 @@ export class Game2A {
     for (let y = gridOffset - 46; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
     for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
     if (!illustrated) this.drawStageStructures(stage);
+    this.drawStageProps(stage);
+  }
+
+  private drawStageProps(stage: StageDef): void {
+    const props = Object.values(ENVIRONMENT_PROPS).filter((prop) => prop.stages.includes(stage.key));
+    if (props.length === 0) return;
+    const spacing = 168;
+    const travel = this.clock * stage.scrollSpeed * 0.72;
+    const base = Math.floor(travel / spacing);
+    const offset = travel % spacing;
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.62;
+    for (let row = -1; row <= Math.ceil(this.h / spacing) + 1; row += 1) {
+      const index = base + row;
+      const prop = props[Math.abs(index) % props.length];
+      const y = row * spacing + offset;
+      const side = index % 2 === 0 ? -1 : 1;
+      const inset = Math.min(26, prop.draw.w * 0.24);
+      const x = side < 0 ? inset : this.w - inset;
+      this.drawCentered(prop.sprite, x, y, prop.draw.w, prop.draw.h);
+    }
+    this.ctx.restore();
   }
 
   private drawStageBackdrop(stage: StageDef): boolean {
@@ -764,25 +788,26 @@ export class Game2A {
 
   private drawHazard(hazard: HazardActor): void {
     const def = this.hazardDef(hazard.hazardKey);
-    if (this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h)) return;
+    const drawn = this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h);
 
-    const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
-    this.ctx.save();
-    this.ctx.translate(hazard.x, hazard.y);
-    this.ctx.fillStyle = 'rgba(25,10,5,0.88)';
-    this.ctx.strokeStyle = def.accent;
-    this.ctx.lineWidth = 2;
-    this.ctx.fillRect(-18, -18, 36, 36);
-    this.ctx.strokeRect(-18, -18, 36, 36);
-    this.ctx.rotate(aim);
-    this.ctx.fillStyle = def.accent;
-    this.ctx.fillRect(0, -3, 24, 6);
-    this.ctx.beginPath();
-    this.ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    this.ctx.fill();
-    this.ctx.restore();
+    if (!drawn) {
+      const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
+      this.ctx.save();
+      this.ctx.translate(hazard.x, hazard.y);
+      this.ctx.fillStyle = 'rgba(25,10,5,0.88)';
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.lineWidth = 2;
+      this.ctx.fillRect(-18, -18, 36, 36);
+      this.ctx.strokeRect(-18, -18, 36, 36);
+      if (def.fires) {
+        this.ctx.rotate(aim);
+        this.ctx.fillStyle = def.accent;
+        this.ctx.fillRect(0, -3, 24, 6);
+      }
+      this.ctx.restore();
+    }
 
-    bar(this.ctx, hazard.x - 18, hazard.y - 27, 36, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+    bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
   }
 
   private drawHostileShot(shot: HostileProjectile): void {

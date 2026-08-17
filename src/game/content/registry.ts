@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { BossDef, EnemyDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
+import type { BossDef, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from './BossDirector';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
@@ -237,10 +237,10 @@ export const STAGES: Record<string, StageDef> = {
 };
 
 export const HAZARDS: Record<string, HazardDef> = {
-  defense_turret: {
-    key: 'defense_turret',
-    label: 'DEFENSE TURRET',
-    sprite: { category: 'hazards', id: 'defense_turret' },
+  basic_turret: {
+    key: 'basic_turret',
+    label: 'BASIC TURRET',
+    sprite: { category: 'hazards', id: 'basic_turret' },
     draw: { w: 44, h: 44 },
     hitbox: { w: 36, h: 36 },
     hp: 3,
@@ -250,8 +250,72 @@ export const HAZARDS: Record<string, HazardDef> = {
     projectileSpeed: 235,
     score: 350,
     accent: '#ff8a3d',
+    spawnWeight: 8,
+    placement: 'edge',
+    fires: true,
+  },
+  cannon_turret: {
+    key: 'cannon_turret', label: 'CANNON TURRET', sprite: { category: 'hazards', id: 'cannon_turret' },
+    draw: { w: 50, h: 50 }, hitbox: { w: 40, h: 40 }, hp: 4, minWave: 4,
+    spawnRate: 7.2, fireRate: 2.1, projectileSpeed: 220, score: 425, accent: '#ff6b3d',
+    spawnWeight: 6, placement: 'edge', fires: true,
+  },
+  asteroid: {
+    key: 'asteroid', label: 'CLARITY ASTEROID', sprite: { category: 'environment', id: 'asteroid' },
+    draw: { w: 58, h: 58 }, hitbox: { w: 44, h: 44 }, hp: 4, minWave: 5,
+    spawnRate: 8.5, fireRate: 0, projectileSpeed: 0, score: 300, accent: '#36a3ff',
+    spawnWeight: 5, placement: 'lane', fires: false,
+  },
+  cannon_tower: {
+    key: 'cannon_tower', label: 'CANNON TOWER', sprite: { category: 'hazards', id: 'cannon_tower' },
+    draw: { w: 50, h: 62 }, hitbox: { w: 38, h: 50 }, hp: 5, minWave: 6,
+    spawnRate: 7, fireRate: 1.45, projectileSpeed: 245, score: 500, accent: '#ff3d3d',
+    spawnWeight: 5, placement: 'edge', fires: true,
+  },
+  laser_tower: {
+    key: 'laser_tower', label: 'LASER TOWER', sprite: { category: 'hazards', id: 'laser_tower' },
+    draw: { w: 44, h: 64 }, hitbox: { w: 34, h: 50 }, hp: 4, minWave: 7,
+    spawnRate: 6.8, fireRate: 0.9, projectileSpeed: 310, score: 550, accent: '#ff3355',
+    spawnWeight: 4, placement: 'edge', fires: true,
+  },
+  missile_silo: {
+    key: 'missile_silo', label: 'MISSILE SILO', sprite: { category: 'hazards', id: 'missile_silo' },
+    draw: { w: 58, h: 64 }, hitbox: { w: 46, h: 50 }, hp: 7, minWave: 9,
+    spawnRate: 7.8, fireRate: 2.75, projectileSpeed: 190, score: 700, accent: '#ffd24a',
+    spawnWeight: 3, placement: 'edge', fires: true,
+  },
+  plasma_turret: {
+    key: 'plasma_turret', label: 'PLASMA TURRET', sprite: { category: 'hazards', id: 'plasma_turret' },
+    draw: { w: 56, h: 56 }, hitbox: { w: 44, h: 44 }, hp: 6, minWave: 11,
+    spawnRate: 6.4, fireRate: 1.1, projectileSpeed: 270, score: 800, accent: '#b56cff',
+    spawnWeight: 3, placement: 'edge', fires: true,
   },
 };
+
+export const ENVIRONMENT_PROPS: Record<string, EnvironmentPropDef> = {
+  mega_tower: { key: 'mega_tower', label: 'MEGA TOWER', sprite: { category: 'environment', id: 'mega_tower' }, draw: { w: 58, h: 132 }, stages: ['ledger_city', 'regulatory_outpost'] },
+  data_spire: { key: 'data_spire', label: 'DATA SPIRE', sprite: { category: 'environment', id: 'data_spire' }, draw: { w: 48, h: 130 }, stages: ['ledger_city', 'data_canyon'] },
+  energy_barrier: { key: 'energy_barrier', label: 'ENERGY BARRIER', sprite: { category: 'environment', id: 'energy_barrier' }, draw: { w: 72, h: 96 }, stages: ['data_canyon', 'regulatory_outpost'] },
+  regulatory_outpost: { key: 'regulatory_outpost', label: 'REGULATORY OUTPOST', sprite: { category: 'environment', id: 'regulatory_outpost' }, draw: { w: 78, h: 122 }, stages: ['regulatory_outpost'] },
+  xrp_billboard: { key: 'xrp_billboard', label: 'XRP BILLBOARD', sprite: { category: 'environment', id: 'xrp_billboard' }, draw: { w: 76, h: 112 }, stages: ['ledger_city'] },
+  defense_turret: { key: 'defense_turret', label: 'DEFENSE PLATFORM', sprite: { category: 'environment', id: 'defense_turret' }, draw: { w: 76, h: 88 }, stages: ['data_canyon', 'regulatory_outpost'] },
+};
+
+export function availableHazardKeys(wave: number): string[] {
+  return Object.values(HAZARDS).filter((hazard) => wave >= hazard.minWave).map((hazard) => hazard.key);
+}
+
+export function selectHazardKey(wave: number, roll = Math.random()): string {
+  const available = availableHazardKeys(wave);
+  if (available.length === 0) return 'basic_turret';
+  const total = available.reduce((sum, key) => sum + HAZARDS[key].spawnWeight, 0);
+  let cursor = Math.max(0, Math.min(0.999999, roll)) * total;
+  for (const key of available) {
+    cursor -= HAZARDS[key].spawnWeight;
+    if (cursor < 0) return key;
+  }
+  return available[available.length - 1];
+}
 
 export const BOSSES: Record<string, BossDef> = {
   gary_fog: {
@@ -430,10 +494,22 @@ export function validateContent(): string[] {
     checkSize(`hazards.${key}.hitbox`, def.hitbox);
     if (!(def.hp > 0)) errors.push(`hazards.${key}: hp must be > 0`);
     if (!(Number.isInteger(def.minWave) && def.minWave >= 1)) errors.push(`hazards.${key}: minWave must be a positive integer`);
-    if (!(def.spawnRate > 0 && def.fireRate > 0 && def.projectileSpeed > 0)) errors.push(`hazards.${key}: timing and projectile speed must be > 0`);
+    if (!(def.spawnRate > 0)) errors.push(`hazards.${key}: spawnRate must be > 0`);
+    if (def.fires && !(def.fireRate > 0 && def.projectileSpeed > 0)) errors.push(`hazards.${key}: firing hazards need positive timing and projectile speed`);
+    if (!(def.spawnWeight > 0)) errors.push(`hazards.${key}: spawnWeight must be > 0`);
+    if (!['edge', 'lane'].includes(def.placement)) errors.push(`hazards.${key}: invalid placement`);
     if (!(def.score >= 0)) errors.push(`hazards.${key}: score must be >= 0`);
     if (!def.accent) errors.push(`hazards.${key}: accent is empty`);
   }
+
+  for (const [key, def] of Object.entries(ENVIRONMENT_PROPS)) {
+    if (def.key !== key) errors.push(`environment.${key}: key mismatch ("${def.key}")`);
+    if (!def.label || def.stages.length === 0) errors.push(`environment.${key}: label and stages are required`);
+    checkSprite(`environment.${key}`, def.sprite);
+    checkSize(`environment.${key}.draw`, def.draw);
+    for (const stage of def.stages) if (!STAGES[stage]) errors.push(`environment.${key}: unknown stage "${stage}"`);
+  }
+  if (selectHazardKey(3, 0) !== 'basic_turret') errors.push('hazards: first unlock must select basic turret');
 
   const bossWaves = orderedBossKeys(BOSSES).map((key) => BOSSES[key].triggerWave);
   for (const [key, def] of Object.entries(BOSSES)) {
