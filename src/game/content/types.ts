@@ -33,6 +33,8 @@ export interface ShipDef {
 
 export interface EnemyDef {
   key: string;
+  /** Short HUD/debug name. */
+  label: string;
   sprite: SpriteRef;
   draw: Size;
   hitbox: Size;
@@ -43,6 +45,14 @@ export interface EnemyDef {
   spawnRate: number;
   /** Score awarded when destroyed. */
   score: number;
+  /** First wave where the director may spawn this enemy. */
+  minWave: number;
+  /** Relative selection weight once the enemy is unlocked. */
+  spawnWeight: number;
+  /** Named movement routine handled by the wave combat loop. */
+  behavior: 'straight' | 'sine' | 'zigzag' | 'dive';
+  /** Visual identifier used while enemy variants share a temporary sprite. */
+  accent: string;
 }
 
 export interface ProjectileDef {

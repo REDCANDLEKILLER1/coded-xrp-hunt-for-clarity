@@ -7,6 +7,7 @@
 // are intentionally NOT wired into live play in Phase A.
 
 import type { EnemyDef, FxDef, ProjectileDef, ShipDef, SpecialDef } from './types';
+import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
 export const SHIPS: Record<string, ShipDef> = {
   player: {
@@ -24,6 +25,7 @@ export const SHIPS: Record<string, ShipDef> = {
 export const ENEMIES: Record<string, EnemyDef> = {
   regulator_drone: {
     key: 'regulator_drone',
+    label: 'REGULATOR',
     sprite: { category: 'enemies', id: 'regulator_drone' },
     draw: { w: 36, h: 36 },
     hitbox: { w: 28, h: 26 },
@@ -31,6 +33,55 @@ export const ENEMIES: Record<string, EnemyDef> = {
     baseSpeed: 105,
     spawnRate: 0.72,
     score: 100,
+    minWave: 1,
+    spawnWeight: 8,
+    behavior: 'sine',
+    accent: '#ff3355',
+  },
+  fog_raider: {
+    key: 'fog_raider',
+    label: 'FOG RAIDER',
+    sprite: { category: 'enemies', id: 'regulator_drone' },
+    draw: { w: 34, h: 34 },
+    hitbox: { w: 27, h: 25 },
+    hp: 1,
+    baseSpeed: 138,
+    spawnRate: 0.68,
+    score: 125,
+    minWave: 2,
+    spawnWeight: 5,
+    behavior: 'straight',
+    accent: '#b56cff',
+  },
+  whale_scout: {
+    key: 'whale_scout',
+    label: 'WHALE SCOUT',
+    sprite: { category: 'enemies', id: 'regulator_drone' },
+    draw: { w: 42, h: 42 },
+    hitbox: { w: 34, h: 30 },
+    hp: 2,
+    baseSpeed: 92,
+    spawnRate: 0.78,
+    score: 200,
+    minWave: 3,
+    spawnWeight: 3,
+    behavior: 'zigzag',
+    accent: '#36a3ff',
+  },
+  rug_fighter: {
+    key: 'rug_fighter',
+    label: 'RUG FIGHTER',
+    sprite: { category: 'enemies', id: 'regulator_drone' },
+    draw: { w: 38, h: 38 },
+    hitbox: { w: 30, h: 28 },
+    hp: 2,
+    baseSpeed: 118,
+    spawnRate: 0.74,
+    score: 250,
+    minWave: 4,
+    spawnWeight: 2,
+    behavior: 'dive',
+    accent: '#ffd24a',
   },
 };
 
@@ -97,6 +148,11 @@ export function validateContent(): string[] {
     if (!(def.baseSpeed > 0)) errors.push(`enemies.${key}: baseSpeed must be > 0`);
     if (!(def.spawnRate > 0)) errors.push(`enemies.${key}: spawnRate must be > 0`);
     if (!(def.score >= 0)) errors.push(`enemies.${key}: score must be >= 0`);
+    if (!def.label) errors.push(`enemies.${key}: label is empty`);
+    if (!(Number.isInteger(def.minWave) && def.minWave >= 1)) errors.push(`enemies.${key}: minWave must be a positive integer`);
+    if (!(def.spawnWeight > 0)) errors.push(`enemies.${key}: spawnWeight must be > 0`);
+    if (!['straight', 'sine', 'zigzag', 'dive'].includes(def.behavior)) errors.push(`enemies.${key}: unknown behavior "${def.behavior}"`);
+    if (!def.accent) errors.push(`enemies.${key}: accent is empty`);
   }
 
   for (const [key, def] of Object.entries(PROJECTILES)) {
@@ -117,6 +173,13 @@ export function validateContent(): string[] {
     if (!(def.radius > 0)) errors.push(`specials.${key}: radius must be > 0`);
     if (def.sprite) checkSprite(`specials.${key}`, def.sprite);
   }
+
+  const waveOne = availableEnemyKeys(ENEMIES, 1);
+  if (waveOne.length === 0) errors.push('waveDirector: wave 1 has no available enemy');
+  if (!waveOne.includes('regulator_drone')) errors.push('waveDirector: regulator_drone must be available in wave 1');
+  if (availableEnemyKeys(ENEMIES, 3).some((key) => ENEMIES[key].minWave > 3)) errors.push('waveDirector: locked enemy leaked into wave 3');
+  if (!ENEMIES[selectEnemyKey(ENEMIES, 4, 0.999999)]) errors.push('waveDirector: weighted selection returned an unknown key');
+  if (!(spawnInterval(8) < spawnInterval(1))) errors.push('waveDirector: spawn pressure must increase over time');
 
   return errors;
 }

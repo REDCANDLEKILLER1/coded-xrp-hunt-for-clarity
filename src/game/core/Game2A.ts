@@ -4,10 +4,12 @@ import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
 import { ENEMIES, FX, PROJECTILES, SHIPS, SPECIALS } from '../content/registry';
-import type { SpriteRef } from '../content/types';
+import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
+import type { EnemyDef, SpriteRef } from '../content/types';
 
 type Mode = 'title' | 'play' | 'results';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
+type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
 // Hit-burst tuning: a bigger, longer ring that reveals the spark debris baked
@@ -20,7 +22,7 @@ const DEBRIS_VARY = 6;
 
 // Phase A: live content is sourced from the data registry rather than loose constants.
 const PLAYER = SHIPS.player;
-const DRONE = ENEMIES.regulator_drone;
+const DEFAULT_ENEMY = ENEMIES.regulator_drone;
 const BOLT = PROJECTILES.bb_shot;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
@@ -35,7 +37,7 @@ export class Game2A {
   private mode: Mode = 'title';
   private paused = false;
   private player: Actor = this.newPlayer();
-  private drones: Actor[] = [];
+  private drones: EnemyActor[] = [];
   private bolts: Actor[] = [];
   private rings: Actor[] = [];
   private debris: Particle[] = [];
@@ -147,12 +149,43 @@ export class Game2A {
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
     if (this.droneClock <= 0) {
-      this.droneClock = Math.max(0.28, DRONE.spawnRate - this.wave * 0.02);
-      this.drones.push({ x: 30 + Math.random() * (this.w - 60), y: -35, w: DRONE.hitbox.w, h: DRONE.hitbox.h, vx: Math.sin(performance.now() * 0.001) * 28, vy: DRONE.baseSpeed + this.wave * 8, hp: DRONE.hp });
+      const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
+      const def = this.enemyDef(enemyKey);
+      const x = 30 + Math.random() * Math.max(1, this.w - 60);
+      this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
+      this.drones.push({
+        x,
+        y: -35,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.baseSpeed + this.wave * 7,
+        hp: def.hp,
+        enemyKey,
+        age: 0,
+        anchorX: x,
+        phase: Math.random() * Math.PI * 2,
+        direction: Math.random() < 0.5 ? -1 : 1,
+      });
     }
     for (const drone of this.drones) {
-      drone.x += drone.vx * dt;
+      const def = this.enemyDef(drone.enemyKey);
+      drone.age += dt;
       drone.y += drone.vy * dt;
+
+      if (def.behavior === 'straight') {
+        drone.x += Math.sin(drone.age * 1.8 + drone.phase) * 12 * dt;
+      } else if (def.behavior === 'sine') {
+        drone.x = drone.anchorX + Math.sin(drone.age * 3.2 + drone.phase) * 46;
+      } else if (def.behavior === 'zigzag') {
+        drone.x += drone.direction * (110 + this.wave * 4) * dt;
+        if (drone.x < 26 || drone.x > this.w - 26) drone.direction = drone.x < 26 ? 1 : -1;
+      } else {
+        const pursuit = clamp(this.player.x - drone.x, -1, 1);
+        drone.x += pursuit * Math.min(155, 58 + drone.age * 34) * dt;
+      }
+
+      drone.x = clamp(drone.x, 24, this.w - 24);
     }
     this.drones = this.drones.filter((drone) => {
       if (drone.y > this.h + 40) {
@@ -169,15 +202,18 @@ export class Game2A {
       for (const drone of this.drones) {
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           bolt.life = 0;
-          drone.hp = 0;
-          this.score += DRONE.score;
-          this.special = Math.min(100, this.special + 8);
-          this.ring(drone.x, drone.y);
+          drone.hp = (drone.hp ?? 1) - 1;
+          if ((drone.hp ?? 0) <= 0) {
+            this.score += this.enemyDef(drone.enemyKey).score;
+            this.special = Math.min(100, this.special + 8);
+            this.ring(drone.x, drone.y);
+          }
+          break;
         }
       }
     }
     this.bolts = this.bolts.filter((bolt) => bolt.life !== 0);
-    this.drones = this.drones.filter((drone) => drone.hp !== 0);
+    this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
 
     for (const drone of this.drones) {
       if (overlap(box(drone, 0.62), box(this.player, 0.55))) {
@@ -186,7 +222,7 @@ export class Game2A {
         this.ring(drone.x, drone.y);
       }
     }
-    this.drones = this.drones.filter((drone) => drone.hp !== 0);
+    this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
   }
 
   private updateRings(dt: number): void {
@@ -296,19 +332,32 @@ export class Game2A {
     this.ctx.restore();
   }
 
-  private drawDrone(drone: Actor): void {
-    if (this.drawCentered(DRONE.sprite, drone.x, drone.y, DRONE.draw.w, DRONE.draw.h)) return;
+  private drawDrone(drone: EnemyActor): void {
+    const def = this.enemyDef(drone.enemyKey);
+    const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    if (!drawn) {
+      this.ctx.save();
+      this.ctx.translate(drone.x, drone.y);
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.fillStyle = 'rgba(255,51,85,0.15)';
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, 18);
+      this.ctx.lineTo(18, -10);
+      this.ctx.lineTo(0, -18);
+      this.ctx.lineTo(-18, -10);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
+
+    // Temporary color-coded threat marker while Phase C variants reuse the
+    // regulator sprite. Each can receive dedicated art in a later asset PR.
     this.ctx.save();
-    this.ctx.translate(drone.x, drone.y);
-    this.ctx.strokeStyle = '#ff3355';
-    this.ctx.fillStyle = 'rgba(255,51,85,0.15)';
+    this.ctx.strokeStyle = def.accent;
+    this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    this.ctx.moveTo(0, 18);
-    this.ctx.lineTo(18, -10);
-    this.ctx.lineTo(0, -18);
-    this.ctx.lineTo(-18, -10);
-    this.ctx.closePath();
-    this.ctx.fill();
+    this.ctx.arc(drone.x, drone.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
     this.ctx.stroke();
     this.ctx.restore();
   }
@@ -365,6 +414,11 @@ export class Game2A {
     this.ctx.font = '700 13px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, 16, 24);
     this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
+    const threatKeys = availableEnemyKeys(ENEMIES, this.wave);
+    const newestThreat = ENEMIES[threatKeys[threatKeys.length - 1]].label;
+    this.ctx.font = '600 10px ui-sans-serif, system-ui';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+    this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / PLAYER.hp, '#00ff88');
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
@@ -458,6 +512,9 @@ export class Game2A {
     this.score = 0;
     this.wave = 1;
     this.special = 100;
+    this.boltClock = 0;
+    this.droneClock = 0;
+    this.ringClock = 0;
   }
 
   private newPlayer(): Actor {
@@ -466,6 +523,10 @@ export class Game2A {
 
   private inControls(x: number, y: number): boolean {
     return inside(this.zone.pause, x, y) || inside(this.zone.special, x, y) || inside(this.zone.assets, x, y);
+  }
+
+  private enemyDef(key: string): EnemyDef {
+    return ENEMIES[key] ?? DEFAULT_ENEMY;
   }
 }
 
