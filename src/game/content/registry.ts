@@ -168,6 +168,15 @@ export const PICKUPS: Record<string, PickupDef> = {
     driftSpeed: 92,
     effect: 'weapon_upgrade',
   },
+  bomb: {
+    key: 'bomb',
+    label: 'CLARITY BOMB',
+    sprite: { category: 'pickups', id: 'bomb' },
+    draw: { w: 32, h: 32 },
+    hitbox: { w: 25, h: 25 },
+    driftSpeed: 84,
+    effect: 'bomb',
+  },
 };
 
 export const FX: Record<string, FxDef> = {

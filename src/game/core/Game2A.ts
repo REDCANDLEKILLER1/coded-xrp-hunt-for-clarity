@@ -22,6 +22,9 @@ const BURST_MIN_RADIUS = 6;
 const DEBRIS_MIN = 10;
 const DEBRIS_VARY = 6;
 const UPGRADE_EVERY_KILLS = 7;
+const BOMB_EVERY_KILLS = 12;
+const MAX_BOMBS = 3;
+const BOMB_LIFE = 0.55;
 
 // Phase A: live content is sourced from the data registry rather than loose constants.
 const DEFAULT_SHIP = SHIPS.player;
@@ -54,6 +57,8 @@ export class Game2A {
   private ringClock = 0;
   private weaponTier = 1;
   private kills = 0;
+  private bombs = 2;
+  private bombClock = 0;
   private showAssets = false;
   private reportAssets = false;
 
@@ -89,6 +94,7 @@ export class Game2A {
   private get zone() {
     return {
       pause: { x: 16, y: this.h - 76, w: 72, h: 52 },
+      bomb: { x: this.w - 208, y: this.h - 82, w: 84, h: 58 },
       special: { x: this.w - 112, y: this.h - 86, w: 96, h: 62 },
       assets: { x: this.w - 58, y: 14, w: 42, h: 34 },
     };
@@ -105,6 +111,7 @@ export class Game2A {
     if (this.input.consumeDiagnostics()) this.showAssets = !this.showAssets;
     if (this.input.consumePause() && this.mode === 'play') this.paused = !this.paused;
     if (this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
+    if (this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
     const tap = this.input.consumeTap();
     if (!tap) return;
@@ -113,6 +120,7 @@ export class Game2A {
     if (this.mode === 'results') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
+    if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
     if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
   }
 
@@ -124,6 +132,7 @@ export class Game2A {
     this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
+    if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
     this.updateDebris(dt);
     this.special = Math.min(100, this.special + dt * 7);
     if ((this.player.hp ?? 0) <= 0) this.mode = 'results';
@@ -323,7 +332,7 @@ export class Game2A {
     this.ctx.fillText('START', this.w / 2, this.h * 0.54 + 7);
     this.ctx.font = '12px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.7)';
-    this.ctx.fillText('Drag to fly • Space pulse • P pause • D assets', this.w / 2, this.h * 0.64);
+    this.ctx.fillText('Drag to fly • Space pulse • B bomb • P pause', this.w / 2, this.h * 0.64);
   }
 
   private results(): void {
@@ -375,6 +384,7 @@ export class Game2A {
     for (const item of this.rings) this.drawRing(item);
     this.drawDebris();
     if (this.ringClock > 0) this.drawPulse();
+    if (this.bombClock > 0) this.drawBombWave();
     this.hud();
     if (this.paused) this.pause();
   }
@@ -453,17 +463,29 @@ export class Game2A {
     this.ctx.save();
     this.ctx.translate(pickup.x, pickup.y);
     this.ctx.rotate(this.clock * 2.4);
-    this.ctx.fillStyle = 'rgba(0,255,0,0.18)';
-    this.ctx.strokeStyle = '#00ff00';
+    this.ctx.fillStyle = def.effect === 'bomb' ? 'rgba(255,210,74,0.2)' : 'rgba(0,255,0,0.18)';
+    this.ctx.strokeStyle = def.effect === 'bomb' ? '#ffd24a' : '#00ff00';
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    this.ctx.moveTo(0, -14);
-    this.ctx.lineTo(14, 0);
-    this.ctx.lineTo(0, 14);
-    this.ctx.lineTo(-14, 0);
+    if (def.effect === 'bomb') {
+      this.ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    } else {
+      this.ctx.moveTo(0, -14);
+      this.ctx.lineTo(14, 0);
+      this.ctx.lineTo(0, 14);
+      this.ctx.lineTo(-14, 0);
+    }
     this.ctx.closePath();
     this.ctx.fill();
     this.ctx.stroke();
+    if (def.effect === 'bomb') {
+      this.ctx.beginPath();
+      this.ctx.moveTo(-6, 0);
+      this.ctx.lineTo(6, 0);
+      this.ctx.moveTo(0, -6);
+      this.ctx.lineTo(0, 6);
+      this.ctx.stroke();
+    }
     this.ctx.restore();
   }
 
@@ -506,6 +528,18 @@ export class Game2A {
     this.ctx.stroke();
   }
 
+  private drawBombWave(): void {
+    const progress = 1 - this.bombClock / BOMB_LIFE;
+    const radius = progress * Math.hypot(this.w, this.h) * 0.62;
+    this.ctx.save();
+    this.ctx.strokeStyle = `rgba(255,210,74,${Math.max(0, 1 - progress)})`;
+    this.ctx.lineWidth = 8 - progress * 5;
+    this.ctx.beginPath();
+    this.ctx.arc(this.player.x, this.player.y, radius, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
   private hud(): void {
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#d8ffe8';
@@ -526,6 +560,7 @@ export class Game2A {
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
+    this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
     this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
     this.button(this.zone.assets, 'D', '#ffd24a');
   }
@@ -580,6 +615,17 @@ export class Game2A {
     this.ringClock = 0.35;
   }
 
+  private useBomb(): void {
+    if (this.bombs <= 0 || this.mode !== 'play') return;
+    this.bombs -= 1;
+    this.bombClock = BOMB_LIFE;
+    for (const drone of this.drones) {
+      this.score += 35;
+      this.ring(drone.x, drone.y);
+    }
+    this.drones = [];
+  }
+
   private ring(x: number, y: number): void {
     this.rings.push({ x, y, w: 1, h: 1, vx: 0, vy: 0, life: BURST_LIFE });
     this.spawnDebris(x, y);
@@ -603,11 +649,25 @@ export class Game2A {
         pickupKey: def.key,
       });
     }
+
+    if (this.kills % BOMB_EVERY_KILLS === 0 && this.bombs < MAX_BOMBS) {
+      const def = PICKUPS.bomb;
+      this.pickups.push({
+        x: drone.x,
+        y: drone.y,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.driftSpeed,
+        pickupKey: def.key,
+      });
+    }
   }
 
   private applyPickup(key: string): void {
     const def = this.pickupDef(key);
     if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
+    if (def.effect === 'bomb') this.bombs = Math.min(MAX_BOMBS, this.bombs + 1);
   }
 
   private spawnDebris(x: number, y: number): void {
@@ -647,6 +707,8 @@ export class Game2A {
     this.ringClock = 0;
     this.weaponTier = 1;
     this.kills = 0;
+    this.bombs = 2;
+    this.bombClock = 0;
   }
 
   private newPlayer(): Actor {
@@ -655,7 +717,7 @@ export class Game2A {
   }
 
   private inControls(x: number, y: number): boolean {
-    return inside(this.zone.pause, x, y) || inside(this.zone.special, x, y) || inside(this.zone.assets, x, y);
+    return inside(this.zone.pause, x, y) || inside(this.zone.bomb, x, y) || inside(this.zone.special, x, y) || inside(this.zone.assets, x, y);
   }
 
   private enemyDef(key: string): EnemyDef {
