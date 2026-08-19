@@ -5,7 +5,7 @@ import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
-import { parseCampaignProgress, recordCampaignRun } from '../content/CampaignProgress';
+import { loadCampaignProgress, recordCampaignRun, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress } from '../content/CampaignProgress';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
@@ -50,8 +50,6 @@ const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
 const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
 const BOSS_LADDER = orderedBossKeys(BOSSES);
-const PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v1';
-
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly input: Input;
@@ -88,6 +86,8 @@ export class Game2A {
   private pulseHitBoss = false;
   private playerHitClock = 0;
   private progress: CampaignProgress = this.loadProgress();
+  private activePlanetKey: string | null = null;
+  private activePlanetLabel: string | null = null;
   private showAssets = false;
   private reportAssets = false;
 
@@ -106,6 +106,26 @@ export class Game2A {
     const counts = this.assets.counts();
     this.reportAssets = counts.missing > 0 || counts.error > 0;
     this.loop.start();
+  }
+
+  /** Enters the existing combat prototype through a campaign destination. */
+  deployFromMap(planetKey: string, planetLabel: string): void {
+    this.activePlanetKey = planetKey;
+    this.activePlanetLabel = planetLabel;
+    this.paused = false;
+    this.mode = 'select';
+  }
+
+  /** Keeps the original short run available as an explicit balancing sandbox. */
+  deployTestMode(): void {
+    this.activePlanetKey = null;
+    this.activePlanetLabel = null;
+    this.paused = false;
+    this.mode = 'title';
+  }
+
+  suspend(): void {
+    this.paused = true;
   }
 
   private resize(): void {
@@ -676,6 +696,11 @@ export class Game2A {
     this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '700 22px ui-sans-serif, system-ui';
     this.ctx.fillText('SELECT YOUR SHIP', this.w / 2, 54);
+    if (this.activePlanetLabel) {
+      this.ctx.fillStyle = '#36a3ff';
+      this.ctx.font = '700 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`DESTINATION // ${this.activePlanetLabel}`, this.w / 2, 73);
+    }
 
     for (const card of this.shipCards()) {
       const def = SHIPS[card.key];
@@ -1120,19 +1145,11 @@ export class Game2A {
   }
 
   private loadProgress(): CampaignProgress {
-    try {
-      return parseCampaignProgress(localStorage.getItem(PROGRESS_STORAGE_KEY));
-    } catch {
-      return parseCampaignProgress(null);
-    }
+    return loadCampaignProgress();
   }
 
   private saveProgress(): void {
-    try {
-      localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(this.progress));
-    } catch {
-      // Persistence is optional; private browsing or quota errors must not stop play.
-    }
+    saveCampaignProgress(this.progress);
   }
 
   private ring(x: number, y: number): void {

@@ -8,7 +8,11 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="game" aria-label="CODED XRP game canvas"></canvas>
+      <section id="campaign-map" class="campaign-screen" aria-label="Planet campaign map"></section>
+      <div id="game-shell" class="game-shell" hidden>
+        <canvas id="game" aria-label="CODED XRP game canvas"></canvas>
+        <button id="return-map" class="return-map" type="button">STAR MAP</button>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
