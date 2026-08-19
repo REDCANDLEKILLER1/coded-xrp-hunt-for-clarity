@@ -7,6 +7,7 @@ export class Input {
   private fireSpecial = false;
   private pausePressed = false;
   private diagnosticsPressed = false;
+  private bombPressed = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener('keydown', this.onKeyDown);
@@ -41,6 +42,12 @@ export class Input {
     return value;
   }
 
+  consumeBomb(): boolean {
+    const value = this.bombPressed;
+    this.bombPressed = false;
+    return value;
+  }
+
   axis(): Vec2 {
     const left = this.keys.has('arrowleft') || this.keys.has('a');
     const right = this.keys.has('arrowright') || this.keys.has('d');
@@ -54,6 +61,7 @@ export class Input {
     if (event.code === 'Space') this.fireSpecial = true;
     if (event.key.toLowerCase() === 'p') this.pausePressed = true;
     if (event.key.toLowerCase() === 'd') this.diagnosticsPressed = true;
+    if (event.key.toLowerCase() === 'b') this.bombPressed = true;
     if (event.key.toLowerCase() === 'enter') this.tap = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   };
 

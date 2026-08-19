@@ -3,35 +3,207 @@
     "player": {
       "src": "/assets/ships/player.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: player_clarity_interceptor"
+      "notes": "Phase O optimized v16 canon master: player_clarity_interceptor"
+    },
+    "xrpl_striker": {
+      "src": "/assets/ships/xrpl_striker.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: player_xrpl_striker"
+    },
+    "ledger_warden": {
+      "src": "/assets/ships/ledger_warden.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: player_infinity_warden used for Ledger Warden"
     }
   },
   "enemies": {
     "regulator_drone": {
       "src": "/assets/enemies/regulator_drone.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: enemy_regulator_drone"
+      "notes": "Phase O optimized v16 canon master: enemy_regulator_drone"
+    },
+    "fog_raider": {
+      "src": "/assets/enemies/fog_raider.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: enemy_fog_raider"
+    },
+    "whale_scout": {
+      "src": "/assets/enemies/whale_scout.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: enemy_whale_scout"
+    },
+    "rug_fighter": {
+      "src": "/assets/enemies/rug_fighter.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: enemy_rug_fighter"
     }
   },
-  "bosses": {},
+  "bosses": {
+    "gary_fog_phase1": {
+      "src": "/assets/bosses/gary_fog_phase1.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: boss_gary_fog_phase1"
+    },
+    "regulatory_behemoth_phase2": {
+      "src": "/assets/bosses/regulatory_behemoth_phase2.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: boss_regulatory_behemoth_phase2"
+    },
+    "clarity_destroyer_phase3": {
+      "src": "/assets/bosses/clarity_destroyer_phase3.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: boss_clarity_destroyer_phase3"
+    },
+    "final_clarity": {
+      "src": "/assets/bosses/final_clarity.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: boss_final_clarity"
+    }
+  },
   "weapons": {},
   "projectiles": {
     "bb_shot": {
       "src": "/assets/projectiles/bb_shot.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: weapon_lvl1_bb_shot"
+      "notes": "Phase Q optimized v16 canon master: projectile_player_bb"
+    },
+    "enemy_red_bullet": {
+      "src": "/assets/projectiles/enemy_red_bullet.webp",
+      "type": "image",
+      "notes": "Phase Q optimized v16 canon master: projectile_enemy_red_bullet"
+    },
+    "enemy_missile": {
+      "src": "/assets/projectiles/enemy_missile.webp",
+      "type": "image",
+      "notes": "Phase Q optimized v16 canon master: projectile_enemy_missile"
     }
   },
   "vfx": {
     "burst_ring": {
       "src": "/assets/vfx/burst_ring.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: fx_explosion used for live burst slot"
+      "notes": "Phase Q optimized v16 canon master: fx_explosion_impact"
     }
   },
   "ui": {},
-  "backgrounds": {},
-  "hazards": {},
+  "backgrounds": {
+    "ledger_city": {
+      "src": "/assets/backgrounds/ledger_city.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_space_city_tunnel_vertical"
+    },
+    "data_canyon": {
+      "src": "/assets/backgrounds/data_canyon.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_neon_data_tunnel_vertical"
+    },
+    "regulatory_outpost": {
+      "src": "/assets/backgrounds/regulatory_outpost.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_regulatory_fortress_approach_vertical"
+    },
+    "deep_space_lane": {
+      "src": "/assets/backgrounds/deep_space_lane.webp",
+      "type": "image",
+      "notes": "Phase T optimized original-build master: bg_deep_space_lane_vertical"
+    },
+    "boss_arena": {
+      "src": "/assets/backgrounds/boss_arena.webp",
+      "type": "image",
+      "notes": "Original-build master: bg_boss_arena_vertical"
+    }
+  },
+  "hazards": {
+    "defense_turret": {
+      "src": "/assets/hazards/defense_turret.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: ground_basic_turret"
+    },
+    "basic_turret": {
+      "src": "/assets/hazards/basic_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_basic_turret"
+    },
+    "cannon_turret": {
+      "src": "/assets/hazards/cannon_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_cannon_turret"
+    },
+    "cannon_tower": {
+      "src": "/assets/hazards/cannon_tower.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_cannon_tower"
+    },
+    "laser_tower": {
+      "src": "/assets/hazards/laser_tower.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_laser_tower"
+    },
+    "missile_silo": {
+      "src": "/assets/hazards/missile_silo.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_missile_silo"
+    },
+    "plasma_turret": {
+      "src": "/assets/hazards/plasma_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: ground_plasma_turret"
+    }
+  },
+  "environment": {
+    "mega_tower": {
+      "src": "/assets/environment/mega_tower.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_mega_tower"
+    },
+    "data_spire": {
+      "src": "/assets/environment/data_spire.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_data_spire"
+    },
+    "energy_barrier": {
+      "src": "/assets/environment/energy_barrier.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_energy_barrier"
+    },
+    "regulatory_outpost": {
+      "src": "/assets/environment/regulatory_outpost.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_regulatory_outpost"
+    },
+    "xrp_billboard": {
+      "src": "/assets/environment/xrp_billboard.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_xrp_billboard"
+    },
+    "defense_turret": {
+      "src": "/assets/environment/defense_turret.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_defense_turret"
+    },
+    "asteroid": {
+      "src": "/assets/environment/asteroid.webp",
+      "type": "image",
+      "notes": "Phase R optimized original-build master: env_asteroid"
+    }
+  },
+  "pickups": {
+    "weapon_upgrade": {
+      "src": "/assets/pickups/weapon_upgrade.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: pickup_weapon_upgrade"
+    },
+    "bomb": {
+      "src": "/assets/pickups/bomb.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: pickup_pulse_weapon used for Clarity Bomb"
+    },
+    "repair": {
+      "src": "/assets/pickups/repair.webp",
+      "type": "image",
+      "notes": "Phase O optimized v16 canon master: pickup_repair"
+    }
+  },
   "objectives": {},
   "special": {
     "clarity_pulse": {

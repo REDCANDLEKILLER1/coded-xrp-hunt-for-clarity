@@ -17,6 +17,8 @@ export interface Size {
 
 export interface ShipDef {
   key: string;
+  label: string;
+  accent: string;
   sprite: SpriteRef;
   /** On-screen draw size. */
   draw: Size;
@@ -27,12 +29,14 @@ export interface ShipDef {
   hp: number;
   /** Seconds between auto-fire shots. */
   fireRate: number;
-  /** ProjectileDef key this ship fires. */
+  /** WeaponDef key this ship starts with. */
   weaponKey: string;
 }
 
 export interface EnemyDef {
   key: string;
+  /** Short HUD/debug name. */
+  label: string;
   sprite: SpriteRef;
   draw: Size;
   hitbox: Size;
@@ -43,6 +47,14 @@ export interface EnemyDef {
   spawnRate: number;
   /** Score awarded when destroyed. */
   score: number;
+  /** First wave where the director may spawn this enemy. */
+  minWave: number;
+  /** Relative selection weight once the enemy is unlocked. */
+  spawnWeight: number;
+  /** Named movement routine handled by the wave combat loop. */
+  behavior: 'straight' | 'sine' | 'zigzag' | 'dive';
+  /** Visual identifier used while enemy variants share a temporary sprite. */
+  accent: string;
 }
 
 export interface ProjectileDef {
@@ -52,6 +64,97 @@ export interface ProjectileDef {
   hitbox: Size;
   /** Travel speed magnitude (px/s). */
   speed: number;
+}
+
+export interface WeaponShotDef {
+  /** Horizontal spawn offset from the ship center. */
+  offsetX: number;
+  /** Direction in radians from straight up; negative is left. */
+  angle: number;
+}
+
+export interface WeaponDef {
+  key: string;
+  label: string;
+  tier: number;
+  projectileKey: string;
+  /** Seconds between volleys. */
+  fireRate: number;
+  damage: number;
+  shots: WeaponShotDef[];
+}
+
+export interface PickupDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  hitbox: Size;
+  driftSpeed: number;
+  effect: 'weapon_upgrade' | 'bomb' | 'repair';
+}
+
+export interface StageDef {
+  key: string;
+  label: string;
+  background: SpriteRef;
+  minWave: number;
+  sky: string;
+  accent: string;
+  structure: string;
+  scrollSpeed: number;
+}
+
+export interface HazardDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  hitbox: Size;
+  hp: number;
+  minWave: number;
+  spawnRate: number;
+  fireRate: number;
+  projectileSpeed: number;
+  score: number;
+  accent: string;
+  spawnWeight: number;
+  placement: 'edge' | 'lane';
+  fires: boolean;
+}
+
+export interface EnvironmentPropDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  stages: string[];
+}
+
+export type BossAttackPattern = 'aimed' | 'spread' | 'sweep' | 'burst';
+
+export interface BossPhaseDef {
+  /** Remaining-health ratio at or below which this phase becomes active. */
+  hpThreshold: number;
+  moveSpeed: number;
+  fireRate: number;
+  projectileSpeed: number;
+  projectileCount: number;
+  spread: number;
+  pattern: BossAttackPattern;
+  accent: string;
+}
+
+export interface BossDef {
+  key: string;
+  label: string;
+  sprite: SpriteRef;
+  draw: Size;
+  hitbox: Size;
+  hp: number;
+  triggerWave: number;
+  score: number;
+  phases: BossPhaseDef[];
 }
 
 export interface FxDef {

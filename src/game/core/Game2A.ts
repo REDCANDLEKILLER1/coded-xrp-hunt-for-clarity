@@ -3,11 +3,29 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
-import { ENEMIES, FX, PROJECTILES, SHIPS, SPECIALS } from '../content/registry';
-import type { SpriteRef } from '../content/types';
+import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
+import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
+import { loadCampaignProgress, recordCampaignRun, saveCampaignProgress } from '../content/CampaignProgress';
+import type { CampaignProgress } from '../content/CampaignProgress';
+import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
+import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
 
-type Mode = 'title' | 'play' | 'results';
+type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
+type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
+type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
+type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
+type BossActor = Actor & {
+  bossKey: string;
+  state: 'intro' | 'fight';
+  age: number;
+  fireClock: number;
+  contactClock: number;
+  phaseIndex: number;
+  targetX: number;
+};
+type ProjectileActor = Actor & { damage: number; projectileKey: string };
+type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
 // Hit-burst tuning: a bigger, longer ring that reveals the spark debris baked
@@ -17,14 +35,21 @@ const BURST_MAX_RADIUS = 72;
 const BURST_MIN_RADIUS = 6;
 const DEBRIS_MIN = 10;
 const DEBRIS_VARY = 6;
+const UPGRADE_EVERY_KILLS = 7;
+const BOMB_EVERY_KILLS = 12;
+const REPAIR_EVERY_KILLS = 10;
+const MAX_BOMBS = 3;
+const BOMB_LIFE = 0.55;
 
 // Phase A: live content is sourced from the data registry rather than loose constants.
-const PLAYER = SHIPS.player;
-const DRONE = ENEMIES.regulator_drone;
-const BOLT = PROJECTILES.bb_shot;
+const DEFAULT_SHIP = SHIPS.player;
+const DEFAULT_ENEMY = ENEMIES.regulator_drone;
+const DEFAULT_HAZARD = HAZARDS.basic_turret;
 const BURST_RING = FX.burst_ring;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
-
+const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
+const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
+const BOSS_LADDER = orderedBossKeys(BOSSES);
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly input: Input;
@@ -34,17 +59,35 @@ export class Game2A {
   private clock = 0;
   private mode: Mode = 'title';
   private paused = false;
+  private selectedShipKey = DEFAULT_SHIP.key;
   private player: Actor = this.newPlayer();
-  private drones: Actor[] = [];
-  private bolts: Actor[] = [];
+  private drones: EnemyActor[] = [];
+  private hazards: HazardActor[] = [];
+  private hostileShots: HostileProjectile[] = [];
+  private boss: BossActor | null = null;
+  private completedBosses = new Set<string>();
+  private bolts: ProjectileActor[] = [];
+  private pickups: PickupActor[] = [];
   private rings: Actor[] = [];
   private debris: Particle[] = [];
   private score = 0;
   private wave = 1;
   private boltClock = 0;
   private droneClock = 0;
+  private hazardClock = DEFAULT_HAZARD.spawnRate;
   private special = 100;
   private ringClock = 0;
+  private weaponTier = 1;
+  private kills = 0;
+  private bombs = 2;
+  private bombClock = 0;
+  private bossClearClock = 0;
+  private victoryPendingClock = 0;
+  private pulseHitBoss = false;
+  private playerHitClock = 0;
+  private progress: CampaignProgress = this.loadProgress();
+  private activePlanetKey: string | null = null;
+  private activePlanetLabel: string | null = null;
   private showAssets = false;
   private reportAssets = false;
 
@@ -65,6 +108,26 @@ export class Game2A {
     this.loop.start();
   }
 
+  /** Enters the existing combat prototype through a campaign destination. */
+  deployFromMap(planetKey: string, planetLabel: string): void {
+    this.activePlanetKey = planetKey;
+    this.activePlanetLabel = planetLabel;
+    this.paused = false;
+    this.mode = 'select';
+  }
+
+  /** Keeps the original short run available as an explicit balancing sandbox. */
+  deployTestMode(): void {
+    this.activePlanetKey = null;
+    this.activePlanetLabel = null;
+    this.paused = false;
+    this.mode = 'title';
+  }
+
+  suspend(): void {
+    this.paused = true;
+  }
+
   private resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.canvas.width = Math.floor(innerWidth * dpr);
@@ -80,6 +143,7 @@ export class Game2A {
   private get zone() {
     return {
       pause: { x: 16, y: this.h - 76, w: 72, h: 52 },
+      bomb: { x: this.w - 208, y: this.h - 82, w: 84, h: 58 },
       special: { x: this.w - 112, y: this.h - 86, w: 96, h: 62 },
       assets: { x: this.w - 58, y: 14, w: 42, h: 34 },
     };
@@ -96,12 +160,16 @@ export class Game2A {
     if (this.input.consumeDiagnostics()) this.showAssets = !this.showAssets;
     if (this.input.consumePause() && this.mode === 'play') this.paused = !this.paused;
     if (this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
+    if (this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
     const tap = this.input.consumeTap();
     if (!tap) return;
-    if (this.mode === 'title' || this.mode === 'results') return this.reset();
+    if (this.mode === 'title') return void (this.mode = 'select');
+    if (this.mode === 'select') return this.selectShipAt(tap.x, tap.y);
+    if (this.mode === 'results' || this.mode === 'victory') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
+    if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
     if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
   }
 
@@ -109,12 +177,27 @@ export class Game2A {
     if (this.mode !== 'play' || this.paused) return;
     this.movePlayer(dt);
     this.updateBolts(dt);
-    this.updateDrones(dt);
+    this.startBossIfReady();
+    if (this.boss) {
+      this.updateBoss(dt);
+    } else if (this.victoryPendingClock <= 0) {
+      this.updateDrones(dt);
+      this.updateHazards(dt);
+    }
+    this.updateHostileShots(dt);
+    this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
+    if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
+    if (this.bossClearClock > 0) this.bossClearClock = Math.max(0, this.bossClearClock - dt);
+    if (this.victoryPendingClock > 0) {
+      this.victoryPendingClock = Math.max(0, this.victoryPendingClock - dt);
+      if (this.victoryPendingClock === 0) this.finishRun(true);
+    }
+    if (this.playerHitClock > 0) this.playerHitClock = Math.max(0, this.playerHitClock - dt);
     this.updateDebris(dt);
     this.special = Math.min(100, this.special + dt * 7);
-    if ((this.player.hp ?? 0) <= 0) this.mode = 'results';
+    if ((this.player.hp ?? 0) <= 0 && this.mode === 'play') this.finishRun(false);
   }
 
   private movePlayer(dt: number): void {
@@ -124,8 +207,9 @@ export class Game2A {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
     } else {
-      this.player.x += axis.x * PLAYER.speed * dt;
-      this.player.y += axis.y * PLAYER.speed * dt;
+      const ship = this.playerDef();
+      this.player.x += axis.x * ship.speed * dt;
+      this.player.y += axis.y * ship.speed * dt;
     }
     this.player.x = clamp(this.player.x, 28, this.w - 28);
     this.player.y = clamp(this.player.y, this.h * 0.34, this.h - 96);
@@ -134,8 +218,22 @@ export class Game2A {
   private updateBolts(dt: number): void {
     this.boltClock -= dt;
     if (this.boltClock <= 0) {
-      this.boltClock = PLAYER.fireRate;
-      this.bolts.push({ x: this.player.x, y: this.player.y - 24, w: BOLT.hitbox.w, h: BOLT.hitbox.h, vx: 0, vy: -BOLT.speed });
+      const weapon = this.currentWeapon();
+      const projectile = this.projectileDef(weapon.projectileKey);
+      const ship = this.playerDef();
+      this.boltClock = weapon.fireRate * (ship.fireRate / DEFAULT_SHIP.fireRate);
+      for (const shot of weapon.shots) {
+        this.bolts.push({
+          x: this.player.x + shot.offsetX,
+          y: this.player.y - 24,
+          w: projectile.hitbox.w,
+          h: projectile.hitbox.h,
+          vx: Math.sin(shot.angle) * projectile.speed,
+          vy: -Math.cos(shot.angle) * projectile.speed,
+          damage: weapon.damage,
+          projectileKey: weapon.projectileKey,
+        });
+      }
     }
     for (const bolt of this.bolts) {
       bolt.x += bolt.vx * dt;
@@ -144,19 +242,55 @@ export class Game2A {
     this.bolts = this.bolts.filter((bolt) => bolt.y > -40);
   }
 
+  private updatePickups(dt: number): void {
+    for (const pickup of this.pickups) pickup.y += pickup.vy * dt;
+    this.pickups = this.pickups.filter((pickup) => pickup.y < this.h + 40);
+  }
+
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
     if (this.droneClock <= 0) {
-      this.droneClock = Math.max(0.28, DRONE.spawnRate - this.wave * 0.02);
-      this.drones.push({ x: 30 + Math.random() * (this.w - 60), y: -35, w: DRONE.hitbox.w, h: DRONE.hitbox.h, vx: Math.sin(performance.now() * 0.001) * 28, vy: DRONE.baseSpeed + this.wave * 8, hp: DRONE.hp });
+      const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
+      const def = this.enemyDef(enemyKey);
+      const x = 30 + Math.random() * Math.max(1, this.w - 60);
+      this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
+      this.drones.push({
+        x,
+        y: -35,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.baseSpeed + this.wave * 7,
+        hp: def.hp,
+        enemyKey,
+        age: 0,
+        anchorX: x,
+        phase: Math.random() * Math.PI * 2,
+        direction: Math.random() < 0.5 ? -1 : 1,
+      });
     }
     for (const drone of this.drones) {
-      drone.x += drone.vx * dt;
+      const def = this.enemyDef(drone.enemyKey);
+      drone.age += dt;
       drone.y += drone.vy * dt;
+
+      if (def.behavior === 'straight') {
+        drone.x += Math.sin(drone.age * 1.8 + drone.phase) * 12 * dt;
+      } else if (def.behavior === 'sine') {
+        drone.x = drone.anchorX + Math.sin(drone.age * 3.2 + drone.phase) * 46;
+      } else if (def.behavior === 'zigzag') {
+        drone.x += drone.direction * (110 + this.wave * 4) * dt;
+        if (drone.x < 26 || drone.x > this.w - 26) drone.direction = drone.x < 26 ? 1 : -1;
+      } else {
+        const pursuit = clamp(this.player.x - drone.x, -1, 1);
+        drone.x += pursuit * Math.min(155, 58 + drone.age * 34) * dt;
+      }
+
+      drone.x = clamp(drone.x, 24, this.w - 24);
     }
     this.drones = this.drones.filter((drone) => {
       if (drone.y > this.h + 40) {
-        this.player.hp = (this.player.hp ?? PLAYER.hp) - 1;
+        this.damagePlayer(1, drone.x, this.h - 18);
         return false;
       }
       return true;
@@ -164,29 +298,215 @@ export class Game2A {
     this.wave = 1 + Math.floor(this.score / 500);
   }
 
+  private updateHazards(dt: number): void {
+    if (this.wave < DEFAULT_HAZARD.minWave) return;
+
+    this.hazardClock -= dt;
+    if (this.hazardClock <= 0) {
+      const def = HAZARDS[selectHazardKey(this.wave)] ?? DEFAULT_HAZARD;
+      const side: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
+      this.hazards.push({
+        x: def.placement === 'lane' ? 70 + Math.random() * Math.max(1, this.w - 140) : side < 0 ? 54 : this.w - 54,
+        y: -def.draw.h,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: this.currentStage().scrollSpeed,
+        hp: def.hp,
+        hazardKey: def.key,
+        fireClock: 0.8 + Math.random() * 0.65,
+        side,
+      });
+      this.hazardClock = Math.max(3.8, def.spawnRate - (this.wave - def.minWave) * 0.22);
+    }
+
+    for (const hazard of this.hazards) {
+      const hazardDef = this.hazardDef(hazard.hazardKey);
+      hazard.y += hazard.vy * dt;
+      if (!hazardDef.fires) continue;
+      hazard.fireClock -= dt;
+      if (hazard.y < 24 || hazard.y > this.h - 96 || hazard.fireClock > 0) continue;
+
+      const dx = this.player.x - hazard.x;
+      const dy = this.player.y - hazard.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      this.hostileShots.push({
+        x: hazard.x,
+        y: hazard.y,
+        w: 9,
+        h: 9,
+        vx: (dx / length) * hazardDef.projectileSpeed,
+        vy: (dy / length) * hazardDef.projectileSpeed,
+        damage: 1,
+        color: hazardDef.accent,
+        projectileKey: 'enemy_missile',
+      });
+      hazard.fireClock = hazardDef.fireRate;
+    }
+    this.hazards = this.hazards.filter((hazard) => hazard.y < this.h + 60);
+  }
+
+  private updateHostileShots(dt: number): void {
+    for (const shot of this.hostileShots) {
+      shot.x += shot.vx * dt;
+      shot.y += shot.vy * dt;
+    }
+    this.hostileShots = this.hostileShots.filter((shot) => (
+      shot.x > -30 && shot.x < this.w + 30 && shot.y > -30 && shot.y < this.h + 30
+    ));
+  }
+
+  private startBossIfReady(): void {
+    if (this.boss) return;
+    const bossKey = nextBossKey(BOSSES, this.wave, this.completedBosses);
+    if (!bossKey) return;
+    const def = this.bossDef(bossKey);
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.boss = {
+      x: this.w / 2,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: 0,
+      hp: def.hp,
+      bossKey,
+      state: 'intro',
+      age: 0,
+      fireClock: def.phases[0].fireRate,
+      contactClock: 0,
+      phaseIndex: 0,
+      targetX: this.w / 2,
+    };
+  }
+
+  private updateBoss(dt: number): void {
+    const boss = this.boss;
+    if (!boss) return;
+    const def = this.bossDef(boss.bossKey);
+    boss.age += dt;
+    boss.contactClock = Math.max(0, boss.contactClock - dt);
+
+    if (boss.state === 'intro') {
+      boss.y += (118 - boss.y) * Math.min(1, dt * 3.4);
+      if (boss.age >= 1.45) {
+        boss.state = 'fight';
+        boss.y = 118;
+        boss.age = 0;
+      }
+      return;
+    }
+
+    boss.phaseIndex = bossPhaseIndex(def, boss.hp ?? def.hp);
+    const phase = def.phases[boss.phaseIndex];
+    if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 76 + Math.random() * Math.max(1, this.w - 152);
+    boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
+    boss.y = 112 + Math.sin(boss.age * 1.7) * 20;
+
+    boss.fireClock -= dt;
+    if (boss.fireClock <= 0) {
+      this.fireBossVolley(boss, phase);
+      boss.fireClock = phase.fireRate;
+    }
+  }
+
+  private fireBossVolley(boss: BossActor, phase: BossPhaseDef): void {
+    const aimed = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+    const centerAngle = phase.pattern === 'sweep' ? aimed + Math.sin(boss.age * 2.2) * 0.55 : aimed;
+    const middle = (phase.projectileCount - 1) / 2;
+    for (let index = 0; index < phase.projectileCount; index += 1) {
+      const offset = (index - middle) * phase.spread;
+      const burstOffset = phase.pattern === 'burst' ? Math.sin(boss.age * 5 + index) * 0.08 : 0;
+      const angle = centerAngle + offset + burstOffset;
+      this.hostileShots.push({
+        x: boss.x,
+        y: boss.y + boss.h * 0.35,
+        w: 10,
+        h: 10,
+        vx: Math.cos(angle) * phase.projectileSpeed,
+        vy: Math.sin(angle) * phase.projectileSpeed,
+        damage: 1,
+        color: phase.accent,
+        projectileKey: 'enemy_red_bullet',
+      });
+    }
+  }
+
   private collisions(): void {
     for (const bolt of this.bolts) {
       for (const drone of this.drones) {
+        if ((drone.hp ?? 0) <= 0) continue;
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           bolt.life = 0;
-          drone.hp = 0;
-          this.score += DRONE.score;
-          this.special = Math.min(100, this.special + 8);
-          this.ring(drone.x, drone.y);
+          drone.hp = (drone.hp ?? 1) - bolt.damage;
+          if ((drone.hp ?? 0) <= 0) {
+            this.registerKill(drone);
+          }
+          break;
         }
+      }
+      if (bolt.life === 0) continue;
+      for (const hazard of this.hazards) {
+        if ((hazard.hp ?? 0) <= 0) continue;
+        if (overlap(box(bolt, 0.65), box(hazard, 0.78))) {
+          bolt.life = 0;
+          hazard.hp = (hazard.hp ?? 1) - bolt.damage;
+          if ((hazard.hp ?? 0) <= 0) {
+            this.score += this.hazardDef(hazard.hazardKey).score;
+            this.special = Math.min(100, this.special + 12);
+            this.ring(hazard.x, hazard.y);
+          }
+          break;
+        }
+      }
+      if (bolt.life === 0 || !this.boss || this.boss.state !== 'fight') continue;
+      if (overlap(box(bolt, 0.65), box(this.boss, 0.84))) {
+        bolt.life = 0;
+        this.damageBoss(bolt.damage);
       }
     }
     this.bolts = this.bolts.filter((bolt) => bolt.life !== 0);
-    this.drones = this.drones.filter((drone) => drone.hp !== 0);
+    this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
+    this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
 
     for (const drone of this.drones) {
       if (overlap(box(drone, 0.62), box(this.player, 0.55))) {
         drone.hp = 0;
-        this.player.hp = (this.player.hp ?? PLAYER.hp) - 1;
-        this.ring(drone.x, drone.y);
+        this.damagePlayer(1, drone.x, drone.y);
       }
     }
-    this.drones = this.drones.filter((drone) => drone.hp !== 0);
+    this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
+
+    for (const hazard of this.hazards) {
+      if (overlap(box(hazard, 0.76), box(this.player, 0.55))) {
+        hazard.hp = 0;
+        this.damagePlayer(1, hazard.x, hazard.y);
+      }
+    }
+    this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
+
+    for (const shot of this.hostileShots) {
+      if (overlap(box(shot, 0.8), box(this.player, 0.55))) {
+        shot.life = 0;
+        this.damagePlayer(shot.damage, shot.x, shot.y);
+      }
+    }
+    this.hostileShots = this.hostileShots.filter((shot) => shot.life !== 0);
+
+    if (this.boss && this.boss.state === 'fight' && this.boss.contactClock <= 0 && overlap(box(this.boss, 0.78), box(this.player, 0.55))) {
+      this.damagePlayer(1, this.player.x, this.player.y);
+      this.boss.contactClock = 0.9;
+    }
+
+    for (const pickup of this.pickups) {
+      if (overlap(box(pickup, 0.78), box(this.player, 0.62))) {
+        pickup.life = 0;
+        this.applyPickup(pickup.pickupKey);
+      }
+    }
+    this.pickups = this.pickups.filter((pickup) => pickup.life !== 0);
   }
 
   private updateRings(dt: number): void {
@@ -202,6 +522,13 @@ export class Game2A {
         }
         return !hit;
       });
+      if (this.boss && this.boss.state === 'fight' && !this.pulseHitBoss) {
+        const hit = Math.hypot(this.boss.x - this.player.x, this.boss.y - this.player.y) < CLARITY_PULSE.radius + this.boss.w * 0.35;
+        if (hit) {
+          this.pulseHitBoss = true;
+          this.damageBoss(4);
+        }
+      }
     }
   }
 
@@ -221,17 +548,98 @@ export class Game2A {
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.background();
     if (this.mode === 'title') this.title();
+    if (this.mode === 'select') this.shipSelect();
     if (this.mode === 'play') this.play();
     if (this.mode === 'results') this.results();
+    if (this.mode === 'victory') this.victory();
     if (this.reportAssets || this.showAssets) this.assetPanel();
   }
 
   private background(): void {
-    this.ctx.fillStyle = '#02060b';
+    const stage = this.currentStage();
+    const sky = this.ctx.createLinearGradient(0, 0, 0, this.h);
+    sky.addColorStop(0, stage.sky);
+    sky.addColorStop(1, '#02060b');
+    this.ctx.fillStyle = sky;
     this.ctx.fillRect(0, 0, this.w, this.h);
-    this.ctx.strokeStyle = 'rgba(0,255,128,0.08)';
-    for (let y = 0; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
+    const illustrated = this.drawStageBackdrop(stage);
+    this.ctx.strokeStyle = `${stage.accent}${illustrated ? '0c' : '18'}`;
+    const gridOffset = (this.clock * stage.scrollSpeed) % 46;
+    for (let y = gridOffset - 46; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
     for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
+    if (!illustrated) this.drawStageStructures(stage);
+    this.drawStageProps(stage);
+  }
+
+  private drawStageProps(stage: StageDef): void {
+    const props = Object.values(ENVIRONMENT_PROPS).filter((prop) => prop.stages.includes(stage.key));
+    if (props.length === 0) return;
+    const spacing = 168;
+    const travel = this.clock * stage.scrollSpeed * 0.72;
+    const base = Math.floor(travel / spacing);
+    const offset = travel % spacing;
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.62;
+    for (let row = -1; row <= Math.ceil(this.h / spacing) + 1; row += 1) {
+      const index = base + row;
+      const prop = props[Math.abs(index) % props.length];
+      const y = row * spacing + offset;
+      const side = index % 2 === 0 ? -1 : 1;
+      const inset = Math.min(26, prop.draw.w * 0.24);
+      const x = side < 0 ? inset : this.w - inset;
+      this.drawCentered(prop.sprite, x, y, prop.draw.w, prop.draw.h);
+    }
+    this.ctx.restore();
+  }
+
+  private drawStageBackdrop(stage: StageDef): boolean {
+    const ref = this.boss ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
+    const image = this.assets.getImage(ref.category, ref.id);
+    if (!image || image.width <= 0 || image.height <= 0) return false;
+
+    const scale = Math.max(this.w / image.width, this.h / image.height);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+    const x = (this.w - drawWidth) / 2;
+    const offset = (this.clock * stage.scrollSpeed * 0.32) % drawHeight;
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.7;
+    this.ctx.drawImage(image, x, offset - drawHeight, drawWidth, drawHeight);
+    this.ctx.drawImage(image, x, offset, drawWidth, drawHeight);
+    this.ctx.globalAlpha = 1;
+    const shade = this.ctx.createLinearGradient(0, 0, 0, this.h);
+    shade.addColorStop(0, 'rgba(2,6,11,0.18)');
+    shade.addColorStop(0.55, 'rgba(2,6,11,0.34)');
+    shade.addColorStop(1, 'rgba(2,6,11,0.5)');
+    this.ctx.fillStyle = shade;
+    this.ctx.fillRect(0, 0, this.w, this.h);
+    this.ctx.restore();
+    return true;
+  }
+
+  private drawStageStructures(stage: StageDef): void {
+    const spacing = 104;
+    const offset = (this.clock * stage.scrollSpeed) % spacing;
+    let index = 0;
+    for (let y = offset - spacing; y < this.h + spacing; y += spacing) {
+      const width = 34 + ((index * 17) % 38);
+      const height = 72 + ((index * 23) % 30);
+      this.ctx.fillStyle = stage.structure;
+      this.ctx.strokeStyle = `${stage.accent}66`;
+      this.ctx.fillRect(0, y, width, height);
+      this.ctx.strokeRect(0, y, width, height);
+      this.ctx.fillRect(this.w - width, y + 18, width, height);
+      this.ctx.strokeRect(this.w - width, y + 18, width, height);
+
+      this.ctx.fillStyle = `${stage.accent}88`;
+      for (let wy = y + 12; wy < y + height - 8; wy += 18) {
+        this.ctx.fillRect(Math.max(8, width - 18), wy, 6, 4);
+        this.ctx.fillRect(this.w - width + 10, wy + 18, 6, 4);
+      }
+      index += 1;
+    }
   }
 
   private title(): void {
@@ -249,7 +657,7 @@ export class Game2A {
     this.ctx.fillText('START', this.w / 2, this.h * 0.54 + 7);
     this.ctx.font = '12px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.7)';
-    this.ctx.fillText('Drag to fly • Space pulse • P pause • D assets', this.w / 2, this.h * 0.64);
+    this.ctx.fillText('Drag to fly • Space pulse • B bomb • P pause', this.w / 2, this.h * 0.64);
   }
 
   private results(): void {
@@ -260,17 +668,78 @@ export class Game2A {
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '600 16px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, this.w / 2, this.h * 0.46);
-    this.ctx.fillText('TAP TO RESTART', this.w / 2, this.h * 0.56);
+    this.ctx.fillText(`BEST ${this.progress.highScore} • HIGHEST WAVE ${this.progress.highestWave}`, this.w / 2, this.h * 0.51);
+    this.ctx.fillText('TAP TO RESTART', this.w / 2, this.h * 0.59);
+  }
+
+  private victory(): void {
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 28px ui-sans-serif, system-ui';
+    this.ctx.fillText('CLARITY RESTORED', this.w / 2, this.h * 0.32);
+    this.ctx.fillStyle = '#36a3ff';
+    this.ctx.font = '700 17px ui-sans-serif, system-ui';
+    this.ctx.fillText('THE LEDGER IS CLEAR', this.w / 2, this.h * 0.38);
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.font = '600 15px ui-sans-serif, system-ui';
+    this.ctx.fillText(`FINAL SCORE ${this.score}`, this.w / 2, this.h * 0.47);
+    this.ctx.fillText(`CAMPAIGN VICTORIES ${this.progress.victories}`, this.w / 2, this.h * 0.52);
+    this.ctx.strokeStyle = '#00ff88';
+    this.ctx.strokeRect(this.w / 2 - 92, this.h * 0.62 - 24, 184, 48);
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.font = '800 15px ui-sans-serif, system-ui';
+    this.ctx.fillText('RUN IT AGAIN', this.w / 2, this.h * 0.62 + 6);
+  }
+
+  private shipSelect(): void {
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff00';
+    this.ctx.font = '700 22px ui-sans-serif, system-ui';
+    this.ctx.fillText('SELECT YOUR SHIP', this.w / 2, 54);
+    if (this.activePlanetLabel) {
+      this.ctx.fillStyle = '#36a3ff';
+      this.ctx.font = '700 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`DESTINATION // ${this.activePlanetLabel}`, this.w / 2, 73);
+    }
+
+    for (const card of this.shipCards()) {
+      const def = SHIPS[card.key];
+      const { x, y, w, h } = card.rect;
+      this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.lineWidth = 2;
+      this.ctx.fillRect(x, y, w, h);
+      this.ctx.strokeRect(x, y, w, h);
+      this.drawCentered(def.sprite, x + 42, y + h / 2, Math.min(34, def.draw.w), Math.min(42, def.draw.h));
+      this.ctx.textAlign = 'left';
+      this.ctx.fillStyle = def.accent;
+      this.ctx.font = '700 13px ui-sans-serif, system-ui';
+      this.ctx.fillText(def.label, x + 76, y + 26);
+      this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
+      this.ctx.font = '600 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`HP ${def.hp}   SPEED ${def.speed}   FIRE ${def.fireRate.toFixed(2)}`, x + 76, y + 49);
+    }
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.66)';
+    this.ctx.font = '12px ui-sans-serif, system-ui';
+    this.ctx.fillText('TAP A SHIP TO DEPLOY', this.w / 2, this.h - 34);
   }
 
   private play(): void {
     this.drawPlayer();
     for (const drone of this.drones) this.drawDrone(drone);
+    for (const hazard of this.hazards) this.drawHazard(hazard);
+    if (this.boss) this.drawBoss(this.boss);
     for (const bolt of this.bolts) this.drawBolt(bolt);
+    for (const shot of this.hostileShots) this.drawHostileShot(shot);
+    for (const pickup of this.pickups) this.drawPickup(pickup);
     for (const item of this.rings) this.drawRing(item);
     this.drawDebris();
     if (this.ringClock > 0) this.drawPulse();
+    if (this.bombClock > 0) this.drawBombWave();
     this.hud();
+    if (this.bossClearClock > 0) this.bossClearBanner();
     if (this.paused) this.pause();
   }
 
@@ -280,44 +749,188 @@ export class Game2A {
   }
 
   private drawPlayer(): void {
-    if (this.drawCentered(PLAYER.sprite, this.player.x, this.player.y, PLAYER.draw.w, PLAYER.draw.h)) return;
-    this.ctx.save();
-    this.ctx.translate(this.player.x, this.player.y);
-    this.ctx.strokeStyle = '#00ff88';
-    this.ctx.fillStyle = 'rgba(0,255,128,0.15)';
+    const def = this.playerDef();
+    const drawn = this.drawCentered(def.sprite, this.player.x, this.player.y, def.draw.w, def.draw.h);
+    if (!drawn) {
+      this.ctx.save();
+      this.ctx.translate(this.player.x, this.player.y);
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.fillStyle = 'rgba(0,255,128,0.15)';
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, -24);
+      this.ctx.lineTo(18, 18);
+      this.ctx.lineTo(0, 10);
+      this.ctx.lineTo(-18, 18);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
+    this.ctx.strokeStyle = def.accent;
+    this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    this.ctx.moveTo(0, -24);
-    this.ctx.lineTo(18, 18);
-    this.ctx.lineTo(0, 10);
-    this.ctx.lineTo(-18, 18);
-    this.ctx.closePath();
-    this.ctx.fill();
+    this.ctx.arc(this.player.x, this.player.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
+    this.ctx.stroke();
+  }
+
+  private drawDrone(drone: EnemyActor): void {
+    const def = this.enemyDef(drone.enemyKey);
+    const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    if (!drawn) {
+      this.ctx.save();
+      this.ctx.translate(drone.x, drone.y);
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.fillStyle = 'rgba(255,51,85,0.15)';
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, 18);
+      this.ctx.lineTo(18, -10);
+      this.ctx.lineTo(0, -18);
+      this.ctx.lineTo(-18, -10);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
+
+    // Temporary color-coded threat marker while Phase C variants reuse the
+    // regulator sprite. Each can receive dedicated art in a later asset PR.
+    this.ctx.save();
+    this.ctx.strokeStyle = def.accent;
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    this.ctx.arc(drone.x, drone.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
     this.ctx.stroke();
     this.ctx.restore();
   }
 
-  private drawDrone(drone: Actor): void {
-    if (this.drawCentered(DRONE.sprite, drone.x, drone.y, DRONE.draw.w, DRONE.draw.h)) return;
-    this.ctx.save();
-    this.ctx.translate(drone.x, drone.y);
-    this.ctx.strokeStyle = '#ff3355';
-    this.ctx.fillStyle = 'rgba(255,51,85,0.15)';
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, 18);
-    this.ctx.lineTo(18, -10);
-    this.ctx.lineTo(0, -18);
-    this.ctx.lineTo(-18, -10);
-    this.ctx.closePath();
-    this.ctx.fill();
-    this.ctx.stroke();
-    this.ctx.restore();
-  }
-
-  private drawBolt(bolt: Actor): void {
-    if (this.drawCentered(BOLT.sprite, bolt.x, bolt.y, BOLT.draw.w, BOLT.draw.h)) return;
+  private drawBolt(bolt: ProjectileActor): void {
+    const projectile = this.projectileDef(bolt.projectileKey);
+    if (this.drawCentered(projectile.sprite, bolt.x, bolt.y, projectile.draw.w, projectile.draw.h)) return;
     this.ctx.strokeStyle = '#00ff88';
     this.ctx.lineWidth = 3;
-    line(this.ctx, bolt.x, bolt.y + 10, bolt.x, bolt.y - 10);
+    line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);
+  }
+
+  private drawHazard(hazard: HazardActor): void {
+    const def = this.hazardDef(hazard.hazardKey);
+    const drawn = this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h);
+
+    if (!drawn) {
+      const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
+      this.ctx.save();
+      this.ctx.translate(hazard.x, hazard.y);
+      this.ctx.fillStyle = 'rgba(25,10,5,0.88)';
+      this.ctx.strokeStyle = def.accent;
+      this.ctx.lineWidth = 2;
+      this.ctx.fillRect(-18, -18, 36, 36);
+      this.ctx.strokeRect(-18, -18, 36, 36);
+      if (def.fires) {
+        this.ctx.rotate(aim);
+        this.ctx.fillStyle = def.accent;
+        this.ctx.fillRect(0, -3, 24, 6);
+      }
+      this.ctx.restore();
+    }
+
+    bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+  }
+
+  private drawHostileShot(shot: HostileProjectile): void {
+    const projectile = this.projectileDef(shot.projectileKey);
+    const image = this.assets.getImage(projectile.sprite.category, projectile.sprite.id);
+    if (image) {
+      this.ctx.save();
+      this.ctx.translate(shot.x, shot.y);
+      // Canon projectile masters point upward; align that nose with velocity.
+      this.ctx.rotate(Math.atan2(shot.vy, shot.vx) + Math.PI / 2);
+      this.ctx.drawImage(image, -projectile.draw.w / 2, -projectile.draw.h / 2, projectile.draw.w, projectile.draw.h);
+      this.ctx.restore();
+      return;
+    }
+    this.ctx.save();
+    this.ctx.strokeStyle = shot.color;
+    this.ctx.shadowColor = shot.color;
+    this.ctx.shadowBlur = 8;
+    this.ctx.lineWidth = 4;
+    line(this.ctx, shot.x - shot.vx * 0.025, shot.y - shot.vy * 0.025, shot.x, shot.y);
+    this.ctx.restore();
+  }
+
+  private drawBoss(boss: BossActor): void {
+    const def = this.bossDef(boss.bossKey);
+    const phase = def.phases[boss.phaseIndex];
+    const drawn = this.drawCentered(def.sprite, boss.x, boss.y, def.draw.w, def.draw.h);
+    if (!drawn) {
+      this.ctx.save();
+      this.ctx.translate(boss.x, boss.y);
+      this.ctx.rotate(Math.sin(boss.age * 1.4) * 0.06);
+      this.ctx.fillStyle = 'rgba(5,8,18,0.92)';
+      this.ctx.strokeStyle = phase.accent;
+      this.ctx.lineWidth = 4;
+      this.ctx.beginPath();
+      this.ctx.moveTo(0, 62);
+      this.ctx.lineTo(64, 18);
+      this.ctx.lineTo(48, -52);
+      this.ctx.lineTo(0, -68);
+      this.ctx.lineTo(-48, -52);
+      this.ctx.lineTo(-64, 18);
+      this.ctx.closePath();
+      this.ctx.fill();
+      this.ctx.stroke();
+      this.ctx.fillStyle = `${phase.accent}55`;
+      this.ctx.fillRect(-34, -24, 68, 45);
+      this.ctx.strokeRect(-34, -24, 68, 45);
+      this.ctx.restore();
+    }
+
+    this.ctx.save();
+    this.ctx.strokeStyle = phase.accent;
+    this.ctx.globalAlpha = 0.5 + Math.sin(this.clock * 5) * 0.2;
+    this.ctx.lineWidth = 3;
+    this.ctx.beginPath();
+    this.ctx.arc(boss.x, boss.y, Math.max(def.draw.w, def.draw.h) * 0.48, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+
+    if (boss.state === 'intro') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = phase.accent;
+      this.ctx.font = '800 20px ui-sans-serif, system-ui';
+      this.ctx.fillText(`WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
+    }
+  }
+
+  private drawPickup(pickup: PickupActor): void {
+    const def = this.pickupDef(pickup.pickupKey);
+    if (this.drawCentered(def.sprite, pickup.x, pickup.y, def.draw.w, def.draw.h)) return;
+    this.ctx.save();
+    this.ctx.translate(pickup.x, pickup.y);
+    this.ctx.rotate(this.clock * 2.4);
+    const pickupColor = def.effect === 'bomb' ? '#ffd24a' : def.effect === 'repair' ? '#36a3ff' : '#00ff00';
+    this.ctx.fillStyle = def.effect === 'bomb' ? 'rgba(255,210,74,0.2)' : def.effect === 'repair' ? 'rgba(54,163,255,0.2)' : 'rgba(0,255,0,0.18)';
+    this.ctx.strokeStyle = pickupColor;
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    if (def.effect === 'bomb' || def.effect === 'repair') {
+      this.ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    } else {
+      this.ctx.moveTo(0, -14);
+      this.ctx.lineTo(14, 0);
+      this.ctx.lineTo(0, 14);
+      this.ctx.lineTo(-14, 0);
+    }
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.stroke();
+    if (def.effect === 'bomb' || def.effect === 'repair') {
+      this.ctx.beginPath();
+      this.ctx.moveTo(-6, 0);
+      this.ctx.lineTo(6, 0);
+      this.ctx.moveTo(0, -6);
+      this.ctx.lineTo(0, 6);
+      this.ctx.stroke();
+    }
+    this.ctx.restore();
   }
 
   private drawRing(item: Actor): void {
@@ -359,17 +972,72 @@ export class Game2A {
     this.ctx.stroke();
   }
 
+  private drawBombWave(): void {
+    const progress = 1 - this.bombClock / BOMB_LIFE;
+    const radius = progress * Math.hypot(this.w, this.h) * 0.62;
+    this.ctx.save();
+    this.ctx.strokeStyle = `rgba(255,210,74,${Math.max(0, 1 - progress)})`;
+    this.ctx.lineWidth = 8 - progress * 5;
+    this.ctx.beginPath();
+    this.ctx.arc(this.player.x, this.player.y, radius, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
   private hud(): void {
     this.ctx.textAlign = 'left';
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '700 13px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, 16, 24);
     this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
-    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / PLAYER.hp, '#00ff88');
+    const threatKeys = availableEnemyKeys(ENEMIES, this.wave);
+    const newestThreat = ENEMIES[threatKeys[threatKeys.length - 1]].label;
+    this.ctx.font = '600 10px ui-sans-serif, system-ui';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+    const ship = this.playerDef();
+    if (!this.boss) {
+      this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
+      const weapon = this.currentWeapon();
+      this.ctx.fillStyle = '#00ff00';
+      this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
+      this.ctx.fillStyle = ship.accent;
+      this.ctx.fillText(ship.label, 16, 112);
+      this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+      this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
+    }
+    const stage = this.currentStage();
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = stage.accent;
+    this.ctx.fillText(stage.label, this.w / 2, 24);
+    this.ctx.textAlign = 'left';
+    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
+    if (this.boss) {
+      const def = this.bossDef(this.boss.bossKey);
+      const phase = def.phases[this.boss.phaseIndex];
+      const bossBarWidth = Math.min(360, this.w - 64);
+      const bossBarX = (this.w - bossBarWidth) / 2;
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = phase.accent;
+      this.ctx.font = '800 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 80);
+      bar(this.ctx, bossBarX, 86, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
+    }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
+    this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
     this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
     this.button(this.zone.assets, 'D', '#ffd24a');
+  }
+
+  private bossClearBanner(): void {
+    const alpha = Math.min(1, this.bossClearClock, 2.4 - this.bossClearClock);
+    this.ctx.save();
+    this.ctx.globalAlpha = Math.max(0, alpha);
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 24px ui-sans-serif, system-ui';
+    this.ctx.fillText('CLARITY GATE RESTORED', this.w / 2, this.h * 0.43);
+    this.ctx.restore();
   }
 
   private button(rect: Rect, label: string, color: string): void {
@@ -420,11 +1088,126 @@ export class Game2A {
     if (this.special < 100) return;
     this.special = 0;
     this.ringClock = 0.35;
+    this.pulseHitBoss = false;
+  }
+
+  private useBomb(): void {
+    if (this.bombs <= 0 || this.mode !== 'play') return;
+    this.bombs -= 1;
+    this.bombClock = BOMB_LIFE;
+    for (const drone of this.drones) {
+      this.score += 35;
+      this.ring(drone.x, drone.y);
+    }
+    this.drones = [];
+    for (const hazard of this.hazards) {
+      this.score += 75;
+      this.ring(hazard.x, hazard.y);
+    }
+    this.hazards = [];
+    this.hostileShots = [];
+    if (this.boss?.state === 'fight') {
+      this.ring(this.boss.x, this.boss.y);
+      this.damageBoss(6);
+    }
+  }
+
+  private damageBoss(damage: number): void {
+    const boss = this.boss;
+    if (!boss || boss.state !== 'fight') return;
+    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage);
+    if ((boss.hp ?? 0) > 0) return;
+
+    const def = this.bossDef(boss.bossKey);
+    this.completedBosses.add(boss.bossKey);
+    this.score += def.score;
+    this.special = 100;
+    this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? this.playerDef().hp) + 1);
+    this.ring(boss.x, boss.y);
+    this.hostileShots = [];
+    this.boss = null;
+    this.bossClearClock = 2.4;
+    if (this.completedBosses.size === BOSS_LADDER.length) this.victoryPendingClock = 2.4;
+  }
+
+  private damagePlayer(damage: number, impactX: number, impactY: number): void {
+    if (this.playerHitClock > 0) return;
+    this.player.hp = (this.player.hp ?? this.playerDef().hp) - damage;
+    this.playerHitClock = 0.55;
+    this.ring(impactX, impactY);
+  }
+
+  private finishRun(victory: boolean): void {
+    this.progress = recordCampaignRun(this.progress, this.score, this.wave, victory);
+    this.saveProgress();
+    this.mode = victory ? 'victory' : 'results';
+    this.paused = false;
+  }
+
+  private loadProgress(): CampaignProgress {
+    return loadCampaignProgress();
+  }
+
+  private saveProgress(): void {
+    saveCampaignProgress(this.progress);
   }
 
   private ring(x: number, y: number): void {
     this.rings.push({ x, y, w: 1, h: 1, vx: 0, vy: 0, life: BURST_LIFE });
     this.spawnDebris(x, y);
+  }
+
+  private registerKill(drone: EnemyActor): void {
+    this.score += this.enemyDef(drone.enemyKey).score;
+    this.special = Math.min(100, this.special + 8);
+    this.kills += 1;
+    this.ring(drone.x, drone.y);
+
+    if (this.kills % UPGRADE_EVERY_KILLS === 0 && this.weaponTier < WEAPON_LADDER.length) {
+      const def = PICKUPS.weapon_upgrade;
+      this.pickups.push({
+        x: drone.x,
+        y: drone.y,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.driftSpeed,
+        pickupKey: def.key,
+      });
+    }
+
+    if (this.kills % BOMB_EVERY_KILLS === 0 && this.bombs < MAX_BOMBS) {
+      const def = PICKUPS.bomb;
+      this.pickups.push({
+        x: drone.x,
+        y: drone.y,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.driftSpeed,
+        pickupKey: def.key,
+      });
+    }
+
+    if (this.kills % REPAIR_EVERY_KILLS === 0 && (this.player.hp ?? 0) < this.playerDef().hp) {
+      const def = PICKUPS.repair;
+      this.pickups.push({
+        x: drone.x,
+        y: drone.y,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.driftSpeed,
+        pickupKey: def.key,
+      });
+    }
+  }
+
+  private applyPickup(key: string): void {
+    const def = this.pickupDef(key);
+    if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
+    if (def.effect === 'bomb') this.bombs = Math.min(MAX_BOMBS, this.bombs + 1);
+    if (def.effect === 'repair') this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
   }
 
   private spawnDebris(x: number, y: number): void {
@@ -452,20 +1235,90 @@ export class Game2A {
     this.reportAssets = false;
     this.player = this.newPlayer();
     this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.boss = null;
+    this.completedBosses = new Set<string>();
     this.bolts = [];
+    this.pickups = [];
     this.rings = [];
     this.debris = [];
     this.score = 0;
     this.wave = 1;
     this.special = 100;
+    this.boltClock = 0;
+    this.droneClock = 0;
+    this.hazardClock = DEFAULT_HAZARD.spawnRate;
+    this.ringClock = 0;
+    this.weaponTier = 1;
+    this.kills = 0;
+    this.bombs = 2;
+    this.bombClock = 0;
+    this.bossClearClock = 0;
+    this.victoryPendingClock = 0;
+    this.pulseHitBoss = false;
+    this.playerHitClock = 0;
   }
 
   private newPlayer(): Actor {
-    return { x: this.w / 2, y: this.h - 112, w: PLAYER.hitbox.w, h: PLAYER.hitbox.h, vx: 0, vy: 0, hp: PLAYER.hp };
+    const ship = this.playerDef();
+    return { x: this.w / 2, y: this.h - 112, w: ship.hitbox.w, h: ship.hitbox.h, vx: 0, vy: 0, hp: ship.hp };
   }
 
   private inControls(x: number, y: number): boolean {
-    return inside(this.zone.pause, x, y) || inside(this.zone.special, x, y) || inside(this.zone.assets, x, y);
+    return inside(this.zone.pause, x, y) || inside(this.zone.bomb, x, y) || inside(this.zone.special, x, y) || inside(this.zone.assets, x, y);
+  }
+
+  private enemyDef(key: string): EnemyDef {
+    return ENEMIES[key] ?? DEFAULT_ENEMY;
+  }
+
+  private hazardDef(key: string): HazardDef {
+    return HAZARDS[key] ?? DEFAULT_HAZARD;
+  }
+
+  private bossDef(key: string): BossDef {
+    return BOSSES[key] ?? BOSSES.gary_fog;
+  }
+
+  private playerDef() {
+    return SHIPS[this.selectedShipKey] ?? DEFAULT_SHIP;
+  }
+
+  private shipCards(): Array<{ key: string; rect: Rect }> {
+    const keys = Object.keys(SHIPS);
+    const w = Math.min(this.w - 32, 430);
+    const h = 68;
+    const gap = 12;
+    const total = keys.length * h + (keys.length - 1) * gap;
+    const startY = Math.max(76, (this.h - total) / 2);
+    return keys.map((key, index) => ({ key, rect: { x: (this.w - w) / 2, y: startY + index * (h + gap), w, h } }));
+  }
+
+  private selectShipAt(x: number, y: number): void {
+    const selected = this.shipCards().find((card) => inside(card.rect, x, y));
+    if (!selected) return;
+    this.selectedShipKey = selected.key;
+    this.reset();
+  }
+
+  private currentWeapon(): WeaponDef {
+    return WEAPON_LADDER[this.weaponTier - 1] ?? WEAPON_LADDER[0];
+  }
+
+  private projectileDef(key: string): ProjectileDef {
+    return PROJECTILES[key] ?? PROJECTILES.bb_shot;
+  }
+
+  private pickupDef(key: string): PickupDef {
+    return PICKUPS[key] ?? PICKUPS.weapon_upgrade;
+  }
+
+  private currentStage(): StageDef {
+    for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
+      if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];
+    }
+    return STAGE_LADDER[0];
   }
 }
 
