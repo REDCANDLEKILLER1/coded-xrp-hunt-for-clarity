@@ -34,42 +34,58 @@ This file is the compact live resume note. Read `CURRENT_STATE.md` and `LEVEL1_C
 - Head: `efd863a82b6507037ea8bb0e80f103b812c9e3d2`
 - Status: open draft, stacked on PR #47
 - Vercel: success on exact head
-- GitHub Build Check does not run while PR base is a feature branch
-- `npm test`: not independently executed/claimed
-- Scope:
-  - authored Orbital Approach, Fog Belt, Ledger City, and Defense Grid air formations
-  - deterministic formation sequencing instead of score/random progression for Earth campaign
-  - mission HUD objective/formation progress
-  - Deep Space Lane -> Ledger City stage transition
-  - earns `earth.orbital_gate` after Fog Belt
-  - earns `earth.defense_grid` after current air-only Defense Grid skeleton
-  - mission state now owned by runtime
-  - Arcade Test Run preserves original random score/wave system
-- Intentional stop: campaign waits at `gary_fog`; no Guardian implementation/reward yet
+- Scope: authored Orbital Approach/Fog Belt/Ledger City/Defense Grid skeleton, mission HUD, stage transitions, checkpoint earning, Arcade Test Run preserved
 - No merge before L1-A/L1-B and no merge without XRPMan approval
 
-## Exact next build step
+### PR #49 — L1-D1 Immediate Threat Asset Bank
+- Branch: `gpt/level1-d1-assets`
+- Base: `gpt/level1-c-space-encounters`
+- Head: `8e3bb3845f28e60c345f45dbf2dbd59b2949d22f`
+- Status: open draft, stacked on PR #48
+- Vercel: pending at last update; verify exact head before continuing/merging
+- Diff: exactly 3 files
+- Runtime binary payload: 23,550 bytes total
+- Assets:
+  - Fast Scout: 95×128 transparent WebP, 9,932 bytes
+  - Armored Space Mine: 128×109 transparent WebP, 13,618 bytes
+- Manifest entries: `enemies.fast_scout`, `hazards.armored_space_mine`
+- No gameplay logic, no orphan files, no raw masters
+- No merge before earlier stack and no merge without XRPMan approval
 
-Start **L1-D1 — immediate Level 1 asset bank** from PR #48 head.
+### PR #50 — L1-D2 Progressive Mixed Earth Threats
+- Branch: `gpt/level1-d2-defense-grid`
+- Base: `gpt/level1-d1-assets`
+- Head: `d98e186c5de0d95085108ca8a355a8d2306f5c20`
+- Status: open draft, stacked on PR #49
+- Vercel: pending at last update; verify exact head
+- Diff from D1: exactly 4 files
+- Scope:
+  - campaign-only Fast Scout and Armored Space Mine definitions
+  - authored threat groups can spawn air enemies or hazards
+  - Fast Scout taught alone in Fog Belt
+  - Basic Turret taught alone in Ledger City
+  - Armored Space Mine taught alone in Defense Grid
+  - Cannon Turret taught alone before crossfire
+  - final Defense Grid group mixes air + ground threats
+  - existing hazard movement/fire/collision system reused
+  - Defense Grid checkpoint is earned after the full mixed-threat act
+  - Arcade Test Run global random bestiary remains unchanged
+  - fighter movement/fire/pointer/collision constants preserved
+- Intentional stop: after the Defense Grid checkpoint the mission waits at `gary_fog`
+- No merge before earlier stack and no merge without XRPMan approval
 
-Keep it just-in-time and asset-only:
-- inspect current manifest first to prevent duplicates
-- bank **Fast Scout** and **Armored Space Mine** only if they are not already present under usable manifest IDs
-- technically trim/alpha-clean/resize/optimize for runtime as needed
-- update manifest in same PR
-- no gameplay logic in D1
-- do not bank Regulatory Warship or Fog Breaker yet; they belong with their later gameplay phases unless a manifest dependency requires otherwise
+## Exact next action
 
-Then **L1-D2 — Mixed Air/Ground Threats** will:
-- introduce Fast Scout alone before mixed formations
-- introduce Armored Space Mine alone before mixed formations
-- introduce Basic Turret alone before combining with air threats
-- add Cannon Turret later in the act
-- move `earth.defense_grid` checkpoint earning to the end of the completed mixed-threat grid
-- preserve flight movement/fire/collision feel
+1. Verify Vercel status on exact heads of PR #49 and PR #50.
+2. If PR #50 compile is green, begin **L1-E — Gary Fog Guardian + Fog Breaker reward** from PR #50 head.
+3. Keep L1-E scoped to Gary Fog, reward persistence, and immediate Fog Breaker use. Do not mix Regulatory Warship.
+4. Inspect the v16/source assets for the already-planned Fog Breaker icon/VFX before generating anything new.
+5. Preserve Gary's readable three-phase identity: aimed pressure -> spread/fog pressure -> fast burst/weak-point finish.
+6. Fog Breaker must be a permanent fighter ability, not a numeric-only stat boost, and must matter immediately in the post-Gary final-assault phase later.
+7. Audio remains just-in-time; once Gary telegraph timings stabilize, his attack cues/Fog Breaker activation can receive SFX in a dedicated small audio lane.
 
 ## Audio lane
 
-Audio is planned but does not block these phases. Add SFX just-in-time after each behavior is stable. See `AUDIO_PLAN.md` and `ASSET_AUDIO_ROADMAP.md`.
+Audio is planned but does not block gameplay phases. Add SFX just-in-time after each behavior is stable. See `AUDIO_PLAN.md` and `ASSET_AUDIO_ROADMAP.md`.
 
 After each new stacked PR, update this note.
