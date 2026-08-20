@@ -136,6 +136,18 @@
       "notes": "Original-build master: bg_boss_arena_vertical"
     }
   },
+  "interior": {
+    "regulatory_docking_bay": {
+      "src": "/assets/interior/regulatory_docking_bay.webp",
+      "type": "image",
+      "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch"
+    },
+    "regulatory_security_checkpoint": {
+      "src": "/assets/interior/regulatory_security_checkpoint.webp",
+      "type": "image",
+      "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch"
+    }
+  },
   "hazards": {
     "defense_turret": {
       "src": "/assets/hazards/defense_turret.webp",
