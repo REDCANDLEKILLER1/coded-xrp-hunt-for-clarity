@@ -11,6 +11,8 @@ import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../conten
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, hasFogBreaker } from '../content/EarthBossFlow';
 import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
+import { REGULATORY_WARSHIP, RegulatoryWarshipDirector } from '../content/RegulatoryWarship';
+import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
@@ -29,6 +31,11 @@ type BossActor = Actor & {
   contactClock: number;
   phaseIndex: number;
   targetX: number;
+};
+type WarshipActor = Actor & {
+  state: 'intro' | 'fight' | 'disabled';
+  age: number;
+  fireClock: number;
 };
 type ProjectileActor = Actor & { damage: number; projectileKey: string };
 type PickupActor = Actor & { pickupKey: string };
@@ -62,6 +69,7 @@ export class Game2A {
   private readonly loop = new Loop((dt) => this.frame(dt));
   private readonly missionDirector = new MissionDirector();
   private readonly earthEncounterDirector = new EarthFlightEncounterDirector();
+  private readonly warshipDirector = new RegulatoryWarshipDirector();
   private clock = 0;
   private mode: Mode = 'title';
   private paused = false;
@@ -71,6 +79,7 @@ export class Game2A {
   private hazards: HazardActor[] = [];
   private hostileShots: HostileProjectile[] = [];
   private boss: BossActor | null = null;
+  private warship: WarshipActor | null = null;
   private completedBosses = new Set<string>();
   private bolts: ProjectileActor[] = [];
   private pickups: PickupActor[] = [];
@@ -159,6 +168,7 @@ export class Game2A {
     this.earthEncounterDirector.clear();
     this.launchClock = 0;
     this.fogGateActive = false;
+    this.warship = null;
     this.cueMusic('silence');
     this.paused = false;
     this.mode = 'title';
@@ -286,11 +296,6 @@ export class Game2A {
     const act = this.missionDirector.currentAct;
     if (!act) return;
 
-    if (act.mode === 'flight' && earthFlightEncounterFor(act.key)) {
-      this.updateAuthoredFlight(dt);
-      return;
-    }
-
     if (act.key === GARY_FOG_GUARDIAN_PLAN.actKey) {
       if (!this.boss) this.startGaryFogGuardian();
       this.updateBoss(dt);
@@ -299,6 +304,17 @@ export class Game2A {
 
     if (act.key === 'final_assault' && this.fogGateActive) {
       this.hostileShots = [];
+      return;
+    }
+
+    if (act.mode === 'flight' && earthFlightEncounterFor(act.key)) {
+      this.updateAuthoredFlight(dt);
+      return;
+    }
+
+    if (act.key === 'regulatory_warship') {
+      if (!this.warship) this.startRegulatoryWarship();
+      this.updateRegulatoryWarship(dt);
       return;
     }
 
@@ -330,6 +346,81 @@ export class Game2A {
       phaseIndex: 0,
       targetX: this.w / 2,
     };
+  }
+
+  private startRegulatoryWarship(): void {
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.bolts = [];
+    this.warshipDirector.reset();
+    this.cueMusic('boss_regulatory_warship');
+    this.missionBannerText = 'CAPITAL SHIP // REGULATORY WARSHIP';
+    this.missionBannerClock = 2.8;
+    this.warship = {
+      x: this.w / 2,
+      y: -REGULATORY_WARSHIP.draw.h,
+      w: REGULATORY_WARSHIP.draw.w,
+      h: REGULATORY_WARSHIP.draw.h,
+      vx: 0,
+      vy: 0,
+      state: 'intro',
+      age: 0,
+      fireClock: 1,
+    };
+  }
+
+  private updateRegulatoryWarship(dt: number): void {
+    const warship = this.warship;
+    if (!warship) return;
+    warship.age += dt;
+
+    if (warship.state === 'disabled') return;
+    if (warship.state === 'intro') {
+      const targetY = Math.max(112, Math.min(150, this.h * 0.2));
+      warship.y += (targetY - warship.y) * Math.min(1, dt * 1.35);
+      if (warship.age >= 3.2) {
+        warship.state = 'fight';
+        warship.y = targetY;
+        warship.age = 0;
+        this.missionBannerText = this.warshipDirector.objective;
+        this.missionBannerClock = 2.8;
+      }
+      return;
+    }
+
+    warship.x = this.w / 2 + Math.sin(warship.age * 0.45) * Math.min(42, this.w * 0.08);
+    warship.fireClock -= dt;
+    if (warship.fireClock <= 0) {
+      this.fireWarshipVolley();
+      const phase = this.warshipDirector.phase;
+      warship.fireClock = phase === 'batteries' ? 0.95 : phase === 'shield' ? 0.78 : phase === 'engines' ? 0.62 : 0.48;
+    }
+  }
+
+  private fireWarshipVolley(): void {
+    const warship = this.warship;
+    if (!warship || warship.state !== 'fight') return;
+    const phase = this.warshipDirector.phase;
+    const count = phase === 'batteries' ? 2 : phase === 'shield' ? 3 : phase === 'engines' ? 5 : 7;
+    const speed = phase === 'batteries' ? 215 : phase === 'shield' ? 230 : phase === 'engines' ? 250 : 270;
+    const spread = phase === 'batteries' ? 0.22 : phase === 'shield' ? 0.2 : phase === 'engines' ? 0.17 : 0.14;
+    const aimed = Math.atan2(this.player.y - warship.y, this.player.x - warship.x);
+    const middle = (count - 1) / 2;
+    for (let index = 0; index < count; index += 1) {
+      const angle = aimed + (index - middle) * spread;
+      this.hostileShots.push({
+        x: warship.x,
+        y: warship.y + 36,
+        w: 10,
+        h: 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        damage: 1,
+        color: phase === 'hangar' ? '#ff3355' : '#ff8a3d',
+        projectileKey: phase === 'engines' || phase === 'hangar' ? 'enemy_missile' : 'enemy_red_bullet',
+      });
+    }
   }
 
   private updateAuthoredFlight(dt: number): void {
@@ -416,7 +507,9 @@ export class Game2A {
     this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
     this.earthEncounterDirector.start(entered?.key ?? '');
 
-    if (checkpoint && entered?.mode === 'boss') {
+    if (entered?.key === 'regulatory_warship') {
+      this.missionBannerText = 'CAPITAL SHIP SIGNAL // REGULATORY WARSHIP';
+    } else if (checkpoint && entered?.mode === 'boss') {
       this.missionBannerText = `CHECKPOINT SECURED // ${checkpoint.label} // GUARDIAN SIGNAL`;
     } else if (checkpoint) {
       this.missionBannerText = `CHECKPOINT SECURED // ${checkpoint.label}`;
@@ -709,6 +802,24 @@ export class Game2A {
           break;
         }
       }
+      if (bolt.life === 0) continue;
+      if (this.warship?.state === 'fight') {
+        for (const system of this.warshipDirector.targetableSystems) {
+          if (!overlap(box(bolt, 0.65), this.warshipSystemBox(system))) continue;
+          bolt.life = 0;
+          const before = this.warshipDirector.phase;
+          const hit = this.warshipDirector.hit(system.key, bolt.damage);
+          this.ring(this.warshipSystemCenter(system).x, this.warshipSystemCenter(system).y);
+          if (hit.destroyedNow) this.special = Math.min(100, this.special + 24);
+          if (this.warshipDirector.phase !== before) {
+            this.hostileShots = [];
+            this.missionBannerText = this.warshipDirector.objective;
+            this.missionBannerClock = 2.8;
+          }
+          if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
+          break;
+        }
+      }
       if (bolt.life === 0 || !this.boss || this.boss.state !== 'fight') continue;
       if (overlap(box(bolt, 0.65), box(this.boss, 0.84))) {
         bolt.life = 0;
@@ -755,6 +866,55 @@ export class Game2A {
       }
     }
     this.pickups = this.pickups.filter((pickup) => pickup.life !== 0);
+  }
+
+  private warshipSystemCenter(system: WarshipSystemState): { x: number; y: number } {
+    const warship = this.warship;
+    if (!warship) return { x: 0, y: 0 };
+    return {
+      x: warship.x + system.x * REGULATORY_WARSHIP.draw.w,
+      y: warship.y + system.y * REGULATORY_WARSHIP.draw.h,
+    };
+  }
+
+  private warshipSystemBox(system: WarshipSystemState): Rect {
+    const center = this.warshipSystemCenter(system);
+    return { x: center.x - system.w / 2, y: center.y - system.h / 2, w: system.w, h: system.h };
+  }
+
+  private completeRegulatoryWarship(): void {
+    const warship = this.warship;
+    const mission = this.missionDirector.activeMission;
+    if (!warship || warship.state === 'disabled' || !mission || !this.activePlanetKey) return;
+
+    warship.state = 'disabled';
+    this.score += REGULATORY_WARSHIP.score;
+    this.hostileShots = [];
+    this.bolts = [];
+    this.special = 100;
+
+    const boarding = mission.checkpoints.find((checkpoint) => checkpoint.resumeActKey === 'boarding');
+    if (boarding) {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: boarding.key,
+        checkpointLabel: boarding.label,
+        resumeActKey: boarding.resumeActKey,
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier,
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+      });
+      this.saveProgress();
+    }
+
+    this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.cueMusic('warship_disabled');
+    this.missionBannerText = 'WARSHIP DISABLED // HANGAR BREACH OPEN';
+    this.missionBannerClock = 2.8;
   }
 
   private updateRings(dt: number): void {
@@ -842,7 +1002,7 @@ export class Game2A {
   }
 
   private drawStageBackdrop(stage: StageDef): boolean {
-    const ref = this.boss ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
+    const ref = this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
     const image = this.assets.getImage(ref.category, ref.id);
     if (!image || image.width <= 0 || image.height <= 0) return false;
 
@@ -979,6 +1139,7 @@ export class Game2A {
     for (const drone of this.drones) this.drawDrone(drone);
     for (const hazard of this.hazards) this.drawHazard(hazard);
     if (this.boss) this.drawBoss(this.boss);
+    if (this.warship) this.drawRegulatoryWarship();
     for (const bolt of this.bolts) this.drawBolt(bolt);
     for (const shot of this.hostileShots) this.drawHostileShot(shot);
     for (const pickup of this.pickups) this.drawPickup(pickup);
@@ -1163,6 +1324,54 @@ export class Game2A {
     }
   }
 
+  private drawRegulatoryWarship(): void {
+    const warship = this.warship;
+    if (!warship) return;
+    const disabled = warship.state === 'disabled';
+    this.ctx.save();
+    if (disabled) this.ctx.globalAlpha = 0.78;
+    this.drawCentered(REGULATORY_WARSHIP.sprite, warship.x, warship.y, REGULATORY_WARSHIP.draw.w, REGULATORY_WARSHIP.draw.h);
+    this.ctx.restore();
+
+    if (warship.state === 'intro') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#ff8a3d';
+      this.ctx.font = '900 18px ui-sans-serif, system-ui';
+      this.ctx.fillText('CAPITAL SHIP INBOUND', this.w / 2, this.h * 0.51);
+      return;
+    }
+
+    for (const system of this.warshipDirector.allSystems) {
+      const center = this.warshipSystemCenter(system);
+      if (system.destroyed) {
+        this.ctx.strokeStyle = 'rgba(255,51,85,0.7)';
+        this.ctx.lineWidth = 3;
+        line(this.ctx, center.x - 8, center.y - 8, center.x + 8, center.y + 8);
+        line(this.ctx, center.x + 8, center.y - 8, center.x - 8, center.y + 8);
+        continue;
+      }
+      if (!system.exposed) continue;
+      const pulse = 0.55 + Math.sin(this.clock * 7) * 0.25;
+      this.ctx.save();
+      this.ctx.globalAlpha = pulse;
+      this.ctx.strokeStyle = '#ffd24a';
+      this.ctx.lineWidth = 2;
+      this.ctx.strokeRect(center.x - system.w / 2, center.y - system.h / 2, system.w, system.h);
+      this.ctx.restore();
+      bar(this.ctx, center.x - 18, center.y + system.h / 2 + 4, 36, 4, system.remainingHp / system.hp, '#ffd24a');
+    }
+
+    if (this.warshipDirector.phase === 'shield' && this.warshipDirector.targetableSystems.length === 0) {
+      this.ctx.save();
+      this.ctx.strokeStyle = 'rgba(54,163,255,0.7)';
+      this.ctx.lineWidth = 5;
+      this.ctx.beginPath();
+      this.ctx.ellipse(warship.x, warship.y, 112, 96, 0, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.restore();
+    }
+  }
+
   private drawPickup(pickup: PickupActor): void {
     const def = this.pickupDef(pickup.pickupKey);
     if (this.drawCentered(def.sprite, pickup.x, pickup.y, def.draw.w, def.draw.h)) return;
@@ -1264,7 +1473,10 @@ export class Game2A {
       this.ctx.fillText(missionAct.label, 16, 44);
       this.ctx.font = '600 10px ui-sans-serif, system-ui';
       this.ctx.fillStyle = 'rgba(216,255,232,0.7)';
-      if (this.earthEncounterDirector.active) {
+      if (this.warship) {
+        this.ctx.fillStyle = this.warship.state === 'disabled' ? '#00ff88' : '#ffd24a';
+        this.ctx.fillText(this.warshipDirector.objective, 16, 80);
+      } else if (this.earthEncounterDirector.active) {
         const groupLabel = this.earthEncounterDirector.currentGroupLabel ?? 'INBOUND';
         this.ctx.fillText(`FORMATION ${this.earthEncounterDirector.currentGroupNumber}/${this.earthEncounterDirector.totalGroups} • ${groupLabel}`, 16, 80);
       } else if (missionAct.mode === 'boss') {
@@ -1286,7 +1498,7 @@ export class Game2A {
       this.ctx.fillText(stage.label, this.w / 2, 24);
       this.ctx.font = '600 10px ui-sans-serif, system-ui';
       this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
-      this.ctx.fillText(missionAct.objective, this.w / 2, 42);
+      this.ctx.fillText(this.warship ? this.warshipDirector.objective : missionAct.objective, this.w / 2, 42);
       this.ctx.textAlign = 'left';
     } else {
       this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
@@ -1323,6 +1535,12 @@ export class Game2A {
       this.ctx.font = '800 11px ui-sans-serif, system-ui';
       this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 80);
       bar(this.ctx, bossBarX, 86, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
+    }
+    if (this.warship?.state === 'fight') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#ff8a3d';
+      this.ctx.font = '900 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`REGULATORY WARSHIP • ${this.warshipDirector.phase.toUpperCase()}`, this.w / 2, 80);
     }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
@@ -1413,7 +1631,12 @@ export class Game2A {
       this.hostileShots = [];
       if (this.fogGateActive && this.missionDirector.currentAct?.key === 'final_assault') {
         this.fogGateActive = false;
+        this.earthEncounterDirector.start('final_assault');
         this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
+        this.missionBannerClock = 2.8;
+      }
+      if (this.warship?.state === 'fight' && this.warshipDirector.exposeShieldWithFogBreaker()) {
+        this.missionBannerText = 'FOG BREAKER // SHIELD RELAY EXPOSED';
         this.missionBannerClock = 2.8;
       }
     }
@@ -1437,6 +1660,14 @@ export class Game2A {
     if (this.boss?.state === 'fight') {
       this.ring(this.boss.x, this.boss.y);
       this.damageBoss(6);
+    }
+    if (this.warship?.state === 'fight') {
+      for (const system of this.warshipDirector.targetableSystems) {
+        this.warshipDirector.hit(system.key, 2);
+        const center = this.warshipSystemCenter(system);
+        this.ring(center.x, center.y);
+      }
+      if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
     }
   }
 
@@ -1462,13 +1693,14 @@ export class Game2A {
       this.saveProgress();
       const entered = this.missionDirector.advance();
       this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
-      this.earthEncounterDirector.start(entered?.key ?? '');
+      this.earthEncounterDirector.clear();
       this.fogGateActive = true;
       this.cueMusic('level1');
       this.missionBannerText = alreadyOwned
         ? 'GARY FOG DEFEATED // FOG BREAKER READY'
         : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
       this.missionBannerClock = 2.8;
+      if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
       return;
     }
 
@@ -1587,6 +1819,8 @@ export class Game2A {
     this.hazards = [];
     this.hostileShots = [];
     this.boss = null;
+    this.warship = null;
+    this.warshipDirector.reset();
     this.completedBosses = new Set<string>();
     this.bolts = [];
     this.pickups = [];
@@ -1641,6 +1875,29 @@ export class Game2A {
 
       if (checkpoint) {
         this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        if (this.missionDirector.currentAct?.key === 'boarding') {
+          this.warshipDirector.reset();
+          for (const system of REGULATORY_WARSHIP.systems) {
+            if (system.key === 'shield_relay') this.warshipDirector.exposeShieldWithFogBreaker();
+            let guard = 0;
+            while (!this.warshipDirector.allSystems.find((item) => item.key === system.key)?.destroyed && guard < 30) {
+              this.warshipDirector.hit(system.key, 99);
+              if (this.warshipDirector.phase === 'shield') this.warshipDirector.exposeShieldWithFogBreaker();
+              guard += 1;
+            }
+          }
+          this.warship = {
+            x: this.w / 2,
+            y: Math.max(112, Math.min(150, this.h * 0.2)),
+            w: REGULATORY_WARSHIP.draw.w,
+            h: REGULATORY_WARSHIP.draw.h,
+            vx: 0,
+            vy: 0,
+            state: 'disabled',
+            age: 0,
+            fireClock: 0,
+          };
+        }
         this.missionBannerText = this.missionDirector.currentAct?.label ?? mission.label;
         this.missionBannerClock = 2.2;
       } else {
@@ -1719,6 +1976,7 @@ export class Game2A {
     const missionStageKey = this.earthEncounterDirector.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
     if (this.missionDirector.activeMission && this.missionDirector.currentAct?.key === 'gary_fog') return STAGES.ledger_city;
+    if (this.missionDirector.activeMission && ['regulatory_warship', 'boarding'].includes(this.missionDirector.currentAct?.key ?? '')) return STAGES.regulatory_outpost;
     for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
       if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];
     }
