@@ -7,9 +7,16 @@ export interface MissionActDef {
   mode: MissionActMode;
 }
 
+export interface MissionCheckpointDef {
+  key: string;
+  label: string;
+  resumeActKey: string;
+}
+
 export interface MissionDef {
   key: string;
   planetKey: string;
   label: string;
   acts: MissionActDef[];
+  checkpoints: MissionCheckpointDef[];
 }
