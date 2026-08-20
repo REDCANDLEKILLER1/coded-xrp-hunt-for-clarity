@@ -1753,6 +1753,5 @@ function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
   ctx.strokeStyle = 'rgba(216,255,232,0.55)';
   ctx.strokeRect(x, y, w, h);
   ctx.fillStyle = color;
-  this.ctx.fillRect;
   ctx.fillRect(x + 1, y + 1, Math.max(0, Math.min(1, pct)) * (w - 2), h - 2);
 }
