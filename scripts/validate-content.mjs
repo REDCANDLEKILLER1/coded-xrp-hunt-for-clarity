@@ -206,3 +206,57 @@ if (director.activeMission !== null || director.currentAct !== undefined) {
 }
 
 console.log('Mission validation OK — Earth Level 1 checkpoint resume state is explicit and testable.');
+
+const encounterResult = await build({
+  entryPoints: ['src/game/content/EarthFlightEncounters.ts'],
+  bundle: true,
+  format: 'esm',
+  write: false,
+  logLevel: 'silent',
+});
+
+const encounters = await import(
+  'data:text/javascript,' + encodeURIComponent(encounterResult.outputFiles[0].text)
+);
+
+const encounterErrors = encounters.validateEarthFlightEncounters();
+if (encounterErrors.length > 0) {
+  console.error('Earth encounter validation FAILED:');
+  for (const e of encounterErrors) console.error('  - ' + e);
+  process.exit(1);
+}
+
+for (const actKey of ['orbital_approach', 'fog_belt', 'ledger_city', 'defense_grid']) {
+  if (!encounters.earthFlightEncounterFor(actKey)) {
+    console.error(`Earth encounter validation FAILED: missing authored encounter for ${actKey}.`);
+    process.exit(1);
+  }
+}
+if (encounters.earthFlightEncounterFor('gary_fog')) {
+  console.error('Earth encounter validation FAILED: L1-C must stop authored flight at the Gary Fog boundary.');
+  process.exit(1);
+}
+
+const encounterDirector = new encounters.EarthFlightEncounterDirector();
+encounterDirector.start('orbital_approach');
+let step = encounterDirector.update(10, 0);
+if (step.spawns.length !== 1 || step.completed || encounterDirector.currentGroupNumber !== 1) {
+  console.error('Earth encounter director FAILED: first authored group did not spawn deterministically.');
+  process.exit(1);
+}
+step = encounterDirector.update(0.1, 1);
+if (step.spawns.length !== 0 || step.completed) {
+  console.error('Earth encounter director FAILED: advanced while an authored enemy was still active.');
+  process.exit(1);
+}
+let guard = 0;
+while (!step.completed && guard < 20) {
+  step = encounterDirector.update(10, 0);
+  guard += 1;
+}
+if (!step.completed || encounterDirector.totalGroups !== 4) {
+  console.error('Earth encounter director FAILED: authored act did not complete after all groups cleared.');
+  process.exit(1);
+}
+
+console.log('Earth encounter validation OK — Level 1 opening uses deterministic authored groups.');
