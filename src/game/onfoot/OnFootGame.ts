@@ -1,20 +1,15 @@
-type Point = { x: number; y: number };
-type Shot = Point & { vx: number; vy: number; hostile: boolean; life: number };
+import { SIDEVIEW_ROOM, type Platform } from './SideViewRoom';
 
-type Facing = 'front' | 'back' | 'left' | 'right';
+type Shot = { x: number; y: number; vx: number; vy: number; hostile: boolean; life: number };
+type Facing = 'left' | 'right';
 
 const GREEN = '#00ff00';
 const BLUE = '#36a3ff';
-const ROOM_PAD = 34;
-const PLAYER_RADIUS = 18;
-const PLAYER_SPEED = 235;
-const BLAST_SPEED = 520;
-const BLAST_COST = 12;
-const BLAST_COOLDOWN = 0.18;
+const RED = '#ff4c66';
 
 /**
- * L1-H2 proof-of-feel room. This is intentionally a self-contained runtime so the
- * validated flight engine stays untouched while XRPMan movement/combat is tested.
+ * L1-H2 side-view proof-of-feel runtime.
+ * This intentionally stays self-contained so the validated flight engine is untouched.
  */
 export class OnFootGame {
   private readonly canvas: HTMLCanvasElement;
@@ -22,20 +17,32 @@ export class OnFootGame {
   private readonly sprite = new Image();
   private visible = false;
   private lastTime = performance.now();
-  private player = { x: innerWidth * 0.5, y: innerHeight * 0.7, health: 100, energy: 100, facing: 'front' as Facing };
-  private enemy = { x: innerWidth * 0.5, y: innerHeight * 0.27, health: 80, fireClock: 0.8, respawn: 0 };
+  private player = {
+    x: SIDEVIEW_ROOM.startX,
+    y: SIDEVIEW_ROOM.startY,
+    vx: 0,
+    vy: 0,
+    health: 100,
+    energy: 100,
+    facing: 'right' as Facing,
+    grounded: false,
+  };
+  private enemy = { x: 1085, y: 380, w: 42, h: 58, health: 100, fireClock: 1.1, alive: true };
   private shots: Shot[] = [];
   private keys = new Set<string>();
-  private movePointer: number | null = null;
-  private moveTarget: Point | null = null;
   private fireCooldown = 0;
   private hurtCooldown = 0;
-  private kills = 0;
-  private transitionClock = 0;
+  private coyoteClock = 0;
+  private jumpBufferClock = 0;
+  private cameraX = 0;
+  private completionClock = 0;
+  private introClock = 0;
+  private pointerMove = 0;
+  private pointerMoveId: number | null = null;
 
   constructor(private readonly shell: HTMLElement) {
     this.canvas = document.createElement('canvas');
-    this.canvas.setAttribute('aria-label', 'XRPMan interior combat prototype');
+    this.canvas.setAttribute('aria-label', 'XRPMan side-view interior prototype');
     Object.assign(this.canvas.style, {
       position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '6',
       display: 'none', touchAction: 'none', background: '#02060b',
@@ -55,7 +62,7 @@ export class OnFootGame {
     this.resetRoom();
     this.visible = true;
     this.canvas.style.display = 'block';
-    this.transitionClock = 1.35;
+    this.introClock = 1.1;
     window.dispatchEvent(new CustomEvent('coded:music-cue', { detail: { cue: 'warship_interior' } }));
   }
 
@@ -63,8 +70,8 @@ export class OnFootGame {
     this.visible = false;
     this.canvas.style.display = 'none';
     this.keys.clear();
-    this.movePointer = null;
-    this.moveTarget = null;
+    this.pointerMove = 0;
+    this.pointerMoveId = null;
   }
 
   get active(): boolean { return this.visible; }
@@ -80,295 +87,412 @@ export class OnFootGame {
   }
 
   private update(dt: number): void {
-    if (this.transitionClock > 0) {
-      this.transitionClock = Math.max(0, this.transitionClock - dt);
-      return;
-    }
-
+    this.introClock = Math.max(0, this.introClock - dt);
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
     this.hurtCooldown = Math.max(0, this.hurtCooldown - dt);
-    this.player.energy = Math.min(100, this.player.energy + 20 * dt);
+    this.coyoteClock = Math.max(0, this.coyoteClock - dt);
+    this.jumpBufferClock = Math.max(0, this.jumpBufferClock - dt);
+    this.completionClock = Math.max(0, this.completionClock - dt);
+    this.player.energy = Math.min(100, this.player.energy + 22 * dt);
 
-    const keyboard = this.keyboardVector();
-    let dx = keyboard.x;
-    let dy = keyboard.y;
-    if (this.moveTarget && keyboard.x === 0 && keyboard.y === 0) {
-      const vx = this.moveTarget.x - this.player.x;
-      const vy = this.moveTarget.y - this.player.y;
-      const d = Math.hypot(vx, vy);
-      if (d > 10) { dx = vx / d; dy = vy / d; }
-    }
-    if (dx || dy) {
-      const mag = Math.hypot(dx, dy) || 1;
-      dx /= mag; dy /= mag;
-      this.player.x += dx * PLAYER_SPEED * dt;
-      this.player.y += dy * PLAYER_SPEED * dt;
-      this.player.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'back' : 'front');
-    }
-    this.resolvePlayerRoomCollision();
+    let move = this.pointerMove;
+    if (this.keys.has('arrowleft') || this.keys.has('a')) move -= 1;
+    if (this.keys.has('arrowright') || this.keys.has('d')) move += 1;
+    move = Math.max(-1, Math.min(1, move));
 
-    if (this.enemy.respawn > 0) {
-      this.enemy.respawn -= dt;
-      if (this.enemy.respawn <= 0) this.spawnEnemy();
-    } else {
-      const toPlayerX = this.player.x - this.enemy.x;
-      const toPlayerY = this.player.y - this.enemy.y;
-      const dist = Math.max(1, Math.hypot(toPlayerX, toPlayerY));
-      if (dist > 150) {
-        this.enemy.x += (toPlayerX / dist) * 62 * dt;
-        this.enemy.y += (toPlayerY / dist) * 62 * dt;
+    const accel = this.player.grounded ? 16 : 9;
+    const desiredVx = move * SIDEVIEW_ROOM.moveSpeed;
+    this.player.vx += (desiredVx - this.player.vx) * Math.min(1, dt * accel);
+    if (Math.abs(move) < 0.01) this.player.vx *= Math.pow(0.0008, dt);
+    if (move < -0.05) this.player.facing = 'left';
+    if (move > 0.05) this.player.facing = 'right';
+
+    if (this.player.grounded) this.coyoteClock = SIDEVIEW_ROOM.coyoteSeconds;
+    if (this.jumpBufferClock > 0 && (this.player.grounded || this.coyoteClock > 0)) this.performJump();
+
+    this.player.vy = Math.min(SIDEVIEW_ROOM.maxFallSpeed, this.player.vy + SIDEVIEW_ROOM.gravity * dt);
+    this.movePlayer(dt);
+
+    if (this.enemy.alive) this.updateEnemy(dt);
+    this.updateShots(dt);
+
+    const viewWidth = innerWidth;
+    const targetCamera = this.player.x - viewWidth * 0.42;
+    this.cameraX += (targetCamera - this.cameraX) * Math.min(1, dt * 7.5);
+    this.cameraX = clamp(this.cameraX, 0, Math.max(0, SIDEVIEW_ROOM.worldWidth - viewWidth));
+
+    if (!this.enemy.alive && this.player.x > SIDEVIEW_ROOM.worldWidth - 125 && this.completionClock <= 0) {
+      this.completionClock = 999;
+      window.dispatchEvent(new CustomEvent('coded:onfoot-prototype-clear'));
+    }
+
+    if (this.player.health <= 0 || this.player.y > SIDEVIEW_ROOM.worldHeight + 120) {
+      this.hide();
+      window.dispatchEvent(new CustomEvent('coded:onfoot-defeat'));
+    }
+  }
+
+  private movePlayer(dt: number): void {
+    const halfW = SIDEVIEW_ROOM.playerWidth / 2;
+    const halfH = SIDEVIEW_ROOM.playerHeight / 2;
+    const oldY = this.player.y;
+
+    this.player.x = clamp(this.player.x + this.player.vx * dt, halfW + 8, SIDEVIEW_ROOM.worldWidth - halfW - 8);
+    this.player.y += this.player.vy * dt;
+    this.player.grounded = false;
+
+    if (this.player.vy >= 0) {
+      const oldBottom = oldY + halfH;
+      const newBottom = this.player.y + halfH;
+      for (const platform of SIDEVIEW_ROOM.platforms) {
+        const withinX = this.player.x + halfW - 6 > platform.x && this.player.x - halfW + 6 < platform.x + platform.w;
+        const crossedTop = oldBottom <= platform.y + 8 && newBottom >= platform.y;
+        if (withinX && crossedTop) {
+          this.player.y = platform.y - halfH;
+          this.player.vy = 0;
+          this.player.grounded = true;
+          break;
+        }
       }
-      this.enemy.fireClock -= dt;
-      if (this.enemy.fireClock <= 0) {
-        this.enemy.fireClock = 1.15;
-        this.spawnShot(this.enemy.x, this.enemy.y, this.player.x, this.player.y, true, 260);
-      }
-      if (dist < PLAYER_RADIUS + 18) this.damagePlayer(18);
     }
 
+    // Simple side collision against the two tall machinery blocks in the test chamber.
+    const blocks = [
+      { x: 665, y: 565, w: 54, h: 75 },
+      { x: 1270, y: 520, w: 62, h: 120 },
+    ];
+    for (const block of blocks) {
+      const px = this.player.x - halfW;
+      const py = this.player.y - halfH;
+      if (!rectOverlap(px, py, SIDEVIEW_ROOM.playerWidth, SIDEVIEW_ROOM.playerHeight, block.x, block.y, block.w, block.h)) continue;
+      if (this.player.vx > 0) this.player.x = block.x - halfW;
+      else if (this.player.vx < 0) this.player.x = block.x + block.w + halfW;
+      this.player.vx = 0;
+    }
+  }
+
+  private tryJump(): void {
+    this.jumpBufferClock = SIDEVIEW_ROOM.jumpBufferSeconds;
+    if (this.player.grounded || this.coyoteClock > 0) this.performJump();
+  }
+
+  private performJump(): void {
+    this.player.vy = -SIDEVIEW_ROOM.jumpSpeed;
+    this.player.grounded = false;
+    this.coyoteClock = 0;
+    this.jumpBufferClock = 0;
+  }
+
+  private fireLiquidityBlast(): void {
+    if (!this.visible || this.fireCooldown > 0 || this.player.energy < SIDEVIEW_ROOM.blastCost) return;
+    this.fireCooldown = SIDEVIEW_ROOM.blastCooldown;
+    this.player.energy -= SIDEVIEW_ROOM.blastCost;
+    const direction = this.player.facing === 'right' ? 1 : -1;
+    this.shots.push({
+      x: this.player.x + direction * 28,
+      y: this.player.y - 8,
+      vx: direction * SIDEVIEW_ROOM.blastSpeed,
+      vy: 0,
+      hostile: false,
+      life: 1.7,
+    });
+  }
+
+  private updateEnemy(dt: number): void {
+    this.enemy.fireClock -= dt;
+    if (this.enemy.fireClock > 0) return;
+    this.enemy.fireClock = 1.25;
+    const dx = this.player.x - this.enemy.x;
+    const dy = (this.player.y - 10) - this.enemy.y;
+    const length = Math.max(1, Math.hypot(dx, dy));
+    this.shots.push({
+      x: this.enemy.x,
+      y: this.enemy.y,
+      vx: dx / length * 310,
+      vy: dy / length * 310,
+      hostile: true,
+      life: 3.2,
+    });
+  }
+
+  private updateShots(dt: number): void {
+    const kept: Shot[] = [];
     for (const shot of this.shots) {
       shot.x += shot.vx * dt;
       shot.y += shot.vy * dt;
       shot.life -= dt;
-      if (shot.hostile && distance(shot, this.player) < PLAYER_RADIUS + 5) {
-        shot.life = 0;
-        this.damagePlayer(14);
-      } else if (!shot.hostile && this.enemy.respawn <= 0 && distance(shot, this.enemy) < 24) {
-        shot.life = 0;
-        this.enemy.health -= 28;
-        if (this.enemy.health <= 0) {
-          this.enemy.respawn = 1.7;
-          this.kills += 1;
+      if (shot.life <= 0 || shot.x < -50 || shot.x > SIDEVIEW_ROOM.worldWidth + 50) continue;
+
+      if (shot.hostile) {
+        if (this.hurtCooldown <= 0 && Math.hypot(shot.x - this.player.x, shot.y - this.player.y) < 30) {
+          this.player.health = Math.max(0, this.player.health - 18);
+          this.hurtCooldown = 0.75;
+          this.player.vx += shot.vx > 0 ? 105 : -105;
+          continue;
         }
+      } else if (this.enemy.alive && rectOverlap(shot.x - 7, shot.y - 4, 14, 8, this.enemy.x - this.enemy.w / 2, this.enemy.y - this.enemy.h / 2, this.enemy.w, this.enemy.h)) {
+        this.enemy.health -= 25;
+        if (this.enemy.health <= 0) {
+          this.enemy.alive = false;
+          this.enemy.health = 0;
+          this.shots = this.shots.filter((item) => !item.hostile);
+        }
+        continue;
       }
+      kept.push(shot);
     }
-    this.shots = this.shots.filter((s) => s.life > 0 && s.x > -40 && s.x < innerWidth + 40 && s.y > -40 && s.y < innerHeight + 40);
-
-    if (this.player.health <= 0) {
-      this.hide();
-      window.dispatchEvent(new CustomEvent('coded:onfoot-defeat', { detail: { planetKey: 'ledger_prime' } }));
-    }
-  }
-
-  private fireAt(x: number, y: number): void {
-    if (!this.visible || this.transitionClock > 0 || this.fireCooldown > 0 || this.player.energy < BLAST_COST) return;
-    this.player.energy -= BLAST_COST;
-    this.fireCooldown = BLAST_COOLDOWN;
-    const dx = x - this.player.x;
-    const dy = y - this.player.y;
-    if (Math.abs(dx) > Math.abs(dy)) this.player.facing = dx < 0 ? 'left' : 'right';
-    else this.player.facing = dy < 0 ? 'back' : 'front';
-    this.spawnShot(this.player.x, this.player.y, x, y, false, BLAST_SPEED);
-  }
-
-  private spawnShot(x: number, y: number, tx: number, ty: number, hostile: boolean, speed: number): void {
-    const dx = tx - x;
-    const dy = ty - y;
-    const d = Math.max(1, Math.hypot(dx, dy));
-    this.shots.push({ x, y, vx: dx / d * speed, vy: dy / d * speed, hostile, life: 2.4 });
-  }
-
-  private damagePlayer(amount: number): void {
-    if (this.hurtCooldown > 0) return;
-    this.hurtCooldown = 0.55;
-    this.player.health = Math.max(0, this.player.health - amount);
-  }
-
-  private spawnEnemy(): void {
-    this.enemy.x = innerWidth * 0.5;
-    this.enemy.y = Math.max(110, innerHeight * 0.25);
-    this.enemy.health = 80;
-    this.enemy.fireClock = 0.9;
-    this.enemy.respawn = 0;
-  }
-
-  private resetRoom(): void {
-    this.player = { x: innerWidth * 0.5, y: innerHeight * 0.72, health: 100, energy: 100, facing: 'back' };
-    this.enemy = { x: innerWidth * 0.5, y: Math.max(110, innerHeight * 0.25), health: 80, fireClock: 0.9, respawn: 0 };
-    this.shots = [];
-    this.kills = 0;
-    this.fireCooldown = 0;
-    this.hurtCooldown = 0;
-  }
-
-  private resolvePlayerRoomCollision(): void {
-    this.player.x = clamp(this.player.x, ROOM_PAD + PLAYER_RADIUS, innerWidth - ROOM_PAD - PLAYER_RADIUS);
-    this.player.y = clamp(this.player.y, 92 + PLAYER_RADIUS, innerHeight - ROOM_PAD - PLAYER_RADIUS);
-    const box = this.centerObstacle();
-    const nx = clamp(this.player.x, box.x, box.x + box.w);
-    const ny = clamp(this.player.y, box.y, box.y + box.h);
-    const dx = this.player.x - nx;
-    const dy = this.player.y - ny;
-    if (dx * dx + dy * dy < PLAYER_RADIUS * PLAYER_RADIUS) {
-      if (Math.abs(dx) > Math.abs(dy)) this.player.x = nx + Math.sign(dx || 1) * PLAYER_RADIUS;
-      else this.player.y = ny + Math.sign(dy || 1) * PLAYER_RADIUS;
-    }
-  }
-
-  private keyboardVector(): Point {
-    return {
-      x: (this.keys.has('ArrowRight') || this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('ArrowLeft') || this.keys.has('KeyA') ? 1 : 0),
-      y: (this.keys.has('ArrowDown') || this.keys.has('KeyS') ? 1 : 0) - (this.keys.has('ArrowUp') || this.keys.has('KeyW') ? 1 : 0),
-    };
-  }
-
-  private bindInput(): void {
-    window.addEventListener('keydown', (e) => {
-      if (!this.visible) return;
-      this.keys.add(e.code);
-      if (e.code === 'Space') {
-        const target = this.enemy.respawn <= 0 ? this.enemy : { x: this.player.x, y: this.player.y - 100 };
-        this.fireAt(target.x, target.y);
-        e.preventDefault();
-      }
-    });
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-
-    this.canvas.addEventListener('pointerdown', (e) => {
-      const p = this.localPoint(e);
-      if (p.x < innerWidth * 0.56 && this.movePointer === null) {
-        this.movePointer = e.pointerId;
-        this.moveTarget = p;
-        this.canvas.setPointerCapture(e.pointerId);
-      } else {
-        this.fireAt(p.x, p.y);
-      }
-    });
-    this.canvas.addEventListener('pointermove', (e) => {
-      if (e.pointerId === this.movePointer) this.moveTarget = this.localPoint(e);
-    });
-    const release = (e: PointerEvent) => {
-      if (e.pointerId === this.movePointer) {
-        this.movePointer = null;
-        this.moveTarget = null;
-      }
-    };
-    this.canvas.addEventListener('pointerup', release);
-    this.canvas.addEventListener('pointercancel', release);
-  }
-
-  private localPoint(e: PointerEvent): Point {
-    const rect = this.canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    this.shots = kept;
   }
 
   private draw(): void {
-    const ctx = this.ctx;
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
-    this.drawRoom(ctx);
-    if (this.enemy.respawn <= 0) this.drawEnemy(ctx);
-    for (const shot of this.shots) this.drawShot(ctx, shot);
-    this.drawPlayer(ctx);
-    this.drawHud(ctx);
-    this.drawTouchHints(ctx);
-    if (this.transitionClock > 0) this.drawIntro(ctx);
-  }
+    const c = this.ctx;
+    c.clearRect(0, 0, innerWidth, innerHeight);
+    this.drawBackground(c);
 
-  private drawRoom(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = '#03070d';
-    ctx.fillRect(0, 0, innerWidth, innerHeight);
-    ctx.strokeStyle = 'rgba(54,163,255,0.38)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(ROOM_PAD, 86, innerWidth - ROOM_PAD * 2, innerHeight - 86 - ROOM_PAD);
-    for (let y = 106; y < innerHeight - ROOM_PAD; y += 42) {
-      ctx.strokeStyle = 'rgba(0,255,0,0.055)';
-      ctx.beginPath(); ctx.moveTo(ROOM_PAD, y); ctx.lineTo(innerWidth - ROOM_PAD, y); ctx.stroke();
+    c.save();
+    c.translate(-this.cameraX, 0);
+    this.drawWorld(c);
+    this.drawEnemy(c);
+    this.drawShots(c);
+    this.drawPlayer(c);
+    c.restore();
+
+    this.drawHud(c);
+    this.drawMobileControls(c);
+
+    if (this.introClock > 0) {
+      c.fillStyle = `rgba(2,6,11,${Math.min(0.88, this.introClock)})`;
+      c.fillRect(0, 0, innerWidth, innerHeight);
+      c.fillStyle = GREEN;
+      c.textAlign = 'center';
+      c.font = '900 15px ui-sans-serif, system-ui';
+      c.fillText('REGULATORY WARSHIP // DOCKING BAY', innerWidth / 2, innerHeight * 0.47);
+      c.fillStyle = BLUE;
+      c.font = '800 11px ui-sans-serif, system-ui';
+      c.fillText('XRPMan on foot', innerWidth / 2, innerHeight * 0.47 + 24);
     }
-    const box = this.centerObstacle();
-    ctx.fillStyle = 'rgba(5,18,28,0.94)';
-    ctx.strokeStyle = 'rgba(54,163,255,0.6)';
-    ctx.fillRect(box.x, box.y, box.w, box.h);
-    ctx.strokeRect(box.x, box.y, box.w, box.h);
-    ctx.fillStyle = 'rgba(0,255,0,0.15)';
-    ctx.fillRect(innerWidth * 0.5 - 36, 88, 72, 7);
   }
 
-  private drawPlayer(ctx: CanvasRenderingContext2D): void {
-    const frame = ({ front: 0, back: 1, left: 2, right: 3 } as const)[this.player.facing];
-    ctx.save();
-    if (this.hurtCooldown > 0) ctx.globalAlpha = Math.sin(performance.now() * 0.04) > 0 ? 0.35 : 1;
-    if (this.sprite.complete && this.sprite.naturalWidth >= 256) {
-      ctx.drawImage(this.sprite, frame * 64, 0, 64, 64, this.player.x - 32, this.player.y - 32, 64, 64);
+  private drawBackground(c: CanvasRenderingContext2D): void {
+    const gradient = c.createLinearGradient(0, 0, 0, innerHeight);
+    gradient.addColorStop(0, '#071322');
+    gradient.addColorStop(0.56, '#030912');
+    gradient.addColorStop(1, '#010306');
+    c.fillStyle = gradient;
+    c.fillRect(0, 0, innerWidth, innerHeight);
+
+    c.strokeStyle = 'rgba(54,163,255,0.12)';
+    c.lineWidth = 1;
+    for (let y = 110; y < innerHeight; y += 82) {
+      c.beginPath(); c.moveTo(0, y); c.lineTo(innerWidth, y); c.stroke();
+    }
+  }
+
+  private drawWorld(c: CanvasRenderingContext2D): void {
+    // Rear hull ribs create horizontal side-view depth without pretending this is final art.
+    for (let x = 40; x < SIDEVIEW_ROOM.worldWidth; x += 150) {
+      c.fillStyle = 'rgba(16,34,48,0.82)';
+      c.fillRect(x, 85, 24, 555);
+      c.strokeStyle = 'rgba(54,163,255,0.22)';
+      c.strokeRect(x, 85, 24, 555);
+    }
+
+    for (const platform of SIDEVIEW_ROOM.platforms) this.drawPlatform(c, platform);
+
+    c.fillStyle = '#111b25';
+    c.fillRect(665, 565, 54, 75);
+    c.fillRect(1270, 520, 62, 120);
+    c.strokeStyle = BLUE;
+    c.strokeRect(665, 565, 54, 75);
+    c.strokeRect(1270, 520, 62, 120);
+
+    const doorX = SIDEVIEW_ROOM.worldWidth - 92;
+    c.fillStyle = this.enemy.alive ? '#220c12' : '#06190f';
+    c.fillRect(doorX, SIDEVIEW_ROOM.floorY - 132, 68, 132);
+    c.strokeStyle = this.enemy.alive ? RED : GREEN;
+    c.lineWidth = 3;
+    c.strokeRect(doorX, SIDEVIEW_ROOM.floorY - 132, 68, 132);
+    c.fillStyle = this.enemy.alive ? RED : GREEN;
+    c.font = '900 11px ui-sans-serif, system-ui';
+    c.textAlign = 'center';
+    c.fillText(this.enemy.alive ? 'LOCKED' : 'OPEN', doorX + 34, SIDEVIEW_ROOM.floorY - 144);
+  }
+
+  private drawPlatform(c: CanvasRenderingContext2D, platform: Platform): void {
+    c.fillStyle = '#0b141c';
+    c.fillRect(platform.x, platform.y, platform.w, platform.h);
+    c.fillStyle = 'rgba(0,255,0,0.55)';
+    c.fillRect(platform.x, platform.y, platform.w, 3);
+    c.strokeStyle = 'rgba(54,163,255,0.25)';
+    c.strokeRect(platform.x, platform.y, platform.w, platform.h);
+  }
+
+  private drawPlayer(c: CanvasRenderingContext2D): void {
+    const flash = this.hurtCooldown > 0 && Math.floor(this.hurtCooldown * 16) % 2 === 0;
+    if (flash) c.globalAlpha = 0.35;
+
+    if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
+      const frame = this.fireCooldown > 0.08 ? 5 : 4;
+      c.save();
+      c.translate(this.player.x, this.player.y);
+      const flip = this.player.facing === 'left' ? -1 : 1;
+      c.scale(flip, 1);
+      c.drawImage(this.sprite, frame * 64, 0, 64, 64, -32, -32, 64, 64);
+      c.restore();
     } else {
-      ctx.fillStyle = GREEN;
-      ctx.beginPath(); ctx.arc(this.player.x, this.player.y, 18, 0, Math.PI * 2); ctx.fill();
+      c.fillStyle = '#07140d';
+      c.fillRect(this.player.x - 18, this.player.y - 32, 36, 64);
+      c.strokeStyle = GREEN;
+      c.lineWidth = 3;
+      c.strokeRect(this.player.x - 18, this.player.y - 32, 36, 64);
+      c.fillStyle = BLUE;
+      c.fillRect(this.player.x - 4, this.player.y - 7, 8, 8);
     }
-    ctx.restore();
+    c.globalAlpha = 1;
   }
 
-  private drawEnemy(ctx: CanvasRenderingContext2D): void {
-    ctx.save();
-    ctx.translate(this.enemy.x, this.enemy.y);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillStyle = '#501018';
-    ctx.strokeStyle = '#ff425c';
-    ctx.lineWidth = 3;
-    ctx.fillRect(-17, -17, 34, 34);
-    ctx.strokeRect(-17, -17, 34, 34);
-    ctx.restore();
-    const w = 54;
-    ctx.fillStyle = 'rgba(255,255,255,0.16)';
-    ctx.fillRect(this.enemy.x - w / 2, this.enemy.y - 34, w, 4);
-    ctx.fillStyle = '#ff425c';
-    ctx.fillRect(this.enemy.x - w / 2, this.enemy.y - 34, w * Math.max(0, this.enemy.health) / 80, 4);
+  private drawEnemy(c: CanvasRenderingContext2D): void {
+    if (!this.enemy.alive) return;
+    c.save();
+    c.translate(this.enemy.x, this.enemy.y);
+    c.fillStyle = '#261018';
+    c.fillRect(-21, -29, 42, 58);
+    c.strokeStyle = RED;
+    c.lineWidth = 3;
+    c.strokeRect(-21, -29, 42, 58);
+    c.fillStyle = RED;
+    c.fillRect(this.player.x < this.enemy.x ? -27 : 18, -7, 10, 6);
+    c.restore();
+
+    c.fillStyle = 'rgba(255,255,255,0.15)';
+    c.fillRect(this.enemy.x - 28, this.enemy.y - 43, 56, 5);
+    c.fillStyle = RED;
+    c.fillRect(this.enemy.x - 28, this.enemy.y - 43, 56 * this.enemy.health / 100, 5);
   }
 
-  private drawShot(ctx: CanvasRenderingContext2D, shot: Shot): void {
-    ctx.save();
-    ctx.fillStyle = shot.hostile ? '#ff425c' : GREEN;
-    ctx.shadowColor = shot.hostile ? '#ff425c' : BLUE;
-    ctx.shadowBlur = 12;
-    ctx.beginPath(); ctx.arc(shot.x, shot.y, shot.hostile ? 5 : 6, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+  private drawShots(c: CanvasRenderingContext2D): void {
+    for (const shot of this.shots) {
+      c.save();
+      c.shadowColor = shot.hostile ? RED : GREEN;
+      c.shadowBlur = 14;
+      c.fillStyle = shot.hostile ? RED : GREEN;
+      c.fillRect(shot.x - 7, shot.y - 3, 14, 6);
+      c.restore();
+    }
   }
 
-  private drawHud(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = 'rgba(2,6,11,0.9)';
-    ctx.fillRect(0, 0, innerWidth, 78);
-    ctx.fillStyle = '#d8ffe8';
-    ctx.font = '800 12px ui-sans-serif,system-ui';
-    ctx.fillText('XRP MAN // REGULATORY WARSHIP // DOCKING BAY', 18, 23);
-    this.drawBar(ctx, 18, 38, Math.min(180, innerWidth * 0.38), 8, this.player.health / 100, '#ff425c', 'HP');
-    this.drawBar(ctx, 18, 57, Math.min(180, innerWidth * 0.38), 8, this.player.energy / 100, GREEN, 'ENERGY');
-    ctx.textAlign = 'right';
-    ctx.fillStyle = BLUE;
-    ctx.fillText(`LIQUIDITY BLAST // KILLS ${this.kills}`, innerWidth - 18, 24);
-    ctx.fillStyle = 'rgba(216,255,232,0.6)';
-    ctx.fillText('LEFT: MOVE   RIGHT: FIRE', innerWidth - 18, 57);
-    ctx.textAlign = 'left';
+  private drawHud(c: CanvasRenderingContext2D): void {
+    c.fillStyle = 'rgba(2,6,11,0.78)';
+    c.fillRect(12, 12, Math.min(318, innerWidth - 24), 78);
+    c.strokeStyle = 'rgba(54,163,255,0.5)';
+    c.strokeRect(12, 12, Math.min(318, innerWidth - 24), 78);
+    c.textAlign = 'left';
+    c.font = '900 12px ui-sans-serif, system-ui';
+    c.fillStyle = GREEN;
+    c.fillText('XRPMAN // WARSHIP INTERIOR', 24, 32);
+    c.fillStyle = '#d8ffe8';
+    c.font = '800 10px ui-sans-serif, system-ui';
+    c.fillText('HP', 24, 52);
+    c.fillStyle = '#173427'; c.fillRect(50, 44, 104, 9);
+    c.fillStyle = GREEN; c.fillRect(50, 44, 104 * this.player.health / 100, 9);
+    c.fillStyle = '#d8ffe8'; c.fillText('ENERGY', 170, 52);
+    c.fillStyle = '#10283a'; c.fillRect(220, 44, 82, 9);
+    c.fillStyle = BLUE; c.fillRect(220, 44, 82 * this.player.energy / 100, 9);
+    c.fillStyle = 'rgba(216,255,232,0.66)';
+    c.fillText(this.enemy.alive ? 'OBJECTIVE: CLEAR SECURITY // REACH EXIT' : 'SECURITY DOWN // EXIT OPEN', 24, 73);
+
+    if (this.completionClock > 100) {
+      c.textAlign = 'center';
+      c.fillStyle = GREEN;
+      c.font = '900 18px ui-sans-serif, system-ui';
+      c.fillText('SIDE-VIEW PROTOTYPE CLEAR', innerWidth / 2, 120);
+    }
   }
 
-  private drawBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, value: number, color: string, label: string): void {
-    ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = color; ctx.fillRect(x, y, w * clamp(value, 0, 1), h);
-    ctx.fillStyle = 'rgba(216,255,232,0.7)'; ctx.font = '700 8px ui-sans-serif,system-ui'; ctx.fillText(label, x + w + 7, y + 7);
+  private drawMobileControls(c: CanvasRenderingContext2D): void {
+    if (!matchMedia('(pointer: coarse)').matches) return;
+    const y = innerHeight - 74;
+    c.globalAlpha = 0.7;
+    c.textAlign = 'center';
+    c.font = '900 12px ui-sans-serif, system-ui';
+
+    button(c, innerWidth * 0.09, y, 58, 48, '◀', BLUE);
+    button(c, innerWidth * 0.26, y, 58, 48, '▶', BLUE);
+    button(c, innerWidth * 0.68, y, 66, 48, 'JUMP', GREEN);
+    button(c, innerWidth * 0.89, y, 66, 48, 'BLAST', GREEN);
+    c.globalAlpha = 1;
   }
 
-  private drawTouchHints(ctx: CanvasRenderingContext2D): void {
-    if (innerWidth > 820) return;
-    ctx.save();
-    ctx.globalAlpha = 0.16;
-    ctx.strokeStyle = BLUE;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(72, innerHeight - 72, 42, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = GREEN;
-    ctx.beginPath(); ctx.arc(innerWidth - 72, innerHeight - 72, 42, 0, Math.PI * 2); ctx.stroke();
-    ctx.restore();
+  private bindInput(): void {
+    window.addEventListener('keydown', (event) => {
+      if (!this.visible) return;
+      const key = event.key.toLowerCase();
+      this.keys.add(key);
+      if (key === ' ' || key === 'w' || key === 'arrowup') {
+        event.preventDefault();
+        this.tryJump();
+      }
+      if (key === 'x' || key === 'f' || key === 'enter') this.fireLiquidityBlast();
+    });
+    window.addEventListener('keyup', (event) => this.keys.delete(event.key.toLowerCase()));
+
+    this.canvas.addEventListener('pointerdown', (event) => {
+      if (!this.visible) return;
+      this.canvas.setPointerCapture(event.pointerId);
+      const x = event.clientX / innerWidth;
+      const y = event.clientY / innerHeight;
+      if (y < 0.68) {
+        // Tapping the upper playfield fires in current facing direction.
+        this.fireLiquidityBlast();
+        return;
+      }
+      if (x < 0.18) {
+        this.pointerMoveId = event.pointerId;
+        this.pointerMove = -1;
+      } else if (x < 0.42) {
+        this.pointerMoveId = event.pointerId;
+        this.pointerMove = 1;
+      } else if (x < 0.79) {
+        this.tryJump();
+      } else {
+        this.fireLiquidityBlast();
+      }
+    });
+    this.canvas.addEventListener('pointerup', (event) => {
+      if (event.pointerId === this.pointerMoveId) {
+        this.pointerMoveId = null;
+        this.pointerMove = 0;
+      }
+    });
+    this.canvas.addEventListener('pointercancel', (event) => {
+      if (event.pointerId === this.pointerMoveId) {
+        this.pointerMoveId = null;
+        this.pointerMove = 0;
+      }
+    });
   }
 
-  private drawIntro(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = 'rgba(2,6,11,0.72)'; ctx.fillRect(0, 78, innerWidth, innerHeight - 78);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = GREEN; ctx.font = '900 20px ui-sans-serif,system-ui';
-    ctx.fillText('BOARDING COMPLETE', innerWidth / 2, innerHeight * 0.46);
-    ctx.fillStyle = BLUE; ctx.font = '800 12px ui-sans-serif,system-ui';
-    ctx.fillText('XRP MAN // SECURE THE DOCKING BAY', innerWidth / 2, innerHeight * 0.46 + 30);
-    ctx.textAlign = 'left';
-  }
-
-  private centerObstacle() {
-    const w = Math.min(170, innerWidth * 0.34);
-    return { x: innerWidth * 0.5 - w / 2, y: innerHeight * 0.47, w, h: 72 };
+  private resetRoom(): void {
+    this.player = {
+      x: SIDEVIEW_ROOM.startX,
+      y: SIDEVIEW_ROOM.startY,
+      vx: 0,
+      vy: 0,
+      health: 100,
+      energy: 100,
+      facing: 'right',
+      grounded: false,
+    };
+    this.enemy = { x: 1085, y: 380, w: 42, h: 58, health: 100, fireClock: 1.1, alive: true };
+    this.shots = [];
+    this.cameraX = 0;
+    this.fireCooldown = 0;
+    this.hurtCooldown = 0;
+    this.coyoteClock = 0;
+    this.jumpBufferClock = 0;
+    this.completionClock = 0;
+    this.pointerMove = 0;
+    this.pointerMoveId = null;
   }
 
   private resize(): void {
@@ -379,5 +503,20 @@ export class OnFootGame {
   }
 }
 
-function distance(a: Point, b: Point): number { return Math.hypot(a.x - b.x, a.y - b.y); }
-function clamp(value: number, min: number, max: number): number { return Math.max(min, Math.min(max, value)); }
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function rectOverlap(ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number): boolean {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function button(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, label: string, color: string): void {
+  c.fillStyle = 'rgba(2,6,11,0.78)';
+  c.fillRect(x - w / 2, y - h / 2, w, h);
+  c.strokeStyle = color;
+  c.lineWidth = 2;
+  c.strokeRect(x - w / 2, y - h / 2, w, h);
+  c.fillStyle = color;
+  c.fillText(label, x, y + 4);
+}
