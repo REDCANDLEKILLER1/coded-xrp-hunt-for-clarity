@@ -2,7 +2,7 @@
 
 **Updated:** 2026-08-19
 
-This file is a compact live resume note. Read `docs/ai-handoff/CURRENT_STATE.md` for full doctrine, then verify the actual PRs/branches before changing code.
+This file is the compact live resume note. Read `CURRENT_STATE.md` and `LEVEL1_CANON_LOCKS.md`, then verify the actual PRs/branches before changing code.
 
 ## Active stack
 
@@ -10,7 +10,7 @@ This file is a compact live resume note. Read `docs/ai-handoff/CURRENT_STATE.md`
 - Branch: `gpt/level1-a-mission-director`
 - Base: `main`
 - Head: `af1c919c8c8bb08255c8340c6c85d88123465600`
-- Status: open draft, mergeable
+- Status: open draft, mergeable when last checked
 - GitHub Build Check: success on exact head
 - Vercel: success on exact head
 - `npm test`: not independently executed/claimed
@@ -26,23 +26,50 @@ This file is a compact live resume note. Read `docs/ai-handoff/CURRENT_STATE.md`
 - GitHub Build Check does not run while PR base is a feature branch
 - `npm test`: not independently executed/claimed
 - Scope: v3 local save migration, coarse checkpoint snapshots, resume/restart UI, deterministic mission-act resume, four Earth checkpoint declarations
-- No authored encounter triggers yet
 - No merge before L1-A and no merge without XRPMan approval
+
+### PR #48 — L1-C Authored Earth Opening Encounters
+- Branch: `gpt/level1-c-space-encounters`
+- Base: `gpt/level1-b-checkpoints`
+- Head: `efd863a82b6507037ea8bb0e80f103b812c9e3d2`
+- Status: open draft, stacked on PR #47
+- Vercel: success on exact head
+- GitHub Build Check does not run while PR base is a feature branch
+- `npm test`: not independently executed/claimed
+- Scope:
+  - authored Orbital Approach, Fog Belt, Ledger City, and Defense Grid air formations
+  - deterministic formation sequencing instead of score/random progression for Earth campaign
+  - mission HUD objective/formation progress
+  - Deep Space Lane -> Ledger City stage transition
+  - earns `earth.orbital_gate` after Fog Belt
+  - earns `earth.defense_grid` after current air-only Defense Grid skeleton
+  - mission state now owned by runtime
+  - Arcade Test Run preserves original random score/wave system
+- Intentional stop: campaign waits at `gary_fog`; no Guardian implementation/reward yet
+- No merge before L1-A/L1-B and no merge without XRPMan approval
 
 ## Exact next build step
 
-Create `gpt/level1-c-space-encounters` from PR #47 head and implement **authored Earth flight encounters only**:
-- orbital approach
-- fog belt
-- Ledger City approach
-- defense-grid pacing skeleton
-- mission-act advancement based on encounter completion rather than score
-- earn/checkpoint `earth.orbital_gate` and `earth.defense_grid`
-- preserve current movement/fire/collision feel
-- no Fast Scout art import yet
-- no new assets
-- no Gary Fog redesign
-- no Regulatory Warship implementation
-- no on-foot mode
+Start **L1-D1 — immediate Level 1 asset bank** from PR #48 head.
 
-After each new stacked PR, update this note or `CURRENT_STATE.md`.
+Keep it just-in-time and asset-only:
+- inspect current manifest first to prevent duplicates
+- bank **Fast Scout** and **Armored Space Mine** only if they are not already present under usable manifest IDs
+- technically trim/alpha-clean/resize/optimize for runtime as needed
+- update manifest in same PR
+- no gameplay logic in D1
+- do not bank Regulatory Warship or Fog Breaker yet; they belong with their later gameplay phases unless a manifest dependency requires otherwise
+
+Then **L1-D2 — Mixed Air/Ground Threats** will:
+- introduce Fast Scout alone before mixed formations
+- introduce Armored Space Mine alone before mixed formations
+- introduce Basic Turret alone before combining with air threats
+- add Cannon Turret later in the act
+- move `earth.defense_grid` checkpoint earning to the end of the completed mixed-threat grid
+- preserve flight movement/fire/collision feel
+
+## Audio lane
+
+Audio is planned but does not block these phases. Add SFX just-in-time after each behavior is stable. See `AUDIO_PLAN.md` and `ASSET_AUDIO_ROADMAP.md`.
+
+After each new stacked PR, update this note.
