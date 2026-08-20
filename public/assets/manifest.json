@@ -36,6 +36,11 @@
       "src": "/assets/enemies/rug_fighter.webp",
       "type": "image",
       "notes": "Phase O optimized v16 canon master: enemy_rug_fighter"
+    },
+    "fast_scout": {
+      "src": "/assets/enemies/fast_scout.webp",
+      "type": "image",
+      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_fast_scout master"
     }
   },
   "bosses": {
@@ -148,6 +153,11 @@
       "src": "/assets/hazards/plasma_turret.webp",
       "type": "image",
       "notes": "Phase R optimized original-build master: ground_plasma_turret"
+    },
+    "armored_space_mine": {
+      "src": "/assets/hazards/armored_space_mine.webp",
+      "type": "image",
+      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_armored_space_mine master"
     }
   },
   "environment": {
