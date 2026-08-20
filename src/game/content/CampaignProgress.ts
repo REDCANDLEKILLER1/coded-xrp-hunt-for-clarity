@@ -1,5 +1,20 @@
 import { PLANET_BY_KEY } from './CampaignPlanets';
 
+export type LegacyCheckpointStage = 'space' | 'guardian' | 'surface' | 'boss';
+
+export interface MissionCheckpointSnapshot {
+  planetKey: string;
+  missionKey: string;
+  checkpointKey: string;
+  checkpointLabel: string;
+  resumeActKey: string;
+  shipKey: string;
+  weaponTier: number;
+  bombs: number;
+  score: number;
+  savedAt: number;
+}
+
 export interface CampaignProgress {
   highScore: number;
   highestWave: number;
@@ -9,12 +24,14 @@ export interface CampaignProgress {
   clearedPlanets: string[];
   defeatedGuardians: string[];
   defeatedSurfaceBosses: string[];
-  checkpoints: Record<string, 'space' | 'guardian' | 'surface' | 'boss'>;
+  checkpoints: Record<string, LegacyCheckpointStage>;
+  missionCheckpoints: Record<string, MissionCheckpointSnapshot>;
   upgradePoints: number;
 }
 
-export const CAMPAIGN_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v2';
-export const LEGACY_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v1';
+export const CAMPAIGN_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v3';
+export const LEGACY_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v2';
+export const LEGACY_V1_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v1';
 
 export const EMPTY_PROGRESS: CampaignProgress = {
   highScore: 0,
@@ -26,12 +43,13 @@ export const EMPTY_PROGRESS: CampaignProgress = {
   defeatedGuardians: [],
   defeatedSurfaceBosses: [],
   checkpoints: {},
+  missionCheckpoints: {},
   upgradePoints: 0,
 };
 
 /** Parses untrusted local persistence without allowing malformed values into the game. */
 export function parseCampaignProgress(raw: string | null): CampaignProgress {
-  if (!raw) return { ...EMPTY_PROGRESS };
+  if (!raw) return freshEmptyProgress();
   try {
     const value = JSON.parse(raw) as Partial<CampaignProgress>;
     return {
@@ -43,11 +61,12 @@ export function parseCampaignProgress(raw: string | null): CampaignProgress {
       clearedPlanets: safeKeys(value.clearedPlanets),
       defeatedGuardians: safeKeys(value.defeatedGuardians),
       defeatedSurfaceBosses: safeKeys(value.defeatedSurfaceBosses),
-      checkpoints: safeCheckpoints(value.checkpoints),
+      checkpoints: safeLegacyCheckpoints(value.checkpoints),
+      missionCheckpoints: safeMissionCheckpoints(value.missionCheckpoints),
       upgradePoints: safeCount(value.upgradePoints, 0),
     };
   } catch {
-    return { ...EMPTY_PROGRESS };
+    return freshEmptyProgress();
   }
 }
 
@@ -67,6 +86,7 @@ export function recordCampaignRun(
     defeatedGuardians: [...current.defeatedGuardians],
     defeatedSurfaceBosses: [...current.defeatedSurfaceBosses],
     checkpoints: { ...current.checkpoints },
+    missionCheckpoints: { ...current.missionCheckpoints },
     upgradePoints: current.upgradePoints,
   };
 }
@@ -82,9 +102,39 @@ export function recordPlanetSelection(current: CampaignProgress, planetKey: stri
   };
 }
 
+export function recordMissionCheckpoint(
+  current: CampaignProgress,
+  snapshot: MissionCheckpointSnapshot,
+): CampaignProgress {
+  const safe = sanitizeMissionCheckpoint(snapshot);
+  if (!safe) return cloneProgress(current);
+  return {
+    ...current,
+    currentPlanet: safe.planetKey,
+    discoveredPlanets: ensureFirstPlanet(unique([...current.discoveredPlanets, safe.planetKey])),
+    checkpoints: { ...current.checkpoints },
+    missionCheckpoints: { ...current.missionCheckpoints, [safe.planetKey]: safe },
+  };
+}
+
+export function clearMissionCheckpoint(current: CampaignProgress, planetKey: string): CampaignProgress {
+  const safe = safeKey(planetKey, '');
+  if (!safe || !current.missionCheckpoints[safe]) return cloneProgress(current);
+  const missionCheckpoints = { ...current.missionCheckpoints };
+  delete missionCheckpoints[safe];
+  return { ...current, missionCheckpoints };
+}
+
+export function missionCheckpointFor(current: CampaignProgress, planetKey: string): MissionCheckpointSnapshot | undefined {
+  const safe = safeKey(planetKey, '');
+  return safe ? current.missionCheckpoints[safe] : undefined;
+}
+
 export function recordPlanetCleared(current: CampaignProgress, planetKey: string, upgradeReward: number): CampaignProgress {
   const planet = PLANET_BY_KEY[planetKey];
-  if (!planet) return { ...current };
+  if (!planet) return cloneProgress(current);
+  const missionCheckpoints = { ...current.missionCheckpoints };
+  delete missionCheckpoints[planetKey];
   return {
     ...current,
     currentPlanet: planetKey,
@@ -93,15 +143,20 @@ export function recordPlanetCleared(current: CampaignProgress, planetKey: string
     defeatedGuardians: unique([...current.defeatedGuardians, planetKey]),
     defeatedSurfaceBosses: unique([...current.defeatedSurfaceBosses, planetKey]),
     checkpoints: { ...current.checkpoints, [planetKey]: 'boss' },
+    missionCheckpoints,
     upgradePoints: current.upgradePoints + safeCount(upgradeReward, 0),
   };
 }
 
 export function loadCampaignProgress(): CampaignProgress {
   try {
-    return parseCampaignProgress(localStorage.getItem(CAMPAIGN_PROGRESS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_PROGRESS_STORAGE_KEY));
+    return parseCampaignProgress(
+      localStorage.getItem(CAMPAIGN_PROGRESS_STORAGE_KEY)
+      ?? localStorage.getItem(LEGACY_PROGRESS_STORAGE_KEY)
+      ?? localStorage.getItem(LEGACY_V1_PROGRESS_STORAGE_KEY),
+    );
   } catch {
-    return parseCampaignProgress(null);
+    return freshEmptyProgress();
   }
 }
 
@@ -113,12 +168,78 @@ export function saveCampaignProgress(progress: CampaignProgress): void {
   }
 }
 
+function freshEmptyProgress(): CampaignProgress {
+  return {
+    ...EMPTY_PROGRESS,
+    discoveredPlanets: [...EMPTY_PROGRESS.discoveredPlanets],
+    clearedPlanets: [],
+    defeatedGuardians: [],
+    defeatedSurfaceBosses: [],
+    checkpoints: {},
+    missionCheckpoints: {},
+  };
+}
+
+function cloneProgress(current: CampaignProgress): CampaignProgress {
+  return {
+    ...current,
+    discoveredPlanets: [...current.discoveredPlanets],
+    clearedPlanets: [...current.clearedPlanets],
+    defeatedGuardians: [...current.defeatedGuardians],
+    defeatedSurfaceBosses: [...current.defeatedSurfaceBosses],
+    checkpoints: { ...current.checkpoints },
+    missionCheckpoints: { ...current.missionCheckpoints },
+  };
+}
+
+function sanitizeMissionCheckpoint(value: unknown): MissionCheckpointSnapshot | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const snapshot = value as Partial<MissionCheckpointSnapshot>;
+  const planetKey = safeKey(snapshot.planetKey, '');
+  const missionKey = safeKey(snapshot.missionKey, '');
+  const checkpointKey = safeCheckpointKey(snapshot.checkpointKey);
+  const checkpointLabel = safeLabel(snapshot.checkpointLabel);
+  const resumeActKey = safeKey(snapshot.resumeActKey, '');
+  const shipKey = safeKey(snapshot.shipKey, '');
+  if (!planetKey || !missionKey || !checkpointKey || !checkpointLabel || !resumeActKey || !shipKey) return null;
+  return {
+    planetKey,
+    missionKey,
+    checkpointKey,
+    checkpointLabel,
+    resumeActKey,
+    shipKey,
+    weaponTier: clamp(safeCount(snapshot.weaponTier, 1), 1, 9),
+    bombs: clamp(safeCount(snapshot.bombs, 0), 0, 9),
+    score: safeCount(snapshot.score, 0),
+    savedAt: safeCount(snapshot.savedAt, 0),
+  };
+}
+
+function safeMissionCheckpoints(value: unknown): Record<string, MissionCheckpointSnapshot> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const result: Record<string, MissionCheckpointSnapshot> = {};
+  for (const item of Object.values(value)) {
+    const snapshot = sanitizeMissionCheckpoint(item);
+    if (snapshot) result[snapshot.planetKey] = snapshot;
+  }
+  return result;
+}
+
 function safeCount(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
 
 function safeKey(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^[a-z0-9_]{1,64}$/.test(value) ? value : fallback;
+}
+
+function safeCheckpointKey(value: unknown): string {
+  return typeof value === 'string' && /^[a-z0-9_.-]{1,96}$/.test(value) ? value : '';
+}
+
+function safeLabel(value: unknown): string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 64 ? value : '';
 }
 
 function safeKeys(value: unknown): string[] {
@@ -134,14 +255,18 @@ function ensureFirstPlanet(keys: string[]): string[] {
   return keys.includes('ledger_prime') ? keys : ['ledger_prime', ...keys];
 }
 
-function safeCheckpoints(value: unknown): Record<string, 'space' | 'guardian' | 'surface' | 'boss'> {
+function safeLegacyCheckpoints(value: unknown): Record<string, LegacyCheckpointStage> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
-  const allowed = new Set(['space', 'guardian', 'surface', 'boss']);
-  const result: Record<string, 'space' | 'guardian' | 'surface' | 'boss'> = {};
+  const allowed = new Set<LegacyCheckpointStage>(['space', 'guardian', 'surface', 'boss']);
+  const result: Record<string, LegacyCheckpointStage> = {};
   for (const [key, checkpoint] of Object.entries(value)) {
-    if (safeKey(key, '') && typeof checkpoint === 'string' && allowed.has(checkpoint)) {
-      result[key] = checkpoint as 'space' | 'guardian' | 'surface' | 'boss';
+    if (safeKey(key, '') && typeof checkpoint === 'string' && allowed.has(checkpoint as LegacyCheckpointStage)) {
+      result[key] = checkpoint as LegacyCheckpointStage;
     }
   }
   return result;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
