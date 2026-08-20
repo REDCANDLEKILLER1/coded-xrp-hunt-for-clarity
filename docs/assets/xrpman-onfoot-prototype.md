@@ -9,3 +9,4 @@ Runtime sheet: `/assets/characters/xrpman_onfoot_proto_sheet.png`
 - frame order: front, back, left, right, side idle, side fire
 - identity source remains the supplied XRPMan character sheet
 - H1 exit condition: asset and manifest entry live together on the branch with no orphan file
+- verified runtime target: 64 px base frame
