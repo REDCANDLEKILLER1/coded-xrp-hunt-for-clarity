@@ -68,7 +68,22 @@ returnMap.addEventListener('click', () => {
 });
 
 void game.start().then(() => {
-  if (!new URLSearchParams(location.search).has('onfoot')) return;
+  const params = new URLSearchParams(location.search);
+
+  // Dedicated phone playtest route. It bypasses the title/campaign shell and starts the
+  // existing arcade fighter loop without changing its movement, firing, or collision rules.
+  if (params.has('flight')) {
+    map.hide();
+    onFoot.hide();
+    gameShell.hidden = false;
+    canvas.style.visibility = 'visible';
+    game.deployTestMode();
+    const flightTest = game as unknown as { reset: () => void };
+    flightTest.reset();
+    return;
+  }
+
+  if (!params.has('onfoot')) return;
   map.hide();
   game.suspend();
   gameShell.hidden = false;
