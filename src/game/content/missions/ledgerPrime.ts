@@ -3,9 +3,9 @@ import type { MissionDef } from './types';
 /**
  * Level 1 vertical-slice mission spine.
  *
- * Phase L1-A intentionally defines only authored mission state. Encounter
- * completion, checkpoints, boss rewards, boarding, and on-foot runtime wiring
- * land in later phases so the validated flight feel stays untouched here.
+ * Encounter completion, boss rewards, boarding, and on-foot runtime wiring land
+ * in later phases. Checkpoint boundaries are declared here so persistence can
+ * resume the authored mission without serializing live simulation state.
  */
 export const EARTH_LEDGER_PRIME_MISSION: MissionDef = {
   key: 'earth_ledger_prime',
@@ -24,5 +24,11 @@ export const EARTH_LEDGER_PRIME_MISSION: MissionDef = {
     { key: 'warship_interior', label: 'WARSHIP INTERIOR', objective: 'REACH THE LEDGER DEFENSE CORE', mode: 'on_foot' },
     { key: 'ledger_defense_core', label: 'LEDGER DEFENSE CORE', objective: 'TAKE CONTROL OF THE WARSHIP', mode: 'boss' },
     { key: 'earth_defended', label: 'EARTH DEFENDED', objective: 'SECURE THE CAPTURED WARSHIP', mode: 'complete' },
+  ],
+  checkpoints: [
+    { key: 'earth.orbital_gate', label: 'ORBITAL GATE', resumeActKey: 'ledger_city' },
+    { key: 'earth.defense_grid', label: 'DEFENSE GRID', resumeActKey: 'gary_fog' },
+    { key: 'earth.boarding_lock', label: 'BOARDING LOCK', resumeActKey: 'boarding' },
+    { key: 'earth.core_access', label: 'CORE ACCESS', resumeActKey: 'ledger_defense_core' },
   ],
 };
