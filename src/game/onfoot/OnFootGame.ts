@@ -13,10 +13,12 @@ type EnemyState = InteriorEnemySpawn & { w: number; h: number; fireClock: number
 const GREEN = '#00ff00';
 const BLUE = '#36a3ff';
 const RED = '#ff4c66';
+const PLAYER_RENDER_SIZE = 84;
 
 /**
  * L1-I first authored Regulatory Warship interior slice.
  * H2 movement/jump/shooting constants remain locked while presentation and room flow expand.
+ * The current XRPMan sheet is still prototype art; this runtime only improves readability.
  */
 export class OnFootGame {
   private readonly canvas: HTMLCanvasElement;
@@ -57,8 +59,14 @@ export class OnFootGame {
     this.canvas = document.createElement('canvas');
     this.canvas.setAttribute('aria-label', 'XRPMan Regulatory Warship interior');
     Object.assign(this.canvas.style, {
-      position: 'absolute', inset: '0', width: '100%', height: '100%', zIndex: '6',
-      display: 'none', touchAction: 'none', background: '#02060b',
+      position: 'absolute',
+      inset: '0',
+      width: '100%',
+      height: '100%',
+      zIndex: '6',
+      display: 'none',
+      touchAction: 'none',
+      background: '#02060b',
     });
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('On-foot canvas unavailable.');
@@ -81,7 +89,7 @@ export class OnFootGame {
     this.resetRun();
     this.visible = true;
     this.canvas.style.display = 'block';
-    this.introClock = 1.15;
+    this.introClock = 0.82;
     window.dispatchEvent(new CustomEvent('coded:music-cue', { detail: { cue: 'warship_interior' } }));
   }
 
@@ -198,7 +206,7 @@ export class OnFootGame {
     this.player.energy -= ONFOOT_PHYSICS.blastCost;
     const direction = this.player.facing === 'right' ? 1 : -1;
     this.shots.push({
-      x: this.player.x + direction * 28,
+      x: this.player.x + direction * 32,
       y: this.player.y - 8,
       vx: direction * ONFOOT_PHYSICS.blastSpeed,
       vy: 0,
@@ -285,7 +293,7 @@ export class OnFootGame {
   private draw(): void {
     const c = this.ctx;
     c.clearRect(0, 0, innerWidth, innerHeight);
-    c.fillStyle = '#010306';
+    c.fillStyle = '#071321';
     c.fillRect(0, 0, innerWidth, innerHeight);
 
     c.save();
@@ -303,7 +311,7 @@ export class OnFootGame {
 
     if (this.introClock > 0) this.drawRoomIntro(c);
     if (this.transitionClock > 0) {
-      c.fillStyle = `rgba(2,6,11,${0.35 + (1 - this.transitionClock / 0.42) * 0.45})`;
+      c.fillStyle = `rgba(2,6,11,${0.18 + (1 - this.transitionClock / 0.42) * 0.42})`;
       c.fillRect(0, 0, innerWidth, innerHeight);
     }
   }
@@ -311,16 +319,21 @@ export class OnFootGame {
   private drawRoomBackground(c: CanvasRenderingContext2D): void {
     const image = this.backgrounds.get(this.room.key);
     if (image?.complete && image.naturalWidth > 0) {
+      c.save();
+      c.filter = 'brightness(1.42) contrast(1.04) saturate(1.08)';
       c.drawImage(image, 0, 0, this.room.worldWidth, this.room.worldHeight);
+      c.restore();
     } else {
-      c.fillStyle = '#06111b';
+      c.fillStyle = '#0a1a29';
       c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
     }
-    const shade = c.createLinearGradient(0, 0, 0, this.room.worldHeight);
-    shade.addColorStop(0, 'rgba(0,0,0,0.08)');
-    shade.addColorStop(0.55, 'rgba(0,0,0,0.04)');
-    shade.addColorStop(1, 'rgba(0,0,0,0.34)');
-    c.fillStyle = shade;
+
+    // Keep foreground geometry readable without crushing already-dark concept art.
+    const blueLift = c.createLinearGradient(0, 0, 0, this.room.worldHeight);
+    blueLift.addColorStop(0, 'rgba(54,163,255,0.055)');
+    blueLift.addColorStop(0.55, 'rgba(54,163,255,0.025)');
+    blueLift.addColorStop(1, 'rgba(0,0,0,0.10)');
+    c.fillStyle = blueLift;
     c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
   }
 
@@ -330,7 +343,7 @@ export class OnFootGame {
     c.save();
     c.shadowColor = this.roomCleared() ? GREEN : RED;
     c.shadowBlur = this.roomCleared() ? 18 : 10;
-    c.strokeStyle = this.roomCleared() ? 'rgba(0,255,0,0.9)' : 'rgba(255,76,102,0.75)';
+    c.strokeStyle = this.roomCleared() ? 'rgba(0,255,0,0.9)' : 'rgba(255,76,102,0.78)';
     c.lineWidth = 3;
     c.strokeRect(doorX, this.room.floorY - 126, 54, 126);
     if (this.roomCleared()) {
@@ -341,32 +354,53 @@ export class OnFootGame {
   }
 
   private drawPlatform(c: CanvasRenderingContext2D, platform: InteriorPlatform): void {
-    c.fillStyle = 'rgba(4,12,18,0.28)';
+    c.fillStyle = 'rgba(4,12,18,0.16)';
     c.fillRect(platform.x, platform.y, platform.w, platform.h);
-    c.fillStyle = 'rgba(0,255,0,0.34)';
+    c.fillStyle = 'rgba(0,255,0,0.48)';
     c.fillRect(platform.x, platform.y, platform.w, 2);
-    c.strokeStyle = 'rgba(54,163,255,0.18)';
+    c.strokeStyle = 'rgba(54,163,255,0.34)';
     c.strokeRect(platform.x, platform.y, platform.w, platform.h);
   }
 
   private drawPlayer(c: CanvasRenderingContext2D): void {
     const flash = this.hurtCooldown > 0 && Math.floor(this.hurtCooldown * 16) % 2 === 0;
     if (flash) c.globalAlpha = 0.35;
+
+    const running = this.player.grounded && Math.abs(this.player.vx) > 40;
+    const bob = running ? Math.sin(performance.now() * 0.018) * 2 : 0;
+
+    c.save();
+    c.fillStyle = 'rgba(0,0,0,0.34)';
+    c.beginPath();
+    c.ellipse(this.player.x, this.player.y + ONFOOT_PHYSICS.playerHeight / 2 + 4, 25, 6, 0, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+
     if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
       const frame = this.fireCooldown > 0.08 ? 5 : 4;
       c.save();
-      c.translate(this.player.x, this.player.y);
+      c.translate(this.player.x, this.player.y + bob - 5);
       c.scale(this.player.facing === 'left' ? -1 : 1, 1);
-      c.shadowColor = GREEN;
-      c.shadowBlur = 8;
-      c.drawImage(this.sprite, frame * 64, 0, 64, 64, -32, -32, 64, 64);
+      c.shadowColor = this.fireCooldown > 0 ? GREEN : BLUE;
+      c.shadowBlur = this.fireCooldown > 0 ? 18 : 11;
+      c.drawImage(
+        this.sprite,
+        frame * 64,
+        0,
+        64,
+        64,
+        -PLAYER_RENDER_SIZE / 2,
+        -PLAYER_RENDER_SIZE / 2,
+        PLAYER_RENDER_SIZE,
+        PLAYER_RENDER_SIZE,
+      );
       c.restore();
     } else {
       c.fillStyle = '#07140d';
-      c.fillRect(this.player.x - 18, this.player.y - 32, 36, 64);
+      c.fillRect(this.player.x - 21, this.player.y - 38, 42, 76);
       c.strokeStyle = GREEN;
       c.lineWidth = 3;
-      c.strokeRect(this.player.x - 18, this.player.y - 32, 36, 64);
+      c.strokeRect(this.player.x - 21, this.player.y - 38, 42, 76);
     }
     c.globalAlpha = 1;
   }
@@ -377,7 +411,7 @@ export class OnFootGame {
       c.save();
       c.translate(enemy.x, enemy.y);
       c.shadowColor = RED;
-      c.shadowBlur = 10;
+      c.shadowBlur = 13;
       if (this.enemySprite.complete && this.enemySprite.naturalWidth > 0) {
         c.drawImage(this.enemySprite, -enemy.w / 2, -enemy.h / 2, enemy.w, enemy.h);
       } else {
@@ -387,7 +421,7 @@ export class OnFootGame {
         c.strokeRect(-enemy.w / 2, -enemy.h / 2, enemy.w, enemy.h);
       }
       c.restore();
-      c.fillStyle = 'rgba(255,255,255,0.17)';
+      c.fillStyle = 'rgba(255,255,255,0.22)';
       c.fillRect(enemy.x - 25, enemy.y - enemy.h / 2 - 10, 50, 4);
       c.fillStyle = RED;
       const maxHealth = this.room.key === 'docking_bay' ? 80 : enemy.x > 800 ? 120 : 100;
@@ -399,12 +433,13 @@ export class OnFootGame {
     for (const shot of this.shots) {
       c.save();
       c.shadowColor = shot.hostile ? RED : GREEN;
-      c.shadowBlur = shot.hostile ? 12 : 18;
+      c.shadowBlur = shot.hostile ? 12 : 20;
       c.fillStyle = shot.hostile ? RED : GREEN;
-      if (shot.hostile) c.fillRect(shot.x - 7, shot.y - 3, 14, 6);
-      else {
+      if (shot.hostile) {
+        c.fillRect(shot.x - 7, shot.y - 3, 14, 6);
+      } else {
         c.beginPath();
-        c.ellipse(shot.x, shot.y, 13, 5, 0, 0, Math.PI * 2);
+        c.ellipse(shot.x, shot.y, 15, 6, 0, 0, Math.PI * 2);
         c.fill();
       }
       c.restore();
@@ -412,18 +447,33 @@ export class OnFootGame {
   }
 
   private drawAtmosphere(c: CanvasRenderingContext2D): void {
-    const vignette = c.createRadialGradient(innerWidth / 2, innerHeight / 2, innerHeight * 0.1, innerWidth / 2, innerHeight / 2, innerWidth * 0.72);
+    // A light ambient wash replaces the previous heavy vignette that hid room art on phones.
+    const ambient = c.createLinearGradient(0, 0, 0, innerHeight);
+    ambient.addColorStop(0, 'rgba(54,163,255,0.045)');
+    ambient.addColorStop(0.58, 'rgba(0,255,0,0.018)');
+    ambient.addColorStop(1, 'rgba(0,0,0,0.06)');
+    c.fillStyle = ambient;
+    c.fillRect(0, 0, innerWidth, innerHeight);
+
+    const vignette = c.createRadialGradient(
+      innerWidth / 2,
+      innerHeight / 2,
+      innerHeight * 0.15,
+      innerWidth / 2,
+      innerHeight / 2,
+      innerWidth * 0.78,
+    );
     vignette.addColorStop(0, 'rgba(0,0,0,0)');
-    vignette.addColorStop(1, 'rgba(0,0,0,0.42)');
+    vignette.addColorStop(1, 'rgba(0,0,0,0.14)');
     c.fillStyle = vignette;
     c.fillRect(0, 0, innerWidth, innerHeight);
   }
 
   private drawHud(c: CanvasRenderingContext2D): void {
     const width = Math.min(342, innerWidth - 24);
-    c.fillStyle = 'rgba(2,6,11,0.76)';
+    c.fillStyle = 'rgba(2,6,11,0.72)';
     c.fillRect(12, 12, width, 82);
-    c.strokeStyle = 'rgba(54,163,255,0.52)';
+    c.strokeStyle = 'rgba(54,163,255,0.62)';
     c.strokeRect(12, 12, width, 82);
     c.textAlign = 'left';
     c.font = '900 12px ui-sans-serif, system-ui';
@@ -437,11 +487,11 @@ export class OnFootGame {
     c.fillStyle = '#d8ffe8'; c.fillText('ENERGY', 170, 52);
     c.fillStyle = '#10283a'; c.fillRect(220, 44, 82, 9);
     c.fillStyle = BLUE; c.fillRect(220, 44, 82 * this.player.energy / 100, 9);
-    c.fillStyle = 'rgba(216,255,232,0.72)';
+    c.fillStyle = 'rgba(216,255,232,0.82)';
     c.fillText(this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective, 24, 75);
 
     c.textAlign = 'right';
-    c.fillStyle = 'rgba(54,163,255,0.86)';
+    c.fillStyle = 'rgba(54,163,255,0.95)';
     c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 20, 30);
 
     if (this.completionClock > 100) {
@@ -456,13 +506,13 @@ export class OnFootGame {
   }
 
   private drawRoomIntro(c: CanvasRenderingContext2D): void {
-    c.fillStyle = `rgba(2,6,11,${Math.min(0.82, this.introClock)})`;
+    c.fillStyle = `rgba(2,6,11,${Math.min(0.54, this.introClock * 0.68)})`;
     c.fillRect(0, 0, innerWidth, innerHeight);
     c.textAlign = 'center';
     c.fillStyle = GREEN;
     c.font = '900 15px ui-sans-serif, system-ui';
     c.fillText(this.room.label, innerWidth / 2, innerHeight * 0.46);
-    c.fillStyle = BLUE;
+    c.fillStyle = '#8dcfff';
     c.font = '800 11px ui-sans-serif, system-ui';
     c.fillText(this.room.objective, innerWidth / 2, innerHeight * 0.46 + 25);
   }
@@ -470,7 +520,7 @@ export class OnFootGame {
   private drawMobileControls(c: CanvasRenderingContext2D): void {
     if (!matchMedia('(pointer: coarse)').matches) return;
     const y = innerHeight - 70;
-    c.globalAlpha = 0.76;
+    c.globalAlpha = 0.8;
     c.textAlign = 'center';
     c.font = '900 12px ui-sans-serif, system-ui';
     button(c, innerWidth * 0.09, y, 58, 48, '◀', BLUE);
@@ -564,7 +614,7 @@ export class OnFootGame {
     this.jumpBufferClock = 0;
     this.pointerMove = 0;
     this.pointerMoveId = null;
-    this.introClock = preserveVitals ? 0.9 : 1.15;
+    this.introClock = preserveVitals ? 0.68 : 0.82;
   }
 
   private resize(): void {
@@ -584,7 +634,7 @@ function rectOverlap(ax: number, ay: number, aw: number, ah: number, bx: number,
 }
 
 function button(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, label: string, color: string): void {
-  c.fillStyle = 'rgba(2,6,11,0.8)';
+  c.fillStyle = 'rgba(2,6,11,0.74)';
   c.fillRect(x - w / 2, y - h / 2, w, h);
   c.strokeStyle = color;
   c.lineWidth = 2;
