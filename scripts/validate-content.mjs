@@ -45,10 +45,15 @@ const progress = await import(
 
 const malformed = progress.parseCampaignProgress('{not-json');
 const sanitized = progress.parseCampaignProgress('{"highScore":-4,"highestWave":8.9,"victories":"many"}');
+const legacyV2 = progress.parseCampaignProgress('{"highScore":750,"highestWave":6,"currentPlanet":"ledger_prime","discoveredPlanets":["ledger_prime"],"checkpoints":{"ledger_prime":"space"}}');
 const recorded = progress.recordCampaignRun({ ...progress.EMPTY_PROGRESS, highScore: 500, highestWave: 4, victories: 1 }, 900, 7, true);
 
 if (malformed.highScore !== 0 || sanitized.highScore !== 0 || sanitized.highestWave !== 8 || sanitized.victories !== 0) {
   console.error('Campaign progress validation FAILED: malformed persistence was not sanitized.');
+  process.exit(1);
+}
+if (legacyV2.highScore !== 750 || legacyV2.checkpoints.ledger_prime !== 'space' || Object.keys(legacyV2.missionCheckpoints).length !== 0) {
+  console.error('Campaign progress validation FAILED: v2 progress did not migrate safely into the v3 shape.');
   process.exit(1);
 }
 if (recorded.highScore !== 900 || recorded.highestWave !== 7 || recorded.victories !== 2) {
@@ -56,13 +61,51 @@ if (recorded.highScore !== 900 || recorded.highestWave !== 7 || recorded.victori
   process.exit(1);
 }
 
-const cleared = progress.recordPlanetCleared(progress.EMPTY_PROGRESS, 'ledger_prime', 3);
-if (!cleared.clearedPlanets.includes('ledger_prime') || !cleared.discoveredPlanets.includes('fog_moon') || cleared.upgradePoints !== 3) {
-  console.error('Campaign progress validation FAILED: planet clear did not unlock its route.');
+const checkpointSnapshot = {
+  planetKey: 'ledger_prime',
+  missionKey: 'earth_ledger_prime',
+  checkpointKey: 'earth.defense_grid',
+  checkpointLabel: 'DEFENSE GRID',
+  resumeActKey: 'gary_fog',
+  shipKey: 'player',
+  weaponTier: 2,
+  bombs: 1,
+  score: 2400,
+  savedAt: 1787191200000,
+};
+const withCheckpoint = progress.recordMissionCheckpoint(progress.EMPTY_PROGRESS, checkpointSnapshot);
+const reloadedCheckpointProgress = progress.parseCampaignProgress(JSON.stringify(withCheckpoint));
+const reloadedCheckpoint = progress.missionCheckpointFor(reloadedCheckpointProgress, 'ledger_prime');
+if (
+  !reloadedCheckpoint
+  || reloadedCheckpoint.checkpointKey !== 'earth.defense_grid'
+  || reloadedCheckpoint.resumeActKey !== 'gary_fog'
+  || reloadedCheckpoint.shipKey !== 'player'
+  || reloadedCheckpoint.weaponTier !== 2
+  || reloadedCheckpoint.bombs !== 1
+  || reloadedCheckpoint.score !== 2400
+) {
+  console.error('Campaign progress validation FAILED: mission checkpoint did not survive serialization.');
+  process.exit(1);
+}
+const withoutCheckpoint = progress.clearMissionCheckpoint(reloadedCheckpointProgress, 'ledger_prime');
+if (progress.missionCheckpointFor(withoutCheckpoint, 'ledger_prime')) {
+  console.error('Campaign progress validation FAILED: restart did not clear the selected mission checkpoint.');
   process.exit(1);
 }
 
-console.log('Campaign progress validation OK — persistence is sanitized and monotonic.');
+const cleared = progress.recordPlanetCleared(withCheckpoint, 'ledger_prime', 3);
+if (
+  !cleared.clearedPlanets.includes('ledger_prime')
+  || !cleared.discoveredPlanets.includes('fog_moon')
+  || cleared.upgradePoints !== 3
+  || progress.missionCheckpointFor(cleared, 'ledger_prime')
+) {
+  console.error('Campaign progress validation FAILED: planet clear did not unlock its route or clear its mission checkpoint.');
+  process.exit(1);
+}
+
+console.log('Campaign progress validation OK — v3 persistence, migration, and mission checkpoints are safe.');
 
 const campaignResult = await build({
   entryPoints: ['src/game/content/CampaignPlanets.ts'],
@@ -117,8 +160,8 @@ if (!earthMission || earthMission.key !== 'earth_ledger_prime' || earthMission.a
   console.error('Mission validation FAILED: Earth Level 1 mission skeleton is missing or incomplete.');
   process.exit(1);
 }
-if (earthMission.acts.at(-1)?.mode !== 'complete') {
-  console.error('Mission validation FAILED: Earth Level 1 must end in an explicit complete act.');
+if (earthMission.acts.at(-1)?.mode !== 'complete' || earthMission.checkpoints.length !== 4) {
+  console.error('Mission validation FAILED: Earth Level 1 completion/checkpoint spine is incomplete.');
   process.exit(1);
 }
 
@@ -140,6 +183,12 @@ if (director.currentAct?.key !== 'deployment' || director.currentActIndex !== 0 
   console.error('Mission director validation FAILED: mission did not start at deployment.');
   process.exit(1);
 }
+director.startAtAct(earthMission, 'gary_fog');
+if (director.currentAct?.key !== 'gary_fog') {
+  console.error('Mission director validation FAILED: checkpoint resume did not start at the requested act.');
+  process.exit(1);
+}
+director.restart();
 for (let index = 1; index < earthMission.acts.length; index += 1) director.advance();
 if (!director.isComplete || director.currentAct?.key !== 'earth_defended') {
   console.error('Mission director validation FAILED: mission did not advance to Earth defended.');
@@ -156,4 +205,4 @@ if (director.activeMission !== null || director.currentAct !== undefined) {
   process.exit(1);
 }
 
-console.log('Mission validation OK — Earth Level 1 mission state is explicit and testable.');
+console.log('Mission validation OK — Earth Level 1 checkpoint resume state is explicit and testable.');
