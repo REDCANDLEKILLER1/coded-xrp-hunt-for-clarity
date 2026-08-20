@@ -7,8 +7,10 @@ import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, 
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
 import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
-import { EarthFlightEncounterDirector, earthFlightEncounterFor, type EncounterSpawnDef } from '../content/EarthFlightEncounters';
+import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
+import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, hasFogBreaker } from '../content/EarthBossFlow';
+import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
@@ -32,8 +34,6 @@ type ProjectileActor = Actor & { damage: number; projectileKey: string };
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
-// Hit-burst tuning: a bigger, longer ring that reveals the spark debris baked
-// into the art, plus a spray of short-lived shards flying outward on impact.
 const BURST_LIFE = 0.45;
 const BURST_MAX_RADIUS = 72;
 const BURST_MIN_RADIUS = 6;
@@ -45,7 +45,6 @@ const REPAIR_EVERY_KILLS = 10;
 const MAX_BOMBS = 3;
 const BOMB_LIFE = 0.55;
 
-// Phase A: live content is sourced from the data registry rather than loose constants.
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
 const DEFAULT_HAZARD = HAZARDS.basic_turret;
@@ -94,6 +93,9 @@ export class Game2A {
   private playerHitClock = 0;
   private missionBannerClock = 0;
   private missionBannerText = '';
+  private launchClock = 0;
+  private launchTotal = 0;
+  private fogGateActive = false;
   private progress: CampaignProgress = this.loadProgress();
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
@@ -117,7 +119,6 @@ export class Game2A {
     this.loop.start();
   }
 
-  /** Enters campaign play through an authored mission when one exists. */
   deployFromMap(planetKey: string, planetLabel: string, checkpoint?: MissionCheckpointSnapshot): void {
     this.progress = this.loadProgress();
     this.activePlanetKey = planetKey;
@@ -151,18 +152,21 @@ export class Game2A {
     this.mode = 'select';
   }
 
-  /** Keeps the original short random run available as an explicit balancing sandbox. */
   deployTestMode(): void {
     this.activePlanetKey = null;
     this.activePlanetLabel = null;
     this.missionDirector.clear();
     this.earthEncounterDirector.clear();
+    this.launchClock = 0;
+    this.fogGateActive = false;
+    this.cueMusic('silence');
     this.paused = false;
     this.mode = 'title';
   }
 
   suspend(): void {
     this.paused = true;
+    this.cueMusic('silence');
   }
 
   private resize(): void {
@@ -196,8 +200,8 @@ export class Game2A {
   private actions(): void {
     if (this.input.consumeDiagnostics()) this.showAssets = !this.showAssets;
     if (this.input.consumePause() && this.mode === 'play') this.paused = !this.paused;
-    if (this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
-    if (this.input.consumeBomb() && this.mode === 'play') this.useBomb();
+    if (this.launchClock <= 0 && this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
+    if (this.launchClock <= 0 && this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
     const tap = this.input.consumeTap();
     if (!tap) return;
@@ -206,12 +210,20 @@ export class Game2A {
     if (this.mode === 'results' || this.mode === 'victory') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
+    if (this.launchClock > 0) return;
     if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
     if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
   }
 
   private update(dt: number): void {
     if (this.mode !== 'play' || this.paused) return;
+
+    if (this.launchClock > 0) {
+      this.updateLaunchReveal(dt);
+      if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
+      return;
+    }
+
     this.movePlayer(dt);
     this.updateBolts(dt);
 
@@ -244,6 +256,32 @@ export class Game2A {
     if ((this.player.hp ?? 0) <= 0 && this.mode === 'play') this.finishRun(false);
   }
 
+  private updateLaunchReveal(dt: number): void {
+    this.launchClock = Math.max(0, this.launchClock - dt);
+    const elapsed = this.launchTotal - this.launchClock;
+    const entranceStart = EARTH_LAUNCH_REVEAL.musicLead + EARTH_LAUNCH_REVEAL.entranceDelay;
+    const entranceEnd = entranceStart + EARTH_LAUNCH_REVEAL.entranceDuration;
+    const targetY = this.h - 112;
+    const startY = this.h + 76;
+
+    if (elapsed < entranceStart) {
+      this.player.y = startY;
+    } else if (elapsed < entranceEnd) {
+      const t = clamp((elapsed - entranceStart) / EARTH_LAUNCH_REVEAL.entranceDuration, 0, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      this.player.y = startY + (targetY - startY) * eased;
+    } else {
+      this.player.y = targetY;
+    }
+
+    if (this.launchClock === 0) {
+      this.player.y = targetY;
+      this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+      this.missionBannerText = 'DEFEND EARTH // FIRST CONTACT INBOUND';
+      this.missionBannerClock = 2.8;
+    }
+  }
+
   private updateMission(dt: number): void {
     const act = this.missionDirector.currentAct;
     if (!act) return;
@@ -253,9 +291,45 @@ export class Game2A {
       return;
     }
 
-    // L1-D2 intentionally stops authored progression at the Guardian boundary.
-    // L1-E owns Gary Fog and the first permanent fighter-tech reward.
+    if (act.key === GARY_FOG_GUARDIAN_PLAN.actKey) {
+      if (!this.boss) this.startGaryFogGuardian();
+      this.updateBoss(dt);
+      return;
+    }
+
+    if (act.key === 'final_assault' && this.fogGateActive) {
+      this.hostileShots = [];
+      return;
+    }
+
     if (this.boss) this.updateBoss(dt);
+  }
+
+  private startGaryFogGuardian(): void {
+    const def = this.bossDef(GARY_FOG_GUARDIAN_PLAN.bossKey);
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.bolts = [];
+    this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
+    this.missionBannerText = 'GUARDIAN SIGNAL // GARY FOG APPROACHING';
+    this.missionBannerClock = 2.8;
+    this.boss = {
+      x: this.w / 2,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: 0,
+      hp: def.hp,
+      bossKey: def.key,
+      state: 'intro',
+      age: -GARY_FOG_REVEAL.musicLead,
+      fireClock: def.phases[0].fireRate,
+      contactClock: 0,
+      phaseIndex: 0,
+      targetX: this.w / 2,
+    };
   }
 
   private updateAuthoredFlight(dt: number): void {
@@ -550,6 +624,22 @@ export class Game2A {
     boss.contactClock = Math.max(0, boss.contactClock - dt);
 
     if (boss.state === 'intro') {
+      const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
+      if (missionGary) {
+        if (boss.age < 0) return;
+        const t = clamp(boss.age / GARY_FOG_REVEAL.entranceDuration, 0, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        boss.y = -def.draw.h + (118 + def.draw.h) * eased;
+        if (boss.age >= GARY_FOG_REVEAL.entranceDuration + GARY_FOG_REVEAL.combatDelay) {
+          boss.state = 'fight';
+          boss.y = 118;
+          boss.age = 0;
+          this.missionBannerText = 'GARY FOG // ENGAGE';
+          this.missionBannerClock = 2.2;
+        }
+        return;
+      }
+
       boss.y += (118 - boss.y) * Math.min(1, dt * 3.4);
       if (boss.age >= 1.45) {
         boss.state = 'fight';
@@ -601,9 +691,7 @@ export class Game2A {
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           bolt.life = 0;
           drone.hp = (drone.hp ?? 1) - bolt.damage;
-          if ((drone.hp ?? 0) <= 0) {
-            this.registerKill(drone);
-          }
+          if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
           break;
         }
       }
@@ -686,7 +774,7 @@ export class Game2A {
         const hit = Math.hypot(this.boss.x - this.player.x, this.boss.y - this.player.y) < CLARITY_PULSE.radius + this.boss.w * 0.35;
         if (hit) {
           this.pulseHitBoss = true;
-          this.damageBoss(4);
+          this.damageBoss(hasFogBreaker(this.progress) ? 6 : 4);
         }
       }
     }
@@ -899,12 +987,29 @@ export class Game2A {
     if (this.ringClock > 0) this.drawPulse();
     if (this.bombClock > 0) this.drawBombWave();
     this.hud();
+    if (this.launchClock > 0) this.drawLaunchReveal();
     if (this.bossClearClock > 0) this.bossClearBanner();
     if (this.missionBannerClock > 0) this.drawMissionBanner();
     if (this.paused) this.pause();
   }
 
-  /** Draws a manifest sprite centered on (cx, cy); returns false so callers keep procedural fallback. */
+  private drawLaunchReveal(): void {
+    const elapsed = this.launchTotal - this.launchClock;
+    const entranceStart = EARTH_LAUNCH_REVEAL.musicLead + EARTH_LAUNCH_REVEAL.entranceDelay;
+    const entranceEnd = entranceStart + EARTH_LAUNCH_REVEAL.entranceDuration;
+    const label = elapsed < entranceStart
+      ? 'EARTH UNDER ATTACK'
+      : elapsed < entranceEnd
+        ? 'XRP MAN // DEPLOYING'
+        : 'DEFEND EARTH';
+    this.ctx.save();
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 20px ui-sans-serif, system-ui';
+    this.ctx.fillText(label, this.w / 2, this.h * 0.25);
+    this.ctx.restore();
+  }
+
   private drawCentered(ref: SpriteRef, cx: number, cy: number, dw: number, dh: number): boolean {
     return this.sprites.draw(ref.category, ref.id, cx - dw / 2, cy - dh / 2, dw, dh, this.clock);
   }
@@ -1021,7 +1126,7 @@ export class Game2A {
     if (!drawn) {
       this.ctx.save();
       this.ctx.translate(boss.x, boss.y);
-      this.ctx.rotate(Math.sin(boss.age * 1.4) * 0.06);
+      this.ctx.rotate(Math.sin(Math.max(0, boss.age) * 1.4) * 0.06);
       this.ctx.fillStyle = 'rgba(5,8,18,0.92)';
       this.ctx.strokeStyle = phase.accent;
       this.ctx.lineWidth = 4;
@@ -1054,7 +1159,7 @@ export class Game2A {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = phase.accent;
       this.ctx.font = '800 20px ui-sans-serif, system-ui';
-      this.ctx.fillText(`WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
+      this.ctx.fillText(boss.age < 0 ? `GUARDIAN SIGNAL • ${def.label}` : `WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
     }
   }
 
@@ -1121,11 +1226,13 @@ export class Game2A {
   }
 
   private drawPulse(): void {
-    const alpha = Math.max(0, this.ringClock / 0.35);
-    this.ctx.strokeStyle = `rgba(0,255,136,${alpha})`;
-    this.ctx.lineWidth = 4;
+    const alpha = Math.max(0, this.ringClock / (hasFogBreaker(this.progress) ? 0.55 : 0.35));
+    const color = hasFogBreaker(this.progress) ? '54,163,255' : '0,255,136';
+    const radius = hasFogBreaker(this.progress) ? CLARITY_PULSE.radius * 1.25 : CLARITY_PULSE.radius;
+    this.ctx.strokeStyle = `rgba(${color},${alpha})`;
+    this.ctx.lineWidth = hasFogBreaker(this.progress) ? 6 : 4;
     this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * CLARITY_PULSE.radius, 0, Math.PI * 2);
+    this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * radius, 0, Math.PI * 2);
     this.ctx.stroke();
   }
 
@@ -1163,6 +1270,9 @@ export class Game2A {
       } else if (missionAct.mode === 'boss') {
         this.ctx.fillStyle = '#ffd24a';
         this.ctx.fillText('GUARDIAN SIGNAL DETECTED', 16, 80);
+      } else if (missionAct.key === 'final_assault' && this.fogGateActive) {
+        this.ctx.fillStyle = '#36a3ff';
+        this.ctx.fillText('FOG LOCK ACTIVE • USE FOG BREAKER', 16, 80);
       }
       const weapon = this.currentWeapon();
       this.ctx.fillStyle = '#00ff00';
@@ -1203,7 +1313,7 @@ export class Game2A {
 
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
-    if (this.boss) {
+    if (this.boss && this.boss.state === 'fight') {
       const def = this.bossDef(this.boss.bossKey);
       const phase = def.phases[this.boss.phaseIndex];
       const bossBarWidth = Math.min(360, this.w - 64);
@@ -1216,7 +1326,7 @@ export class Game2A {
     }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
-    this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
+    this.button(this.zone.special, hasFogBreaker(this.progress) ? 'FOG BREAK' : 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
     this.button(this.zone.assets, 'D', '#ffd24a');
   }
 
@@ -1296,8 +1406,17 @@ export class Game2A {
   private useSpecial(): void {
     if (this.special < 100) return;
     this.special = 0;
-    this.ringClock = 0.35;
+    this.ringClock = hasFogBreaker(this.progress) ? 0.55 : 0.35;
     this.pulseHitBoss = false;
+
+    if (hasFogBreaker(this.progress)) {
+      this.hostileShots = [];
+      if (this.fogGateActive && this.missionDirector.currentAct?.key === 'final_assault') {
+        this.fogGateActive = false;
+        this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
+        this.missionBannerClock = 2.8;
+      }
+    }
   }
 
   private useBomb(): void {
@@ -1328,6 +1447,7 @@ export class Game2A {
     if ((boss.hp ?? 0) > 0) return;
 
     const def = this.bossDef(boss.bossKey);
+    const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
     this.completedBosses.add(boss.bossKey);
     this.score += def.score;
     this.special = 100;
@@ -1335,6 +1455,23 @@ export class Game2A {
     this.ring(boss.x, boss.y);
     this.hostileShots = [];
     this.boss = null;
+
+    if (missionGary) {
+      const alreadyOwned = hasFogBreaker(this.progress);
+      this.progress = awardGaryFogVictory(this.progress);
+      this.saveProgress();
+      const entered = this.missionDirector.advance();
+      this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+      this.earthEncounterDirector.start(entered?.key ?? '');
+      this.fogGateActive = true;
+      this.cueMusic('level1');
+      this.missionBannerText = alreadyOwned
+        ? 'GARY FOG DEFEATED // FOG BREAKER READY'
+        : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
+      this.missionBannerClock = 2.8;
+      return;
+    }
+
     this.bossClearClock = 2.4;
     if (!this.missionDirector.activeMission && this.completedBosses.size === BOSS_LADDER.length) this.victoryPendingClock = 2.4;
   }
@@ -1359,6 +1496,10 @@ export class Game2A {
 
   private saveProgress(): void {
     saveCampaignProgress(this.progress);
+  }
+
+  private cueMusic(cue: string): void {
+    window.dispatchEvent(new CustomEvent('coded:music-cue', { detail: { cue } }));
   }
 
   private ring(x: number, y: number): void {
@@ -1463,6 +1604,9 @@ export class Game2A {
     this.playerHitClock = 0;
     this.missionBannerClock = 0;
     this.missionBannerText = '';
+    this.launchClock = 0;
+    this.launchTotal = 0;
+    this.fogGateActive = false;
 
     const mission = this.missionDirector.activeMission;
     if (mission && this.activePlanetKey) {
@@ -1492,10 +1636,19 @@ export class Game2A {
       }
 
       this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
-      this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
       this.player = this.newPlayer();
-      this.missionBannerText = this.missionDirector.currentAct?.label ?? mission.label;
-      this.missionBannerClock = 2.2;
+      this.cueMusic('level1');
+
+      if (checkpoint) {
+        this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        this.missionBannerText = this.missionDirector.currentAct?.label ?? mission.label;
+        this.missionBannerClock = 2.2;
+      } else {
+        this.earthEncounterDirector.clear();
+        this.launchTotal = revealTotalDuration(EARTH_LAUNCH_REVEAL);
+        this.launchClock = this.launchTotal;
+        this.player.y = this.h + 76;
+      }
       return;
     }
 
@@ -1600,5 +1753,6 @@ function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
   ctx.strokeStyle = 'rgba(216,255,232,0.55)';
   ctx.strokeRect(x, y, w, h);
   ctx.fillStyle = color;
+  this.ctx.fillRect;
   ctx.fillRect(x + 1, y + 1, Math.max(0, Math.min(1, pct)) * (w - 2), h - 2);
 }
