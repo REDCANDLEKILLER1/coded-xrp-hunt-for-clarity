@@ -3,9 +3,9 @@ import type { MissionActDef, MissionDef } from './missions/types';
 /**
  * Small state holder for authored campaign missions.
  *
- * L1-A does not decide when gameplay encounters are complete. Callers advance
- * the director explicitly; later Level 1 phases will connect those calls to
- * encounter, checkpoint, boss, and boarding completion events.
+ * Encounter completion remains owned by later Level 1 phases. This director
+ * only owns deterministic mission position so checkpoints can safely resume at
+ * authored act boundaries instead of restoring live bullets/enemies.
  */
 export class MissionDirector {
   private mission: MissionDef | null = null;
@@ -16,6 +16,15 @@ export class MissionDirector {
     this.mission = mission;
     this.actIndex = 0;
     return mission.acts[0];
+  }
+
+  startAtAct(mission: MissionDef, actKey: string): MissionActDef {
+    if (mission.acts.length === 0) throw new Error(`Mission ${mission.key} has no acts.`);
+    const index = mission.acts.findIndex((act) => act.key === actKey);
+    if (index < 0) throw new Error(`Mission ${mission.key} has no act "${actKey}".`);
+    this.mission = mission;
+    this.actIndex = index;
+    return mission.acts[index];
   }
 
   clear(): void {
