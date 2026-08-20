@@ -26,6 +26,7 @@ export interface CampaignProgress {
   defeatedSurfaceBosses: string[];
   checkpoints: Record<string, LegacyCheckpointStage>;
   missionCheckpoints: Record<string, MissionCheckpointSnapshot>;
+  shipTech: string[];
   upgradePoints: number;
 }
 
@@ -44,6 +45,7 @@ export const EMPTY_PROGRESS: CampaignProgress = {
   defeatedSurfaceBosses: [],
   checkpoints: {},
   missionCheckpoints: {},
+  shipTech: [],
   upgradePoints: 0,
 };
 
@@ -63,6 +65,7 @@ export function parseCampaignProgress(raw: string | null): CampaignProgress {
       defeatedSurfaceBosses: safeKeys(value.defeatedSurfaceBosses),
       checkpoints: safeLegacyCheckpoints(value.checkpoints),
       missionCheckpoints: safeMissionCheckpoints(value.missionCheckpoints),
+      shipTech: safeKeys(value.shipTech),
       upgradePoints: safeCount(value.upgradePoints, 0),
     };
   } catch {
@@ -87,6 +90,7 @@ export function recordCampaignRun(
     defeatedSurfaceBosses: [...current.defeatedSurfaceBosses],
     checkpoints: { ...current.checkpoints },
     missionCheckpoints: { ...current.missionCheckpoints },
+    shipTech: [...current.shipTech],
     upgradePoints: current.upgradePoints,
   };
 }
@@ -100,6 +104,23 @@ export function recordPlanetSelection(current: CampaignProgress, planetKey: stri
       ? [...current.discoveredPlanets]
       : [...current.discoveredPlanets, safe],
   };
+}
+
+/** Records a guardian win and its permanent fighter-tech reward idempotently. */
+export function recordGuardianDefeated(current: CampaignProgress, planetKey: string, techKey: string): CampaignProgress {
+  const safePlanet = safeKey(planetKey, '');
+  const safeTech = safeKey(techKey, '');
+  if (!safePlanet || !safeTech || !PLANET_BY_KEY[safePlanet]) return cloneProgress(current);
+  return {
+    ...current,
+    defeatedGuardians: unique([...current.defeatedGuardians, safePlanet]),
+    shipTech: unique([...current.shipTech, safeTech]),
+  };
+}
+
+export function hasShipTech(current: CampaignProgress, techKey: string): boolean {
+  const safe = safeKey(techKey, '');
+  return Boolean(safe && current.shipTech.includes(safe));
 }
 
 export function recordMissionCheckpoint(
@@ -177,6 +198,7 @@ function freshEmptyProgress(): CampaignProgress {
     defeatedSurfaceBosses: [],
     checkpoints: {},
     missionCheckpoints: {},
+    shipTech: [],
   };
 }
 
@@ -189,6 +211,7 @@ function cloneProgress(current: CampaignProgress): CampaignProgress {
     defeatedSurfaceBosses: [...current.defeatedSurfaceBosses],
     checkpoints: { ...current.checkpoints },
     missionCheckpoints: { ...current.missionCheckpoints },
+    shipTech: [...current.shipTech],
   };
 }
 
