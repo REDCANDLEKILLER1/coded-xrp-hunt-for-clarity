@@ -1,4 +1,5 @@
 import './style.css';
+import './landscape.css';
 import { Game2A } from './game/core/Game2A';
 import { CampaignMap } from './game/ui/CampaignMap';
 import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
