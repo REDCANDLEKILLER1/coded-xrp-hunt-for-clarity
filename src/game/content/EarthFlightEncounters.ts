@@ -66,6 +66,16 @@ export const EARTH_FLIGHT_ENCOUNTERS: Record<string, EarthFlightEncounterDef> = 
       { label: 'DEFENSE GRID CORE', restBefore: 1.5, spawns: [hazard('basic_turret', 0.1, -1), hazard('cannon_turret', 0.9, 1), hazard('armored_space_mine', 0.34), hazard('armored_space_mine', 0.66), enemy('fog_raider', 0.5)] },
     ],
   },
+  final_assault: {
+    actKey: 'final_assault',
+    stageKey: 'regulatory_outpost',
+    groups: [
+      { label: 'FORTRESS APPROACH', restBefore: 1.8, spawns: [enemy('fast_scout', 0.3), enemy('fast_scout', 0.7)] },
+      { label: 'CANNON SCREEN', restBefore: 1.35, spawns: [hazard('cannon_turret', 0.1, -1), enemy('fog_raider', 0.5), hazard('cannon_turret', 0.9, 1)] },
+      { label: 'MINE + SCOUT PRESSURE', restBefore: 1.25, spawns: [hazard('armored_space_mine', 0.3), enemy('fast_scout', 0.5), hazard('armored_space_mine', 0.7)] },
+      { label: 'CAPITAL SHIP ESCORT', restBefore: 1.45, spawns: [hazard('cannon_turret', 0.1, -1), enemy('fog_raider', 0.32), enemy('fast_scout', 0.5), enemy('fog_raider', 0.68), hazard('cannon_turret', 0.9, 1)] },
+    ],
+  },
 };
 
 export function earthFlightEncounterFor(actKey: string | undefined): EarthFlightEncounterDef | undefined {
@@ -76,7 +86,7 @@ export function validateEarthFlightEncounters(): string[] {
   const errors: string[] = [];
   const allowedEnemyKeys = new Set(['regulator_drone', 'fog_raider', 'fast_scout']);
   const allowedHazardKeys = new Set(['basic_turret', 'cannon_turret', 'armored_space_mine']);
-  const allowedStageKeys = new Set(['deep_space_lane', 'ledger_city']);
+  const allowedStageKeys = new Set(['deep_space_lane', 'ledger_city', 'regulatory_outpost']);
 
   for (const [key, encounter] of Object.entries(EARTH_FLIGHT_ENCOUNTERS)) {
     if (encounter.actKey !== key) errors.push(`earthEncounter.${key}: actKey mismatch`);
@@ -111,6 +121,9 @@ export function validateEarthFlightEncounters(): string[] {
   }
   if (!gridGroups.some((group) => group.spawns.length === 1 && group.spawns[0].kind === 'hazard' && group.spawns[0].hazardKey === 'cannon_turret')) {
     errors.push('earthEncounter.defense_grid: Cannon Turret must be introduced alone');
+  }
+  if (EARTH_FLIGHT_ENCOUNTERS.final_assault?.stageKey !== 'regulatory_outpost') {
+    errors.push('earthEncounter.final_assault: final approach must use the Regulatory Outpost stage');
   }
 
   return errors;
