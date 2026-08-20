@@ -31,6 +31,31 @@ if (errors.length > 0) {
 
 console.log('Content validation OK — registry is well-formed.');
 
+const earthThreatResult = await build({
+  entryPoints: ['src/game/content/EarthThreats.ts'],
+  bundle: true,
+  format: 'esm',
+  write: false,
+  logLevel: 'silent',
+});
+
+const earthThreats = await import(
+  'data:text/javascript,' + encodeURIComponent(earthThreatResult.outputFiles[0].text)
+);
+
+const earthThreatErrors = earthThreats.validateEarthThreats();
+if (earthThreatErrors.length > 0) {
+  console.error('Earth threat validation FAILED:');
+  for (const e of earthThreatErrors) console.error('  - ' + e);
+  process.exit(1);
+}
+if (!earthThreats.EARTH_ENEMIES.fast_scout || !earthThreats.EARTH_HAZARDS.armored_space_mine) {
+  console.error('Earth threat validation FAILED: Level 1 Scout/mine definitions are missing.');
+  process.exit(1);
+}
+
+console.log('Earth threat validation OK — Scout and mine stay campaign-specific.');
+
 const progressResult = await build({
   entryPoints: ['src/game/content/CampaignProgress.ts'],
   bundle: true,
@@ -233,7 +258,7 @@ for (const actKey of ['orbital_approach', 'fog_belt', 'ledger_city', 'defense_gr
   }
 }
 if (encounters.earthFlightEncounterFor('gary_fog')) {
-  console.error('Earth encounter validation FAILED: L1-C must stop authored flight at the Gary Fog boundary.');
+  console.error('Earth encounter validation FAILED: L1-D2 must stop authored flight at the Gary Fog boundary.');
   process.exit(1);
 }
 
@@ -246,7 +271,7 @@ if (step.spawns.length !== 1 || step.completed || encounterDirector.currentGroup
 }
 step = encounterDirector.update(0.1, 1);
 if (step.spawns.length !== 0 || step.completed) {
-  console.error('Earth encounter director FAILED: advanced while an authored enemy was still active.');
+  console.error('Earth encounter director FAILED: advanced while an authored threat was still active.');
   process.exit(1);
 }
 let guard = 0;
@@ -259,4 +284,14 @@ if (!step.completed || encounterDirector.totalGroups !== 4) {
   process.exit(1);
 }
 
-console.log('Earth encounter validation OK — Level 1 opening uses deterministic authored groups.');
+const grid = encounters.earthFlightEncounterFor('defense_grid');
+const hasMixedGrid = grid?.groups.some((group) => {
+  const kinds = new Set(group.spawns.map((spawn) => spawn.kind));
+  return kinds.has('enemy') && kinds.has('hazard');
+});
+if (!hasMixedGrid) {
+  console.error('Earth encounter validation FAILED: Defense Grid never combines air and ground threats.');
+  process.exit(1);
+}
+
+console.log('Earth encounter validation OK — threats are taught individually before mixed Defense Grid pressure.');
