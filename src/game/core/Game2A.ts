@@ -8,6 +8,7 @@ import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDir
 import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
 import { EarthFlightEncounterDirector, earthFlightEncounterFor, type EncounterSpawnDef } from '../content/EarthFlightEncounters';
+import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
@@ -252,22 +253,27 @@ export class Game2A {
       return;
     }
 
-    // L1-C intentionally stops authored progression at the Guardian boundary.
-    // L1-E wires/refines Gary Fog; later phases own the final assault and warship.
+    // L1-D2 intentionally stops authored progression at the Guardian boundary.
+    // L1-E owns Gary Fog and the first permanent fighter-tech reward.
     if (this.boss) this.updateBoss(dt);
   }
 
   private updateAuthoredFlight(dt: number): void {
-    const state = this.earthEncounterDirector.update(dt, this.drones.length);
-    for (const spawn of state.spawns) this.spawnMissionDrone(spawn);
+    const activeThreats = this.drones.length + this.hazards.length;
+    const state = this.earthEncounterDirector.update(dt, activeThreats);
+    for (const spawn of state.spawns) {
+      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
+      else this.spawnMissionHazard(spawn.hazardKey, spawn.x, spawn.side);
+    }
     this.moveDrones(dt);
+    this.moveHazards(dt);
 
-    if (state.completed && this.drones.length === 0) this.completeMissionFlightAct();
+    if (state.completed && this.drones.length === 0 && this.hazards.length === 0) this.completeMissionFlightAct();
   }
 
-  private spawnMissionDrone(spawn: EncounterSpawnDef): void {
-    const def = this.enemyDef(spawn.enemyKey);
-    const x = clamp(spawn.x * this.w, 30, this.w - 30);
+  private spawnMissionDrone(enemyKey: string, xRatio: number): void {
+    const def = this.enemyDef(enemyKey);
+    const x = clamp(xRatio * this.w, 30, this.w - 30);
     const pressure = Math.max(0, this.missionDirector.currentActIndex - 1) * 5;
     this.drones.push({
       x,
@@ -280,8 +286,26 @@ export class Game2A {
       enemyKey: def.key,
       age: 0,
       anchorX: x,
-      phase: spawn.x * Math.PI * 2,
-      direction: spawn.x < 0.5 ? 1 : -1,
+      phase: xRatio * Math.PI * 2,
+      direction: xRatio < 0.5 ? 1 : -1,
+    });
+  }
+
+  private spawnMissionHazard(hazardKey: string, xRatio: number, requestedSide?: -1 | 1): void {
+    const def = this.hazardDef(hazardKey);
+    const side: -1 | 1 = requestedSide ?? (xRatio < 0.5 ? -1 : 1);
+    const x = clamp(xRatio * this.w, 28, this.w - 28);
+    this.hazards.push({
+      x,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: this.currentStage().scrollSpeed,
+      hp: def.hp,
+      hazardKey: def.key,
+      fireClock: def.fires ? 0.95 : 0,
+      side,
     });
   }
 
@@ -452,6 +476,10 @@ export class Game2A {
       this.hazardClock = Math.max(3.8, def.spawnRate - (this.wave - def.minWave) * 0.22);
     }
 
+    this.moveHazards(dt);
+  }
+
+  private moveHazards(dt: number): void {
     for (const hazard of this.hazards) {
       const hazardDef = this.hazardDef(hazard.hazardKey);
       hazard.y += hazard.vy * dt;
@@ -925,7 +953,6 @@ export class Game2A {
       this.ctx.restore();
     }
 
-    // Temporary color-coded threat marker while variants share/transition art.
     this.ctx.save();
     this.ctx.strokeStyle = def.accent;
     this.ctx.lineWidth = 2;
@@ -973,7 +1000,6 @@ export class Game2A {
     if (image) {
       this.ctx.save();
       this.ctx.translate(shot.x, shot.y);
-      // Canon projectile masters point upward; align that nose with velocity.
       this.ctx.rotate(Math.atan2(shot.vy, shot.vx) + Math.PI / 2);
       this.ctx.drawImage(image, -projectile.draw.w / 2, -projectile.draw.h / 2, projectile.draw.w, projectile.draw.h);
       this.ctx.restore();
@@ -1086,7 +1112,6 @@ export class Game2A {
     for (const p of this.debris) {
       const a = Math.max(0, p.life / p.max);
       this.ctx.globalAlpha = a;
-      // streak tail oriented along velocity gives a flung-shard read
       this.ctx.strokeStyle = `hsl(${p.hue}, 100%, ${55 + a * 25}%)`;
       this.ctx.lineWidth = p.size * (0.4 + a * 0.6);
       line(this.ctx, p.x, p.y, p.x - p.vx * 0.03, p.y - p.vy * 0.03);
@@ -1493,11 +1518,11 @@ export class Game2A {
   }
 
   private enemyDef(key: string): EnemyDef {
-    return ENEMIES[key] ?? DEFAULT_ENEMY;
+    return EARTH_ENEMIES[key] ?? ENEMIES[key] ?? DEFAULT_ENEMY;
   }
 
   private hazardDef(key: string): HazardDef {
-    return HAZARDS[key] ?? DEFAULT_HAZARD;
+    return EARTH_HAZARDS[key] ?? HAZARDS[key] ?? DEFAULT_HAZARD;
   }
 
   private bossDef(key: string): BossDef {
