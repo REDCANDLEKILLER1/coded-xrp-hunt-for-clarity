@@ -45,9 +45,7 @@ This file is the compact live resume note. Read `CURRENT_STATE.md` and `LEVEL1_C
 - Vercel: pending at last update; verify exact head before continuing/merging
 - Diff: exactly 3 files
 - Runtime binary payload: 23,550 bytes total
-- Assets:
-  - Fast Scout: 95×128 transparent WebP, 9,932 bytes
-  - Armored Space Mine: 128×109 transparent WebP, 13,618 bytes
+- Assets: Fast Scout 95×128 WebP; Armored Space Mine 128×109 WebP
 - Manifest entries: `enemies.fast_scout`, `hazards.armored_space_mine`
 - No gameplay logic, no orphan files, no raw masters
 - No merge before earlier stack and no merge without XRPMan approval
@@ -57,35 +55,51 @@ This file is the compact live resume note. Read `CURRENT_STATE.md` and `LEVEL1_C
 - Base: `gpt/level1-d1-assets`
 - Head: `d98e186c5de0d95085108ca8a355a8d2306f5c20`
 - Status: open draft, stacked on PR #49
-- Vercel: pending at last update; verify exact head
+- Vercel: queued/pending at last update; verify exact head
 - Diff from D1: exactly 4 files
 - Scope:
   - campaign-only Fast Scout and Armored Space Mine definitions
-  - authored threat groups can spawn air enemies or hazards
-  - Fast Scout taught alone in Fog Belt
-  - Basic Turret taught alone in Ledger City
-  - Armored Space Mine taught alone in Defense Grid
-  - Cannon Turret taught alone before crossfire
+  - authored air/hazard encounter groups
+  - Fast Scout, Basic Turret, Armored Space Mine, and Cannon Turret each taught before mixed pressure
   - final Defense Grid group mixes air + ground threats
   - existing hazard movement/fire/collision system reused
-  - Defense Grid checkpoint is earned after the full mixed-threat act
-  - Arcade Test Run global random bestiary remains unchanged
+  - Defense Grid checkpoint earned after full mixed-threat act
+  - Arcade Test Run random bestiary remains unchanged
   - fighter movement/fire/pointer/collision constants preserved
-- Intentional stop: after the Defense Grid checkpoint the mission waits at `gary_fog`
+- Intentional stop: mission waits at `gary_fog`
 - No merge before earlier stack and no merge without XRPMan approval
+
+## Current L1-E preparation
+
+- Next gameplay phase: **L1-E — Gary Fog Guardian + Fog Breaker reward** from PR #50 head.
+- Keep L1-E limited to Gary, boss reward persistence, telegraphs/readability, and immediate Fog Breaker use.
+- Do not mix Regulatory Warship into L1-E.
+- Source assets already identified for this phase: Fog Breaker icon, 8-frame Fog Breaker pulse, boss weak-point marker.
+- Runtime asset optimization work began, but no L1-E asset PR is complete yet. Verify branch state before continuing.
+- Preserve Gary's readable three-phase identity: aimed pressure -> spread/fog pressure -> fast burst/finish.
+- Permanent boss reward must be idempotent and cannot be farmed by checkpoint reload.
+
+## Canonical Level 1 music
+
+User supplied the Level 1 track in project sources:
+- title: **Neon Horizon Defense**
+- artist metadata: **redcandlekiller**
+- source file: `Neon Horizon Defense.mp3`
+- measured duration: **157.008 seconds (2:37.008)**
+- source size inspected: **3,652,031 bytes**
+- integrated loudness measured: approximately **-12.3 LUFS**
+- true peak measured: approximately **-1.4 dBFS**
+
+Treat this as the **canonical Level 1 background music source**. Do not replace it with stock music. Create a separate small audio-runtime PR after gameplay timing is stable. The runtime treatment may use an optimized encode and/or controlled loop/crossfade; keep the supplied master/source outside the deploy repo unless the user explicitly wants it committed. Weapon/explosion/boss SFX remain a separate just-in-time lane so music and effects can be mixed independently.
 
 ## Exact next action
 
-1. Verify Vercel status on exact heads of PR #49 and PR #50.
-2. If PR #50 compile is green, begin **L1-E — Gary Fog Guardian + Fog Breaker reward** from PR #50 head.
-3. Keep L1-E scoped to Gary Fog, reward persistence, and immediate Fog Breaker use. Do not mix Regulatory Warship.
-4. Inspect the v16/source assets for the already-planned Fog Breaker icon/VFX before generating anything new.
-5. Preserve Gary's readable three-phase identity: aimed pressure -> spread/fog pressure -> fast burst/weak-point finish.
-6. Fog Breaker must be a permanent fighter ability, not a numeric-only stat boost, and must matter immediately in the post-Gary final-assault phase later.
-7. Audio remains just-in-time; once Gary telegraph timings stabilize, his attack cues/Fog Breaker activation can receive SFX in a dedicated small audio lane.
-
-## Audio lane
-
-Audio is planned but does not block gameplay phases. Add SFX just-in-time after each behavior is stable. See `AUDIO_PLAN.md` and `ASSET_AUDIO_ROADMAP.md`.
+1. Re-check Vercel exact-head state for PR #49/#50.
+2. Continue L1-E from PR #50 head.
+3. Add permanent fighter-tech persistence for `fog_breaker_pulse` without breaking v2/v3 save migration.
+4. Start Gary deterministically when the mission reaches `gary_fog`; do not fall back to the generic four-boss campaign loop.
+5. On Gary defeat: save the unlock, prevent repeat reward farming, give a clear reward beat, and require/immediately demonstrate Fog Breaker before the final-assault path.
+6. Keep fighter controls/fire cadence untouched.
+7. After Gary timings stabilize, add Gary/Fog Breaker SFX in a dedicated audio phase; Level 1 music source is already locked above.
 
 After each new stacked PR, update this note.
