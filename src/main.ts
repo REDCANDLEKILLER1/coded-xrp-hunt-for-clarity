@@ -1,5 +1,7 @@
 import './style.css';
 import { Game2A } from './game/core/Game2A';
+import { MissionDirector } from './game/content/MissionDirector';
+import { missionForPlanet } from './game/content/missions';
 import { CampaignMap } from './game/ui/CampaignMap';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -12,15 +14,21 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
 }
 
 const game = new Game2A(canvas);
+const missionDirector = new MissionDirector();
 let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
   (planet) => {
+    const mission = missionForPlanet(planet.key);
+    if (mission) missionDirector.start(mission);
+    else missionDirector.clear();
+
     map.hide();
     gameShell.hidden = false;
-    game.deployFromMap(planet.key, planet.label);
+    game.deployFromMap(planet.key, mission?.label ?? planet.label);
   },
   () => {
+    missionDirector.clear();
     map.hide();
     gameShell.hidden = false;
     game.deployTestMode();
