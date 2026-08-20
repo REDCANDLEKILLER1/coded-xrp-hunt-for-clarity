@@ -63,6 +63,11 @@
       "src": "/assets/bosses/final_clarity.webp",
       "type": "image",
       "notes": "Phase O optimized v16 canon master: boss_final_clarity"
+    },
+    "regulatory_warship": {
+      "src": "/assets/bosses/regulatory_warship.webp",
+      "type": "image",
+      "notes": "L1-F1 optimized 512x458 transparent runtime crop from supplied boss_regulatory_warship master"
     }
   },
   "weapons": {},
