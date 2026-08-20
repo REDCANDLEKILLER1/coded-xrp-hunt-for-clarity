@@ -1,8 +1,8 @@
 // Data-driven content smoke test.
 //
-// Pure data validation of src/game/content/registry.ts — no DOM, no engine.
-// Bundles the TypeScript registry with the already-installed esbuild (a Vite
-// dependency; no new package is added) and runs validateContent(). Exits
+// Pure data validation of game content — no DOM, no engine.
+// Bundles the TypeScript modules with the already-installed esbuild (a Vite
+// dependency; no new package is added) and runs their validators. Exits
 // non-zero on any problem so it can gate locally or in CI later.
 //
 // Run with: npm test
@@ -86,5 +86,74 @@ if (campaign.PLANETS.length !== 10 || campaign.CAMPAIGN_ROUTES.length < 9) {
   console.error('Planet campaign validation FAILED: expected ten routed worlds.');
   process.exit(1);
 }
+if (campaign.PLANET_BY_KEY.ledger_prime?.label !== 'EARTH') {
+  console.error('Planet campaign validation FAILED: Earth must remain the first campaign world.');
+  process.exit(1);
+}
 
 console.log('Planet campaign validation OK — ten routed worlds are registered.');
+
+const missionResult = await build({
+  entryPoints: ['src/game/content/missions/index.ts'],
+  bundle: true,
+  format: 'esm',
+  write: false,
+  logLevel: 'silent',
+});
+
+const missions = await import(
+  'data:text/javascript,' + encodeURIComponent(missionResult.outputFiles[0].text)
+);
+
+const missionErrors = missions.validateMissions();
+if (missionErrors.length > 0) {
+  console.error('Mission validation FAILED:');
+  for (const e of missionErrors) console.error('  - ' + e);
+  process.exit(1);
+}
+
+const earthMission = missions.missionForPlanet('ledger_prime');
+if (!earthMission || earthMission.key !== 'earth_ledger_prime' || earthMission.acts.length < 10) {
+  console.error('Mission validation FAILED: Earth Level 1 mission skeleton is missing or incomplete.');
+  process.exit(1);
+}
+if (earthMission.acts.at(-1)?.mode !== 'complete') {
+  console.error('Mission validation FAILED: Earth Level 1 must end in an explicit complete act.');
+  process.exit(1);
+}
+
+const directorResult = await build({
+  entryPoints: ['src/game/content/MissionDirector.ts'],
+  bundle: true,
+  format: 'esm',
+  write: false,
+  logLevel: 'silent',
+});
+
+const directorModule = await import(
+  'data:text/javascript,' + encodeURIComponent(directorResult.outputFiles[0].text)
+);
+
+const director = new directorModule.MissionDirector();
+director.start(earthMission);
+if (director.currentAct?.key !== 'deployment' || director.currentActIndex !== 0 || director.isComplete) {
+  console.error('Mission director validation FAILED: mission did not start at deployment.');
+  process.exit(1);
+}
+for (let index = 1; index < earthMission.acts.length; index += 1) director.advance();
+if (!director.isComplete || director.currentAct?.key !== 'earth_defended') {
+  console.error('Mission director validation FAILED: mission did not advance to Earth defended.');
+  process.exit(1);
+}
+director.restart();
+if (director.currentAct?.key !== 'deployment' || director.currentActIndex !== 0) {
+  console.error('Mission director validation FAILED: restart did not return to deployment.');
+  process.exit(1);
+}
+director.clear();
+if (director.activeMission !== null || director.currentAct !== undefined) {
+  console.error('Mission director validation FAILED: clear did not remove mission state.');
+  process.exit(1);
+}
+
+console.log('Mission validation OK — Earth Level 1 mission state is explicit and testable.');
