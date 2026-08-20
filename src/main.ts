@@ -2,6 +2,7 @@ import './style.css';
 import { Game2A } from './game/core/Game2A';
 import { CampaignMap } from './game/ui/CampaignMap';
 import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
+import { LandscapeMode } from './game/ui/LandscapeMode';
 import { OnFootGame } from './game/onfoot/OnFootGame';
 import {
   loadCampaignProgress,
@@ -18,6 +19,7 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
   throw new Error('Required campaign UI was not found.');
 }
 
+new LandscapeMode();
 const game = new Game2A(canvas);
 new DirectBoardingRuntime(game, gameShell);
 const onFoot = new OnFootGame(gameShell);
