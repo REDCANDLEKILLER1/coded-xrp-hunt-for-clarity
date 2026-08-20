@@ -32,10 +32,20 @@ export function validateMissions(): string[] {
       if (actKeys.has(act.key)) errors.push(`mission.${mission.key}.${act.key}: duplicate act key`);
       actKeys.add(act.key);
     }
+
+    const checkpointKeys = new Set<string>();
+    for (const checkpoint of mission.checkpoints) {
+      if (!checkpoint.key || !checkpoint.label || !checkpoint.resumeActKey) {
+        errors.push(`mission.${mission.key}: checkpoint key, label, and resumeActKey are required`);
+      }
+      if (checkpointKeys.has(checkpoint.key)) errors.push(`mission.${mission.key}.${checkpoint.key}: duplicate checkpoint key`);
+      if (!actKeys.has(checkpoint.resumeActKey)) errors.push(`mission.${mission.key}.${checkpoint.key}: unknown resume act ${checkpoint.resumeActKey}`);
+      checkpointKeys.add(checkpoint.key);
+    }
   }
 
   return errors;
 }
 
 export { EARTH_LEDGER_PRIME_MISSION } from './ledgerPrime';
-export type { MissionActDef, MissionActMode, MissionDef } from './types';
+export type { MissionActDef, MissionActMode, MissionCheckpointDef, MissionDef } from './types';
