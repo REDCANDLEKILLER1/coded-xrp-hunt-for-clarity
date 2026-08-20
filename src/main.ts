@@ -2,7 +2,12 @@ import './style.css';
 import { Game2A } from './game/core/Game2A';
 import { CampaignMap } from './game/ui/CampaignMap';
 import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
-import type { MissionCheckpointSnapshot } from './game/content/CampaignProgress';
+import { OnFootGame } from './game/onfoot/OnFootGame';
+import {
+  loadCampaignProgress,
+  missionCheckpointFor,
+  type MissionCheckpointSnapshot,
+} from './game/content/CampaignProgress';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');
 const campaignRoot = document.querySelector<HTMLElement>('#campaign-map');
@@ -15,22 +20,45 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
 
 const game = new Game2A(canvas);
 new DirectBoardingRuntime(game, gameShell);
+const onFoot = new OnFootGame(gameShell);
 let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
   (planet, checkpoint?: MissionCheckpointSnapshot) => {
+    onFoot.hide();
+    canvas.style.visibility = 'visible';
     map.hide();
     gameShell.hidden = false;
     game.deployFromMap(planet.key, planet.label, checkpoint);
   },
   () => {
+    onFoot.hide();
+    canvas.style.visibility = 'visible';
     map.hide();
     gameShell.hidden = false;
     game.deployTestMode();
   },
 );
 
+window.addEventListener('coded:boarding-complete', () => {
+  canvas.style.visibility = 'hidden';
+  onFoot.show();
+});
+
+window.addEventListener('coded:onfoot-defeat', () => {
+  canvas.style.visibility = 'visible';
+  const checkpoint = missionCheckpointFor(loadCampaignProgress(), 'ledger_prime');
+  if (checkpoint) {
+    game.deployFromMap('ledger_prime', 'EARTH — LEDGER PRIME', checkpoint);
+    return;
+  }
+  gameShell.hidden = true;
+  map.show();
+});
+
 returnMap.addEventListener('click', () => {
+  onFoot.hide();
+  canvas.style.visibility = 'visible';
   game.suspend();
   gameShell.hidden = true;
   map.show();
