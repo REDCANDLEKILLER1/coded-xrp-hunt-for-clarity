@@ -1,6 +1,7 @@
 import './style.css';
 import { Game2A } from './game/core/Game2A';
 import { CampaignMap } from './game/ui/CampaignMap';
+import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
 import type { MissionCheckpointSnapshot } from './game/content/CampaignProgress';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -13,6 +14,7 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
 }
 
 const game = new Game2A(canvas);
+new DirectBoardingRuntime(game, gameShell);
 let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
