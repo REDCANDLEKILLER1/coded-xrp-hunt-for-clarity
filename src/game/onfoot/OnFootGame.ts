@@ -16,9 +16,10 @@ const RED = '#ff4c66';
 const PLAYER_RENDER_SIZE = 84;
 
 /**
- * L1-I first authored Regulatory Warship interior slice.
+ * L1-I authored Regulatory Warship interior slice.
  * H2 movement/jump/shooting constants remain locked while presentation and room flow expand.
- * The current XRPMan sheet is still prototype art; this runtime only improves readability.
+ * Mobile landscape uses a zoomed-out world camera so XRPMan becomes a smaller character in a
+ * larger visible play field without changing physics, collision dimensions, or weapon cadence.
  */
 export class OnFootGame {
   private readonly canvas: HTMLCanvasElement;
@@ -48,6 +49,7 @@ export class OnFootGame {
   private coyoteClock = 0;
   private jumpBufferClock = 0;
   private cameraX = 0;
+  private cameraY = 0;
   private completionClock = 0;
   private introClock = 0;
   private transitionClock = 0;
@@ -150,11 +152,7 @@ export class OnFootGame {
     this.movePlayer(dt);
     this.updateEnemies(dt);
     this.updateShots(dt);
-
-    const viewWidth = innerWidth;
-    const targetCamera = this.player.x - viewWidth * 0.42;
-    this.cameraX += (targetCamera - this.cameraX) * Math.min(1, dt * 7.5);
-    this.cameraX = clamp(this.cameraX, 0, Math.max(0, this.room.worldWidth - viewWidth));
+    this.updateCamera(dt);
 
     if (this.roomCleared() && this.player.x > this.room.exitX) this.advanceRoom();
 
@@ -162,6 +160,21 @@ export class OnFootGame {
       this.hide();
       window.dispatchEvent(new CustomEvent('coded:onfoot-defeat'));
     }
+  }
+
+  private updateCamera(dt: number): void {
+    const scale = this.worldScale();
+    const visibleWorldWidth = innerWidth / scale;
+    const visibleWorldHeight = innerHeight / scale;
+    const targetCameraX = this.player.x - visibleWorldWidth * 0.42;
+    const maxCameraX = Math.max(0, this.room.worldWidth - visibleWorldWidth);
+    this.cameraX += (targetCameraX - this.cameraX) * Math.min(1, dt * 7.5);
+    this.cameraX = clamp(this.cameraX, 0, maxCameraX);
+
+    const floorScreenTarget = innerHeight - (this.isLandscapeMobile() ? 34 : 0);
+    const targetCameraY = this.room.floorY - floorScreenTarget / scale;
+    const maxCameraY = Math.max(0, this.room.worldHeight - visibleWorldHeight);
+    this.cameraY = clamp(targetCameraY, 0, maxCameraY);
   }
 
   private movePlayer(dt: number): void {
@@ -296,8 +309,10 @@ export class OnFootGame {
     c.fillStyle = '#071321';
     c.fillRect(0, 0, innerWidth, innerHeight);
 
+    const scale = this.worldScale();
     c.save();
-    c.translate(-this.cameraX, 0);
+    c.scale(scale, scale);
+    c.translate(-this.cameraX, -this.cameraY);
     this.drawRoomBackground(c);
     this.drawWorld(c);
     this.drawEnemies(c);
@@ -328,7 +343,6 @@ export class OnFootGame {
       c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
     }
 
-    // Keep foreground geometry readable without crushing already-dark concept art.
     const blueLift = c.createLinearGradient(0, 0, 0, this.room.worldHeight);
     blueLift.addColorStop(0, 'rgba(54,163,255,0.055)');
     blueLift.addColorStop(0.55, 'rgba(54,163,255,0.025)');
@@ -447,7 +461,6 @@ export class OnFootGame {
   }
 
   private drawAtmosphere(c: CanvasRenderingContext2D): void {
-    // A light ambient wash replaces the previous heavy vignette that hid room art on phones.
     const ambient = c.createLinearGradient(0, 0, 0, innerHeight);
     ambient.addColorStop(0, 'rgba(54,163,255,0.045)');
     ambient.addColorStop(0.58, 'rgba(0,255,0,0.018)');
@@ -470,38 +483,40 @@ export class OnFootGame {
   }
 
   private drawHud(c: CanvasRenderingContext2D): void {
-    const width = Math.min(342, innerWidth - 24);
-    c.fillStyle = 'rgba(2,6,11,0.72)';
-    c.fillRect(12, 12, width, 82);
+    const compact = this.isLandscapeMobile();
+    const width = Math.min(compact ? 304 : 342, innerWidth - 24);
+    const height = compact ? 64 : 82;
+    c.fillStyle = 'rgba(2,6,11,0.68)';
+    c.fillRect(12, 10, width, height);
     c.strokeStyle = 'rgba(54,163,255,0.62)';
-    c.strokeRect(12, 12, width, 82);
+    c.strokeRect(12, 10, width, height);
     c.textAlign = 'left';
-    c.font = '900 12px ui-sans-serif, system-ui';
+    c.font = `900 ${compact ? 10 : 12}px ui-sans-serif, system-ui`;
     c.fillStyle = GREEN;
-    c.fillText(`XRPMAN // ${this.room.key.replace('_', ' ').toUpperCase()}`, 24, 32);
+    c.fillText(`XRPMAN // ${this.room.key.replace('_', ' ').toUpperCase()}`, 22, compact ? 26 : 32);
     c.fillStyle = '#d8ffe8';
-    c.font = '800 10px ui-sans-serif, system-ui';
-    c.fillText('HP', 24, 52);
-    c.fillStyle = '#173427'; c.fillRect(50, 44, 104, 9);
-    c.fillStyle = GREEN; c.fillRect(50, 44, 104 * this.player.health / 100, 9);
-    c.fillStyle = '#d8ffe8'; c.fillText('ENERGY', 170, 52);
-    c.fillStyle = '#10283a'; c.fillRect(220, 44, 82, 9);
-    c.fillStyle = BLUE; c.fillRect(220, 44, 82 * this.player.energy / 100, 9);
+    c.font = `800 ${compact ? 9 : 10}px ui-sans-serif, system-ui`;
+    c.fillText('HP', 22, compact ? 45 : 52);
+    c.fillStyle = '#173427'; c.fillRect(44, compact ? 38 : 44, compact ? 92 : 104, 8);
+    c.fillStyle = GREEN; c.fillRect(44, compact ? 38 : 44, (compact ? 92 : 104) * this.player.health / 100, 8);
+    c.fillStyle = '#d8ffe8'; c.fillText('ENERGY', compact ? 150 : 170, compact ? 45 : 52);
+    c.fillStyle = '#10283a'; c.fillRect(compact ? 194 : 220, compact ? 38 : 44, compact ? 72 : 82, 8);
+    c.fillStyle = BLUE; c.fillRect(compact ? 194 : 220, compact ? 38 : 44, (compact ? 72 : 82) * this.player.energy / 100, 8);
     c.fillStyle = 'rgba(216,255,232,0.82)';
-    c.fillText(this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective, 24, 75);
+    c.fillText(this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective, 22, compact ? 64 : 75);
 
     c.textAlign = 'right';
     c.fillStyle = 'rgba(54,163,255,0.95)';
-    c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 20, 30);
+    c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 18, 24);
 
     if (this.completionClock > 100) {
       c.textAlign = 'center';
       c.fillStyle = GREEN;
-      c.font = '900 17px ui-sans-serif, system-ui';
-      c.fillText('SECURITY CHECKPOINT CLEARED', innerWidth / 2, 122);
+      c.font = '900 15px ui-sans-serif, system-ui';
+      c.fillText('SECURITY CHECKPOINT CLEARED', innerWidth / 2, compact ? 86 : 122);
       c.fillStyle = BLUE;
-      c.font = '800 11px ui-sans-serif, system-ui';
-      c.fillText('ACCESS CORRIDOR IS NEXT', innerWidth / 2, 143);
+      c.font = '800 10px ui-sans-serif, system-ui';
+      c.fillText('ACCESS CORRIDOR IS NEXT', innerWidth / 2, compact ? 103 : 143);
     }
   }
 
@@ -519,14 +534,16 @@ export class OnFootGame {
 
   private drawMobileControls(c: CanvasRenderingContext2D): void {
     if (!matchMedia('(pointer: coarse)').matches) return;
-    const y = innerHeight - 70;
-    c.globalAlpha = 0.8;
+    const compact = this.isLandscapeMobile();
+    const y = innerHeight - (compact ? 42 : 70);
+    const controlHeight = compact ? 38 : 48;
+    c.globalAlpha = compact ? 0.67 : 0.8;
     c.textAlign = 'center';
-    c.font = '900 12px ui-sans-serif, system-ui';
-    button(c, innerWidth * 0.09, y, 58, 48, '◀', BLUE);
-    button(c, innerWidth * 0.26, y, 58, 48, '▶', BLUE);
-    button(c, innerWidth * 0.68, y, 66, 48, 'JUMP', GREEN);
-    button(c, innerWidth * 0.89, y, 66, 48, 'BLAST', GREEN);
+    c.font = `900 ${compact ? 10 : 12}px ui-sans-serif, system-ui`;
+    button(c, innerWidth * 0.075, y, compact ? 48 : 58, controlHeight, '◀', BLUE);
+    button(c, innerWidth * 0.19, y, compact ? 48 : 58, controlHeight, '▶', BLUE);
+    button(c, innerWidth * 0.78, y, compact ? 58 : 66, controlHeight, 'JUMP', GREEN);
+    button(c, innerWidth * 0.92, y, compact ? 58 : 66, controlHeight, 'BLAST', GREEN);
     c.globalAlpha = 1;
   }
 
@@ -548,17 +565,17 @@ export class OnFootGame {
       this.canvas.setPointerCapture(event.pointerId);
       const x = event.clientX / innerWidth;
       const y = event.clientY / innerHeight;
-      if (y < 0.68) {
+      if (y < 0.64) {
         this.fireLiquidityBlast();
         return;
       }
-      if (x < 0.18) {
+      if (x < 0.14) {
         this.pointerMoveId = event.pointerId;
         this.pointerMove = -1;
-      } else if (x < 0.42) {
+      } else if (x < 0.30) {
         this.pointerMoveId = event.pointerId;
         this.pointerMove = 1;
-      } else if (x < 0.79) {
+      } else if (x < 0.85) {
         this.tryJump();
       } else {
         this.fireLiquidityBlast();
@@ -608,6 +625,7 @@ export class OnFootGame {
     }));
     this.shots = [];
     this.cameraX = 0;
+    this.cameraY = 0;
     this.fireCooldown = 0;
     this.hurtCooldown = 0;
     this.coyoteClock = 0;
@@ -615,6 +633,16 @@ export class OnFootGame {
     this.pointerMove = 0;
     this.pointerMoveId = null;
     this.introClock = preserveVitals ? 0.68 : 0.82;
+    this.updateCamera(1);
+  }
+
+  private worldScale(): number {
+    if (!this.isLandscapeMobile()) return 1;
+    return clamp(innerHeight / 520, 0.62, 0.74);
+  }
+
+  private isLandscapeMobile(): boolean {
+    return matchMedia('(pointer: coarse)').matches && innerWidth > innerHeight;
   }
 
   private resize(): void {
@@ -622,6 +650,7 @@ export class OnFootGame {
     this.canvas.width = Math.max(1, Math.floor(innerWidth * dpr));
     this.canvas.height = Math.max(1, Math.floor(innerHeight * dpr));
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (this.visible) this.updateCamera(1);
   }
 }
 
@@ -634,7 +663,7 @@ function rectOverlap(ax: number, ay: number, aw: number, ah: number, bx: number,
 }
 
 function button(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, label: string, color: string): void {
-  c.fillStyle = 'rgba(2,6,11,0.74)';
+  c.fillStyle = 'rgba(2,6,11,0.66)';
   c.fillRect(x - w / 2, y - h / 2, w, h);
   c.strokeStyle = color;
   c.lineWidth = 2;
