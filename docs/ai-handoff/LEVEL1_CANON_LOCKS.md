@@ -1,0 +1,23 @@
+# Level 1 Canon Locks — Earth
+
+- Planet 1 is Earth.
+- Ledger Prime / Ledger City is the Sector 01 combat-zone identity.
+- Earth is under direct attack; civilians/infrastructure are at risk.
+- Gary Fog is the Level 1 Guardian.
+- Gary Fog rewards Fog Breaker Pulse fighter tech.
+- Regulatory Warship is the Level 1 exterior capital-ship boss.
+- The warship is disabled, not destroyed.
+- The player's personal fighter flies directly through an opened hangar/breach into the warship.
+- No shuttle boarding sequence.
+- XRPMan exits the fighter inside for on-foot play.
+- Ledger Defense Core is the interior final objective/boss.
+- Ledger Defense Core rewards Ledger Shield.
+- Regulatory Warship is captured and kept after Level 1.
+- Captured warship is the future interplanetary capital ship/mobile base.
+- Personal fighter, XRPMan, and capital ship are three separate progression tracks.
+- Full 3D interplanetary flight is future scope.
+- Checkpoints replace arcade lives in production campaign.
+- XRPMan supplied character sheet is canonical on-foot identity reference.
+- Cyber Battleship is reserved for later.
+- NFTs/XRPL integration is future scope and cannot block standalone game.
+- Preserve the validated responsive fighter feel unless playtesting identifies a concrete problem.
