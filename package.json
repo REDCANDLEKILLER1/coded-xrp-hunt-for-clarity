@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node scripts/validate-content.mjs && node scripts/validate-level1-e.mjs && node scripts/validate-level1-f.mjs && node scripts/validate-level1-g.mjs && node scripts/validate-level1-h2.mjs && node scripts/validate-level1-h2-sideview.mjs && node scripts/validate-level1-i.mjs"
+    "test": "node scripts/validate-content.mjs && node scripts/validate-level1-e.mjs && node scripts/validate-level1-f.mjs && node scripts/validate-level1-g.mjs && node scripts/validate-level1-h2.mjs && node scripts/validate-level1-h2-sideview.mjs && node scripts/validate-level1-i.mjs && node scripts/validate-mobile-landscape.mjs"
   },
   "dependencies": {},
   "devDependencies": {
