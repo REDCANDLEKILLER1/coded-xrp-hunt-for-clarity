@@ -64,4 +64,11 @@ returnMap.addEventListener('click', () => {
   map.show();
 });
 
-void game.start();
+void game.start().then(() => {
+  if (!new URLSearchParams(location.search).has('onfoot')) return;
+  map.hide();
+  game.suspend();
+  gameShell.hidden = false;
+  canvas.style.visibility = 'hidden';
+  onFoot.show();
+});
