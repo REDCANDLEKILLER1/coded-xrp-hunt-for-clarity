@@ -36,8 +36,32 @@ for (const token of [
   if (!onFoot.includes(token)) throw new Error(`mobile-landscape: missing zoomed-out on-foot token ${token}`);
 }
 
+// The gate must never be the only way forward. iOS Safari exposes neither
+// element fullscreen nor screen.orientation.lock, and rotation-locked devices
+// stay portrait regardless, so an escape path is mandatory.
+for (const token of [
+  'dismissed',
+  'landscape-gate__skip',
+  'CONTINUE ANYWAY',
+  'revealFallback',
+  'canLockOrientation',
+]) {
+  if (!landscape.includes(token)) {
+    throw new Error(`mobile-landscape: portrait gate has no escape path — missing ${token}`);
+  }
+}
+if (!/requiresLandscape\s*=[^;]*!this\.dismissed/.test(landscape)) {
+  throw new Error('mobile-landscape: refresh() does not honour the dismissed escape, gate can trap the player');
+}
+if (!/if \(innerHeight > innerWidth\) this\.revealFallback\(\);/.test(landscape)) {
+  throw new Error('mobile-landscape: failed orientation lock does not reveal the manual-rotate fallback');
+}
+if (!styles.includes('.landscape-gate__fallback')) {
+  throw new Error('mobile-landscape: escape-path styles missing');
+}
+
 if (!main.includes("import './landscape.css'")) throw new Error('mobile-landscape: landscape styles are not loaded');
 if (!main.includes('new LandscapeMode()')) throw new Error('mobile-landscape: landscape gate is not initialized');
 if (!styles.includes('.landscape-gate.is-visible')) throw new Error('mobile-landscape: portrait rotate gate styles missing');
 
-console.log('Mobile landscape validation passed: portrait gate, fullscreen/orientation attempt, calibrated four-axis tilt, and zoomed-out on-foot camera are wired.');
+console.log('Mobile landscape validation passed: portrait gate with escape path, fullscreen/orientation attempt, calibrated four-axis tilt, and zoomed-out on-foot camera are wired.');

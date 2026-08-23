@@ -51,6 +51,24 @@ export class DirectBoardingRuntime {
     requestAnimationFrame((time) => this.frame(time));
   }
 
+  /**
+   * Explicit lifecycle reset for a boarding retry.
+   *
+   * The frame loop can only clear its own latch when it SAMPLES a frame with no
+   * disabled warship. A checkpoint restore clears and rebuilds the disabled
+   * warship inside one synchronous reset(), so no animation frame ever observes
+   * that intermediate state and the latch would survive into the retry. Any
+   * caller that restores a flight checkpoint must therefore reset this bridge
+   * explicitly, before the restore runs.
+   */
+  resetForRetry(): void {
+    this.active = false;
+    this.completedForCurrentWarship = false;
+    this.completionClock = 0;
+    this.director.reset();
+    this.clear();
+  }
+
   private frame(time: number): void {
     const dt = Math.min(0.05, Math.max(0, (time - this.lastTime) / 1000));
     this.lastTime = time;

@@ -22,7 +22,7 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
 
 new LandscapeMode();
 const game = new Game2A(canvas);
-new DirectBoardingRuntime(game, gameShell);
+const boarding = new DirectBoardingRuntime(game, gameShell);
 const onFoot = new OnFootGame(gameShell);
 let map: CampaignMap;
 map = new CampaignMap(
@@ -32,6 +32,8 @@ map = new CampaignMap(
     canvas.style.visibility = 'visible';
     map.hide();
     gameShell.hidden = false;
+    // Clear the boarding bridge BEFORE the restore rebuilds a disabled warship.
+    boarding.resetForRetry();
     game.deployFromMap(planet.key, planet.label, checkpoint);
   },
   () => {
@@ -52,6 +54,9 @@ window.addEventListener('coded:onfoot-defeat', () => {
   canvas.style.visibility = 'visible';
   const checkpoint = missionCheckpointFor(loadCampaignProgress(), 'ledger_prime');
   if (checkpoint) {
+    // The restore rebuilds the disabled warship synchronously, so the frame loop
+    // never sees a frame without one. Re-arm the boarding bridge explicitly.
+    boarding.resetForRetry();
     game.deployFromMap('ledger_prime', 'EARTH — LEDGER PRIME', checkpoint);
     return;
   }

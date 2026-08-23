@@ -10,10 +10,18 @@ type FullscreenElement = HTMLElement & {
  * Mobile gameplay is landscape-first. Browsers do not universally permit an
  * orientation lock until a user gesture/fullscreen transition, so portrait is
  * blocked immediately by a rotate gate and the first gesture attempts the lock.
+ *
+ * The lock is not guaranteed to be available at all: iOS Safari exposes neither
+ * element fullscreen nor screen.orientation.lock, and any device with rotation
+ * lock enabled stays portrait regardless. The gate must therefore never be the
+ * only way forward — when the lock cannot be performed the player is offered a
+ * manual-rotate hint plus an explicit escape into portrait play.
  */
 export class LandscapeMode {
   private readonly gate: HTMLDivElement;
+  private readonly fallback: HTMLDivElement;
   private lockAttempted = false;
+  private dismissed = false;
 
   constructor() {
     this.gate = document.createElement('div');
@@ -26,16 +34,29 @@ export class LandscapeMode {
         <div class="landscape-gate__eyebrow">CODED // MOBILE FLIGHT MODE</div>
         <strong>TURN PHONE SIDEWAYS</strong>
         <span>Landscape gives you the full battlefield and enables calibrated tilt steering.</span>
-        <button type="button">ENABLE LANDSCAPE</button>
+        <button type="button" class="landscape-gate__lock">ENABLE LANDSCAPE</button>
+        <div class="landscape-gate__fallback" hidden>
+          <span class="landscape-gate__hint">This browser will not rotate the screen for us. Turn the phone sideways yourself — or keep playing in portrait.</span>
+          <button type="button" class="landscape-gate__skip">CONTINUE ANYWAY</button>
+        </div>
       </div>
     `;
     document.body.appendChild(this.gate);
 
-    this.gate.querySelector('button')?.addEventListener('click', () => void this.activateFromGesture());
+    this.fallback = this.gate.querySelector<HTMLDivElement>('.landscape-gate__fallback')!;
+    this.gate.querySelector<HTMLButtonElement>('.landscape-gate__lock')
+      ?.addEventListener('click', () => void this.activateFromGesture());
+    this.gate.querySelector<HTMLButtonElement>('.landscape-gate__skip')
+      ?.addEventListener('click', () => this.dismiss());
+
     window.addEventListener('resize', this.refresh);
     window.addEventListener('orientationchange', this.refresh);
     screen.orientation?.addEventListener?.('change', this.refresh);
     document.addEventListener('pointerdown', this.onFirstGesture, { capture: true, passive: true });
+
+    // If the platform cannot lock orientation at all, say so up front rather
+    // than making the player discover it by tapping a button that does nothing.
+    if (!canLockOrientation()) this.revealFallback();
     this.refresh();
   }
 
@@ -45,10 +66,20 @@ export class LandscapeMode {
   };
 
   private readonly refresh = (): void => {
-    const requiresLandscape = isMobileLike() && innerHeight > innerWidth;
+    const requiresLandscape = isMobileLike() && innerHeight > innerWidth && !this.dismissed;
     this.gate.classList.toggle('is-visible', requiresLandscape);
     document.documentElement.classList.toggle('mobile-landscape-active', isMobileLike() && innerWidth >= innerHeight);
   };
+
+  /** Let the player through in portrait. Landscape stays the recommended orientation. */
+  private dismiss(): void {
+    this.dismissed = true;
+    this.refresh();
+  }
+
+  private revealFallback(): void {
+    this.fallback.hidden = false;
+  }
 
   private async activateFromGesture(): Promise<void> {
     if (!isMobileLike()) return;
@@ -71,8 +102,16 @@ export class LandscapeMode {
       // Some browsers deny orientation lock outside installed/PWA modes.
     }
 
+    // The lock either was unavailable or was refused: the device is still
+    // portrait. Offer the manual route so the gate can never be a dead end.
+    if (innerHeight > innerWidth) this.revealFallback();
+
     this.refresh();
   }
+}
+
+function canLockOrientation(): boolean {
+  return typeof (screen.orientation as LockableScreenOrientation | undefined)?.lock === 'function';
 }
 
 function isMobileLike(): boolean {

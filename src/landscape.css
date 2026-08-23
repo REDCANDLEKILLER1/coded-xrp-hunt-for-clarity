@@ -100,3 +100,30 @@
     font-size: 12px;
   }
 }
+
+.landscape-gate__fallback {
+  display: block;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(54, 163, 255, 0.28);
+}
+
+.landscape-gate__fallback[hidden] {
+  display: none;
+}
+
+.landscape-gate__hint {
+  color: rgba(216, 255, 232, 0.62);
+  font-size: 11px;
+}
+
+.landscape-gate button.landscape-gate__skip {
+  margin-top: 12px;
+  border-color: rgba(54, 163, 255, 0.72);
+  background: rgba(54, 163, 255, 0.1);
+}
+
+.landscape-gate button:focus-visible {
+  outline: 2px solid #00ff00;
+  outline-offset: 2px;
+}
