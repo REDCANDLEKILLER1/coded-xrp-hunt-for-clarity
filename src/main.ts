@@ -5,6 +5,8 @@ import { CampaignMap } from './game/ui/CampaignMap';
 import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
 import { LandscapeMode } from './game/ui/LandscapeMode';
 import { OnFootGame } from './game/onfoot/OnFootGame';
+import { debugLog } from './game/core/DebugLog';
+import { showDebugLogView } from './game/ui/DebugLogView';
 import {
   loadCampaignProgress,
   missionCheckpointFor,
@@ -20,6 +22,20 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
   throw new Error('Required campaign UI was not found.');
 }
 
+debugLog.restore();
+debugLog.log('boot', 'startup', {
+  url: location.pathname + location.search,
+  viewport: `${innerWidth}x${innerHeight}`,
+  dpr: devicePixelRatio,
+  orientation: screen.orientation?.angle ?? 'n/a',
+  coarsePointer: matchMedia('(pointer: coarse)').matches,
+});
+
+// `?log` opens the on-device transcript instead of booting the game.
+if (new URLSearchParams(location.search).has('log')) {
+  showDebugLogView();
+}
+
 new LandscapeMode();
 const game = new Game2A(canvas);
 const boarding = new DirectBoardingRuntime(game, gameShell);
@@ -32,6 +48,11 @@ map = new CampaignMap(
     canvas.style.visibility = 'visible';
     map.hide();
     gameShell.hidden = false;
+    debugLog.log('mission', 'deploy from map', {
+      planet: planet.key,
+      label: planet.label,
+      resumeAct: checkpoint?.resumeActKey ?? null,
+    });
     // Clear the boarding bridge BEFORE the restore rebuilds a disabled warship.
     boarding.resetForRetry();
     game.deployFromMap(planet.key, planet.label, checkpoint);
@@ -46,11 +67,13 @@ map = new CampaignMap(
 );
 
 window.addEventListener('coded:boarding-complete', () => {
+  debugLog.log('mission', 'boarding complete -> on foot');
   canvas.style.visibility = 'hidden';
   onFoot.show();
 });
 
 window.addEventListener('coded:onfoot-defeat', () => {
+  debugLog.log('mission', 'on-foot defeat -> checkpoint restore');
   canvas.style.visibility = 'visible';
   const checkpoint = missionCheckpointFor(loadCampaignProgress(), 'ledger_prime');
   if (checkpoint) {

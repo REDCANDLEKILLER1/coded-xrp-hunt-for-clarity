@@ -8,8 +8,9 @@ type FullscreenElement = HTMLElement & {
 
 /**
  * Mobile gameplay is landscape-first. Browsers do not universally permit an
- * orientation lock until a user gesture/fullscreen transition, so portrait is
- * blocked immediately by a rotate gate and the first gesture attempts the lock.
+ * orientation lock until a user gesture/fullscreen transition, so portrait shows
+ * a rotate prompt and the first gesture anywhere attempts the lock. There is no
+ * "enable" button to press — turning the phone is the whole interaction.
  *
  * The lock is not guaranteed to be available at all: iOS Safari exposes neither
  * element fullscreen nor screen.orientation.lock, and any device with rotation
@@ -33,8 +34,7 @@ export class LandscapeMode {
         <div class="landscape-gate__phone" aria-hidden="true">↻</div>
         <div class="landscape-gate__eyebrow">CODED // MOBILE FLIGHT MODE</div>
         <strong>TURN PHONE SIDEWAYS</strong>
-        <span>Landscape gives you the full battlefield and enables calibrated tilt steering.</span>
-        <button type="button" class="landscape-gate__lock">ENABLE LANDSCAPE</button>
+        <span>Landscape gives you the full battlefield. Tilt steering turns itself on.</span>
         <div class="landscape-gate__fallback" hidden>
           <span class="landscape-gate__hint">This browser will not rotate the screen for us. Turn the phone sideways yourself — or keep playing in portrait.</span>
           <button type="button" class="landscape-gate__skip">CONTINUE ANYWAY</button>
@@ -44,8 +44,8 @@ export class LandscapeMode {
     document.body.appendChild(this.gate);
 
     this.fallback = this.gate.querySelector<HTMLDivElement>('.landscape-gate__fallback')!;
-    this.gate.querySelector<HTMLButtonElement>('.landscape-gate__lock')
-      ?.addEventListener('click', () => void this.activateFromGesture());
+    // No "enable" button: the lock is attempted automatically from the first
+    // gesture anywhere on the page. Players just turn the phone.
     this.gate.querySelector<HTMLButtonElement>('.landscape-gate__skip')
       ?.addEventListener('click', () => this.dismiss());
 
