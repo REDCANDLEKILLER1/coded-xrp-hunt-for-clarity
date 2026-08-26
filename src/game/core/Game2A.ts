@@ -2,6 +2,7 @@ import { AssetLoader } from './AssetLoader';
 import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
+import { debugLog } from './DebugLog';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
@@ -72,6 +73,7 @@ export class Game2A {
   private readonly warshipDirector = new RegulatoryWarshipDirector();
   private clock = 0;
   private mode: Mode = 'title';
+  private loggedMode: Mode | null = null;
   private paused = false;
   private selectedShipKey = DEFAULT_SHIP.key;
   private player: Actor = this.newPlayer();
@@ -522,7 +524,8 @@ export class Game2A {
   private movePlayer(dt: number): void {
     const pointer = this.input.pointer;
     const axis = this.input.axis();
-    if (pointer && !this.inControls(pointer.x, pointer.y)) {
+    const usingPointer = Boolean(pointer && !this.inControls(pointer.x, pointer.y));
+    if (usingPointer && pointer) {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
     } else {
@@ -532,6 +535,18 @@ export class Game2A {
     }
     this.player.x = clamp(this.player.x, 28, this.w - 28);
     this.player.y = clamp(this.player.y, this.h * 0.34, this.h - 96);
+
+    // Records what is actually steering the ship each second. If the fighter
+    // drifts on its own, this shows whether the input is non-zero while the
+    // player is not touching the screen, and by how much.
+    debugLog.sample('move', 1000, 'input', 'player move', {
+      source: usingPointer ? 'pointer' : 'axis',
+      tiltStatus: this.input.tiltStatus,
+      ax: Math.round(axis.x * 100) / 100,
+      ay: Math.round(axis.y * 100) / 100,
+      x: Math.round(this.player.x),
+      y: Math.round(this.player.y),
+    });
   }
 
   private updateBolts(dt: number): void {
@@ -953,6 +968,10 @@ export class Game2A {
   }
 
   private render(): void {
+    if (this.mode !== this.loggedMode) {
+      debugLog.log('mode', `mode -> ${this.mode}`, { planet: this.activePlanetKey ?? null });
+      this.loggedMode = this.mode;
+    }
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.background();
     if (this.mode === 'title') this.title();

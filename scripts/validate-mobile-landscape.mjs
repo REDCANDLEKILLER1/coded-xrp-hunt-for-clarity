@@ -11,9 +11,17 @@ for (const token of [
   'TILT_DEADZONE',
   'TILT_FULL_SCALE',
   "innerWidth > innerHeight",
-  'calibrateTilt()',
+  'calibrateTilt(',
+  // Neutral must never be latched from a single reading taken mid-rotation.
+  'SETTLE_MS',
+  'STABLE_SPREAD_DEG',
+  'collectCalibrationSample',
 ]) {
   if (!input.includes(token)) throw new Error(`mobile-landscape: missing tilt input token ${token}`);
+}
+
+if (/if \(this\.calibrationPending\) \{\s*this\.neutralBeta = event\.beta/.test(input)) {
+  throw new Error('mobile-landscape: tilt neutral is latched from the first sample again — this causes permanent drift');
 }
 
 for (const token of [
@@ -39,6 +47,11 @@ for (const token of [
 // The gate must never be the only way forward. iOS Safari exposes neither
 // element fullscreen nor screen.orientation.lock, and rotation-locked devices
 // stay portrait regardless, so an escape path is mandatory.
+// The lock must be attempted without a dedicated button, and the gate must
+// still have an escape when the platform refuses to rotate.
+if (/landscape-gate__lock/.test(landscape)) {
+  throw new Error('mobile-landscape: tilt/landscape must auto-enable, not require an ENABLE button');
+}
 for (const token of [
   'dismissed',
   'landscape-gate__skip',
