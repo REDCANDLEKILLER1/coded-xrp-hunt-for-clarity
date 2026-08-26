@@ -43,3 +43,15 @@ if (director.state !== 'complete') {
 }
 
 console.log('L1-G boarding validation OK — hangar opens, direct fighter entry is deliberate, and capture is deterministic.');
+
+// The boarding overlay is a positioned canvas stacked above the static game
+// canvas. style.css paints every <canvas> with an opaque #02060b background, so
+// an overlay that does not explicitly clear it hides the whole game behind a
+// flat dark rectangle — the screen renders black with only the STAR MAP button.
+import { readFileSync } from 'node:fs';
+const runtimeSource = readFileSync(new URL('../src/game/ui/DirectBoardingRuntime.ts', import.meta.url), 'utf8');
+if (!/background:\s*'transparent'/.test(runtimeSource)) {
+  console.error('L1-G boarding validation FAILED:');
+  console.error("  - DirectBoardingRuntime overlay must set background:'transparent'; otherwise the global canvas background hides the game.");
+  process.exit(1);
+}
