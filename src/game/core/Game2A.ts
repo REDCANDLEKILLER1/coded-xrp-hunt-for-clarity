@@ -5,8 +5,16 @@ import { SpriteRenderer } from './Sprite';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
-import { loadCampaignProgress, recordCampaignRun, saveCampaignProgress } from '../content/CampaignProgress';
-import type { CampaignProgress } from '../content/CampaignProgress';
+import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
+import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
+import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
+import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
+import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, hasFogBreaker } from '../content/EarthBossFlow';
+import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
+import { REGULATORY_WARSHIP, RegulatoryWarshipDirector } from '../content/RegulatoryWarship';
+import type { WarshipSystemState } from '../content/RegulatoryWarship';
+import { MissionDirector } from '../content/MissionDirector';
+import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
 
@@ -24,12 +32,15 @@ type BossActor = Actor & {
   phaseIndex: number;
   targetX: number;
 };
+type WarshipActor = Actor & {
+  state: 'intro' | 'fight' | 'disabled';
+  age: number;
+  fireClock: number;
+};
 type ProjectileActor = Actor & { damage: number; projectileKey: string };
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
-// Hit-burst tuning: a bigger, longer ring that reveals the spark debris baked
-// into the art, plus a spray of short-lived shards flying outward on impact.
 const BURST_LIFE = 0.45;
 const BURST_MAX_RADIUS = 72;
 const BURST_MIN_RADIUS = 6;
@@ -41,7 +52,6 @@ const REPAIR_EVERY_KILLS = 10;
 const MAX_BOMBS = 3;
 const BOMB_LIFE = 0.55;
 
-// Phase A: live content is sourced from the data registry rather than loose constants.
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
 const DEFAULT_HAZARD = HAZARDS.basic_turret;
@@ -50,12 +60,16 @@ const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
 const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
 const BOSS_LADDER = orderedBossKeys(BOSSES);
+
 export class Game2A {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly input: Input;
   private readonly assets = new AssetLoader();
   private readonly sprites: SpriteRenderer;
   private readonly loop = new Loop((dt) => this.frame(dt));
+  private readonly missionDirector = new MissionDirector();
+  private readonly earthEncounterDirector = new EarthFlightEncounterDirector();
+  private readonly warshipDirector = new RegulatoryWarshipDirector();
   private clock = 0;
   private mode: Mode = 'title';
   private paused = false;
@@ -65,6 +79,7 @@ export class Game2A {
   private hazards: HazardActor[] = [];
   private hostileShots: HostileProjectile[] = [];
   private boss: BossActor | null = null;
+  private warship: WarshipActor | null = null;
   private completedBosses = new Set<string>();
   private bolts: ProjectileActor[] = [];
   private pickups: PickupActor[] = [];
@@ -85,6 +100,11 @@ export class Game2A {
   private victoryPendingClock = 0;
   private pulseHitBoss = false;
   private playerHitClock = 0;
+  private missionBannerClock = 0;
+  private missionBannerText = '';
+  private launchClock = 0;
+  private launchTotal = 0;
+  private fogGateActive = false;
   private progress: CampaignProgress = this.loadProgress();
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
@@ -108,24 +128,55 @@ export class Game2A {
     this.loop.start();
   }
 
-  /** Enters the existing combat prototype through a campaign destination. */
-  deployFromMap(planetKey: string, planetLabel: string): void {
+  deployFromMap(planetKey: string, planetLabel: string, checkpoint?: MissionCheckpointSnapshot): void {
+    this.progress = this.loadProgress();
     this.activePlanetKey = planetKey;
     this.activePlanetLabel = planetLabel;
     this.paused = false;
+
+    const mission = missionForPlanet(planetKey);
+    if (!mission) {
+      this.missionDirector.clear();
+      this.earthEncounterDirector.clear();
+      this.mode = 'select';
+      return;
+    }
+
+    const resumable = checkpoint
+      && checkpoint.missionKey === mission.key
+      && checkpoint.planetKey === planetKey
+      && mission.acts.some((act) => act.key === checkpoint.resumeActKey);
+
+    if (resumable) {
+      this.missionDirector.startAtAct(mission, checkpoint.resumeActKey);
+      if (SHIPS[checkpoint.shipKey]) this.selectedShipKey = checkpoint.shipKey;
+      this.activePlanetLabel = `${mission.label} // ${checkpoint.checkpointLabel}`;
+      this.reset(checkpoint);
+      return;
+    }
+
+    this.missionDirector.start(mission);
+    this.earthEncounterDirector.clear();
+    this.activePlanetLabel = mission.label;
     this.mode = 'select';
   }
 
-  /** Keeps the original short run available as an explicit balancing sandbox. */
   deployTestMode(): void {
     this.activePlanetKey = null;
     this.activePlanetLabel = null;
+    this.missionDirector.clear();
+    this.earthEncounterDirector.clear();
+    this.launchClock = 0;
+    this.fogGateActive = false;
+    this.warship = null;
+    this.cueMusic('silence');
     this.paused = false;
     this.mode = 'title';
   }
 
   suspend(): void {
     this.paused = true;
+    this.cueMusic('silence');
   }
 
   private resize(): void {
@@ -159,8 +210,8 @@ export class Game2A {
   private actions(): void {
     if (this.input.consumeDiagnostics()) this.showAssets = !this.showAssets;
     if (this.input.consumePause() && this.mode === 'play') this.paused = !this.paused;
-    if (this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
-    if (this.input.consumeBomb() && this.mode === 'play') this.useBomb();
+    if (this.launchClock <= 0 && this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
+    if (this.launchClock <= 0 && this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
     const tap = this.input.consumeTap();
     if (!tap) return;
@@ -169,27 +220,42 @@ export class Game2A {
     if (this.mode === 'results' || this.mode === 'victory') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
+    if (this.launchClock > 0) return;
     if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
     if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
   }
 
   private update(dt: number): void {
     if (this.mode !== 'play' || this.paused) return;
+
+    if (this.launchClock > 0) {
+      this.updateLaunchReveal(dt);
+      if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
+      return;
+    }
+
     this.movePlayer(dt);
     this.updateBolts(dt);
-    this.startBossIfReady();
-    if (this.boss) {
-      this.updateBoss(dt);
-    } else if (this.victoryPendingClock <= 0) {
-      this.updateDrones(dt);
-      this.updateHazards(dt);
+
+    if (this.missionDirector.activeMission) {
+      this.updateMission(dt);
+    } else {
+      this.startBossIfReady();
+      if (this.boss) {
+        this.updateBoss(dt);
+      } else if (this.victoryPendingClock <= 0) {
+        this.updateDrones(dt);
+        this.updateHazards(dt);
+      }
     }
+
     this.updateHostileShots(dt);
     this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
     if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
     if (this.bossClearClock > 0) this.bossClearClock = Math.max(0, this.bossClearClock - dt);
+    if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
     if (this.victoryPendingClock > 0) {
       this.victoryPendingClock = Math.max(0, this.victoryPendingClock - dt);
       if (this.victoryPendingClock === 0) this.finishRun(true);
@@ -198,6 +264,259 @@ export class Game2A {
     this.updateDebris(dt);
     this.special = Math.min(100, this.special + dt * 7);
     if ((this.player.hp ?? 0) <= 0 && this.mode === 'play') this.finishRun(false);
+  }
+
+  private updateLaunchReveal(dt: number): void {
+    this.launchClock = Math.max(0, this.launchClock - dt);
+    const elapsed = this.launchTotal - this.launchClock;
+    const entranceStart = EARTH_LAUNCH_REVEAL.musicLead + EARTH_LAUNCH_REVEAL.entranceDelay;
+    const entranceEnd = entranceStart + EARTH_LAUNCH_REVEAL.entranceDuration;
+    const targetY = this.h - 112;
+    const startY = this.h + 76;
+
+    if (elapsed < entranceStart) {
+      this.player.y = startY;
+    } else if (elapsed < entranceEnd) {
+      const t = clamp((elapsed - entranceStart) / EARTH_LAUNCH_REVEAL.entranceDuration, 0, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      this.player.y = startY + (targetY - startY) * eased;
+    } else {
+      this.player.y = targetY;
+    }
+
+    if (this.launchClock === 0) {
+      this.player.y = targetY;
+      this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+      this.missionBannerText = 'DEFEND EARTH // FIRST CONTACT INBOUND';
+      this.missionBannerClock = 2.8;
+    }
+  }
+
+  private updateMission(dt: number): void {
+    const act = this.missionDirector.currentAct;
+    if (!act) return;
+
+    if (act.key === GARY_FOG_GUARDIAN_PLAN.actKey) {
+      if (!this.boss) this.startGaryFogGuardian();
+      this.updateBoss(dt);
+      return;
+    }
+
+    if (act.key === 'final_assault' && this.fogGateActive) {
+      this.hostileShots = [];
+      return;
+    }
+
+    if (act.mode === 'flight' && earthFlightEncounterFor(act.key)) {
+      this.updateAuthoredFlight(dt);
+      return;
+    }
+
+    if (act.key === 'regulatory_warship') {
+      if (!this.warship) this.startRegulatoryWarship();
+      this.updateRegulatoryWarship(dt);
+      return;
+    }
+
+    if (this.boss) this.updateBoss(dt);
+  }
+
+  private startGaryFogGuardian(): void {
+    const def = this.bossDef(GARY_FOG_GUARDIAN_PLAN.bossKey);
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.bolts = [];
+    this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
+    this.missionBannerText = 'GUARDIAN SIGNAL // GARY FOG APPROACHING';
+    this.missionBannerClock = 2.8;
+    this.boss = {
+      x: this.w / 2,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: 0,
+      hp: def.hp,
+      bossKey: def.key,
+      state: 'intro',
+      age: -GARY_FOG_REVEAL.musicLead,
+      fireClock: def.phases[0].fireRate,
+      contactClock: 0,
+      phaseIndex: 0,
+      targetX: this.w / 2,
+    };
+  }
+
+  private startRegulatoryWarship(): void {
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    this.bolts = [];
+    this.warshipDirector.reset();
+    this.cueMusic('boss_regulatory_warship');
+    this.missionBannerText = 'CAPITAL SHIP // REGULATORY WARSHIP';
+    this.missionBannerClock = 2.8;
+    this.warship = {
+      x: this.w / 2,
+      y: -REGULATORY_WARSHIP.draw.h,
+      w: REGULATORY_WARSHIP.draw.w,
+      h: REGULATORY_WARSHIP.draw.h,
+      vx: 0,
+      vy: 0,
+      state: 'intro',
+      age: 0,
+      fireClock: 1,
+    };
+  }
+
+  private updateRegulatoryWarship(dt: number): void {
+    const warship = this.warship;
+    if (!warship) return;
+    warship.age += dt;
+
+    if (warship.state === 'disabled') return;
+    if (warship.state === 'intro') {
+      const targetY = Math.max(112, Math.min(150, this.h * 0.2));
+      warship.y += (targetY - warship.y) * Math.min(1, dt * 1.35);
+      if (warship.age >= 3.2) {
+        warship.state = 'fight';
+        warship.y = targetY;
+        warship.age = 0;
+        this.missionBannerText = this.warshipDirector.objective;
+        this.missionBannerClock = 2.8;
+      }
+      return;
+    }
+
+    warship.x = this.w / 2 + Math.sin(warship.age * 0.45) * Math.min(42, this.w * 0.08);
+    warship.fireClock -= dt;
+    if (warship.fireClock <= 0) {
+      this.fireWarshipVolley();
+      const phase = this.warshipDirector.phase;
+      warship.fireClock = phase === 'batteries' ? 0.95 : phase === 'shield' ? 0.78 : phase === 'engines' ? 0.62 : 0.48;
+    }
+  }
+
+  private fireWarshipVolley(): void {
+    const warship = this.warship;
+    if (!warship || warship.state !== 'fight') return;
+    const phase = this.warshipDirector.phase;
+    const count = phase === 'batteries' ? 2 : phase === 'shield' ? 3 : phase === 'engines' ? 5 : 7;
+    const speed = phase === 'batteries' ? 215 : phase === 'shield' ? 230 : phase === 'engines' ? 250 : 270;
+    const spread = phase === 'batteries' ? 0.22 : phase === 'shield' ? 0.2 : phase === 'engines' ? 0.17 : 0.14;
+    const aimed = Math.atan2(this.player.y - warship.y, this.player.x - warship.x);
+    const middle = (count - 1) / 2;
+    for (let index = 0; index < count; index += 1) {
+      const angle = aimed + (index - middle) * spread;
+      this.hostileShots.push({
+        x: warship.x,
+        y: warship.y + 36,
+        w: 10,
+        h: 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        damage: 1,
+        color: phase === 'hangar' ? '#ff3355' : '#ff8a3d',
+        projectileKey: phase === 'engines' || phase === 'hangar' ? 'enemy_missile' : 'enemy_red_bullet',
+      });
+    }
+  }
+
+  private updateAuthoredFlight(dt: number): void {
+    const activeThreats = this.drones.length + this.hazards.length;
+    const state = this.earthEncounterDirector.update(dt, activeThreats);
+    for (const spawn of state.spawns) {
+      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
+      else this.spawnMissionHazard(spawn.hazardKey, spawn.x, spawn.side);
+    }
+    this.moveDrones(dt);
+    this.moveHazards(dt);
+
+    if (state.completed && this.drones.length === 0 && this.hazards.length === 0) this.completeMissionFlightAct();
+  }
+
+  private spawnMissionDrone(enemyKey: string, xRatio: number): void {
+    const def = this.enemyDef(enemyKey);
+    const x = clamp(xRatio * this.w, 30, this.w - 30);
+    const pressure = Math.max(0, this.missionDirector.currentActIndex - 1) * 5;
+    this.drones.push({
+      x,
+      y: -35,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: def.baseSpeed + pressure,
+      hp: def.hp,
+      enemyKey: def.key,
+      age: 0,
+      anchorX: x,
+      phase: xRatio * Math.PI * 2,
+      direction: xRatio < 0.5 ? 1 : -1,
+    });
+  }
+
+  private spawnMissionHazard(hazardKey: string, xRatio: number, requestedSide?: -1 | 1): void {
+    const def = this.hazardDef(hazardKey);
+    const side: -1 | 1 = requestedSide ?? (xRatio < 0.5 ? -1 : 1);
+    const x = clamp(xRatio * this.w, 28, this.w - 28);
+    this.hazards.push({
+      x,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: this.currentStage().scrollSpeed,
+      hp: def.hp,
+      hazardKey: def.key,
+      fireClock: def.fires ? 0.95 : 0,
+      side,
+    });
+  }
+
+  private completeMissionFlightAct(): void {
+    const mission = this.missionDirector.activeMission;
+    const act = this.missionDirector.currentAct;
+    if (!mission || !act) return;
+
+    const nextAct = mission.acts[this.missionDirector.currentActIndex + 1];
+    const checkpoint = nextAct
+      ? mission.checkpoints.find((item) => item.resumeActKey === nextAct.key)
+      : undefined;
+
+    if (checkpoint && this.activePlanetKey) {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: checkpoint.key,
+        checkpointLabel: checkpoint.label,
+        resumeActKey: checkpoint.resumeActKey,
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier,
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+      });
+      this.saveProgress();
+    }
+
+    this.drones = [];
+    this.hazards = [];
+    this.hostileShots = [];
+    const entered = this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.earthEncounterDirector.start(entered?.key ?? '');
+
+    if (entered?.key === 'regulatory_warship') {
+      this.missionBannerText = 'CAPITAL SHIP SIGNAL // REGULATORY WARSHIP';
+    } else if (checkpoint && entered?.mode === 'boss') {
+      this.missionBannerText = `CHECKPOINT SECURED // ${checkpoint.label} // GUARDIAN SIGNAL`;
+    } else if (checkpoint) {
+      this.missionBannerText = `CHECKPOINT SECURED // ${checkpoint.label}`;
+    } else {
+      this.missionBannerText = entered?.label ?? 'SECTOR CLEAR';
+    }
+    this.missionBannerClock = 2.8;
   }
 
   private movePlayer(dt: number): void {
@@ -269,6 +588,11 @@ export class Game2A {
         direction: Math.random() < 0.5 ? -1 : 1,
       });
     }
+    this.moveDrones(dt);
+    this.wave = 1 + Math.floor(this.score / 500);
+  }
+
+  private moveDrones(dt: number): void {
     for (const drone of this.drones) {
       const def = this.enemyDef(drone.enemyKey);
       drone.age += dt;
@@ -295,7 +619,6 @@ export class Game2A {
       }
       return true;
     });
-    this.wave = 1 + Math.floor(this.score / 500);
   }
 
   private updateHazards(dt: number): void {
@@ -320,6 +643,10 @@ export class Game2A {
       this.hazardClock = Math.max(3.8, def.spawnRate - (this.wave - def.minWave) * 0.22);
     }
 
+    this.moveHazards(dt);
+  }
+
+  private moveHazards(dt: number): void {
     for (const hazard of this.hazards) {
       const hazardDef = this.hazardDef(hazard.hazardKey);
       hazard.y += hazard.vy * dt;
@@ -357,7 +684,7 @@ export class Game2A {
   }
 
   private startBossIfReady(): void {
-    if (this.boss) return;
+    if (this.boss || this.missionDirector.activeMission) return;
     const bossKey = nextBossKey(BOSSES, this.wave, this.completedBosses);
     if (!bossKey) return;
     const def = this.bossDef(bossKey);
@@ -390,6 +717,22 @@ export class Game2A {
     boss.contactClock = Math.max(0, boss.contactClock - dt);
 
     if (boss.state === 'intro') {
+      const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
+      if (missionGary) {
+        if (boss.age < 0) return;
+        const t = clamp(boss.age / GARY_FOG_REVEAL.entranceDuration, 0, 1);
+        const eased = 1 - Math.pow(1 - t, 3);
+        boss.y = -def.draw.h + (118 + def.draw.h) * eased;
+        if (boss.age >= GARY_FOG_REVEAL.entranceDuration + GARY_FOG_REVEAL.combatDelay) {
+          boss.state = 'fight';
+          boss.y = 118;
+          boss.age = 0;
+          this.missionBannerText = 'GARY FOG // ENGAGE';
+          this.missionBannerClock = 2.2;
+        }
+        return;
+      }
+
       boss.y += (118 - boss.y) * Math.min(1, dt * 3.4);
       if (boss.age >= 1.45) {
         boss.state = 'fight';
@@ -441,9 +784,7 @@ export class Game2A {
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           bolt.life = 0;
           drone.hp = (drone.hp ?? 1) - bolt.damage;
-          if ((drone.hp ?? 0) <= 0) {
-            this.registerKill(drone);
-          }
+          if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
           break;
         }
       }
@@ -458,6 +799,24 @@ export class Game2A {
             this.special = Math.min(100, this.special + 12);
             this.ring(hazard.x, hazard.y);
           }
+          break;
+        }
+      }
+      if (bolt.life === 0) continue;
+      if (this.warship?.state === 'fight') {
+        for (const system of this.warshipDirector.targetableSystems) {
+          if (!overlap(box(bolt, 0.65), this.warshipSystemBox(system))) continue;
+          bolt.life = 0;
+          const before = this.warshipDirector.phase;
+          const hit = this.warshipDirector.hit(system.key, bolt.damage);
+          this.ring(this.warshipSystemCenter(system).x, this.warshipSystemCenter(system).y);
+          if (hit.destroyedNow) this.special = Math.min(100, this.special + 24);
+          if (this.warshipDirector.phase !== before) {
+            this.hostileShots = [];
+            this.missionBannerText = this.warshipDirector.objective;
+            this.missionBannerClock = 2.8;
+          }
+          if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
           break;
         }
       }
@@ -509,6 +868,55 @@ export class Game2A {
     this.pickups = this.pickups.filter((pickup) => pickup.life !== 0);
   }
 
+  private warshipSystemCenter(system: WarshipSystemState): { x: number; y: number } {
+    const warship = this.warship;
+    if (!warship) return { x: 0, y: 0 };
+    return {
+      x: warship.x + system.x * REGULATORY_WARSHIP.draw.w,
+      y: warship.y + system.y * REGULATORY_WARSHIP.draw.h,
+    };
+  }
+
+  private warshipSystemBox(system: WarshipSystemState): Rect {
+    const center = this.warshipSystemCenter(system);
+    return { x: center.x - system.w / 2, y: center.y - system.h / 2, w: system.w, h: system.h };
+  }
+
+  private completeRegulatoryWarship(): void {
+    const warship = this.warship;
+    const mission = this.missionDirector.activeMission;
+    if (!warship || warship.state === 'disabled' || !mission || !this.activePlanetKey) return;
+
+    warship.state = 'disabled';
+    this.score += REGULATORY_WARSHIP.score;
+    this.hostileShots = [];
+    this.bolts = [];
+    this.special = 100;
+
+    const boarding = mission.checkpoints.find((checkpoint) => checkpoint.resumeActKey === 'boarding');
+    if (boarding) {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: boarding.key,
+        checkpointLabel: boarding.label,
+        resumeActKey: boarding.resumeActKey,
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier,
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+      });
+      this.saveProgress();
+    }
+
+    this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.cueMusic('warship_disabled');
+    this.missionBannerText = 'WARSHIP DISABLED // HANGAR BREACH OPEN';
+    this.missionBannerClock = 2.8;
+  }
+
   private updateRings(dt: number): void {
     for (const item of this.rings) item.life = (item.life ?? 0) - dt;
     this.rings = this.rings.filter((item) => (item.life ?? 0) > 0);
@@ -526,7 +934,7 @@ export class Game2A {
         const hit = Math.hypot(this.boss.x - this.player.x, this.boss.y - this.player.y) < CLARITY_PULSE.radius + this.boss.w * 0.35;
         if (hit) {
           this.pulseHitBoss = true;
-          this.damageBoss(4);
+          this.damageBoss(hasFogBreaker(this.progress) ? 6 : 4);
         }
       }
     }
@@ -594,7 +1002,7 @@ export class Game2A {
   }
 
   private drawStageBackdrop(stage: StageDef): boolean {
-    const ref = this.boss ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
+    const ref = this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
     const image = this.assets.getImage(ref.category, ref.id);
     if (!image || image.width <= 0 || image.height <= 0) return false;
 
@@ -669,7 +1077,7 @@ export class Game2A {
     this.ctx.font = '600 16px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, this.w / 2, this.h * 0.46);
     this.ctx.fillText(`BEST ${this.progress.highScore} • HIGHEST WAVE ${this.progress.highestWave}`, this.w / 2, this.h * 0.51);
-    this.ctx.fillText('TAP TO RESTART', this.w / 2, this.h * 0.59);
+    this.ctx.fillText(this.missionDirector.activeMission ? 'TAP TO RESTART FROM CHECKPOINT' : 'TAP TO RESTART', this.w / 2, this.h * 0.59);
   }
 
   private victory(): void {
@@ -731,6 +1139,7 @@ export class Game2A {
     for (const drone of this.drones) this.drawDrone(drone);
     for (const hazard of this.hazards) this.drawHazard(hazard);
     if (this.boss) this.drawBoss(this.boss);
+    if (this.warship) this.drawRegulatoryWarship();
     for (const bolt of this.bolts) this.drawBolt(bolt);
     for (const shot of this.hostileShots) this.drawHostileShot(shot);
     for (const pickup of this.pickups) this.drawPickup(pickup);
@@ -739,11 +1148,29 @@ export class Game2A {
     if (this.ringClock > 0) this.drawPulse();
     if (this.bombClock > 0) this.drawBombWave();
     this.hud();
+    if (this.launchClock > 0) this.drawLaunchReveal();
     if (this.bossClearClock > 0) this.bossClearBanner();
+    if (this.missionBannerClock > 0) this.drawMissionBanner();
     if (this.paused) this.pause();
   }
 
-  /** Draws a manifest sprite centered on (cx, cy); returns false so callers keep procedural fallback. */
+  private drawLaunchReveal(): void {
+    const elapsed = this.launchTotal - this.launchClock;
+    const entranceStart = EARTH_LAUNCH_REVEAL.musicLead + EARTH_LAUNCH_REVEAL.entranceDelay;
+    const entranceEnd = entranceStart + EARTH_LAUNCH_REVEAL.entranceDuration;
+    const label = elapsed < entranceStart
+      ? 'EARTH UNDER ATTACK'
+      : elapsed < entranceEnd
+        ? 'XRP MAN // DEPLOYING'
+        : 'DEFEND EARTH';
+    this.ctx.save();
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 20px ui-sans-serif, system-ui';
+    this.ctx.fillText(label, this.w / 2, this.h * 0.25);
+    this.ctx.restore();
+  }
+
   private drawCentered(ref: SpriteRef, cx: number, cy: number, dw: number, dh: number): boolean {
     return this.sprites.draw(ref.category, ref.id, cx - dw / 2, cy - dh / 2, dw, dh, this.clock);
   }
@@ -792,8 +1219,6 @@ export class Game2A {
       this.ctx.restore();
     }
 
-    // Temporary color-coded threat marker while Phase C variants reuse the
-    // regulator sprite. Each can receive dedicated art in a later asset PR.
     this.ctx.save();
     this.ctx.strokeStyle = def.accent;
     this.ctx.lineWidth = 2;
@@ -841,7 +1266,6 @@ export class Game2A {
     if (image) {
       this.ctx.save();
       this.ctx.translate(shot.x, shot.y);
-      // Canon projectile masters point upward; align that nose with velocity.
       this.ctx.rotate(Math.atan2(shot.vy, shot.vx) + Math.PI / 2);
       this.ctx.drawImage(image, -projectile.draw.w / 2, -projectile.draw.h / 2, projectile.draw.w, projectile.draw.h);
       this.ctx.restore();
@@ -863,7 +1287,7 @@ export class Game2A {
     if (!drawn) {
       this.ctx.save();
       this.ctx.translate(boss.x, boss.y);
-      this.ctx.rotate(Math.sin(boss.age * 1.4) * 0.06);
+      this.ctx.rotate(Math.sin(Math.max(0, boss.age) * 1.4) * 0.06);
       this.ctx.fillStyle = 'rgba(5,8,18,0.92)';
       this.ctx.strokeStyle = phase.accent;
       this.ctx.lineWidth = 4;
@@ -896,7 +1320,55 @@ export class Game2A {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = phase.accent;
       this.ctx.font = '800 20px ui-sans-serif, system-ui';
-      this.ctx.fillText(`WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
+      this.ctx.fillText(boss.age < 0 ? `GUARDIAN SIGNAL • ${def.label}` : `WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
+    }
+  }
+
+  private drawRegulatoryWarship(): void {
+    const warship = this.warship;
+    if (!warship) return;
+    const disabled = warship.state === 'disabled';
+    this.ctx.save();
+    if (disabled) this.ctx.globalAlpha = 0.78;
+    this.drawCentered(REGULATORY_WARSHIP.sprite, warship.x, warship.y, REGULATORY_WARSHIP.draw.w, REGULATORY_WARSHIP.draw.h);
+    this.ctx.restore();
+
+    if (warship.state === 'intro') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#ff8a3d';
+      this.ctx.font = '900 18px ui-sans-serif, system-ui';
+      this.ctx.fillText('CAPITAL SHIP INBOUND', this.w / 2, this.h * 0.51);
+      return;
+    }
+
+    for (const system of this.warshipDirector.allSystems) {
+      const center = this.warshipSystemCenter(system);
+      if (system.destroyed) {
+        this.ctx.strokeStyle = 'rgba(255,51,85,0.7)';
+        this.ctx.lineWidth = 3;
+        line(this.ctx, center.x - 8, center.y - 8, center.x + 8, center.y + 8);
+        line(this.ctx, center.x + 8, center.y - 8, center.x - 8, center.y + 8);
+        continue;
+      }
+      if (!system.exposed) continue;
+      const pulse = 0.55 + Math.sin(this.clock * 7) * 0.25;
+      this.ctx.save();
+      this.ctx.globalAlpha = pulse;
+      this.ctx.strokeStyle = '#ffd24a';
+      this.ctx.lineWidth = 2;
+      this.ctx.strokeRect(center.x - system.w / 2, center.y - system.h / 2, system.w, system.h);
+      this.ctx.restore();
+      bar(this.ctx, center.x - 18, center.y + system.h / 2 + 4, 36, 4, system.remainingHp / system.hp, '#ffd24a');
+    }
+
+    if (this.warshipDirector.phase === 'shield' && this.warshipDirector.targetableSystems.length === 0) {
+      this.ctx.save();
+      this.ctx.strokeStyle = 'rgba(54,163,255,0.7)';
+      this.ctx.lineWidth = 5;
+      this.ctx.beginPath();
+      this.ctx.ellipse(warship.x, warship.y, 112, 96, 0, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.restore();
     }
   }
 
@@ -954,7 +1426,6 @@ export class Game2A {
     for (const p of this.debris) {
       const a = Math.max(0, p.life / p.max);
       this.ctx.globalAlpha = a;
-      // streak tail oriented along velocity gives a flung-shard read
       this.ctx.strokeStyle = `hsl(${p.hue}, 100%, ${55 + a * 25}%)`;
       this.ctx.lineWidth = p.size * (0.4 + a * 0.6);
       line(this.ctx, p.x, p.y, p.x - p.vx * 0.03, p.y - p.vy * 0.03);
@@ -964,11 +1435,13 @@ export class Game2A {
   }
 
   private drawPulse(): void {
-    const alpha = Math.max(0, this.ringClock / 0.35);
-    this.ctx.strokeStyle = `rgba(0,255,136,${alpha})`;
-    this.ctx.lineWidth = 4;
+    const alpha = Math.max(0, this.ringClock / (hasFogBreaker(this.progress) ? 0.55 : 0.35));
+    const color = hasFogBreaker(this.progress) ? '54,163,255' : '0,255,136';
+    const radius = hasFogBreaker(this.progress) ? CLARITY_PULSE.radius * 1.25 : CLARITY_PULSE.radius;
+    this.ctx.strokeStyle = `rgba(${color},${alpha})`;
+    this.ctx.lineWidth = hasFogBreaker(this.progress) ? 6 : 4;
     this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * CLARITY_PULSE.radius, 0, Math.PI * 2);
+    this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * radius, 0, Math.PI * 2);
     this.ctx.stroke();
   }
 
@@ -989,30 +1462,70 @@ export class Game2A {
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '700 13px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, 16, 24);
-    this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
-    const threatKeys = availableEnemyKeys(ENEMIES, this.wave);
-    const newestThreat = ENEMIES[threatKeys[threatKeys.length - 1]].label;
-    this.ctx.font = '600 10px ui-sans-serif, system-ui';
-    this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+
     const ship = this.playerDef();
-    if (!this.boss) {
-      this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
+    const mission = this.missionDirector.activeMission;
+    const missionAct = this.missionDirector.currentAct;
+
+    if (mission && missionAct) {
+      this.ctx.font = '700 10px ui-sans-serif, system-ui';
+      this.ctx.fillStyle = '#36a3ff';
+      this.ctx.fillText(missionAct.label, 16, 44);
+      this.ctx.font = '600 10px ui-sans-serif, system-ui';
+      this.ctx.fillStyle = 'rgba(216,255,232,0.7)';
+      if (this.warship) {
+        this.ctx.fillStyle = this.warship.state === 'disabled' ? '#00ff88' : '#ffd24a';
+        this.ctx.fillText(this.warshipDirector.objective, 16, 80);
+      } else if (this.earthEncounterDirector.active) {
+        const groupLabel = this.earthEncounterDirector.currentGroupLabel ?? 'INBOUND';
+        this.ctx.fillText(`FORMATION ${this.earthEncounterDirector.currentGroupNumber}/${this.earthEncounterDirector.totalGroups} • ${groupLabel}`, 16, 80);
+      } else if (missionAct.mode === 'boss') {
+        this.ctx.fillStyle = '#ffd24a';
+        this.ctx.fillText('GUARDIAN SIGNAL DETECTED', 16, 80);
+      } else if (missionAct.key === 'final_assault' && this.fogGateActive) {
+        this.ctx.fillStyle = '#36a3ff';
+        this.ctx.fillText('FOG LOCK ACTIVE • USE FOG BREAKER', 16, 80);
+      }
       const weapon = this.currentWeapon();
       this.ctx.fillStyle = '#00ff00';
       this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
       this.ctx.fillStyle = ship.accent;
       this.ctx.fillText(ship.label, 16, 112);
+
+      const stage = this.currentStage();
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = stage.accent;
+      this.ctx.fillText(stage.label, this.w / 2, 24);
+      this.ctx.font = '600 10px ui-sans-serif, system-ui';
+      this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
+      this.ctx.fillText(this.warship ? this.warshipDirector.objective : missionAct.objective, this.w / 2, 42);
+      this.ctx.textAlign = 'left';
+    } else {
+      this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
+      const threatKeys = availableEnemyKeys(ENEMIES, this.wave);
+      const newestThreat = ENEMIES[threatKeys[threatKeys.length - 1]].label;
+      this.ctx.font = '600 10px ui-sans-serif, system-ui';
       this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
-      this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
+      if (!this.boss) {
+        this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
+        const weapon = this.currentWeapon();
+        this.ctx.fillStyle = '#00ff00';
+        this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
+        this.ctx.fillStyle = ship.accent;
+        this.ctx.fillText(ship.label, 16, 112);
+        this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
+        this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
+      }
+      const stage = this.currentStage();
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = stage.accent;
+      this.ctx.fillText(stage.label, this.w / 2, 24);
+      this.ctx.textAlign = 'left';
     }
-    const stage = this.currentStage();
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = stage.accent;
-    this.ctx.fillText(stage.label, this.w / 2, 24);
-    this.ctx.textAlign = 'left';
+
     bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
     bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
-    if (this.boss) {
+    if (this.boss && this.boss.state === 'fight') {
       const def = this.bossDef(this.boss.bossKey);
       const phase = def.phases[this.boss.phaseIndex];
       const bossBarWidth = Math.min(360, this.w - 64);
@@ -1023,9 +1536,15 @@ export class Game2A {
       this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 80);
       bar(this.ctx, bossBarX, 86, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
     }
+    if (this.warship?.state === 'fight') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = '#ff8a3d';
+      this.ctx.font = '900 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(`REGULATORY WARSHIP • ${this.warshipDirector.phase.toUpperCase()}`, this.w / 2, 80);
+    }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
-    this.button(this.zone.special, 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
+    this.button(this.zone.special, hasFogBreaker(this.progress) ? 'FOG BREAK' : 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
     this.button(this.zone.assets, 'D', '#ffd24a');
   }
 
@@ -1037,6 +1556,24 @@ export class Game2A {
     this.ctx.fillStyle = '#00ff88';
     this.ctx.font = '900 24px ui-sans-serif, system-ui';
     this.ctx.fillText('CLARITY GATE RESTORED', this.w / 2, this.h * 0.43);
+    this.ctx.restore();
+  }
+
+  private drawMissionBanner(): void {
+    const alpha = Math.min(1, this.missionBannerClock, 2.8 - this.missionBannerClock);
+    this.ctx.save();
+    this.ctx.globalAlpha = Math.max(0, alpha);
+    const width = Math.min(this.w - 40, 520);
+    const x = (this.w - width) / 2;
+    const y = this.h * 0.36;
+    this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
+    this.ctx.strokeStyle = '#00ff88';
+    this.ctx.fillRect(x, y - 30, width, 60);
+    this.ctx.strokeRect(x, y - 30, width, 60);
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.font = '800 15px ui-sans-serif, system-ui';
+    this.ctx.fillText(this.missionBannerText, this.w / 2, y + 5);
     this.ctx.restore();
   }
 
@@ -1087,8 +1624,22 @@ export class Game2A {
   private useSpecial(): void {
     if (this.special < 100) return;
     this.special = 0;
-    this.ringClock = 0.35;
+    this.ringClock = hasFogBreaker(this.progress) ? 0.55 : 0.35;
     this.pulseHitBoss = false;
+
+    if (hasFogBreaker(this.progress)) {
+      this.hostileShots = [];
+      if (this.fogGateActive && this.missionDirector.currentAct?.key === 'final_assault') {
+        this.fogGateActive = false;
+        this.earthEncounterDirector.start('final_assault');
+        this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
+        this.missionBannerClock = 2.8;
+      }
+      if (this.warship?.state === 'fight' && this.warshipDirector.exposeShieldWithFogBreaker()) {
+        this.missionBannerText = 'FOG BREAKER // SHIELD RELAY EXPOSED';
+        this.missionBannerClock = 2.8;
+      }
+    }
   }
 
   private useBomb(): void {
@@ -1110,6 +1661,14 @@ export class Game2A {
       this.ring(this.boss.x, this.boss.y);
       this.damageBoss(6);
     }
+    if (this.warship?.state === 'fight') {
+      for (const system of this.warshipDirector.targetableSystems) {
+        this.warshipDirector.hit(system.key, 2);
+        const center = this.warshipSystemCenter(system);
+        this.ring(center.x, center.y);
+      }
+      if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
+    }
   }
 
   private damageBoss(damage: number): void {
@@ -1119,6 +1678,7 @@ export class Game2A {
     if ((boss.hp ?? 0) > 0) return;
 
     const def = this.bossDef(boss.bossKey);
+    const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
     this.completedBosses.add(boss.bossKey);
     this.score += def.score;
     this.special = 100;
@@ -1126,8 +1686,26 @@ export class Game2A {
     this.ring(boss.x, boss.y);
     this.hostileShots = [];
     this.boss = null;
+
+    if (missionGary) {
+      const alreadyOwned = hasFogBreaker(this.progress);
+      this.progress = awardGaryFogVictory(this.progress);
+      this.saveProgress();
+      const entered = this.missionDirector.advance();
+      this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+      this.earthEncounterDirector.clear();
+      this.fogGateActive = true;
+      this.cueMusic('level1');
+      this.missionBannerText = alreadyOwned
+        ? 'GARY FOG DEFEATED // FOG BREAKER READY'
+        : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
+      this.missionBannerClock = 2.8;
+      if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
+      return;
+    }
+
     this.bossClearClock = 2.4;
-    if (this.completedBosses.size === BOSS_LADDER.length) this.victoryPendingClock = 2.4;
+    if (!this.missionDirector.activeMission && this.completedBosses.size === BOSS_LADDER.length) this.victoryPendingClock = 2.4;
   }
 
   private damagePlayer(damage: number, impactX: number, impactY: number): void {
@@ -1150,6 +1728,10 @@ export class Game2A {
 
   private saveProgress(): void {
     saveCampaignProgress(this.progress);
+  }
+
+  private cueMusic(cue: string): void {
+    window.dispatchEvent(new CustomEvent('coded:music-cue', { detail: { cue } }));
   }
 
   private ring(x: number, y: number): void {
@@ -1229,35 +1811,111 @@ export class Game2A {
     }
   }
 
-  private reset(): void {
+  private reset(explicitCheckpoint?: MissionCheckpointSnapshot): void {
     this.mode = 'play';
     this.paused = false;
     this.reportAssets = false;
-    this.player = this.newPlayer();
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
     this.boss = null;
+    this.warship = null;
+    this.warshipDirector.reset();
     this.completedBosses = new Set<string>();
     this.bolts = [];
     this.pickups = [];
     this.rings = [];
     this.debris = [];
-    this.score = 0;
-    this.wave = 1;
     this.special = 100;
     this.boltClock = 0;
     this.droneClock = 0;
     this.hazardClock = DEFAULT_HAZARD.spawnRate;
     this.ringClock = 0;
-    this.weaponTier = 1;
-    this.kills = 0;
-    this.bombs = 2;
     this.bombClock = 0;
     this.bossClearClock = 0;
     this.victoryPendingClock = 0;
     this.pulseHitBoss = false;
     this.playerHitClock = 0;
+    this.missionBannerClock = 0;
+    this.missionBannerText = '';
+    this.launchClock = 0;
+    this.launchTotal = 0;
+    this.fogGateActive = false;
+
+    const mission = this.missionDirector.activeMission;
+    if (mission && this.activePlanetKey) {
+      this.progress = this.loadProgress();
+      const stored = explicitCheckpoint ?? missionCheckpointFor(this.progress, this.activePlanetKey);
+      const checkpoint = stored
+        && stored.missionKey === mission.key
+        && stored.planetKey === this.activePlanetKey
+        && mission.acts.some((act) => act.key === stored.resumeActKey)
+        ? stored
+        : undefined;
+
+      if (checkpoint) {
+        this.missionDirector.startAtAct(mission, checkpoint.resumeActKey);
+        if (SHIPS[checkpoint.shipKey]) this.selectedShipKey = checkpoint.shipKey;
+        this.weaponTier = Math.min(WEAPON_LADDER.length, Math.max(1, checkpoint.weaponTier));
+        this.bombs = Math.min(MAX_BOMBS, Math.max(0, checkpoint.bombs));
+        this.score = Math.max(0, checkpoint.score);
+        this.kills = Math.max(0, (this.weaponTier - 1) * UPGRADE_EVERY_KILLS);
+      } else {
+        this.missionDirector.restart();
+        this.weaponTier = 1;
+        this.bombs = 2;
+        this.score = 0;
+        this.kills = 0;
+        if (this.missionDirector.currentAct?.key === 'deployment') this.missionDirector.advance();
+      }
+
+      this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+      this.player = this.newPlayer();
+      this.cueMusic('level1');
+
+      if (checkpoint) {
+        this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        if (this.missionDirector.currentAct?.key === 'boarding') {
+          this.warshipDirector.reset();
+          for (const system of REGULATORY_WARSHIP.systems) {
+            if (system.key === 'shield_relay') this.warshipDirector.exposeShieldWithFogBreaker();
+            let guard = 0;
+            while (!this.warshipDirector.allSystems.find((item) => item.key === system.key)?.destroyed && guard < 30) {
+              this.warshipDirector.hit(system.key, 99);
+              if (this.warshipDirector.phase === 'shield') this.warshipDirector.exposeShieldWithFogBreaker();
+              guard += 1;
+            }
+          }
+          this.warship = {
+            x: this.w / 2,
+            y: Math.max(112, Math.min(150, this.h * 0.2)),
+            w: REGULATORY_WARSHIP.draw.w,
+            h: REGULATORY_WARSHIP.draw.h,
+            vx: 0,
+            vy: 0,
+            state: 'disabled',
+            age: 0,
+            fireClock: 0,
+          };
+        }
+        this.missionBannerText = this.missionDirector.currentAct?.label ?? mission.label;
+        this.missionBannerClock = 2.2;
+      } else {
+        this.earthEncounterDirector.clear();
+        this.launchTotal = revealTotalDuration(EARTH_LAUNCH_REVEAL);
+        this.launchClock = this.launchTotal;
+        this.player.y = this.h + 76;
+      }
+      return;
+    }
+
+    this.player = this.newPlayer();
+    this.score = 0;
+    this.wave = 1;
+    this.weaponTier = 1;
+    this.kills = 0;
+    this.bombs = 2;
+    this.earthEncounterDirector.clear();
   }
 
   private newPlayer(): Actor {
@@ -1270,11 +1928,11 @@ export class Game2A {
   }
 
   private enemyDef(key: string): EnemyDef {
-    return ENEMIES[key] ?? DEFAULT_ENEMY;
+    return EARTH_ENEMIES[key] ?? ENEMIES[key] ?? DEFAULT_ENEMY;
   }
 
   private hazardDef(key: string): HazardDef {
-    return HAZARDS[key] ?? DEFAULT_HAZARD;
+    return EARTH_HAZARDS[key] ?? HAZARDS[key] ?? DEFAULT_HAZARD;
   }
 
   private bossDef(key: string): BossDef {
@@ -1315,6 +1973,10 @@ export class Game2A {
   }
 
   private currentStage(): StageDef {
+    const missionStageKey = this.earthEncounterDirector.stageKey;
+    if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
+    if (this.missionDirector.activeMission && this.missionDirector.currentAct?.key === 'gary_fog') return STAGES.ledger_city;
+    if (this.missionDirector.activeMission && ['regulatory_warship', 'boarding'].includes(this.missionDirector.currentAct?.key ?? '')) return STAGES.regulatory_outpost;
     for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
       if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];
     }

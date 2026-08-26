@@ -1,5 +1,13 @@
 import { CAMPAIGN_ROUTES, PLANET_BY_KEY, PLANETS, type PlanetDef } from '../content/CampaignPlanets';
-import { loadCampaignProgress, recordPlanetSelection, saveCampaignProgress, type CampaignProgress } from '../content/CampaignProgress';
+import {
+  clearMissionCheckpoint,
+  loadCampaignProgress,
+  missionCheckpointFor,
+  recordPlanetSelection,
+  saveCampaignProgress,
+  type CampaignProgress,
+  type MissionCheckpointSnapshot,
+} from '../content/CampaignProgress';
 
 type PlanetState = 'locked' | 'available' | 'cleared';
 
@@ -9,7 +17,7 @@ export class CampaignMap {
 
   constructor(
     private readonly root: HTMLElement,
-    private readonly onLaunch: (planet: PlanetDef) => void,
+    private readonly onLaunch: (planet: PlanetDef, checkpoint?: MissionCheckpointSnapshot) => void,
     private readonly onTestMode: () => void,
   ) {
     if (!this.isAvailable(this.selectedKey)) this.selectedKey = PLANETS[0].key;
@@ -32,12 +40,21 @@ export class CampaignMap {
     const selectedState = this.stateFor(selected.key);
     const guardianDown = this.progress.defeatedGuardians.includes(selected.key);
     const surfaceDown = this.progress.defeatedSurfaceBosses.includes(selected.key);
+    const checkpoint = selectedState === 'cleared' ? undefined : missionCheckpointFor(this.progress, selected.key);
+    const checkpointLabel = checkpoint?.checkpointLabel ?? this.progress.checkpoints[selected.key]?.toUpperCase() ?? 'NONE';
     const routeLines = CAMPAIGN_ROUTES.map((route) => {
       const from = PLANET_BY_KEY[route.from];
       const to = PLANET_BY_KEY[route.to];
       const active = this.isAvailable(from.key) && this.isAvailable(to.key);
       return `<line class="map-route ${active ? 'is-open' : ''}" x1="${from.x}%" y1="${from.y}%" x2="${to.x}%" y2="${to.y}%" />`;
     }).join('');
+
+    const launchButtons = selectedState === 'locked'
+      ? '<button class="deploy-button" type="button" data-action="deploy" disabled>ROUTE LOCKED</button>'
+      : checkpoint
+        ? `<button class="deploy-button" type="button" data-action="resume">RESUME FROM ${checkpoint.checkpointLabel}</button>
+           <button class="test-button" type="button" data-action="restart">RESTART MISSION</button>`
+        : `<button class="deploy-button" type="button" data-action="deploy">${selectedState === 'cleared' ? 'REPLAY PLANET' : 'BEGIN DEFENSE'}</button>`;
 
     this.root.innerHTML = `
       <header class="campaign-header">
@@ -76,11 +93,11 @@ export class CampaignMap {
           <dl class="mission-targets">
             <div><dt>ORBITAL GUARDIAN</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : selected.guardian}<b>${guardianDown ? 'CLEARED' : 'ACTIVE'}</b></dd></div>
             <div><dt>SURFACE BOSS</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : selected.surfaceBoss}<b>${surfaceDown ? 'CLEARED' : 'ACTIVE'}</b></dd></div>
-            <div><dt>CHECKPOINT</dt><dd>${this.progress.checkpoints[selected.key]?.toUpperCase() ?? 'NONE'}</dd></div>
+            <div><dt>CHECKPOINT</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : checkpointLabel}</dd></div>
           </dl>
-          <button class="deploy-button" type="button" data-action="deploy" ${selectedState === 'locked' ? 'disabled' : ''}>${selectedState === 'cleared' ? 'REPLAY PLANET' : 'BEGIN APPROACH'}</button>
+          ${launchButtons}
           <button class="test-button" type="button" data-action="test">ARCADE TEST RUN</button>
-          <p class="phase-note">PHASE U MAP FOUNDATION // PLANET 1 MISSION FOLLOWS</p>
+          <p class="phase-note">EARTH LEVEL 1 // LOCAL MISSION RESUME</p>
         </aside>
       </main>`;
 
@@ -91,13 +108,33 @@ export class CampaignMap {
       });
     });
     this.root.querySelector<HTMLButtonElement>('[data-action="deploy"]')?.addEventListener('click', () => {
+      this.launchSelected();
+    });
+    this.root.querySelector<HTMLButtonElement>('[data-action="resume"]')?.addEventListener('click', () => {
+      const planet = PLANET_BY_KEY[this.selectedKey];
+      const snapshot = missionCheckpointFor(this.progress, this.selectedKey);
+      if (!planet || !snapshot || !this.isAvailable(planet.key)) return;
+      this.progress = recordPlanetSelection(this.progress, planet.key);
+      saveCampaignProgress(this.progress);
+      this.onLaunch(planet, snapshot);
+    });
+    this.root.querySelector<HTMLButtonElement>('[data-action="restart"]')?.addEventListener('click', () => {
       const planet = PLANET_BY_KEY[this.selectedKey];
       if (!planet || !this.isAvailable(planet.key)) return;
+      this.progress = clearMissionCheckpoint(this.progress, planet.key);
       this.progress = recordPlanetSelection(this.progress, planet.key);
       saveCampaignProgress(this.progress);
       this.onLaunch(planet);
     });
     this.root.querySelector<HTMLButtonElement>('[data-action="test"]')?.addEventListener('click', this.onTestMode);
+  }
+
+  private launchSelected(): void {
+    const planet = PLANET_BY_KEY[this.selectedKey];
+    if (!planet || !this.isAvailable(planet.key)) return;
+    this.progress = recordPlanetSelection(this.progress, planet.key);
+    saveCampaignProgress(this.progress);
+    this.onLaunch(planet);
   }
 
   private planetButton(planet: PlanetDef, index: number): string {
