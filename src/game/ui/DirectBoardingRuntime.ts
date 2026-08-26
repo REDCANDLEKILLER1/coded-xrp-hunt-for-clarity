@@ -41,6 +41,11 @@ export class DirectBoardingRuntime {
       height: '100%',
       pointerEvents: 'none',
       zIndex: '2',
+      // The global `canvas` rule paints an opaque #02060b background. This is a
+      // positioned overlay stacked above the static game canvas, so inheriting
+      // that would hide the entire game behind a flat dark rectangle. It must
+      // stay transparent so only the hangar guidance drawn here is visible.
+      background: 'transparent',
     });
     const ctx = this.overlay.getContext('2d');
     if (!ctx) throw new Error('Direct boarding overlay context unavailable.');
