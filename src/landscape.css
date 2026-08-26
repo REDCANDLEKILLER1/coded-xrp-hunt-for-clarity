@@ -99,6 +99,39 @@
   .campaign-record strong {
     font-size: 12px;
   }
+
+  /* Landscape phones have width to spare and very little height. The mobile
+     stacked layout reserves a 250px minimum for the map, which leaves too
+     little room for the mission panel — DEPLOY ends up clipped below the fold
+     with no way to scroll to it, because the screen and layout are both
+     overflow:hidden. Put the panel beside the map instead of under it. */
+  .campaign-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 34vw);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .mission-panel {
+    min-height: 0;
+    max-height: none;
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+    border-top: 0;
+    border-left: 1px solid color-mix(in srgb, var(--mission-accent) 34%, transparent);
+    overflow-y: auto;
+  }
+
+  .mission-sector { font-size: 7px; letter-spacing: 0.14em; }
+  .mission-panel h2 { font-size: 15px; }
+  .mission-status { font-size: 7px; }
+  .mission-briefing { margin: 5px 0 7px; font-size: 9px; line-height: 1.35; }
+  .mission-targets { margin-bottom: 7px; }
+  .mission-targets dt { font-size: 6px; }
+  .mission-targets dd, .mission-targets b { font-size: 8px; }
+
+  /* DEPLOY and the arcade route must always be reachable without scrolling. */
+  .deploy-button, .test-button { padding: 8px; font-size: 9px; letter-spacing: 0.1em; }
+  .test-button { margin-top: 6px; }
+  .phase-note { display: none; }
 }
 
 .landscape-gate__fallback {
