@@ -1,73 +1,4 @@
-.landscape-gate {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: none;
-  place-items: center;
-  padding: 24px;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(54, 163, 255, 0.15), transparent 34%),
-    radial-gradient(circle at 50% 62%, rgba(0, 255, 0, 0.08), transparent 32%),
-    #02060b;
-  color: #d8ffe8;
-  text-align: center;
-  touch-action: manipulation;
-}
 
-.landscape-gate.is-visible {
-  display: grid;
-}
-
-.landscape-gate__card {
-  width: min(460px, 92vw);
-  padding: 26px 24px 22px;
-  border: 1px solid rgba(54, 163, 255, 0.64);
-  background: rgba(2, 6, 11, 0.94);
-  box-shadow: 0 0 40px rgba(54, 163, 255, 0.13);
-}
-
-.landscape-gate__phone {
-  color: #00ff00;
-  font-size: 42px;
-  line-height: 1;
-  text-shadow: 0 0 18px rgba(0, 255, 0, 0.62);
-}
-
-.landscape-gate__eyebrow {
-  margin-top: 14px;
-  color: #36a3ff;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.18em;
-}
-
-.landscape-gate strong {
-  display: block;
-  margin-top: 8px;
-  color: #00ff00;
-  font-size: clamp(22px, 7vw, 34px);
-  letter-spacing: 0.04em;
-}
-
-.landscape-gate span {
-  display: block;
-  max-width: 360px;
-  margin: 10px auto 0;
-  color: rgba(216, 255, 232, 0.72);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.landscape-gate button {
-  margin-top: 18px;
-  padding: 11px 18px;
-  border: 1px solid #00ff00;
-  color: #d8ffe8;
-  background: rgba(0, 255, 0, 0.08);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-}
 
 @media (pointer: coarse) and (orientation: landscape) {
   /* Landscape keeps the same bottom-left utility row; only the padding tightens. */
@@ -158,72 +89,39 @@
   .phase-note { display: none; }
 }
 
-.landscape-gate__fallback {
-  display: block;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(54, 163, 255, 0.28);
-}
-
-.landscape-gate__fallback[hidden] {
-  display: none;
-}
-
-.landscape-gate__hint {
-  color: rgba(216, 255, 232, 0.62);
-  font-size: 11px;
-}
-
-.landscape-gate button.landscape-gate__skip {
-  margin-top: 12px;
-  border-color: rgba(54, 163, 255, 0.72);
-  background: rgba(54, 163, 255, 0.1);
-}
-
-.landscape-gate button:focus-visible {
-  outline: 2px solid #00ff00;
-  outline-offset: 2px;
-}
-
-.landscape-gate button.landscape-gate__start {
-  min-width: 200px;
-  padding: 14px 22px;
-  border-color: #00ff00;
-  background: rgba(0, 255, 0, 0.16);
-  font-size: 14px;
-  letter-spacing: 0.2em;
-  animation: landscape-start-pulse 1.5s ease-in-out infinite;
-}
-
 @keyframes landscape-start-pulse {
   0%, 100% { box-shadow: 0 0 0 rgba(0, 255, 0, 0); }
   50% { box-shadow: 0 0 22px rgba(0, 255, 0, 0.55); }
-}
-
-.landscape-gate span.landscape-gate__note {
-  margin-top: 8px;
-  color: rgba(216, 255, 232, 0.52);
-  font-size: 10px;
 }
 
 /* Reachable once the gate is gone but the address bar is still on screen.
    Bottom-centre is deliberate: the canvas HUD owns both bottom corners
    (PAUSE on the left, BOMB and FOG BREAK on the right) and a DOM overlay
    parked on top of them would eat taps meant for the buttons. */
+/*
+ * Fullscreen is an option, not an instruction.
+ *
+ * This was a "⛶ FULLSCREEN" bar pinned to the bottom CENTRE -- across the
+ * play area, in every screenshot, over the ship's own lane. It is a single
+ * glyph in the top-left now, tucked under the score readout and away from
+ * every other control: the utility row bottom-left, the pause and map
+ * top-right, and the weapon buttons bottom-right are all untouched.
+ */
 .fullscreen-nudge {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: max(4px, env(safe-area-inset-bottom));
+  left: max(6px, env(safe-area-inset-left));
+  top: max(52px, calc(env(safe-area-inset-top) + 52px));
   z-index: 900;
   display: none;
-  padding: 5px 10px;
-  border: 1px solid rgba(54, 163, 255, 0.8);
-  color: #d8ffe8;
-  background: rgba(2, 6, 11, 0.86);
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(54, 163, 255, 0.5);
+  border-radius: 3px;
+  color: rgba(216, 255, 232, 0.72);
+  background: rgba(2, 6, 11, 0.72);
+  font-size: 13px;
+  line-height: 1;
   touch-action: manipulation;
 }
 
