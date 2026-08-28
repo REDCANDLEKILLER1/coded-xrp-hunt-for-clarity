@@ -266,6 +266,8 @@ const ENEMY_SCALE_SHARE = 0.45;
 const ENEMY_SPEED_PER_SCALE = 7;
 /** Free upgrade picks granted for putting a boss down. */
 const BOSS_UPGRADE_REWARD = 1;
+/** How long the Fog Breaker takes to cut through, on its own. */
+const FOG_AUTO_CUT_SECONDS = 2.4;
 /** Seconds without a hit before shields start coming back. */
 const SHIELD_REGEN_DELAY = 7;
 /** Seconds per shield segment once regeneration starts. */
@@ -414,6 +416,9 @@ export class Game2A {
   private launchClock = 0;
   private launchTotal = 0;
   private fogGateActive = false;
+  /** Counts up while a fog gate or shield cover is being cut automatically. */
+  private fogCutClock = 0;
+  private shieldCutClock = 0;
   private progress: CampaignProgress = this.loadProgress();
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
@@ -489,6 +494,8 @@ export class Game2A {
     this.earthEncounterDirector.clear();
     this.launchClock = 0;
     this.fogGateActive = false;
+    this.fogCutClock = 0;
+    this.shieldCutClock = 0;
     this.warship = null;
     this.cueMusic('silence');
     this.paused = false;
@@ -677,7 +684,16 @@ export class Game2A {
     }
 
     if (act.key === 'final_assault' && this.fogGateActive) {
+      // The Fog Breaker fires itself.
+      //
+      // This used to wait for the player to press the special. Playtesters did
+      // not connect the stalled route to that button and flew around in an
+      // empty sky for minutes waiting for something to happen -- the fog gate
+      // was a puzzle nobody knew they were being asked. It is a beat now: the
+      // route opens on its own, with the banner still there to say what did it.
       this.hostileShots = [];
+      this.fogCutClock += dt;
+      if (this.fogCutClock >= FOG_AUTO_CUT_SECONDS) this.cutFogGate();
       return;
     }
 
@@ -771,6 +787,16 @@ export class Game2A {
     }
 
     warship.x = this.w / 2 + Math.sin(warship.age * 0.45) * Math.min(42, this.w * 0.08);
+    if (this.warshipDirector.shieldCovered) {
+      this.shieldCutClock += dt;
+      if (this.shieldCutClock >= FOG_AUTO_CUT_SECONDS && this.warshipDirector.exposeShieldRelay()) {
+        this.missionBannerText = 'FOG BREAKER // SHIELD RELAY EXPOSED';
+        this.missionBannerClock = 2.8;
+        sfx.play('pulse');
+      }
+    } else {
+      this.shieldCutClock = 0;
+    }
     this.warshipDefenders(dt);
     warship.fireClock -= dt;
     if (warship.fireClock <= 0) {
@@ -3016,7 +3042,7 @@ export class Game2A {
       const groupLabel = this.earthEncounterDirector.currentGroupLabel ?? 'INBOUND';
       objective = `FORMATION ${this.earthEncounterDirector.currentGroupNumber}/${this.earthEncounterDirector.totalGroups} • ${groupLabel}`;
     } else if (missionAct?.mode === 'boss') objective = 'GUARDIAN SIGNAL DETECTED';
-    else if (missionAct?.key === 'final_assault' && this.fogGateActive) objective = 'FOG LOCK ACTIVE • USE FOG BREAKER';
+    else if (missionAct?.key === 'final_assault' && this.fogGateActive) objective = 'FOG BREAKER CUTTING THE ROUTE';
     if (objective) {
       this.ctx.fillStyle = this.fogGateActive ? 'rgba(54,163,255,0.85)' : 'rgba(216,255,232,0.44)';
       this.ctx.fillText(fitText(this.ctx, objective, leftWidth), 14, barY + 23);
@@ -3112,14 +3138,15 @@ export class Game2A {
    * sees the mission stop. Those moments make the button blink and caption
    * itself, so the control teaches its own use the first time it matters.
    */
+  /**
+   * The pulse button's state.
+   *
+   * `blocked` used to mean "the mission is waiting on this press" and drove a
+   * 2.5Hz blink. Nothing waits on the press any more -- the fog cuts itself --
+   * so there is nothing to nag about and the button is just charged or not.
+   */
   private specialCue(): { blocked: boolean; ready: boolean } {
-    const ready = this.special >= 100;
-    if (!hasFogBreaker(this.progress) || this.mode !== 'play' || this.launchClock > 0) {
-      return { blocked: false, ready };
-    }
-    const gateBlocked = this.fogGateActive && this.missionDirector.currentAct?.key === 'final_assault';
-    const shieldBlocked = this.warship?.state === 'fight' && this.warshipDirector.needsFogBreaker;
-    return { blocked: gateBlocked || shieldBlocked, ready };
+    return { blocked: false, ready: this.special >= 100 };
   }
 
   /** Wide rectangular button for the menu screens (ship select, GAME OVER). */
@@ -3137,7 +3164,9 @@ export class Game2A {
 
   private drawSpecialButton(): void {
     const circle = this.zone.special;
-    const label = hasFogBreaker(this.progress) ? 'FOG BREAK' : 'PULSE';
+    // Always PULSE. It read FOG BREAK once the upgrade landed, which is what
+    // sent people hunting for something to break fog with.
+    const label = 'PULSE';
     const { blocked, ready } = this.specialCue();
     // The charge meter used to be a bar across the top-right. Wearing it as a
     // ring on the button puts the number where the decision is.
@@ -3285,19 +3314,23 @@ export class Game2A {
     this.ringClock = hasFogBreaker(this.progress) ? 0.55 : 0.35;
     this.pulseHitBoss = false;
 
-    if (hasFogBreaker(this.progress)) {
-      this.hostileShots = [];
-      if (this.fogGateActive && this.missionDirector.currentAct?.key === 'final_assault') {
-        this.fogGateActive = false;
-        this.earthEncounterDirector.start('final_assault');
-        this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
-        this.missionBannerClock = 2.8;
-      }
-      if (this.warship?.state === 'fight' && this.warshipDirector.exposeShieldWithFogBreaker()) {
-        this.missionBannerText = 'FOG BREAKER // SHIELD RELAY EXPOSED';
-        this.missionBannerClock = 2.8;
-      }
-    }
+    // The Fog Breaker is a permanent upgrade to this pulse -- wider, longer,
+    // and it sweeps the screen clear of fire. It no longer unlocks anything,
+    // because a button that gates progress is a button people get stuck behind.
+    if (hasFogBreaker(this.progress)) this.hostileShots = [];
+  }
+
+  /** Opens the route to the capital ship. */
+  private cutFogGate(): void {
+    if (!this.fogGateActive) return;
+    this.fogGateActive = false;
+    this.fogCutClock = 0;
+    this.hostileShots = [];
+    this.ringClock = 0.55;
+    this.earthEncounterDirector.start('final_assault');
+    this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
+    this.missionBannerClock = 2.8;
+    sfx.play('pulse');
   }
 
   private useBomb(): void {
@@ -3779,6 +3812,8 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.fogGateActive = false;
+    this.fogCutClock = 0;
+    this.shieldCutClock = 0;
     this.applyLoadout();
 
     const mission = this.missionDirector.activeMission;
@@ -3823,11 +3858,11 @@ export class Game2A {
         if (this.missionDirector.currentAct?.key === 'boarding') {
           this.warshipDirector.reset();
           for (const system of REGULATORY_WARSHIP.systems) {
-            if (system.key === 'shield_relay') this.warshipDirector.exposeShieldWithFogBreaker();
+            if (system.key === 'shield_relay') this.warshipDirector.exposeShieldRelay();
             let guard = 0;
             while (!this.warshipDirector.allSystems.find((item) => item.key === system.key)?.destroyed && guard < 30) {
               this.warshipDirector.hit(system.key, 99);
-              if (this.warshipDirector.phase === 'shield') this.warshipDirector.exposeShieldWithFogBreaker();
+              if (this.warshipDirector.phase === 'shield') this.warshipDirector.exposeShieldRelay();
               guard += 1;
             }
           }
