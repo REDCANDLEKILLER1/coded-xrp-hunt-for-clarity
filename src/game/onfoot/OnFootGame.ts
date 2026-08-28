@@ -15,6 +15,8 @@ const GREEN = '#00ff00';
 const BLUE = '#36a3ff';
 const RED = '#ff4c66';
 const PLAYER_RENDER_SIZE = 84;
+/** Seconds of squash after a landing. */
+const ONFOOT_LAND_SQUASH = 0.17;
 
 /**
  * L1-I authored Regulatory Warship interior slice.
@@ -47,6 +49,19 @@ export class OnFootGame {
   private keys = new Set<string>();
   private fireCooldown = 0;
   private hurtCooldown = 0;
+  /**
+   * Animation state carried between frames.
+   *
+   * The character sheet is six near-identical standing frames -- there is no
+   * walk cycle, no jump pose and no firing pose in it, which is why XRPMan
+   * stood bolt upright through everything. Until real frames exist, the motion
+   * is built here instead: `stride` advances with distance travelled rather
+   * than with time, so the gait matches the speed, and `landClock` drives the
+   * squash on touchdown.
+   */
+  private stride = 0;
+  private landClock = 0;
+  private wasGrounded = false;
   private coyoteClock = 0;
   private jumpBufferClock = 0;
   private cameraX = 0;
@@ -123,6 +138,11 @@ export class OnFootGame {
   private update(dt: number): void {
     this.introClock = Math.max(0, this.introClock - dt);
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+    this.landClock = Math.max(0, this.landClock - dt);
+    // Distance-driven, so the legs keep up with however fast he is going.
+    if (this.player.grounded) this.stride += Math.abs(this.player.vx) * dt * 0.055;
+    if (this.player.grounded && !this.wasGrounded) this.landClock = ONFOOT_LAND_SQUASH;
+    this.wasGrounded = this.player.grounded;
     this.hurtCooldown = Math.max(0, this.hurtCooldown - dt);
     this.coyoteClock = Math.max(0, this.coyoteClock - dt);
     this.jumpBufferClock = Math.max(0, this.jumpBufferClock - dt);
@@ -542,20 +562,39 @@ export class OnFootGame {
     if (flash) c.globalAlpha = 0.35;
 
     const running = this.player.grounded && Math.abs(this.player.vx) > 40;
-    const bob = running ? Math.sin(performance.now() * 0.018) * 2 : 0;
+    const airborne = !this.player.grounded;
+
+    // The gait. Two beats per stride cycle: he rises on the push and drops on
+    // the plant, and leans into the direction he is actually moving.
+    const gait = Math.sin(this.stride);
+    const bob = running ? -Math.abs(gait) * 3.2 : Math.sin(performance.now() * 0.0022) * 0.8;
+    const lean = running ? Math.sign(this.player.vx) * 0.1 + gait * 0.035 : 0;
+    // Airborne: stretch on the way up, gather on the way down.
+    const rise = airborne ? clamp(-this.player.vy / 520, -1, 1) : 0;
+    // Landing squash, and its opposite while stretched in the air.
+    const land = this.landClock / ONFOOT_LAND_SQUASH;
+    const squash = 1 - land * 0.22 + rise * 0.1;
+    const widen = 1 + land * 0.2 - rise * 0.08 + (running ? Math.abs(gait) * 0.03 : 0);
+    // Firing kicks him back off the shot.
+    const recoil = this.fireCooldown > 0 ? Math.min(1, this.fireCooldown / 0.18) : 0;
 
     c.save();
     c.fillStyle = 'rgba(0,0,0,0.34)';
     c.beginPath();
-    c.ellipse(this.player.x, this.player.y + ONFOOT_PHYSICS.playerHeight / 2 + 4, 25, 6, 0, 0, Math.PI * 2);
+    // The shadow shrinks and fades as he climbs away from the floor.
+    const lift = airborne ? clamp(1 - Math.abs(this.player.vy) / 700, 0.45, 1) : 1;
+    c.globalAlpha = lift;
+    c.ellipse(this.player.x, this.player.y + ONFOOT_PHYSICS.playerHeight / 2 + 4, 25 * lift, 6 * lift, 0, 0, Math.PI * 2);
     c.fill();
     c.restore();
 
     if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
       const frame = this.fireCooldown > 0.08 ? 5 : 4;
+      const face = this.player.facing === 'left' ? -1 : 1;
       c.save();
-      c.translate(this.player.x, this.player.y + bob - 5);
-      c.scale(this.player.facing === 'left' ? -1 : 1, 1);
+      c.translate(this.player.x - face * recoil * 3, this.player.y + bob - 5);
+      c.rotate(lean + (airborne ? face * 0.07 : 0));
+      c.scale(face * widen, squash);
       c.shadowColor = this.fireCooldown > 0 ? GREEN : BLUE;
       c.shadowBlur = this.fireCooldown > 0 ? 18 : 11;
       c.drawImage(
