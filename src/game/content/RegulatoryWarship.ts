@@ -59,6 +59,11 @@ export class RegulatoryWarshipDirector {
     this.refreshExposure();
   }
 
+  /** True while the shield phase is stalled waiting for a Fog Breaker pulse. */
+  get needsFogBreaker(): boolean {
+    return this.phase === 'shield' && !this.shieldExposed;
+  }
+
   exposeShieldWithFogBreaker(): boolean {
     if (this.phase !== 'shield' || this.shieldExposed) return false;
     this.shieldExposed = true;

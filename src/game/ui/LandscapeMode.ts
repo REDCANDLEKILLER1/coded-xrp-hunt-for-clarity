@@ -6,22 +6,33 @@ type FullscreenElement = HTMLElement & {
   webkitRequestFullscreen?: () => Promise<void> | void;
 };
 
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+};
+
 /**
- * Mobile gameplay is landscape-first. Browsers do not universally permit an
- * orientation lock until a user gesture/fullscreen transition, so portrait shows
- * a rotate prompt and the first gesture anywhere attempts the lock. There is no
- * "enable" button to press — turning the phone is the whole interaction.
+ * Mobile gameplay is landscape-first, and landscape is only worth anything with
+ * the browser chrome gone — a phone in landscape with the URL bar still up
+ * loses a third of an already short screen.
  *
- * The lock is not guaranteed to be available at all: iOS Safari exposes neither
- * element fullscreen nor screen.orientation.lock, and any device with rotation
- * lock enabled stays portrait regardless. The gate must therefore never be the
- * only way forward — when the lock cannot be performed the player is offered a
- * manual-rotate hint plus an explicit escape into portrait play.
+ * Fullscreen and orientation lock both require transient user activation:
+ * rotating the phone is not a gesture, so no amount of listening to
+ * `orientationchange` can hide that bar. Something has to be tapped. So the
+ * gate leads with an explicit START button, and once past it a small FULLSCREEN
+ * nudge stays available for as long as the game is running outside fullscreen —
+ * a player who backed out, or who arrived already in landscape and never saw
+ * the gate, still has a deliberate way to force it.
+ *
+ * Neither call is guaranteed: iOS Safari exposes no element fullscreen and no
+ * screen.orientation.lock, and a device with rotation lock on stays portrait.
+ * The gate therefore must never be the only way forward — when the lock cannot
+ * be performed the player gets a manual-rotate hint plus an explicit escape
+ * into portrait play.
  */
 export class LandscapeMode {
   private readonly gate: HTMLDivElement;
   private readonly fallback: HTMLDivElement;
-  private lockAttempted = false;
+  private readonly nudge: HTMLButtonElement;
   private dismissed = false;
 
   constructor() {
@@ -35,6 +46,8 @@ export class LandscapeMode {
         <div class="landscape-gate__eyebrow">CODED // MOBILE FLIGHT MODE</div>
         <strong>TURN PHONE SIDEWAYS</strong>
         <span>Landscape gives you the full battlefield. Drag anywhere to fly.</span>
+        <button type="button" class="landscape-gate__start">PRESS START</button>
+        <span class="landscape-gate__note">Start goes fullscreen and locks landscape, so the address bar gets out of the way.</span>
         <div class="landscape-gate__fallback" hidden>
           <span class="landscape-gate__hint">This browser will not rotate the screen for us. Turn the phone sideways yourself — or keep playing in portrait.</span>
           <button type="button" class="landscape-gate__skip">CONTINUE ANYWAY</button>
@@ -43,32 +56,43 @@ export class LandscapeMode {
     `;
     document.body.appendChild(this.gate);
 
+    // The nudge lives outside the gate: its whole job is to be reachable once
+    // the gate is gone but the browser chrome is still on screen.
+    this.nudge = document.createElement('button');
+    this.nudge.type = 'button';
+    this.nudge.className = 'fullscreen-nudge';
+    this.nudge.textContent = '⛶ FULLSCREEN';
+    this.nudge.title = 'Hide the address bar and lock landscape';
+    document.body.appendChild(this.nudge);
+
     this.fallback = this.gate.querySelector<HTMLDivElement>('.landscape-gate__fallback')!;
-    // No "enable" button: the lock is attempted automatically from the first
-    // gesture anywhere on the page. Players just turn the phone.
+    this.gate.querySelector<HTMLButtonElement>('.landscape-gate__start')
+      ?.addEventListener('click', () => void this.goFullscreen());
     this.gate.querySelector<HTMLButtonElement>('.landscape-gate__skip')
       ?.addEventListener('click', () => this.dismiss());
+    this.nudge.addEventListener('click', () => void this.goFullscreen());
 
     window.addEventListener('resize', this.refresh);
     window.addEventListener('orientationchange', this.refresh);
     screen.orientation?.addEventListener?.('change', this.refresh);
-    document.addEventListener('pointerdown', this.onFirstGesture, { capture: true, passive: true });
+    document.addEventListener('fullscreenchange', this.refresh);
+    document.addEventListener('webkitfullscreenchange', this.refresh);
 
     // If the platform cannot lock orientation at all, say so up front rather
-    // than making the player discover it by tapping a button that does nothing.
+    // than letting the player discover it by pressing a button that half-works.
     if (!canLockOrientation()) this.revealFallback();
     this.refresh();
   }
 
-  private readonly onFirstGesture = (): void => {
-    if (!isMobileLike() || this.lockAttempted) return;
-    void this.activateFromGesture();
-  };
-
   private readonly refresh = (): void => {
-    const requiresLandscape = isMobileLike() && innerHeight > innerWidth && !this.dismissed;
+    const mobile = isMobileLike();
+    const portrait = innerHeight > innerWidth;
+    const requiresLandscape = mobile && portrait && !this.dismissed;
     this.gate.classList.toggle('is-visible', requiresLandscape);
-    document.documentElement.classList.toggle('mobile-landscape-active', isMobileLike() && innerWidth >= innerHeight);
+    document.documentElement.classList.toggle('mobile-landscape-active', mobile && !portrait);
+    // Offer the nudge exactly when it can still do something: on a phone, out
+    // of fullscreen, and not already behind the gate's own START button.
+    this.nudge.classList.toggle('is-visible', mobile && !isFullscreen() && !requiresLandscape);
   };
 
   /** Let the player through in portrait. Landscape stays the recommended orientation. */
@@ -81,12 +105,14 @@ export class LandscapeMode {
     this.fallback.hidden = false;
   }
 
-  private async activateFromGesture(): Promise<void> {
-    if (!isMobileLike()) return;
-    this.lockAttempted = true;
-
+  /**
+   * Called straight from a click so the transient user activation is still
+   * live. Deliberately not latched: a refused or exited fullscreen must leave
+   * the player able to try again.
+   */
+  private async goFullscreen(): Promise<void> {
     try {
-      if (!document.fullscreenElement) {
+      if (!isFullscreen()) {
         const root = document.documentElement as FullscreenElement;
         if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'hide' });
         else await root.webkitRequestFullscreen?.();
@@ -108,6 +134,11 @@ export class LandscapeMode {
 
     this.refresh();
   }
+}
+
+function isFullscreen(): boolean {
+  const doc = document as FullscreenDocument;
+  return Boolean(doc.fullscreenElement ?? doc.webkitFullscreenElement);
 }
 
 function canLockOrientation(): boolean {

@@ -38,13 +38,34 @@ for (const token of [
   if (!onFoot.includes(token)) throw new Error(`mobile-landscape: missing zoomed-out on-foot token ${token}`);
 }
 
-// The gate must never be the only way forward. iOS Safari exposes neither
-// element fullscreen nor screen.orientation.lock, and rotation-locked devices
-// stay portrait regardless, so an escape path is mandatory.
-// The lock must be attempted without a dedicated button, and the gate must
-// still have an escape when the platform refuses to rotate.
-if (/landscape-gate__lock/.test(landscape)) {
-  throw new Error('mobile-landscape: tilt/landscape must auto-enable, not require an ENABLE button');
+// Fullscreen and orientation lock both need transient user activation, and
+// rotating a phone is not a gesture. An earlier build tried to piggyback on
+// "the first pointerdown anywhere"; on a real device the address bar stayed up,
+// which costs a third of an already short landscape screen. There must be
+// something explicit to press, and it must not be one-shot -- a refused or
+// exited fullscreen has to be retryable.
+for (const token of [
+  'landscape-gate__start',
+  'PRESS START',
+  'fullscreen-nudge',
+  'goFullscreen',
+  'isFullscreen()',
+  'fullscreenchange',
+]) {
+  if (!landscape.includes(token)) {
+    throw new Error(`mobile-landscape: no explicit way to force fullscreen — missing ${token}`);
+  }
+}
+if (/lockAttempted/.test(landscape)) {
+  throw new Error('mobile-landscape: fullscreen is latched to one attempt; a refused or exited fullscreen must be retryable');
+}
+if (!/\.fullscreen-nudge\.is-visible/.test(styles)) {
+  throw new Error('mobile-landscape: fullscreen nudge has no visible state');
+}
+// The nudge is a DOM overlay on top of the canvas HUD. Parked in a bottom
+// corner it would swallow taps meant for PAUSE, BOMB or FOG BREAK.
+if (!/\.fullscreen-nudge\s*\{[^}]*left:\s*50%/.test(styles)) {
+  throw new Error('mobile-landscape: fullscreen nudge must sit clear of the canvas HUD buttons');
 }
 for (const token of [
   'dismissed',
