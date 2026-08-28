@@ -54,7 +54,8 @@ type WarshipActor = Actor & {
   age: number;
   fireClock: number;
 };
-type ProjectileActor = Actor & { damage: number; projectileKey: string };
+type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number };
+type UpgradeKind = 'weapon' | 'shield' | 'bomb' | 'pulse';
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
@@ -96,6 +97,26 @@ const BOMB_EVERY_KILLS = 12;
 const REPAIR_EVERY_KILLS = 10;
 const MAX_BOMBS = 3;
 const BOMB_LIFE = 0.55;
+
+// XP and upgrades.
+//
+// Kills pay XP, XP buys levels, and each level hands the player a choice of
+// three upgrades. Weapon upgrades hand over a genuinely different gun rather
+// than the same gun with a bigger number, which is why the ladder tops out at
+// five distinct weapons.
+const XP_LEVEL_BASE = 55;
+const XP_LEVEL_STEP = 40;
+const XP_WAVE_CLEAR = 40;
+
+/** XP a kill is worth, per point of the enemy's score value. */
+const XP_PER_SCORE = 0.11;
+const UPGRADE_CHOICES = 3;
+const SHIELD_CAP = 6;
+/** Seconds without a hit before shields start coming back. */
+const SHIELD_REGEN_DELAY = 7;
+/** Seconds per shield segment once regeneration starts. */
+const SHIELD_REGEN_STEP = 4.5;
+const SHIELD_PICKUP_EVERY_KILLS = 9;
 
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
@@ -143,6 +164,17 @@ export class Game2A {
   private weaponTier = 1;
   private kills = 0;
   private bombs = 2;
+  private xp = 0;
+  private xpLevel = 1;
+  private shield = 0;
+  private shieldMax = 0;
+  private shieldQuietClock = 0;
+  private shieldRegenClock = 0;
+  /** Levels earned but not yet spent. The overlay stays up until it hits 0. */
+  private pendingUpgrades = 0;
+  private upgradeOffer: UpgradeKind[] = [];
+  private bombPower = 1;
+  private pulsePower = 1;
   private bombClock = 0;
   private bossClearClock = 0;
   private victoryPendingClock = 0;
@@ -286,6 +318,11 @@ export class Game2A {
       return this.reset();
     }
     if (this.mode === 'victory') return this.reset();
+    if (this.upgradeOffer.length > 0) {
+      const picked = this.upgradeCards().find((card) => inside(card.rect, tap.x, tap.y));
+      if (picked) this.applyUpgrade(picked.kind);
+      return;
+    }
     if (inCircle(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inCircle(this.zone.pause, tap.x, tap.y)) return void this.setPaused(!this.paused);
     if (this.launchClock > 0) return;
@@ -295,6 +332,9 @@ export class Game2A {
 
   private update(dt: number): void {
     if (this.mode !== 'play' || this.paused) return;
+    // A level-up freezes the fight. Picking an upgrade under fire is not a
+    // choice, it is a reflex test.
+    if (this.upgradeOffer.length > 0) return;
 
     if (this.launchClock > 0) {
       this.updateLaunchReveal(dt);
@@ -330,7 +370,8 @@ export class Game2A {
     }
     if (this.playerHitClock > 0) this.playerHitClock = Math.max(0, this.playerHitClock - dt);
     this.updateDebris(dt);
-    this.special = Math.min(100, this.special + dt * 7);
+    this.updateShield(dt);
+    this.special = Math.min(100, this.special + dt * 7 * this.pulsePower);
     if ((this.player.hp ?? 0) <= 0 && this.mode === 'play') this.finishRun(false);
   }
 
@@ -571,6 +612,7 @@ export class Game2A {
         bombs: this.bombs,
         score: this.score,
         savedAt: Date.now(),
+        ...this.upgradeSnapshot(),
       });
       this.saveProgress();
     }
@@ -661,6 +703,7 @@ export class Game2A {
           vy: -Math.cos(shot.angle) * projectile.speed,
           damage: weapon.damage,
           projectileKey: weapon.projectileKey,
+          pierce: weapon.pierce ?? 0,
         });
       }
     }
@@ -786,6 +829,7 @@ export class Game2A {
     // Clearing a group by force is worth more than outlasting it.
     if (before > 0 && this.drones.length === 0 && this.killedThisWave > 0 && this.escapedThisWave === 0) {
       this.score += WAVE_CLEAR_BONUS;
+      this.awardXp(XP_WAVE_CLEAR);
       this.missionBannerText = `FORMATION CLEARED  +${WAVE_CLEAR_BONUS}`;
       this.missionBannerClock = 1.8;
       debugLog.log('combat', 'formation cleared', { kills: this.killedThisWave, bonus: WAVE_CLEAR_BONUS });
@@ -867,21 +911,35 @@ export class Game2A {
 
     this.hazardClock -= dt;
     if (this.hazardClock <= 0) {
+      // Emplacements used to arrive one at a time and always pinned to x=54 or
+      // x=w-54, so the ground threat was a thin line down each edge. They come
+      // in batteries now, scattered across a band, and the batteries grow with
+      // the wave.
+      const battery = 1 + Math.min(2, Math.floor((this.wave - 1) / 4));
+      for (let i = 0; i < battery; i++) {
+        const def = HAZARDS[selectHazardKey(this.wave)] ?? DEFAULT_HAZARD;
+        const side: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
+        const edgeBand = Math.min(this.w * 0.3, 150);
+        const x = def.placement === 'lane'
+          ? 70 + Math.random() * Math.max(1, this.w - 140)
+          : side < 0
+            ? 40 + Math.random() * edgeBand
+            : this.w - 40 - Math.random() * edgeBand;
+        this.hazards.push({
+          x,
+          y: -def.draw.h - i * 46,
+          w: def.hitbox.w,
+          h: def.hitbox.h,
+          vx: 0,
+          vy: this.currentStage().scrollSpeed,
+          hp: def.hp,
+          hazardKey: def.key,
+          fireClock: 0.5 + Math.random() * 0.7,
+          side,
+        });
+      }
       const def = HAZARDS[selectHazardKey(this.wave)] ?? DEFAULT_HAZARD;
-      const side: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
-      this.hazards.push({
-        x: def.placement === 'lane' ? 70 + Math.random() * Math.max(1, this.w - 140) : side < 0 ? 54 : this.w - 54,
-        y: -def.draw.h,
-        w: def.hitbox.w,
-        h: def.hitbox.h,
-        vx: 0,
-        vy: this.currentStage().scrollSpeed,
-        hp: def.hp,
-        hazardKey: def.key,
-        fireClock: 0.8 + Math.random() * 0.65,
-        side,
-      });
-      this.hazardClock = Math.max(3.8, def.spawnRate - (this.wave - def.minWave) * 0.22);
+      this.hazardClock = Math.max(2.4, def.spawnRate - (this.wave - def.minWave) * 0.22);
     }
 
     this.moveHazards(dt);
@@ -1021,28 +1079,41 @@ export class Game2A {
   }
 
   private collisions(): void {
+    // A piercing bolt spends one charge per target instead of dying on contact,
+    // so CLARITY LANCE punches a whole column rather than the first thing it
+    // meets. `spend` returns true once the bolt is finally used up.
+    const spend = (bolt: ProjectileActor): boolean => {
+      if (bolt.pierce > 0) {
+        bolt.pierce -= 1;
+        return false;
+      }
+      bolt.life = 0;
+      return true;
+    };
+
     for (const bolt of this.bolts) {
       for (const drone of this.drones) {
         if ((drone.hp ?? 0) <= 0) continue;
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
-          bolt.life = 0;
+          const spent = spend(bolt);
           drone.hp = (drone.hp ?? 1) - bolt.damage;
           if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
-          break;
+          if (spent) break;
         }
       }
       if (bolt.life === 0) continue;
       for (const hazard of this.hazards) {
         if ((hazard.hp ?? 0) <= 0) continue;
         if (overlap(box(bolt, 0.65), box(hazard, 0.78))) {
-          bolt.life = 0;
+          const spent = spend(bolt);
           hazard.hp = (hazard.hp ?? 1) - bolt.damage;
           if ((hazard.hp ?? 0) <= 0) {
             this.score += this.hazardDef(hazard.hazardKey).score;
             this.special = Math.min(100, this.special + 12);
+            this.awardXp(this.hazardDef(hazard.hazardKey).score * XP_PER_SCORE);
             this.ring(hazard.x, hazard.y);
           }
-          break;
+          if (spent) break;
         }
       }
       if (bolt.life === 0) continue;
@@ -1149,6 +1220,7 @@ export class Game2A {
         bombs: this.bombs,
         score: this.score,
         savedAt: Date.now(),
+        ...this.upgradeSnapshot(),
       });
       this.saveProgress();
     }
@@ -1166,7 +1238,7 @@ export class Game2A {
     if (this.ringClock > 0) {
       this.ringClock -= dt;
       this.drones = this.drones.filter((drone) => {
-        const hit = Math.hypot(drone.x - this.player.x, drone.y - this.player.y) < CLARITY_PULSE.radius;
+        const hit = Math.hypot(drone.x - this.player.x, drone.y - this.player.y) < this.pulseRadius();
         if (hit) {
           this.score += 25;
           this.ring(drone.x, drone.y);
@@ -1174,7 +1246,7 @@ export class Game2A {
         return !hit;
       });
       if (this.boss && this.boss.state === 'fight' && !this.pulseHitBoss) {
-        const hit = Math.hypot(this.boss.x - this.player.x, this.boss.y - this.player.y) < CLARITY_PULSE.radius + this.boss.w * 0.35;
+        const hit = Math.hypot(this.boss.x - this.player.x, this.boss.y - this.player.y) < this.pulseRadius() + this.boss.w * 0.35;
         if (hit) {
           this.pulseHitBoss = true;
           this.damageBoss(hasFogBreaker(this.progress) ? 6 : 4);
@@ -1431,6 +1503,7 @@ export class Game2A {
     if (this.launchClock > 0) this.drawLaunchReveal();
     if (this.bossClearClock > 0) this.bossClearBanner();
     if (this.missionBannerClock > 0) this.drawMissionBanner();
+    if (this.upgradeOffer.length > 0) this.drawUpgradeChoice();
     if (this.paused) this.pause();
   }
 
@@ -1714,15 +1787,139 @@ export class Game2A {
     this.ctx.restore();
   }
 
+  /** Pulse reach: the Fog Breaker widens it, and so does every PULSE upgrade. */
+  private pulseRadius(): number {
+    const base = hasFogBreaker(this.progress) ? CLARITY_PULSE.radius * 1.25 : CLARITY_PULSE.radius;
+    return base * this.pulsePower;
+  }
+
   private drawPulse(): void {
     const alpha = Math.max(0, this.ringClock / (hasFogBreaker(this.progress) ? 0.55 : 0.35));
     const color = hasFogBreaker(this.progress) ? '54,163,255' : '0,255,136';
-    const radius = hasFogBreaker(this.progress) ? CLARITY_PULSE.radius * 1.25 : CLARITY_PULSE.radius;
+    const radius = this.pulseRadius();
     this.ctx.strokeStyle = `rgba(${color},${alpha})`;
     this.ctx.lineWidth = hasFogBreaker(this.progress) ? 6 : 4;
     this.ctx.beginPath();
     this.ctx.arc(this.player.x, this.player.y, (1 - alpha) * radius, 0, Math.PI * 2);
     this.ctx.stroke();
+  }
+
+  /**
+   * The level-up screen. Text and shape only: there is no upgrade artwork in
+   * the repo yet (pickups/ holds three images and ui/, weapons/ and icons/ are
+   * empty), so each card draws its own glyph rather than referencing art that
+   * would show up as a missing asset.
+   */
+  private drawUpgradeChoice(): void {
+    this.ctx.save();
+    this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
+    this.ctx.fillRect(0, 0, this.w, this.h);
+
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#00ff88';
+    this.ctx.font = '900 15px ui-sans-serif, system-ui';
+    this.ctx.fillText(`LEVEL ${this.xpLevel}`, this.w / 2, this.h * 0.16);
+    this.ctx.fillStyle = 'rgba(216,255,232,0.66)';
+    this.ctx.font = '700 9px ui-sans-serif, system-ui';
+    const queued = this.pendingUpgrades > 1 ? ` • ${this.pendingUpgrades} TO SPEND` : '';
+    this.ctx.fillText(`CHOOSE AN UPGRADE${queued}`, this.w / 2, this.h * 0.16 + 15);
+
+    for (const card of this.upgradeCards()) {
+      const info = this.upgradeInfo(card.kind);
+      const { x, y, w, h } = card.rect;
+      this.ctx.fillStyle = 'rgba(2,6,11,0.94)';
+      this.ctx.strokeStyle = info.accent;
+      this.ctx.lineWidth = 2;
+      this.ctx.fillRect(x, y, w, h);
+      this.ctx.strokeRect(x, y, w, h);
+
+      this.drawUpgradeGlyph(card.kind, x + w / 2, y + h * 0.3, Math.min(w, h) * 0.17, info.accent);
+
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = info.accent;
+      this.ctx.font = '900 11px ui-sans-serif, system-ui';
+      this.ctx.fillText(fitText(this.ctx, info.title, w - 12), x + w / 2, y + h * 0.62);
+      this.ctx.fillStyle = 'rgba(216,255,232,0.72)';
+      this.ctx.font = '600 8px ui-sans-serif, system-ui';
+      this.ctx.fillText(fitText(this.ctx, info.detail, w - 12), x + w / 2, y + h * 0.62 + 13);
+      this.ctx.fillStyle = 'rgba(216,255,232,0.4)';
+      this.ctx.fillText(fitText(this.ctx, info.current, w - 12), x + w / 2, y + h * 0.62 + 25);
+    }
+    this.ctx.restore();
+  }
+
+  /** What each upgrade is called, does, and what the player already has. */
+  private upgradeInfo(kind: UpgradeKind): { title: string; detail: string; current: string; accent: string } {
+    switch (kind) {
+      case 'weapon': {
+        const next = WEAPON_LADDER[Math.min(WEAPON_LADDER.length - 1, this.weaponTier)];
+        return {
+          title: next.label,
+          detail: next.pierce ? `${next.damage} DMG • PIERCES ${next.pierce}` : `${next.shots.length}-SHOT VOLLEY`,
+          current: `NOW: ${this.currentWeapon().label}`,
+          accent: '#00ff00',
+        };
+      }
+      case 'shield':
+        return {
+          title: 'SHIELD PLATING',
+          detail: '+1 SEGMENT • REFILLS',
+          current: `NOW: ${this.shieldMax} SEGMENTS`,
+          accent: '#36a3ff',
+        };
+      case 'bomb':
+        return {
+          title: 'BOMB YIELD',
+          detail: '+22% BLAST • +1 BOMB',
+          current: `NOW: ${this.bombs}/${this.maxBombs()} RACK`,
+          accent: '#ffd24a',
+        };
+      case 'pulse':
+        return {
+          title: 'PULSE FIELD',
+          detail: '+18% REACH • FASTER CHARGE',
+          current: `NOW: ${Math.round(this.pulseRadius())}px`,
+          accent: '#b56cff',
+        };
+    }
+  }
+
+  private drawUpgradeGlyph(kind: UpgradeKind, cx: number, cy: number, r: number, accent: string): void {
+    this.ctx.save();
+    this.ctx.strokeStyle = accent;
+    this.ctx.fillStyle = accent;
+    this.ctx.lineWidth = 2;
+    this.ctx.beginPath();
+    if (kind === 'weapon') {
+      // Upward chevron: the gun.
+      this.ctx.moveTo(cx, cy - r);
+      this.ctx.lineTo(cx + r * 0.8, cy + r * 0.7);
+      this.ctx.lineTo(cx, cy + r * 0.25);
+      this.ctx.lineTo(cx - r * 0.8, cy + r * 0.7);
+      this.ctx.closePath();
+    } else if (kind === 'shield') {
+      // Hexagon, matching the shield-cell pickup.
+      for (let i = 0; i < 6; i++) {
+        const angle = -Math.PI / 2 + (i * Math.PI) / 3;
+        const px = cx + Math.cos(angle) * r;
+        const py = cy + Math.sin(angle) * r;
+        if (i === 0) this.ctx.moveTo(px, py);
+        else this.ctx.lineTo(px, py);
+      }
+      this.ctx.closePath();
+    } else if (kind === 'bomb') {
+      this.ctx.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
+    } else {
+      this.ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      this.ctx.stroke();
+      this.ctx.beginPath();
+      this.ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
+    }
+    this.ctx.globalAlpha = 0.22;
+    this.ctx.fill();
+    this.ctx.globalAlpha = 1;
+    this.ctx.stroke();
+    this.ctx.restore();
   }
 
   private drawBombWave(): void {
@@ -1759,8 +1956,18 @@ export class Game2A {
     this.ctx.font = '800 11px ui-sans-serif, system-ui';
     this.ctx.fillText(`SCORE ${this.score}`, 14, 15);
 
-    // Health, thin and directly under the score.
+    // Health, then shield, then XP -- three 3px bars stacked under the score.
+    // Shield only takes a row when the hull actually has one.
     bar(this.ctx, 14, 21, 72, 3, (this.player.hp ?? 0) / ship.hp, ship.accent);
+    let barY = 26;
+    if (this.shieldMax > 0) {
+      bar(this.ctx, 14, barY, 72, 3, this.shield / this.shieldMax, '#36a3ff');
+      barY += 5;
+    }
+    bar(this.ctx, 14, barY, 72, 2, this.xp / this.xpForNextLevel(), '#00ff88');
+    this.ctx.font = '800 8px ui-sans-serif, system-ui';
+    this.ctx.fillStyle = 'rgba(0,255,136,0.8)';
+    this.ctx.fillText(`LV ${this.xpLevel}`, 92, barY + 2.5);
 
     const weapon = this.currentWeapon();
     const detail = mission && missionAct
@@ -1768,7 +1975,7 @@ export class Game2A {
       : `WAVE ${this.wave} • T${weapon.tier} ${weapon.label} • ${ship.label}`;
     this.ctx.font = '600 8px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.5)';
-    this.ctx.fillText(fitText(this.ctx, detail, leftWidth), 14, 34);
+    this.ctx.fillText(fitText(this.ctx, detail, leftWidth), 14, barY + 13);
 
     // The one line that tells the player what to do right now.
     let objective = mission && missionAct ? missionAct.objective : '';
@@ -1780,7 +1987,7 @@ export class Game2A {
     else if (missionAct?.key === 'final_assault' && this.fogGateActive) objective = 'FOG LOCK ACTIVE • USE FOG BREAKER';
     if (objective) {
       this.ctx.fillStyle = this.fogGateActive ? 'rgba(54,163,255,0.85)' : 'rgba(216,255,232,0.44)';
-      this.ctx.fillText(fitText(this.ctx, objective, leftWidth), 14, 44);
+      this.ctx.fillText(fitText(this.ctx, objective, leftWidth), 14, barY + 23);
     }
 
     const stage = this.currentStage();
@@ -2063,7 +2270,7 @@ export class Game2A {
     this.hostileShots = [];
     if (this.boss?.state === 'fight') {
       this.ring(this.boss.x, this.boss.y);
-      this.damageBoss(6);
+      this.damageBoss(Math.round(6 * this.bombPower));
     }
     if (this.warship?.state === 'fight') {
       for (const system of this.warshipDirector.targetableSystems) {
@@ -2112,11 +2319,35 @@ export class Game2A {
     if (!this.missionDirector.activeMission && this.completedBosses.size === BOSS_LADDER.length) this.victoryPendingClock = 2.4;
   }
 
+  /**
+   * Shields soak damage before the hull does, and they come back on their own
+   * after a quiet spell — which is what makes them worth spending a level on
+   * rather than just being extra hit points.
+   */
   private damagePlayer(damage: number, impactX: number, impactY: number): void {
     if (this.playerHitClock > 0) return;
-    this.player.hp = (this.player.hp ?? this.playerDef().hp) - damage;
     this.playerHitClock = 0.55;
+    this.shieldQuietClock = 0;
+    this.shieldRegenClock = 0;
     this.ring(impactX, impactY);
+
+    if (this.shield > 0) {
+      const absorbed = Math.min(this.shield, damage);
+      this.shield -= absorbed;
+      damage -= absorbed;
+      if (damage <= 0) return;
+    }
+    this.player.hp = (this.player.hp ?? this.playerDef().hp) - damage;
+  }
+
+  private updateShield(dt: number): void {
+    if (this.shieldMax <= 0 || this.shield >= this.shieldMax) return;
+    this.shieldQuietClock += dt;
+    if (this.shieldQuietClock < SHIELD_REGEN_DELAY) return;
+    this.shieldRegenClock += dt;
+    if (this.shieldRegenClock < SHIELD_REGEN_STEP) return;
+    this.shieldRegenClock = 0;
+    this.shield = Math.min(this.shieldMax, this.shield + 1);
   }
 
   private finishRun(victory: boolean): void {
@@ -2155,57 +2386,162 @@ export class Game2A {
   }
 
   private registerKill(drone: EnemyActor): void {
-    this.score += this.enemyDef(drone.enemyKey).score;
+    const def = this.enemyDef(drone.enemyKey);
+    this.score += def.score;
     this.killedThisWave += 1;
-    this.special = Math.min(100, this.special + 8);
+    this.special = Math.min(100, this.special + 8 * this.pulsePower);
     this.kills += 1;
+    this.awardXp(def.score * XP_PER_SCORE);
     this.ring(drone.x, drone.y);
 
+    if (this.kills % SHIELD_PICKUP_EVERY_KILLS === 0) this.dropPickup(PICKUPS.shield_cell, drone.x, drone.y);
+
     if (this.kills % UPGRADE_EVERY_KILLS === 0 && this.weaponTier < WEAPON_LADDER.length) {
-      const def = PICKUPS.weapon_upgrade;
-      this.pickups.push({
-        x: drone.x,
-        y: drone.y,
-        w: def.hitbox.w,
-        h: def.hitbox.h,
-        vx: 0,
-        vy: def.driftSpeed,
-        pickupKey: def.key,
-      });
+      this.dropPickup(PICKUPS.weapon_upgrade, drone.x, drone.y);
     }
 
-    if (this.kills % BOMB_EVERY_KILLS === 0 && this.bombs < MAX_BOMBS) {
-      const def = PICKUPS.bomb;
-      this.pickups.push({
-        x: drone.x,
-        y: drone.y,
-        w: def.hitbox.w,
-        h: def.hitbox.h,
-        vx: 0,
-        vy: def.driftSpeed,
-        pickupKey: def.key,
-      });
+    if (this.kills % BOMB_EVERY_KILLS === 0 && this.bombs < this.maxBombs()) {
+      this.dropPickup(PICKUPS.bomb, drone.x, drone.y);
     }
 
     if (this.kills % REPAIR_EVERY_KILLS === 0 && (this.player.hp ?? 0) < this.playerDef().hp) {
-      const def = PICKUPS.repair;
-      this.pickups.push({
-        x: drone.x,
-        y: drone.y,
-        w: def.hitbox.w,
-        h: def.hitbox.h,
-        vx: 0,
-        vy: def.driftSpeed,
-        pickupKey: def.key,
+      this.dropPickup(PICKUPS.repair, drone.x, drone.y);
+    }
+  }
+
+  private dropPickup(def: PickupDef, x: number, y: number): void {
+    this.pickups.push({ x, y, w: def.hitbox.w, h: def.hitbox.h, vx: 0, vy: def.driftSpeed, pickupKey: def.key });
+  }
+
+  /** Upgrade state a checkpoint carries, so continuing keeps what was earned. */
+  private upgradeSnapshot(): Pick<MissionCheckpointSnapshot, 'xpLevel' | 'shieldMax' | 'bombPower' | 'pulsePower'> {
+    return {
+      xpLevel: this.xpLevel,
+      shieldMax: this.shieldMax,
+      bombPower: this.bombPower,
+      pulsePower: this.pulsePower,
+    };
+  }
+
+  /** XP needed to reach the next level. The curve stretches as levels stack. */
+  private xpForNextLevel(): number {
+    return XP_LEVEL_BASE + (this.xpLevel - 1) * XP_LEVEL_STEP;
+  }
+
+  private awardXp(amount: number): void {
+    if (!(amount > 0) || this.mode !== 'play') return;
+    this.xp += amount;
+    // A big score chunk can cross two thresholds at once; every crossing owes
+    // the player a choice, so this loops rather than levelling once.
+    let levelled = false;
+    while (this.xp >= this.xpForNextLevel()) {
+      this.xp -= this.xpForNextLevel();
+      this.xpLevel += 1;
+      this.pendingUpgrades += 1;
+      levelled = true;
+    }
+    debugLog.sample('xp', 1500, 'combat', 'xp', {
+      xp: Math.round(this.xp),
+      level: this.xpLevel,
+      nextAt: Math.round(this.xpForNextLevel()),
+    });
+    if (levelled) {
+      debugLog.log('combat', 'level up', {
+        level: this.xpLevel,
+        pending: this.pendingUpgrades,
+        nextAt: Math.round(this.xpForNextLevel()),
       });
     }
+    if (this.pendingUpgrades > 0 && this.upgradeOffer.length === 0) this.openUpgradeChoice();
+  }
+
+  /** Upgrades with nothing left to give are not offered. */
+  private upgradeAvailable(kind: UpgradeKind): boolean {
+    if (kind === 'weapon') return this.weaponTier < WEAPON_LADDER.length;
+    if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
+    return true;
+  }
+
+  private openUpgradeChoice(): void {
+    const pool = (['weapon', 'shield', 'bomb', 'pulse'] as UpgradeKind[]).filter((kind) => this.upgradeAvailable(kind));
+    if (pool.length === 0) {
+      // Everything is maxed. Bank the level as score rather than stalling the
+      // run behind an overlay with no buttons on it.
+      this.pendingUpgrades = 0;
+      this.score += 250;
+      return;
+    }
+    const offer: UpgradeKind[] = [];
+    while (offer.length < Math.min(UPGRADE_CHOICES, pool.length)) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      if (!offer.includes(pick)) offer.push(pick);
+    }
+    this.upgradeOffer = offer;
+    debugLog.log('combat', 'upgrade offer', { level: this.xpLevel, offer, pending: this.pendingUpgrades });
+  }
+
+  private applyUpgrade(kind: UpgradeKind): void {
+    switch (kind) {
+      case 'weapon':
+        this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
+        this.missionBannerText = `WEAPON // ${this.currentWeapon().label}`;
+        break;
+      case 'shield':
+        this.shieldMax = Math.min(SHIELD_CAP, this.shieldMax + 1);
+        this.shield = this.shieldMax;
+        this.missionBannerText = `SHIELD // ${this.shieldMax} SEGMENTS`;
+        break;
+      case 'bomb':
+        this.bombPower += 0.22;
+        this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
+        this.missionBannerText = `BOMB // BLAST +${Math.round((this.bombPower - 1) * 100)}%`;
+        break;
+      case 'pulse':
+        this.pulsePower += 0.18;
+        this.missionBannerText = `PULSE // FIELD +${Math.round((this.pulsePower - 1) * 100)}%`;
+        break;
+    }
+    this.missionBannerClock = 2.4;
+    debugLog.log('combat', 'upgrade taken', {
+      kind,
+      weaponTier: this.weaponTier,
+      shieldMax: this.shieldMax,
+      bombs: `${this.bombs}/${this.maxBombs()}`,
+      pulsePower: Math.round(this.pulsePower * 100) / 100,
+    });
+    this.pendingUpgrades = Math.max(0, this.pendingUpgrades - 1);
+    this.upgradeOffer = [];
+    if (this.pendingUpgrades > 0) this.openUpgradeChoice();
+  }
+
+  /** The bomb upgrade widens the rack as well as the blast. */
+  private maxBombs(): number {
+    return MAX_BOMBS + Math.floor((this.bombPower - 1) / 0.44);
+  }
+
+  private upgradeCards(): Array<{ kind: UpgradeKind; rect: Rect }> {
+    const offer = this.upgradeOffer;
+    const gap = 10;
+    const w = Math.min((this.w - 32 - gap * (offer.length - 1)) / Math.max(1, offer.length), 168);
+    const h = Math.min(this.h * 0.42, 118);
+    const total = offer.length * w + (offer.length - 1) * gap;
+    const startX = (this.w - total) / 2;
+    const y = this.h * 0.5 - h * 0.42;
+    return offer.map((kind, index) => ({ kind, rect: { x: startX + index * (w + gap), y, w, h } }));
   }
 
   private applyPickup(key: string): void {
     const def = this.pickupDef(key);
     if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
-    if (def.effect === 'bomb') this.bombs = Math.min(MAX_BOMBS, this.bombs + 1);
+    if (def.effect === 'bomb') this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
     if (def.effect === 'repair') this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
+    if (def.effect === 'shield') {
+      // A cell found in the field refills the bank, and raises the ceiling when
+      // the bank is already full -- so shields can grow from play and not only
+      // from levelling. A hull with no shield at all gets its first segment.
+      if (this.shield >= this.shieldMax) this.shieldMax = Math.min(SHIELD_CAP, this.shieldMax + 1);
+      this.shield = this.shieldMax;
+    }
   }
 
   private spawnDebris(x: number, y: number): void {
@@ -2261,6 +2597,7 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.fogGateActive = false;
+    this.applyLoadout();
 
     const mission = this.missionDirector.activeMission;
     if (mission && this.activePlanetKey) {
@@ -2277,13 +2614,19 @@ export class Game2A {
         this.missionDirector.startAtAct(mission, checkpoint.resumeActKey);
         if (SHIPS[checkpoint.shipKey]) this.selectedShipKey = checkpoint.shipKey;
         this.weaponTier = Math.min(WEAPON_LADDER.length, Math.max(1, checkpoint.weaponTier));
-        this.bombs = Math.min(MAX_BOMBS, Math.max(0, checkpoint.bombs));
+        this.bombs = Math.min(this.maxBombs(), Math.max(0, checkpoint.bombs));
         this.score = Math.max(0, checkpoint.score);
         this.kills = Math.max(0, (this.weaponTier - 1) * UPGRADE_EVERY_KILLS);
+        // A resumed run keeps the level it had reached: losing every upgrade at
+        // a checkpoint would make continuing worse than restarting.
+        this.xpLevel = Math.max(1, checkpoint.xpLevel ?? 1);
+        this.shieldMax = clamp(checkpoint.shieldMax ?? this.shieldMax, 0, SHIELD_CAP);
+        this.shield = this.shieldMax;
+        this.bombPower = Math.max(1, checkpoint.bombPower ?? 1);
+        this.pulsePower = Math.max(1, checkpoint.pulsePower ?? this.pulsePower);
       } else {
         this.missionDirector.restart();
-        this.weaponTier = 1;
-        this.bombs = 2;
+        this.applyLoadout();
         this.score = 0;
         this.kills = 0;
         if (this.missionDirector.currentAct?.key === 'deployment') this.missionDirector.advance();
@@ -2332,10 +2675,30 @@ export class Game2A {
     this.player = this.newPlayer();
     this.score = 0;
     this.wave = 1;
-    this.weaponTier = 1;
     this.kills = 0;
-    this.bombs = 2;
     this.earthEncounterDirector.clear();
+  }
+
+  /**
+   * Puts the hull's own strengths on the board. Each of the three ships leans
+   * one way -- the Warden launches with shields, the Striker skips the first
+   * rung of the weapon ladder, the Interceptor carries a heavier bomb rack and
+   * a wider pulse -- so ship select is a real decision.
+   */
+  private applyLoadout(): void {
+    const loadout = this.playerDef().loadout;
+    this.xp = 0;
+    this.xpLevel = 1;
+    this.pendingUpgrades = 0;
+    this.upgradeOffer = [];
+    this.weaponTier = clamp(loadout.weaponTier, 1, WEAPON_LADDER.length);
+    this.shieldMax = clamp(loadout.shield, 0, SHIELD_CAP);
+    this.shield = this.shieldMax;
+    this.shieldQuietClock = 0;
+    this.shieldRegenClock = 0;
+    this.bombPower = 1;
+    this.pulsePower = loadout.pulse;
+    this.bombs = Math.min(this.maxBombs(), 2 + loadout.bombs);
   }
 
   private newPlayer(): Actor {

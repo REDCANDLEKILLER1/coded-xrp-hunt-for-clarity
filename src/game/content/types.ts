@@ -31,6 +31,23 @@ export interface ShipDef {
   fireRate: number;
   /** WeaponDef key this ship starts with. */
   weaponKey: string;
+  /** What makes this hull worth picking. */
+  loadout: ShipLoadout;
+}
+
+/**
+ * Each hull leans one way so the ship-select screen is a real decision rather
+ * than three colours of the same fighter.
+ */
+export interface ShipLoadout {
+  /** Shield segments carried from launch, and the base maximum. */
+  shield: number;
+  /** Weapon-ladder rung this hull launches on (1-based). */
+  weaponTier: number;
+  /** Bombs carried from launch, on top of the shared starting stock. */
+  bombs: number;
+  /** Multiplier on clarity-pulse radius and charge rate. */
+  pulse: number;
 }
 
 export interface EnemyDef {
@@ -86,6 +103,8 @@ export interface WeaponDef {
   fireRate: number;
   damage: number;
   shots: WeaponShotDef[];
+  /** Extra targets a single bolt punches through before it dies. */
+  pierce?: number;
 }
 
 export interface PickupDef {
@@ -95,7 +114,7 @@ export interface PickupDef {
   draw: Size;
   hitbox: Size;
   driftSpeed: number;
-  effect: 'weapon_upgrade' | 'bomb' | 'repair';
+  effect: 'weapon_upgrade' | 'bomb' | 'repair' | 'shield';
 }
 
 export interface StageDef {
