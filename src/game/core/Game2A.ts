@@ -1806,7 +1806,7 @@ export class Game2A {
     }
     this.button(this.zone.pause, 'PAUSE', '#00ff88');
     this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
-    this.button(this.zone.special, hasFogBreaker(this.progress) ? 'FOG BREAK' : 'PULSE', this.special >= 100 ? '#36a3ff' : 'rgba(54,163,255,0.45)');
+    this.drawSpecialButton();
     this.button(this.zone.assets, 'D', '#ffd24a');
   }
 
@@ -1826,13 +1826,20 @@ export class Game2A {
     this.ctx.save();
     this.ctx.globalAlpha = Math.max(0, alpha);
 
-    // Toasts used to sit centred at 36% of the screen height, which on a
-    // landscape phone is exactly where the fighter flies. They now tuck into
-    // the top-right, clear of the flight path and of the top-left HUD.
-    const width = Math.min(this.w * 0.46, 300);
-    const height = 26;
-    const x = this.w - width - 12;
-    const y = this.zone.assets.y + this.zone.assets.h + 8;
+    // First these sat centred at 36% of the screen height, then top-right --
+    // both land in the band the fighter and the diving enemies share. The
+    // bottom strip between PAUSE and BOMB is the one lane nothing else uses:
+    // enemies hold station in the top half, and down here the fighter is
+    // already under the player's thumb.
+    const gapLeft = this.zone.pause.x + this.zone.pause.w + 10;
+    const gap = this.zone.bomb.x - 10 - gapLeft;
+    const height = 18;
+    const width = Math.min(280, Math.max(120, gap));
+    const x = gap >= width ? gapLeft + (gap - width) / 2 : Math.max(10, (this.w - width) / 2);
+    // Sits one row up from the very bottom edge: the FULLSCREEN nudge parks
+    // there until the player takes the game fullscreen, and two overlapping
+    // bottom-centre elements is exactly the "in the way" this move was fixing.
+    const y = this.h - height - 34;
 
     this.ctx.fillStyle = 'rgba(2,6,11,0.86)';
     this.ctx.strokeStyle = 'rgba(0,255,136,0.75)';
@@ -1842,9 +1849,61 @@ export class Game2A {
 
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#d8ffe8';
-    this.ctx.font = '800 10px ui-sans-serif, system-ui';
-    this.ctx.fillText(fitText(this.ctx, this.missionBannerText, width - 14), x + width / 2, y + height / 2 + 3.5);
+    this.ctx.font = '800 9px ui-sans-serif, system-ui';
+    this.ctx.fillText(fitText(this.ctx, this.missionBannerText, width - 12), x + width / 2, y + height / 2 + 3);
     this.ctx.restore();
+  }
+
+  /**
+   * The Fog Breaker is the one control Level 1 never teaches. Two moments stall
+   * outright until the player taps it -- the fog gate before the final assault,
+   * and the warship's shield phase -- and a player who does not know that just
+   * sees the mission stop. Those moments make the button blink and caption
+   * itself, so the control teaches its own use the first time it matters.
+   */
+  private specialCue(): { blocked: boolean; ready: boolean } {
+    const ready = this.special >= 100;
+    if (!hasFogBreaker(this.progress) || this.mode !== 'play' || this.launchClock > 0) {
+      return { blocked: false, ready };
+    }
+    const gateBlocked = this.fogGateActive && this.missionDirector.currentAct?.key === 'final_assault';
+    const shieldBlocked = this.warship?.state === 'fight' && this.warshipDirector.needsFogBreaker;
+    return { blocked: gateBlocked || shieldBlocked, ready };
+  }
+
+  private drawSpecialButton(): void {
+    const rect = this.zone.special;
+    const label = hasFogBreaker(this.progress) ? 'FOG BREAK' : 'PULSE';
+    const { blocked, ready } = this.specialCue();
+    if (!blocked) {
+      this.button(rect, label, ready ? '#36a3ff' : 'rgba(54,163,255,0.45)');
+      return;
+    }
+
+    // 2.5 Hz reads as "press me" without strobing.
+    const beat = 0.5 + 0.5 * Math.sin(this.clock * Math.PI * 5);
+    const accent = ready ? '#8fd6ff' : '#ffd24a';
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.18 + 0.42 * beat;
+    this.ctx.fillStyle = accent;
+    this.ctx.fillRect(rect.x - 6, rect.y - 6, rect.w + 12, rect.h + 12);
+    this.ctx.restore();
+
+    this.button(rect, label, accent);
+
+    this.ctx.save();
+    this.ctx.globalAlpha = 0.5 + 0.5 * beat;
+    this.ctx.textAlign = 'right';
+    this.ctx.fillStyle = accent;
+    this.ctx.font = '900 10px ui-sans-serif, system-ui';
+    this.ctx.fillText(
+      ready ? 'TAP TO BREAK THE FOG' : `CHARGING ${Math.floor(this.special)}%`,
+      this.w - 16,
+      rect.y - 10,
+    );
+    this.ctx.restore();
+    this.ctx.textAlign = 'left';
   }
 
   private button(rect: Rect, label: string, color: string): void {
