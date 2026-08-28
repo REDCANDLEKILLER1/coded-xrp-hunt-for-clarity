@@ -74,6 +74,37 @@ class DebugLog {
     return head + body + '\n';
   }
 
+  /** Structured payload for tooling: stable shape, machine-readable. */
+  dumpJson(): string {
+    this.restore();
+    return JSON.stringify({
+      format: 'coded.debuglog',
+      version: 2,
+      capturedAt: new Date().toISOString(),
+      device: {
+        userAgent: navigator.userAgent,
+        viewport: { w: innerWidth, h: innerHeight },
+        devicePixelRatio,
+        orientationAngle: screen.orientation?.angle ?? null,
+        coarsePointer: matchMedia('(pointer: coarse)').matches,
+      },
+      truncated: this.entries.length >= MAX_ENTRIES,
+      entryCount: this.entries.length,
+      entries: this.entries.map((e) => ({
+        tMs: e.t,
+        t: Number((e.t / 1000).toFixed(3)),
+        cat: e.cat,
+        msg: e.msg,
+        ...(e.data ? { data: e.data } : {}),
+      })),
+    }, null, 2);
+  }
+
+  /** Filename-safe stamp so saved logs sort and never collide. */
+  fileStamp(): string {
+    return new Date().toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  }
+
   size(): number { return this.entries.length; }
 
   private persistTimer: number | null = null;
