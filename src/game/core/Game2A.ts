@@ -135,6 +135,17 @@ const XP_LEVEL_STEP = 150;
  */
 const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
 
+// Boss duel.
+//
+// A boss fight stops being a lane shooter: the arena opens up, both fighters
+// keep their nose on each other, and the player's guns fire along that heading
+// instead of straight up. Flanking a boss should mean shooting sideways at it,
+// not shooting past it.
+const DUEL_LANE_TOP = 0.06;
+/** How fast a nose swings onto its target, in radians per second. */
+const DUEL_TURN = 7.5;
+const BOSS_TURN = 2.6;
+
 /** Extra barrels a hull can bolt on, and the ceiling on a single volley. */
 const MAX_BARRELS = 3;
 const MAX_VOLLEY = 6;
@@ -207,6 +218,9 @@ export class Game2A {
   private baseWeaponTier = 1;
   /** Barrels bolted on by pickups. Rides along whichever gun is equipped. */
   private barrels = 0;
+  /** Where the fighter's nose points. Straight up outside a duel. */
+  private playerFacing = -Math.PI / 2;
+  private bossFacing = Math.PI / 2;
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
   private kills = 0;
@@ -390,6 +404,7 @@ export class Game2A {
     }
 
     this.movePlayer(dt);
+    this.updateFacing(dt);
     this.updateBolts(dt);
     this.updateSeekers(dt);
 
@@ -727,11 +742,38 @@ export class Game2A {
    */
   private playerLane(): { top: number; bottom: number } {
     const landscape = this.w > this.h;
-    const top = this.h * (landscape ? 0.12 : 0.34);
+    // A duel opens the arena: you have to be able to get above a boss to flank
+    // it, which the normal flight lane forbids.
+    const top = this.h * (this.duelling() ? DUEL_LANE_TOP : landscape ? 0.12 : 0.34);
     // The fighter must be able to sit at the very bottom edge. Reserving room
     // for the on-canvas controls left it stranded a ship-height up.
     const bottom = this.h - 22;
     return { top, bottom: Math.max(top + 40, bottom) };
+  }
+
+  /** True while a boss is actually fighting, which is when lock-step applies. */
+  private duelling(): boolean {
+    return this.boss?.state === 'fight';
+  }
+
+  /**
+   * Swing both noses onto each other.
+   *
+   * The player's turn is fast enough to feel locked on without snapping; the
+   * boss turns more slowly, so a fast fighter can get around behind it. Outside
+   * a duel the fighter returns to pointing up, which is what every other part
+   * of the game assumes.
+   */
+  private updateFacing(dt: number): void {
+    const boss = this.boss;
+    const target = boss && boss.state === 'fight'
+      ? Math.atan2(boss.y - this.player.y, boss.x - this.player.x)
+      : -Math.PI / 2;
+    this.playerFacing = turnToward(this.playerFacing, target, DUEL_TURN * dt);
+    if (boss) {
+      const atPlayer = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+      this.bossFacing = turnToward(this.bossFacing, atPlayer, BOSS_TURN * dt);
+    }
   }
 
   /** Everything the seeker will chase, nearest first. */
@@ -758,14 +800,14 @@ export class Game2A {
       if (this.seekerClock <= 0 && this.seekerTargets().length > 0) {
         this.seekerClock = SEEKER_INTERVAL;
         this.seekers.push({
-          x: this.player.x,
-          y: this.player.y - 18,
+          x: this.player.x + Math.cos(this.playerFacing) * 18,
+          y: this.player.y + Math.sin(this.playerFacing) * 18,
           w: 10,
           h: 22,
-          vx: 0,
-          vy: -SEEKER_SPEED,
+          vx: Math.cos(this.playerFacing) * SEEKER_SPEED,
+          vy: Math.sin(this.playerFacing) * SEEKER_SPEED,
           damage: SEEKER_DAMAGE,
-          angle: -Math.PI / 2,
+          angle: this.playerFacing,
           age: 0,
         });
         sfx.play('shoot');
@@ -810,14 +852,23 @@ export class Game2A {
       const projectile = this.projectileDef(weapon.projectileKey);
       const ship = this.playerDef();
       this.boltClock = weapon.fireRate * (ship.fireRate / DEFAULT_SHIP.fireRate);
+      // The volley is authored nose-up. Rotating it by the fighter's heading is
+      // what lets you flank a boss and still be shooting AT it: the barrels and
+      // their spread swing round together rather than the shots being re-aimed
+      // one by one from a fixed muzzle.
+      const heading = this.playerFacing + Math.PI / 2;
+      const cos = Math.cos(heading);
+      const sin = Math.sin(heading);
       for (const shot of this.currentVolley()) {
+        const muzzleX = shot.offsetX;
+        const muzzleY = -24;
         this.bolts.push({
-          x: this.player.x + shot.offsetX,
-          y: this.player.y - 24,
+          x: this.player.x + muzzleX * cos - muzzleY * sin,
+          y: this.player.y + muzzleX * sin + muzzleY * cos,
           w: projectile.hitbox.w,
           h: projectile.hitbox.h,
-          vx: Math.sin(shot.angle) * projectile.speed,
-          vy: -Math.cos(shot.angle) * projectile.speed,
+          vx: Math.sin(shot.angle + heading) * projectile.speed,
+          vy: -Math.cos(shot.angle + heading) * projectile.speed,
           damage: weapon.damage,
           projectileKey: weapon.projectileKey,
           pierce: weapon.pierce ?? 0,
@@ -829,7 +880,11 @@ export class Game2A {
       bolt.x += bolt.vx * dt;
       bolt.y += bolt.vy * dt;
     }
-    this.bolts = this.bolts.filter((bolt) => bolt.y > -40);
+    // Bolts used to be culled only off the top, which is all a nose-up gun could
+    // reach. A rotated volley can leave by any edge.
+    this.bolts = this.bolts.filter((bolt) => (
+      bolt.y > -40 && bolt.y < this.h + 40 && bolt.x > -40 && bolt.x < this.w + 40
+    ));
   }
 
   private updatePickups(dt: number): void {
@@ -1186,7 +1241,13 @@ export class Game2A {
     const phase = def.phases[boss.phaseIndex];
     if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 52 + Math.random() * Math.max(1, this.w - 104);
     boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
-    boss.y = this.bossRestY() + Math.sin(boss.age * 1.7) * this.bossDriftY();
+    // A duel needs the boss to be somewhere other than a fixed altitude --
+    // "make it to where the balls can move around the screen". It drifts across
+    // a wide band on a slow second wave, so it comes down to meet you and then
+    // pulls back up, and the fighter has to keep repositioning.
+    const roam = clamp(this.h * 0.2, 30, 120);
+    const centre = this.bossRestY() + roam;
+    boss.y = centre + Math.sin(boss.age * 1.7) * this.bossDriftY() + Math.sin(boss.age * 0.43) * roam;
 
     boss.fireClock -= dt;
     if (boss.fireClock <= 0) {
@@ -1713,12 +1774,23 @@ export class Game2A {
     return this.sprites.draw(ref.category, ref.id, cx - dw / 2, cy - dh / 2, dw, dh, this.clock);
   }
 
+  /** Sprites are authored nose-up, so a heading of -PI/2 means no rotation. */
+  private drawFacing(ref: SpriteRef, cx: number, cy: number, dw: number, dh: number, facing: number): boolean {
+    this.ctx.save();
+    this.ctx.translate(cx, cy);
+    this.ctx.rotate(facing + Math.PI / 2);
+    const drawn = this.sprites.draw(ref.category, ref.id, -dw / 2, -dh / 2, dw, dh, this.clock);
+    this.ctx.restore();
+    return drawn;
+  }
+
   private drawPlayer(): void {
     const def = this.playerDef();
-    const drawn = this.drawCentered(def.sprite, this.player.x, this.player.y, def.draw.w, def.draw.h);
+    const drawn = this.drawFacing(def.sprite, this.player.x, this.player.y, def.draw.w, def.draw.h, this.playerFacing);
     if (!drawn) {
       this.ctx.save();
       this.ctx.translate(this.player.x, this.player.y);
+      this.ctx.rotate(this.playerFacing + Math.PI / 2);
       this.ctx.strokeStyle = def.accent;
       this.ctx.fillStyle = 'rgba(0,255,128,0.15)';
       this.ctx.beginPath();
@@ -1821,11 +1893,14 @@ export class Game2A {
   private drawBoss(boss: BossActor): void {
     const def = this.bossDef(boss.bossKey);
     const phase = def.phases[boss.phaseIndex];
-    const drawn = this.drawCentered(def.sprite, boss.x, boss.y, def.draw.w, def.draw.h);
+    // The boss keeps its nose on the player too, so the duel reads as two
+    // fighters circling rather than one thing shooting downwards.
+    const facing = boss.state === 'fight' ? this.bossFacing : Math.PI / 2;
+    const drawn = this.drawFacing(def.sprite, boss.x, boss.y, def.draw.w, def.draw.h, facing);
     if (!drawn) {
       this.ctx.save();
       this.ctx.translate(boss.x, boss.y);
-      this.ctx.rotate(Math.sin(Math.max(0, boss.age) * 1.4) * 0.06);
+      this.ctx.rotate(facing - Math.PI / 2 + Math.sin(Math.max(0, boss.age) * 1.4) * 0.06);
       this.ctx.fillStyle = 'rgba(5,8,18,0.92)';
       this.ctx.strokeStyle = phase.accent;
       this.ctx.lineWidth = 4;
@@ -2806,6 +2881,8 @@ export class Game2A {
     this.bolts = [];
     this.seekers = [];
     this.seekerClock = SEEKER_INTERVAL;
+    this.playerFacing = -Math.PI / 2;
+    this.bossFacing = Math.PI / 2;
     this.pickups = [];
     this.rings = [];
     this.debris = [];
@@ -3058,6 +3135,18 @@ function overlap(a: Rect, b: Rect): boolean {
 }
 
 /** Circular hit test with a few px of thumb forgiveness past the drawn edge. */
+/**
+ * Rotate `from` toward `to` by at most `step`, taking the shortest way round.
+ * Exported so the duel's turning can be tested directly: the wrap-around is
+ * exactly the part that is easy to get wrong and invisible in a screenshot.
+ */
+export function turnToward(from: number, to: number, step: number): number {
+  let delta = to - from;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return from + clamp(delta, -step, step);
+}
+
 function inCircle(circle: { cx: number; cy: number; r: number }, x: number, y: number): boolean {
   return Math.hypot(x - circle.cx, y - circle.cy) <= circle.r + 6;
 }
