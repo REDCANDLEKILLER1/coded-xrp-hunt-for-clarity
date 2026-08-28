@@ -265,7 +265,13 @@ export class Game2A {
     if (!tap) return;
     if (this.mode === 'title') return void (this.mode = 'select');
     if (this.mode === 'select') return this.selectShipAt(tap.x, tap.y);
-    if (this.mode === 'results' || this.mode === 'victory') return this.reset();
+    if (this.mode === 'results') {
+      const save = this.resumeCheckpoint();
+      const buttons = this.resultsButtons();
+      if (save && inside(buttons.secondary, tap.x, tap.y)) return this.reset(undefined, { fresh: true });
+      return this.reset();
+    }
+    if (this.mode === 'victory') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
     if (this.launchClock > 0) return;
@@ -1295,12 +1301,43 @@ export class Game2A {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#ff3355';
     this.ctx.font = '700 26px ui-sans-serif, system-ui';
-    this.ctx.fillText('SYSTEM FAILURE', this.w / 2, this.h * 0.38);
+    this.ctx.fillText('GAME OVER', this.w / 2, this.h * 0.3);
     this.ctx.fillStyle = '#d8ffe8';
-    this.ctx.font = '600 16px ui-sans-serif, system-ui';
-    this.ctx.fillText(`SCORE ${this.score}`, this.w / 2, this.h * 0.46);
-    this.ctx.fillText(`BEST ${this.progress.highScore} • HIGHEST WAVE ${this.progress.highestWave}`, this.w / 2, this.h * 0.51);
-    this.ctx.fillText(this.missionDirector.activeMission ? 'TAP TO RESTART FROM CHECKPOINT' : 'TAP TO RESTART', this.w / 2, this.h * 0.59);
+    this.ctx.font = '600 14px ui-sans-serif, system-ui';
+    this.ctx.fillText(`SCORE ${this.score}`, this.w / 2, this.h * 0.42);
+    this.ctx.fillText(`BEST ${this.progress.highScore} • HIGHEST WAVE ${this.progress.highestWave}`, this.w / 2, this.h * 0.5);
+
+    const save = this.resumeCheckpoint();
+    const buttons = this.resultsButtons();
+    if (save) {
+      this.button(buttons.primary, `CONTINUE // ${save.checkpointLabel}`, '#00ff88');
+      this.button(buttons.secondary, 'RESTART MISSION', 'rgba(216,255,232,0.5)');
+    } else {
+      this.button(buttons.primary, 'RESTART', '#00ff88');
+    }
+  }
+
+  /** The save a GAME OVER can continue from, if one applies to this mission. */
+  private resumeCheckpoint(): MissionCheckpointSnapshot | undefined {
+    const mission = this.missionDirector.activeMission;
+    if (!mission || !this.activePlanetKey) return undefined;
+    const stored = missionCheckpointFor(this.progress, this.activePlanetKey);
+    if (!stored) return undefined;
+    const usable = stored.missionKey === mission.key
+      && stored.planetKey === this.activePlanetKey
+      && mission.acts.some((act) => act.key === stored.resumeActKey);
+    return usable ? stored : undefined;
+  }
+
+  private resultsButtons(): { primary: Rect; secondary: Rect } {
+    const w = Math.min(this.w - 64, 260);
+    const h = 34;
+    const x = (this.w - w) / 2;
+    const top = this.h * 0.58;
+    return {
+      primary: { x, y: top, w, h },
+      secondary: { x, y: top + h + 8, w, h },
+    };
   }
 
   private victory(): void {
@@ -1788,17 +1825,25 @@ export class Game2A {
     const alpha = Math.min(1, this.missionBannerClock, 2.8 - this.missionBannerClock);
     this.ctx.save();
     this.ctx.globalAlpha = Math.max(0, alpha);
-    const width = Math.min(this.w - 40, 520);
-    const x = (this.w - width) / 2;
-    const y = this.h * 0.36;
-    this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
-    this.ctx.strokeStyle = '#00ff88';
-    this.ctx.fillRect(x, y - 30, width, 60);
-    this.ctx.strokeRect(x, y - 30, width, 60);
+
+    // Toasts used to sit centred at 36% of the screen height, which on a
+    // landscape phone is exactly where the fighter flies. They now tuck into
+    // the top-right, clear of the flight path and of the top-left HUD.
+    const width = Math.min(this.w * 0.46, 300);
+    const height = 26;
+    const x = this.w - width - 12;
+    const y = this.zone.assets.y + this.zone.assets.h + 8;
+
+    this.ctx.fillStyle = 'rgba(2,6,11,0.86)';
+    this.ctx.strokeStyle = 'rgba(0,255,136,0.75)';
+    this.ctx.lineWidth = 1;
+    this.ctx.fillRect(x, y, width, height);
+    this.ctx.strokeRect(x, y, width, height);
+
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#d8ffe8';
-    this.ctx.font = '800 15px ui-sans-serif, system-ui';
-    this.ctx.fillText(this.missionBannerText, this.w / 2, y + 5);
+    this.ctx.font = '800 10px ui-sans-serif, system-ui';
+    this.ctx.fillText(fitText(this.ctx, this.missionBannerText, width - 14), x + width / 2, y + height / 2 + 3.5);
     this.ctx.restore();
   }
 
@@ -2037,7 +2082,11 @@ export class Game2A {
     }
   }
 
-  private reset(explicitCheckpoint?: MissionCheckpointSnapshot): void {
+  /**
+   * @param explicitCheckpoint resume from this snapshot instead of the stored one
+   * @param options `fresh` restarts the mission from its first act, ignoring any save
+   */
+  private reset(explicitCheckpoint?: MissionCheckpointSnapshot, options?: { fresh?: boolean }): void {
     this.mode = 'play';
     this.paused = false;
     this.reportAssets = false;
@@ -2071,7 +2120,7 @@ export class Game2A {
     const mission = this.missionDirector.activeMission;
     if (mission && this.activePlanetKey) {
       this.progress = this.loadProgress();
-      const stored = explicitCheckpoint ?? missionCheckpointFor(this.progress, this.activePlanetKey);
+      const stored = options?.fresh ? undefined : explicitCheckpoint ?? missionCheckpointFor(this.progress, this.activePlanetKey);
       const checkpoint = stored
         && stored.missionKey === mission.key
         && stored.planetKey === this.activePlanetKey
@@ -2214,6 +2263,14 @@ export class Game2A {
     }
     return STAGE_LADDER[0];
   }
+}
+
+/** Trim a label with an ellipsis so it never spills out of its box. */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  let cut = text;
+  while (cut.length > 1 && ctx.measureText(`${cut}…`).width > maxWidth) cut = cut.slice(0, -1);
+  return `${cut}…`;
 }
 
 function clamp(value: number, min: number, max: number): number {
