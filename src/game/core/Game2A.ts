@@ -533,8 +533,9 @@ export class Game2A {
       this.player.x += axis.x * ship.speed * dt;
       this.player.y += axis.y * ship.speed * dt;
     }
+    const lane = this.playerLane();
     this.player.x = clamp(this.player.x, 28, this.w - 28);
-    this.player.y = clamp(this.player.y, this.h * 0.34, this.h - 96);
+    this.player.y = clamp(this.player.y, lane.top, lane.bottom);
 
     // Records what is actually steering the ship each second. If the fighter
     // drifts on its own, this shows whether the input is non-zero while the
@@ -547,6 +548,22 @@ export class Game2A {
       x: Math.round(this.player.x),
       y: Math.round(this.player.y),
     });
+  }
+
+  /**
+   * Vertical band the fighter may occupy.
+   *
+   * The portrait margin of 34% of the screen leaves almost nothing on a
+   * landscape phone: at 274px tall it allowed 85px of travel for a 48px ship,
+   * so the fighter sat pinned against the bottom clamp and forward/back tilt
+   * felt dead. Landscape gets a much shallower top margin; the bottom keeps
+   * clearance for the on-canvas pause/bomb/pulse controls.
+   */
+  private playerLane(): { top: number; bottom: number } {
+    const landscape = this.w > this.h;
+    const top = this.h * (landscape ? 0.12 : 0.34);
+    const bottom = this.h - (landscape ? 76 : 96);
+    return { top, bottom: Math.max(top + 40, bottom) };
   }
 
   private updateBolts(dt: number): void {

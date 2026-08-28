@@ -7,8 +7,17 @@ type TiltPermissionEvent = typeof DeviceOrientationEvent & {
 
 export type TiltStatus = 'unavailable' | 'needs_permission' | 'calibrating' | 'ready' | 'denied';
 
-const TILT_DEADZONE = 2.2;
-const TILT_FULL_SCALE = 13;
+// Reaching full deflection took 15 degrees of tilt, which playtesting found
+// far too much — the ship felt sluggish next to touch control.
+//
+// The two axes get different scales on purpose. Held in landscape the phone is
+// already rolled steeply, and in that pose a left/right lean is largely a twist
+// of the screen in its own plane; twist correctly does not steer, so the same
+// physical effort yields roughly 40% of the lean that a forward/back tilt does.
+// A smaller left/right scale makes the two directions feel matched.
+const TILT_DEADZONE = 1.4;
+const TILT_FULL_SCALE_X = 5;
+const TILT_FULL_SCALE_Y = 8.5;
 
 // Calibration must never latch a neutral pose while the phone is still moving.
 // `orientationchange` fires mid-rotation, so sampling the first reading after it
@@ -30,9 +39,8 @@ export class Input {
   private tiltStatusValue: TiltStatus = 'unavailable';
   private tiltListenerBound = false;
   private calibrationPending = true;
-  private neutralBeta = 0;
-  private neutralGamma = 0;
-  private settleSamples: { t: number; beta: number; gamma: number }[] = [];
+  private neutralGravity: Vec3 = { x: 0, y: 0, z: -1 };
+  private settleSamples: { t: number; g: Vec3 }[] = [];
   private calibrationStartedAt = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -165,36 +173,29 @@ export class Input {
   private readonly onDeviceOrientation = (event: DeviceOrientationEvent): void => {
     if (event.beta == null || event.gamma == null) return;
     if (this.calibrationPending) {
-      this.collectCalibrationSample(event.beta, event.gamma);
+      this.collectCalibrationSample(gravityFromOrientation(event.beta, event.gamma));
       if (this.calibrationPending) return;
     }
 
-    const beta = event.beta - this.neutralBeta;
-    const gamma = event.gamma - this.neutralGamma;
+    // Steering is derived from the gravity direction, not from raw beta/gamma.
+    // Euler angles are degenerate near gamma = +/-90deg, which is exactly how a
+    // phone is held in landscape: beta flips by ~180deg there, so naive
+    // subtraction produced deltas of 172-177deg and pinned the ship at full
+    // deflection until the phone was turned back. The gravity vector stays
+    // continuous through that singularity.
+    const gravity = gravityFromOrientation(event.beta, event.gamma);
     const angle = normalizeOrientationAngle(screen.orientation?.angle ?? legacyOrientation());
-    let rawX = gamma;
-    let rawY = beta;
+    const { right, down } = projectToScreen(gravity, this.neutralGravity, angle);
 
-    if (angle === 90) {
-      rawX = beta;
-      rawY = -gamma;
-    } else if (angle === 270) {
-      rawX = -beta;
-      rawY = gamma;
-    } else if (angle === 180) {
-      rawX = -gamma;
-      rawY = -beta;
-    }
-
-    const targetX = normalizeTilt(rawX);
-    const targetY = normalizeTilt(rawY);
+    const targetX = normalizeTilt(right, TILT_FULL_SCALE_X);
+    const targetY = normalizeTilt(down, TILT_FULL_SCALE_Y);
     this.tilt.x += (targetX - this.tilt.x) * 0.24;
     this.tilt.y += (targetY - this.tilt.y) * 0.24;
 
     debugLog.sample('tilt', 1000, 'tilt', 'reading', {
       angle,
-      dBeta: round2(beta),
-      dGamma: round2(gamma),
+      rightDeg: round2(right),
+      downDeg: round2(down),
       x: round2(this.tilt.x),
       y: round2(this.tilt.y),
     });
@@ -207,10 +208,9 @@ export class Input {
    * is triggered by `orientationchange`, which fires while the device is still
    * being turned, so "neutral" was recorded at a angle the player never holds.
    */
-  private collectCalibrationSample(beta: number, gamma: number): void {
+  private collectCalibrationSample(g: Vec3): void {
     const now = performance.now();
-    this.settleSamples.push({ t: now, beta, gamma });
-    // Keep only the trailing settle window.
+    this.settleSamples.push({ t: now, g });
     const cutoff = now - SETTLE_MS;
     while (this.settleSamples.length > 0 && this.settleSamples[0].t < cutoff) this.settleSamples.shift();
 
@@ -219,32 +219,34 @@ export class Input {
     const timedOut = (now - this.calibrationStartedAt) >= CALIBRATION_TIMEOUT_MS;
 
     if (spanned) {
-      const betas = this.settleSamples.map((s) => s.beta);
-      const gammas = this.settleSamples.map((s) => s.gamma);
-      const spread = Math.max(spreadOf(betas), spreadOf(gammas));
-      if (spread <= STABLE_SPREAD_DEG) {
-        this.applyNeutral(mean(betas), mean(gammas), 'settled', { spread: round2(spread), samples: betas.length });
+      // Stability is measured as angular spread of the gravity direction, which
+      // behaves sensibly in every orientation unlike per-axis Euler spread.
+      const mean = normalize(meanVec(this.settleSamples.map((s) => s.g)));
+      const spreadDeg = Math.max(...this.settleSamples.map((s) => angleBetweenDeg(s.g, mean)));
+      if (spreadDeg <= STABLE_SPREAD_DEG) {
+        this.applyNeutral(mean, 'settled', { spread: round2(spreadDeg), samples: this.settleSamples.length });
         return;
       }
     }
 
     if (timedOut && this.settleSamples.length > 0) {
-      // Never became still (walking, in a car). Median is the best guess and is
-      // far more robust than a single reading.
-      const betas = this.settleSamples.map((s) => s.beta);
-      const gammas = this.settleSamples.map((s) => s.gamma);
-      this.applyNeutral(median(betas), median(gammas), 'timeout-median', { samples: betas.length });
+      // Never became still (walking, in a car): the mean direction is still a
+      // far better guess than any single reading.
+      this.applyNeutral(normalize(meanVec(this.settleSamples.map((s) => s.g))), 'timeout-mean', {
+        samples: this.settleSamples.length,
+      });
     }
   }
 
-  private applyNeutral(beta: number, gamma: number, how: string, extra: Record<string, unknown>): void {
-    this.neutralBeta = beta;
-    this.neutralGamma = gamma;
+  private applyNeutral(g: Vec3, how: string, extra: Record<string, unknown>): void {
+    this.neutralGravity = g;
     this.calibrationPending = false;
     this.settleSamples = [];
     this.tilt = { x: 0, y: 0 };
     this.tiltStatusValue = 'ready';
-    debugLog.log('tilt', 'calibrated', { how, beta: round2(beta), gamma: round2(gamma), ...extra });
+    debugLog.log('tilt', 'calibrated', {
+      how, gx: round2(g.x), gy: round2(g.y), gz: round2(g.z), ...extra,
+    });
   }
 
   private readonly resetTiltCalibration = (): void => {
@@ -295,28 +297,89 @@ export class Input {
   }
 }
 
-function mean(values: number[]): number {
-  return values.reduce((sum, v) => sum + v, 0) / values.length;
+type Vec3 = { x: number; y: number; z: number };
+
+const DEG = Math.PI / 180;
+
+/**
+ * Unit vector pointing along gravity, in device coordinates.
+ *
+ * Derived from the deviceorientation Z-X'-Y'' angles. Unlike the angles
+ * themselves this is continuous everywhere, including the gamma = +/-90deg
+ * attitude a phone sits at while being held in landscape.
+ */
+function gravityFromOrientation(beta: number, gamma: number): Vec3 {
+  const b = beta * DEG;
+  const g = gamma * DEG;
+  return normalize({
+    x: -Math.cos(b) * Math.sin(g),
+    y: -Math.sin(b),
+    z: -Math.cos(b) * Math.cos(g),
+  });
 }
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = sorted.length >> 1;
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+/**
+ * Lean away from the calibrated pose, in real degrees, along the screen's axes.
+ *
+ * Takes the rotation that carries the calibrated gravity direction to the
+ * current one and splits it across the screen axes. Projecting the raw vector
+ * difference instead loses most of the motion once the phone is already rolled
+ * — a 12 degree roll registered as 3.7 — because a component difference is not
+ * an angle. Rotation about the screen normal is discarded: twisting the phone
+ * in its own plane should not steer.
+ */
+function projectToScreen(g: Vec3, neutral: Vec3, angle: number): { right: number; down: number } {
+  const a = angle * DEG;
+  const screenRight: Vec3 = { x: Math.cos(a), y: Math.sin(a), z: 0 };
+  const screenDown: Vec3 = { x: Math.sin(a), y: -Math.cos(a), z: 0 };
+
+  const n = normalize(neutral);
+  const c = normalize(g);
+  const axis = cross(n, c);
+  const sin = Math.hypot(axis.x, axis.y, axis.z);
+  if (sin < 1e-9) return { right: 0, down: 0 };
+  const degrees = Math.atan2(sin, Math.max(-1, Math.min(1, dot(n, c)))) / DEG;
+  const r: Vec3 = { x: axis.x / sin * degrees, y: axis.y / sin * degrees, z: axis.z / sin * degrees };
+
+  // Rotation about the screen's vertical axis leans the ship left/right;
+  // rotation about its horizontal axis leans it forward/back.
+  return { right: dot(r, screenDown), down: -dot(r, screenRight) };
 }
 
-function spreadOf(values: number[]): number {
-  return Math.max(...values) - Math.min(...values);
+function cross(a: Vec3, b: Vec3): Vec3 {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function dot(a: Vec3, b: Vec3): number {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+function normalize(v: Vec3): Vec3 {
+  const len = Math.hypot(v.x, v.y, v.z) || 1;
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+}
+
+function meanVec(values: Vec3[]): Vec3 {
+  const sum = values.reduce((acc, v) => ({ x: acc.x + v.x, y: acc.y + v.y, z: acc.z + v.z }), { x: 0, y: 0, z: 0 });
+  return { x: sum.x / values.length, y: sum.y / values.length, z: sum.z / values.length };
+}
+
+function angleBetweenDeg(a: Vec3, b: Vec3): number {
+  return Math.acos(Math.max(-1, Math.min(1, dot(a, b)))) / DEG;
 }
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function normalizeTilt(value: number): number {
+function normalizeTilt(value: number, fullScale: number): number {
   const magnitude = Math.abs(value);
   if (magnitude <= TILT_DEADZONE) return 0;
-  const normalized = Math.min(1, (magnitude - TILT_DEADZONE) / (TILT_FULL_SCALE - TILT_DEADZONE));
+  const normalized = Math.min(1, (magnitude - TILT_DEADZONE) / (fullScale - TILT_DEADZONE));
   return Math.sign(value) * normalized;
 }
 

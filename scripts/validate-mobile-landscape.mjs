@@ -4,6 +4,7 @@ const input = fs.readFileSync(new URL('../src/game/core/Input.ts', import.meta.u
 const landscape = fs.readFileSync(new URL('../src/game/ui/LandscapeMode.ts', import.meta.url), 'utf8');
 const onFoot = fs.readFileSync(new URL('../src/game/onfoot/OnFootGame.ts', import.meta.url), 'utf8');
 const main = fs.readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+const game2a = fs.readFileSync(new URL('../src/game/core/Game2A.ts', import.meta.url), 'utf8');
 const styles = fs.readFileSync(new URL('../src/landscape.css', import.meta.url), 'utf8');
 
 for (const token of [
@@ -16,12 +17,21 @@ for (const token of [
   'SETTLE_MS',
   'STABLE_SPREAD_DEG',
   'collectCalibrationSample',
+  // Steering must come from the gravity vector: Euler beta/gamma are
+  // degenerate at the very attitude a phone is held at in landscape.
+  'gravityFromOrientation',
+  'projectToScreen',
+  'TILT_FULL_SCALE_X',
+  'neutralGravity',
 ]) {
   if (!input.includes(token)) throw new Error(`mobile-landscape: missing tilt input token ${token}`);
 }
 
-if (/if \(this\.calibrationPending\) \{\s*this\.neutralBeta = event\.beta/.test(input)) {
-  throw new Error('mobile-landscape: tilt neutral is latched from the first sample again — this causes permanent drift');
+if (/this\.neutralBeta|this\.neutralGamma/.test(input)) {
+  throw new Error('mobile-landscape: tilt is back on raw Euler neutrals — these flip ~180deg near landscape attitude');
+}
+if (!/const landscape = this\.w > this\.h/.test(game2a)) {
+  throw new Error('mobile-landscape: player lane is not landscape-aware — the fighter gets pinned to the bottom clamp');
 }
 
 for (const token of [
