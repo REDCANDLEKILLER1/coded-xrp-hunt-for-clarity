@@ -1,0 +1,15 @@
+{
+  "target": "CODED Regulatory Warship final 2 exact room backgrounds",
+  "files": [
+    {
+      "filename": "regulatory_docking_bay.webp",
+      "bytes": 87056,
+      "sha256": "c177eef4b45cc7060ae5ac786c93ef085e95fadf05ebff64b0b9d2affaa37ef0"
+    },
+    {
+      "filename": "regulatory_security_checkpoint.webp",
+      "bytes": 70976,
+      "sha256": "2aaa7baf890048cd936381a70b735c76f0802a31d86a5b902b6aa61f43bfa4dc"
+    }
+  ]
+}
