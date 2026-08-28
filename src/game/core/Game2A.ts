@@ -3,6 +3,7 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import { debugLog } from './DebugLog';
+import { sfx } from '../audio/Sfx';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
@@ -486,7 +487,7 @@ export class Game2A {
 
     if (warship.state === 'disabled') return;
     if (warship.state === 'intro') {
-      const targetY = Math.max(112, Math.min(150, this.h * 0.2));
+      const targetY = this.bossRestY();
       warship.y += (targetY - warship.y) * Math.min(1, dt * 1.35);
       if (warship.age >= 3.2) {
         warship.state = 'fight';
@@ -706,6 +707,7 @@ export class Game2A {
           pierce: weapon.pierce ?? 0,
         });
       }
+      sfx.play('shoot');
     }
     for (const bolt of this.bolts) {
       bolt.x += bolt.vx * dt;
@@ -864,6 +866,7 @@ export class Game2A {
       color: def.accent,
       projectileKey: 'enemy_missile',
     });
+    sfx.play('enemyShoot');
     debugLog.sample('efire', 3000, 'combat', 'enemy fired', { enemy: drone.enemyKey });
   }
 
@@ -992,6 +995,9 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    // These used to arrive in silence. The boss track leads the entrance here
+    // the same way it does for Gary Fog.
+    this.cueMusic('boss_fight');
     this.boss = {
       x: this.w / 2,
       y: -def.draw.h,
@@ -1010,6 +1016,23 @@ export class Game2A {
     };
   }
 
+  /**
+   * Where a boss settles, and how far it may drift.
+   *
+   * These were fixed pixel values (rest at y=118, +/-20 of sine) tuned for a
+   * tall screen. On a 274px landscape phone that parks the boss halfway down,
+   * crowding the fighter against the bottom and leaving the boss almost no
+   * room to move. Proportional now: high in the frame, with a drift band that
+   * scales with the screen.
+   */
+  private bossRestY(): number {
+    return clamp(this.h * 0.24, 58, 132);
+  }
+
+  private bossDriftY(): number {
+    return clamp(this.h * 0.075, 12, 30);
+  }
+
   private updateBoss(dt: number): void {
     const boss = this.boss;
     if (!boss) return;
@@ -1023,10 +1046,10 @@ export class Game2A {
         if (boss.age < 0) return;
         const t = clamp(boss.age / GARY_FOG_REVEAL.entranceDuration, 0, 1);
         const eased = 1 - Math.pow(1 - t, 3);
-        boss.y = -def.draw.h + (118 + def.draw.h) * eased;
+        boss.y = -def.draw.h + (this.bossRestY() + def.draw.h) * eased;
         if (boss.age >= GARY_FOG_REVEAL.entranceDuration + GARY_FOG_REVEAL.combatDelay) {
           boss.state = 'fight';
-          boss.y = 118;
+          boss.y = this.bossRestY();
           boss.age = 0;
           this.missionBannerText = 'GARY FOG // ENGAGE';
           this.missionBannerClock = 2.2;
@@ -1034,10 +1057,10 @@ export class Game2A {
         return;
       }
 
-      boss.y += (118 - boss.y) * Math.min(1, dt * 3.4);
+      boss.y += (this.bossRestY() - boss.y) * Math.min(1, dt * 3.4);
       if (boss.age >= 1.45) {
         boss.state = 'fight';
-        boss.y = 118;
+        boss.y = this.bossRestY();
         boss.age = 0;
       }
       return;
@@ -1045,9 +1068,9 @@ export class Game2A {
 
     boss.phaseIndex = bossPhaseIndex(def, boss.hp ?? def.hp);
     const phase = def.phases[boss.phaseIndex];
-    if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 76 + Math.random() * Math.max(1, this.w - 152);
+    if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 52 + Math.random() * Math.max(1, this.w - 104);
     boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
-    boss.y = 112 + Math.sin(boss.age * 1.7) * 20;
+    boss.y = this.bossRestY() + Math.sin(boss.age * 1.7) * this.bossDriftY();
 
     boss.fireClock -= dt;
     if (boss.fireClock <= 0) {
@@ -1112,6 +1135,7 @@ export class Game2A {
             this.special = Math.min(100, this.special + 12);
             this.awardXp(this.hazardDef(hazard.hazardKey).score * XP_PER_SCORE);
             this.ring(hazard.x, hazard.y);
+            sfx.play('explode', 1.2);
           }
           if (spent) break;
         }
@@ -2044,9 +2068,9 @@ export class Game2A {
     // bottom strip is the one lane nothing else uses: enemies hold station in
     // the top half, and down here the fighter is already under the player's
     // thumb. With the pad cornered to the right, the whole left run is free.
-    // Starts clear of the bottom-left utility row (STAR MAP / LOG / music),
-    // ends clear of the action pad.
-    const gapLeft = 200;
+    // Starts clear of the bottom-left utility row (LOG / sound), ends clear of
+    // the action pad. STAR MAP moved to the top-right, so this row is shorter.
+    const gapLeft = 110;
     const gapRight = this.zone.bomb.cx - this.zone.bomb.r - 12;
     const height = 18;
     const width = Math.min(280, Math.max(120, gapRight - gapLeft));
@@ -2233,8 +2257,10 @@ export class Game2A {
   }
 
   private useSpecial(): void {
-    if (this.special < 100) return;
+    // A dead press still answers, so the button never feels broken.
+    if (this.special < 100) return void sfx.play('deny');
     this.special = 0;
+    sfx.play('pulse');
     this.ringClock = hasFogBreaker(this.progress) ? 0.55 : 0.35;
     this.pulseHitBoss = false;
 
@@ -2254,9 +2280,10 @@ export class Game2A {
   }
 
   private useBomb(): void {
-    if (this.bombs <= 0 || this.mode !== 'play') return;
+    if (this.bombs <= 0 || this.mode !== 'play') return void sfx.play('deny');
     this.bombs -= 1;
     this.bombClock = BOMB_LIFE;
+    sfx.play('bomb');
     for (const drone of this.drones) {
       this.score += 35;
       this.ring(drone.x, drone.y);
@@ -2286,7 +2313,8 @@ export class Game2A {
     const boss = this.boss;
     if (!boss || boss.state !== 'fight') return;
     boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage);
-    if ((boss.hp ?? 0) > 0) return;
+    if ((boss.hp ?? 0) > 0) return void sfx.play('hit');
+    sfx.play('bigExplode');
 
     const def = this.bossDef(boss.bossKey);
     const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
@@ -2327,6 +2355,7 @@ export class Game2A {
   private damagePlayer(damage: number, impactX: number, impactY: number): void {
     if (this.playerHitClock > 0) return;
     this.playerHitClock = 0.55;
+    sfx.play('hurt');
     this.shieldQuietClock = 0;
     this.shieldRegenClock = 0;
     this.ring(impactX, impactY);
@@ -2393,6 +2422,7 @@ export class Game2A {
     this.kills += 1;
     this.awardXp(def.score * XP_PER_SCORE);
     this.ring(drone.x, drone.y);
+    sfx.play('explode');
 
     if (this.kills % SHIELD_PICKUP_EVERY_KILLS === 0) this.dropPickup(PICKUPS.shield_cell, drone.x, drone.y);
 
@@ -2477,6 +2507,7 @@ export class Game2A {
       if (!offer.includes(pick)) offer.push(pick);
     }
     this.upgradeOffer = offer;
+    sfx.play('levelUp');
     debugLog.log('combat', 'upgrade offer', { level: this.xpLevel, offer, pending: this.pendingUpgrades });
   }
 
@@ -2532,6 +2563,7 @@ export class Game2A {
 
   private applyPickup(key: string): void {
     const def = this.pickupDef(key);
+    sfx.play('pickup');
     if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
     if (def.effect === 'bomb') this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
     if (def.effect === 'repair') this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
@@ -2651,7 +2683,7 @@ export class Game2A {
           }
           this.warship = {
             x: this.w / 2,
-            y: Math.max(112, Math.min(150, this.h * 0.2)),
+            y: this.bossRestY(),
             w: REGULATORY_WARSHIP.draw.w,
             h: REGULATORY_WARSHIP.draw.h,
             vx: 0,

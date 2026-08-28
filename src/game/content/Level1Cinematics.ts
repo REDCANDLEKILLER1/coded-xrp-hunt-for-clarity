@@ -12,7 +12,10 @@ export interface CinematicRevealTiming {
  * resumes so a death never forces the player through the full opening again.
  */
 export const EARTH_LAUNCH_REVEAL: CinematicRevealTiming = {
-  musicLead: 0,
+  // The level theme gets a run-up of its own: five seconds of music over the
+  // launch bay before the fighter rises, so the track is established before
+  // anything is shooting at you.
+  musicLead: 5,
   entranceDelay: 1.2,
   entranceDuration: 2.8,
   combatDelay: 1.4,
@@ -45,5 +48,6 @@ export function validateLevel1Cinematics(): string[] {
   }
   if (GARY_FOG_REVEAL.musicLead < 5) errors.push('garyFog.musicLead: boss music must lead the visual reveal by at least five seconds');
   if (EARTH_LAUNCH_REVEAL.entranceDuration < 2) errors.push('earthLaunch.entranceDuration: fighter entrance is too abrupt');
+  if (EARTH_LAUNCH_REVEAL.musicLead < 4) errors.push('earthLaunch.musicLead: the level theme must play before the fighter launches');
   return errors;
 }
