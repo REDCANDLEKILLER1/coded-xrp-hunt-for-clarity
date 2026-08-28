@@ -31,10 +31,23 @@ debugLog.log('boot', 'startup', {
   coarsePointer: matchMedia('(pointer: coarse)').matches,
 });
 
-// `?log` opens the on-device transcript instead of booting the game.
+// `?log` still works, but the log is primarily reached from an in-app button so
+// nobody has to type a URL on a phone.
 if (new URLSearchParams(location.search).has('log')) {
   showDebugLogView();
 }
+
+const logButton = document.createElement('button');
+logButton.type = 'button';
+logButton.className = 'debug-log-button';
+logButton.textContent = 'LOG';
+logButton.title = 'Open the on-device debug log';
+logButton.setAttribute('aria-label', 'Open debug log');
+logButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  showDebugLogView();
+});
+document.body.appendChild(logButton);
 
 new LandscapeMode();
 const game = new Game2A(canvas);
