@@ -1840,7 +1840,11 @@ export class Game2A {
 
   private drawBolt(bolt: ProjectileActor): void {
     const projectile = this.projectileDef(bolt.projectileKey);
-    if (this.drawCentered(projectile.sprite, bolt.x, bolt.y, projectile.draw.w, projectile.draw.h)) return;
+    // Bolts fly in any direction now that a duel rotates the volley, and the
+    // Lance round is a long beam with an obvious nose, so draw along the
+    // heading rather than always pointing up.
+    const facing = Math.atan2(bolt.vy, bolt.vx);
+    if (this.drawFacing(projectile.sprite, bolt.x, bolt.y, projectile.draw.w, projectile.draw.h, facing)) return;
     this.ctx.strokeStyle = '#00ff88';
     this.ctx.lineWidth = 3;
     line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);

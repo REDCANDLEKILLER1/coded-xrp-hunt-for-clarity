@@ -9,6 +9,7 @@
 // actually holds the bytes its own header declares.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { inflateSync } from 'node:zlib';
 import { join, relative } from 'node:path';
 
 const ROOT = 'public/assets';
@@ -78,6 +79,76 @@ function inspectWebp(rel, buf) {
   }
 }
 
+// Generated art arrives rendered on solid black. Pasted in unprocessed it draws
+// a black rectangle around the effect -- which happened once with the Clarity
+// Lance beam and is invisible to a size or checksum check. Sprites must carry
+// real transparency; backgrounds and interiors are full-bleed by design.
+const SPRITE_DIRS = /\/(projectiles|pickups|vfx|ships|enemies|bosses|special|characters)\//;
+
+/**
+ * Whether a sprite's border is see-through.
+ *
+ * Checking only that an alpha CHANNEL exists catches nothing -- every PNG the
+ * asset pipeline writes is RGBA, black box or not. So this decodes the image
+ * and reads the actual border pixels: a keyed sprite fades to nothing at its
+ * edges, a raw render-on-black is opaque all the way to the corners.
+ *
+ * Returns null when the format is outside what this can decode (interlaced,
+ * 16-bit, palette), which is treated as "cannot judge" rather than a failure.
+ */
+function pngBorderIsOpaque(buf) {
+  const width = buf.readUInt32BE(16);
+  const height = buf.readUInt32BE(20);
+  const depth = buf[24];
+  const colorType = buf[25];
+  const interlace = buf[28];
+  if (depth !== 8 || interlace !== 0 || (colorType !== 4 && colorType !== 6)) return null;
+
+  const channels = colorType === 6 ? 4 : 2;
+  let idat = [];
+  let off = 8;
+  while (off + 12 <= buf.length) {
+    const len = buf.readUInt32BE(off);
+    const tag = buf.subarray(off + 4, off + 8).toString('latin1');
+    if (tag === 'IDAT') idat.push(buf.subarray(off + 8, off + 8 + len));
+    if (tag === 'IEND') break;
+    off += 12 + len;
+  }
+  let raw;
+  try { raw = inflateSync(Buffer.concat(idat)); } catch { return null; }
+
+  const stride = width * channels;
+  if (raw.length < (stride + 1) * height) return null;
+
+  const alphaAt = [];
+  let prev = Buffer.alloc(stride);
+  let pos = 0;
+  for (let y = 0; y < height; y++) {
+    const filter = raw[pos]; pos += 1;
+    const line = Buffer.from(raw.subarray(pos, pos + stride)); pos += stride;
+    for (let i = 0; i < stride; i++) {
+      const a = i >= channels ? line[i - channels] : 0;
+      const b = prev[i];
+      const c = i >= channels ? prev[i - channels] : 0;
+      if (filter === 1) line[i] = (line[i] + a) & 255;
+      else if (filter === 2) line[i] = (line[i] + b) & 255;
+      else if (filter === 3) line[i] = (line[i] + ((a + b) >> 1)) & 255;
+      else if (filter === 4) {
+        const pp = a + b - c;
+        const pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c);
+        line[i] = (line[i] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255;
+      }
+    }
+    prev = line;
+    if (y === 0 || y === height - 1) {
+      for (let x = 0; x < width; x++) alphaAt.push(line[x * channels + channels - 1]);
+    } else {
+      alphaAt.push(line[channels - 1], line[(width - 1) * channels + channels - 1]);
+    }
+  }
+  return alphaAt.every((a) => a > 250);
+}
+
 function inspectPng(rel, buf) {
   const SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
   if (buf.length < 8 || !buf.subarray(0, 8).equals(SIG)) {
@@ -98,6 +169,9 @@ function inspectPng(rel, buf) {
     offset = next;
   }
   if (!sawIend) errors.push(`${rel}: TRUNCATED — no IEND chunk, the file ends mid-stream`);
+  if (sawIend && SPRITE_DIRS.test(`/${rel.replace(/\\/g, '/')}`) && pngBorderIsOpaque(buf) === true) {
+    errors.push(`${rel}: sprite has no transparency — it will draw as a black box; key the background out`);
+  }
 }
 
 walk(ROOT);

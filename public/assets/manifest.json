@@ -99,6 +99,11 @@
       "src": "/assets/projectiles/enemy_missile.webp",
       "type": "image",
       "notes": "Phase Q optimized v16 canon master: projectile_enemy_missile"
+    },
+    "clarity_beam": {
+      "src": "/assets/projectiles/clarity_beam.png",
+      "type": "image",
+      "notes": "From Coded_1 pack: compliance_breaker_beam_projectile, impact end cropped off, rotated nose-up, scaled to 18x54"
     }
   },
   "vfx": {
