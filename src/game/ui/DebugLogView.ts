@@ -7,6 +7,13 @@ import { debugLog } from '../core/DebugLog';
  * with a copy button. A tester plays, opens `?log`, copies, and pastes it back.
  */
 export function showDebugLogView(): void {
+  // Repeated taps must not stack overlays on top of each other.
+  const existing = document.querySelector('.debug-log-view');
+  if (existing) {
+    closeView(existing);
+    return;
+  }
+
   debugLog.restore();
   const text = debugLog.dump();
 
@@ -42,6 +49,8 @@ export function showDebugLogView(): void {
   }
 
   document.body.appendChild(root);
+  // The launcher button would otherwise sit invisibly beneath the viewer.
+  document.body.classList.add('debug-log-open');
 
   root.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
     const button = root.querySelector<HTMLButtonElement>('[data-action="copy"]')!;
@@ -63,14 +72,19 @@ export function showDebugLogView(): void {
     area.value = debugLog.dump();
   });
 
-  root.querySelector('[data-action="close"]')?.addEventListener('click', () => {
-    root.remove();
-    const url = new URL(location.href);
-    url.searchParams.delete('log');
-    history.replaceState(null, '', url.toString());
-  });
+  root.querySelector('[data-action="close"]')?.addEventListener('click', () => closeView(root));
 }
 
 function countBootOnly(text: string): number {
   return text.split('\n').filter((line) => /\[boot\]/.test(line)).length;
+}
+
+function closeView(root: Element): void {
+  root.remove();
+  document.body.classList.remove('debug-log-open');
+  const url = new URL(location.href);
+  if (url.searchParams.has('log')) {
+    url.searchParams.delete('log');
+    history.replaceState(null, '', url.toString());
+  }
 }
