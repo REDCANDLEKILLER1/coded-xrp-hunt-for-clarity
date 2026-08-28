@@ -65,6 +65,12 @@ type BossActor = Actor & {
   attackClock: number;
   /** Where a fog wall leaves its gap, or where a charge is aimed. */
   attackAim: number;
+  /**
+   * The boss's actual maximum, scaled to the player's firepower when it spawns
+   * so the fight lasts about the same TIME whatever gun turned up. `def.hp` is
+   * the tuning number, not the live one.
+   */
+  maxHp: number;
 };
 type WarshipActor = Actor & {
   state: 'intro' | 'fight' | 'disabled';
@@ -227,6 +233,37 @@ const BOMB_POWER_CAP = 2.32;
 const PULSE_POWER_CAP = 2.26;
 /** Banked when a rank arrives with every track already full. */
 const ALL_MAXED_SCORE = 250;
+
+/**
+ * Health scaling, because a flat number cannot work across this ladder.
+ *
+ * Measured across the weapon ladder, sustained player damage spans about 11x:
+ *
+ *   BB SHOT, no barrels        7.1 dps
+ *   QUAD BEAM, no barrels     33.3 dps
+ *   CLARITY LANCE, 3 barrels  80.8 dps
+ *
+ * Gary Fog's 120 effective health is 17 seconds of the first and 1.5 seconds
+ * of the last. No single number is a fight for both, which is why bosses were
+ * "dying in 3 seconds" for anyone who arrived geared and would be impossible
+ * if simply raised. Health scales with what the player actually brings, so a
+ * fight takes roughly the same TIME whatever is pointed at it.
+ *
+ * BASE is BB SHOT with no barrels -- the loadout every other number was tuned
+ * against, so scale 1 leaves the early game exactly as it was.
+ */
+const BASE_PLAYER_DPS = 1 / 0.14;
+const FIREPOWER_CAP = 9;
+/**
+ * Trash does not scale all the way.
+ *
+ * A drone at full scale would take 27 hits, which is a sponge, not a threat.
+ * They get part of the curve and make up the rest in numbers and speed --
+ * a maxed gun should still delete a drone; there should just be more of them,
+ * arriving faster.
+ */
+const ENEMY_SCALE_SHARE = 0.45;
+const ENEMY_SPEED_PER_SCALE = 7;
 /** Free upgrade picks granted for putting a boss down. */
 const BOSS_UPGRADE_REWARD = 1;
 /** Seconds without a hit before shields start coming back. */
@@ -661,7 +698,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: def.hp,
+      hp: Math.round(def.hp * this.firepowerScale()),
+      maxHp: Math.round(def.hp * this.firepowerScale()),
       bossKey: def.key,
       state: 'intro',
       age: -GARY_FOG_REVEAL.musicLead,
@@ -761,7 +799,7 @@ export class Game2A {
         h: def.hitbox.h,
         vx: 0,
         vy: def.baseSpeed,
-        hp: def.hp,
+        hp: this.enemyHp(def),
         enemyKey: key,
         age: 0,
         anchorX: x,
@@ -835,7 +873,7 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: def.baseSpeed + pressure,
-      hp: def.hp,
+      hp: this.enemyHp(def),
       enemyKey: def.key,
       age: 0,
       anchorX: x,
@@ -864,7 +902,7 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: this.currentStage().scrollSpeed,
-      hp: def.hp,
+      hp: this.hazardHp(def),
       hazardKey: def.key,
       fireClock: def.fires ? 0.95 : 0,
       side,
@@ -1123,8 +1161,8 @@ export class Game2A {
         w: def.hitbox.w,
         h: def.hitbox.h,
         vx: 0,
-        vy: def.baseSpeed + this.wave * 7,
-        hp: def.hp,
+        vy: this.enemySpeed(def),
+        hp: this.enemyHp(def),
         enemyKey,
         age: 0,
         anchorX: x,
@@ -1151,7 +1189,7 @@ export class Game2A {
       drone.age += dt;
       drone.stanceClock -= dt;
       drone.dodgeCooldown = Math.max(0, drone.dodgeCooldown - dt);
-      const speed = def.baseSpeed + this.wave * 7;
+      const speed = this.enemySpeed(def);
 
       if (drone.stance === 'entering') {
         drone.y += speed * dt;
@@ -1275,7 +1313,10 @@ export class Game2A {
 
   /** How many enemies may share the arena at once, by wave. */
   private arenaEnemyCap(): number {
-    return Math.min(ARENA_MAX_ENEMIES_CAP, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2));
+    // Numbers are the other half of the answer to a big gun: a maxed loadout
+    // clears a screen fast, so it should have more screen to clear.
+    const forFirepower = Math.floor(this.firepowerScale() / 2);
+    return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forFirepower);
   }
 
   /** Station-keeping drift so a held position still reads as flying, not parking. */
@@ -1359,7 +1400,7 @@ export class Game2A {
           h: def.hitbox.h,
           vx: 0,
           vy: this.currentStage().scrollSpeed,
-          hp: def.hp,
+          hp: this.hazardHp(def),
           hazardKey: def.key,
           fireClock: 0.5 + Math.random() * 0.7,
           side,
@@ -1430,7 +1471,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: def.hp,
+      hp: Math.round(def.hp * this.firepowerScale()),
+      maxHp: Math.round(def.hp * this.firepowerScale()),
       bossKey,
       state: 'intro',
       age: 0,
@@ -1495,7 +1537,7 @@ export class Game2A {
       return;
     }
 
-    boss.phaseIndex = bossPhaseIndex(def, boss.hp ?? def.hp);
+    boss.phaseIndex = bossPhaseIndex(def, boss.hp ?? boss.maxHp, boss.maxHp);
     const phase = def.phases[boss.phaseIndex];
     if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 52 + Math.random() * Math.max(1, this.w - 104);
     // A duel needs the boss to be somewhere other than a fixed altitude --
@@ -1555,8 +1597,8 @@ export class Game2A {
       w: def.hitbox.w,
       h: def.hitbox.h,
       vx: 0,
-      vy: def.baseSpeed + this.wave * 7,
-      hp: def.hp,
+      vy: this.enemySpeed(def),
+      hp: this.enemyHp(def),
       enemyKey,
       age: 0,
       anchorX: x,
@@ -1715,7 +1757,7 @@ export class Game2A {
         h: def.hitbox.h,
         vx: 0,
         vy: def.baseSpeed,
-        hp: def.hp,
+        hp: this.enemyHp(def),
         enemyKey: key,
         age: 0,
         anchorX: x,
@@ -2982,7 +3024,8 @@ export class Game2A {
       this.ctx.fillStyle = phase.accent;
       this.ctx.font = '800 9px ui-sans-serif, system-ui';
       this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 29);
-      bar(this.ctx, bossBarX, 33, bossBarWidth, 5, (this.boss.hp ?? 0) / def.hp, phase.accent);
+      // Against the boss's own scaled maximum, not the tuning number.
+      bar(this.ctx, bossBarX, 33, bossBarWidth, 5, (this.boss.hp ?? 0) / this.boss.maxHp, phase.accent);
     }
     if (this.warship?.state === 'fight') {
       this.ctx.fillStyle = '#ff8a3d';
@@ -3301,7 +3344,7 @@ export class Game2A {
       this.ring(boss.x, boss.y + boss.h * 0.2);
       return void sfx.play('deny');
     }
-    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage * scale);
+    boss.hp = Math.max(0, (boss.hp ?? boss.maxHp) - damage * scale);
     if ((boss.hp ?? 0) > 0) return void sfx.play('hit');
     sfx.play('bigExplode');
 
@@ -3915,6 +3958,46 @@ export class Game2A {
    * The old loop also wasted barrels. It stopped at MAX_VOLLEY mid-pair, so a
    * quad gun capped at two barrels and the third bought nothing at all.
    */
+  /**
+   * A drone's health for the loadout facing it.
+   *
+   * Trash only gets ENEMY_SCALE_SHARE of the curve. At full scale a 2hp drone
+   * would take 18 hits, which is a sponge rather than a threat; a maxed gun
+   * should still delete one. The rest of the pressure comes from more of them,
+   * arriving faster.
+   */
+  private enemyHp(def: EnemyDef): number {
+    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    return Math.max(1, Math.round(scaled));
+  }
+
+  /** Mines and turrets are shot at too, so they ride the same curve. */
+  private hazardHp(def: HazardDef): number {
+    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    return Math.max(1, Math.round(scaled));
+  }
+
+  /** A drone's speed, which climbs with the wave and with the gun facing it. */
+  private enemySpeed(def: EnemyDef): number {
+    return def.baseSpeed + this.wave * 7 + (this.firepowerScale() - 1) * ENEMY_SPEED_PER_SCALE;
+  }
+
+  /** Sustained damage per second this loadout puts out. */
+  private playerDps(): number {
+    const weapon = this.currentWeapon();
+    return (this.currentVolley().length * weapon.damage) / weapon.fireRate;
+  }
+
+  /**
+   * How much tougher everything has to be for this loadout to be a fight.
+   *
+   * 1 at the starting gun, rising with the volley and the weapon's own damage.
+   * Capped, because past a point a longer fight stops being a better one.
+   */
+  private firepowerScale(): number {
+    return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
+  }
+
   private currentVolley(): WeaponShotDef[] {
     const weapon = this.currentWeapon();
     if (this.barrels <= 0) return weapon.shots;
@@ -3923,10 +4006,18 @@ export class Game2A {
     for (let pair = 1; pair <= this.barrels; pair += 1) {
       // A pair goes on together or not at all, so the gun stays symmetric.
       if (shots.length + 2 > MAX_VOLLEY) break;
+      // Parallel, not fanned. Barrels used to angle outward 0.045rad per pair,
+      // and an angle becomes width over distance: on a 780px portrait screen a
+      // three-barrel gun swept 75% of the whole width by the time its shots
+      // reached the top, so there was nothing to aim at and nothing to do but
+      // slide side to side. The same gun covered 40% on the short landscape
+      // screen, which is why this only showed up in portrait.
+      //
+      // A barrel adds a BEAM. The weapon decides the spread -- TRI-SPREAD still
+      // fans, because fanning is what TRI-SPREAD is.
       const offset = widest + 9 * pair;
-      const angle = 0.045 * pair;
-      shots.push({ offsetX: -offset, angle: -angle });
-      shots.push({ offsetX: offset, angle });
+      shots.push({ offsetX: -offset, angle: 0 });
+      shots.push({ offsetX: offset, angle: 0 });
     }
     return shots;
   }

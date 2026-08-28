@@ -6,11 +6,45 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { BossAttackKey, BossDef, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
+import type { BossAttackKey, BossDef, Size, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from './BossDirector';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
-export const SHIPS: Record<string, ShipDef> = {
+/**
+ * How large everything in the flight game is drawn, as a fraction of its
+ * authored size.
+ *
+ * "If you made the ships even smaller than they are now it would be like micro
+ * machines and you could do a lot more" -- and that is right for a reason
+ * worth writing down. Every distance in a dogfight is measured in ship widths:
+ * the gap you thread, the room you have to dodge, how much of the lane a
+ * formation covers. Shrinking the ships widens all of them at once, without
+ * touching a single speed or spawn rate.
+ *
+ * Applied here rather than at each draw call so the hitbox shrinks with the
+ * sprite -- scaling one without the other is how you get a ship that is hit by
+ * things that visibly miss it.
+ */
+const COMBAT_SCALE = 0.78;
+
+function scaled(size: Size): Size {
+  // Floored, so nothing rounds away to something unhittable.
+  return {
+    w: Math.max(6, Math.round(size.w * COMBAT_SCALE)),
+    h: Math.max(6, Math.round(size.h * COMBAT_SCALE)),
+  };
+}
+
+/** Shrinks the draw and hitbox of everything that flies or is shot at. */
+export function scaleCombatants<T extends { draw: Size; hitbox: Size }>(
+  defs: Record<string, T>,
+): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(defs).map(([key, def]) => [key, { ...def, draw: scaled(def.draw), hitbox: scaled(def.hitbox) }]),
+  ) as Record<string, T>;
+}
+
+export const SHIPS: Record<string, ShipDef> = scaleCombatants({
   player: {
     key: 'player',
     label: 'CLARITY INTERCEPTOR',
@@ -53,9 +87,9 @@ export const SHIPS: Record<string, ShipDef> = {
     // Bulwark: the only hull that launches with a shield to lose.
     loadout: { shield: 3, weaponTier: 1, bombs: 0, pulse: 1 },
   },
-};
+});
 
-export const ENEMIES: Record<string, EnemyDef> = {
+export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
   regulator_drone: {
     key: 'regulator_drone',
     label: 'REGULATOR',
@@ -124,7 +158,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
     projectileSpeed: 265,
     accent: '#ffd24a',
   },
-};
+});
 
 export const PROJECTILES: Record<string, ProjectileDef> = {
   bb_shot: {
@@ -319,7 +353,7 @@ export const STAGES: Record<string, StageDef> = {
   },
 };
 
-export const HAZARDS: Record<string, HazardDef> = {
+export const HAZARDS: Record<string, HazardDef> = scaleCombatants({
   basic_turret: {
     key: 'basic_turret',
     label: 'BASIC TURRET',
@@ -373,7 +407,7 @@ export const HAZARDS: Record<string, HazardDef> = {
     spawnRate: 4.0, fireRate: 0.78, projectileSpeed: 270, score: 800, accent: '#b56cff',
     spawnWeight: 3, placement: 'edge', fires: true,
   },
-};
+});
 
 export const ENVIRONMENT_PROPS: Record<string, EnvironmentPropDef> = {
   mega_tower: { key: 'mega_tower', label: 'MEGA TOWER', sprite: { category: 'environment', id: 'mega_tower' }, draw: { w: 42, h: 95 }, stages: ['ledger_city', 'regulatory_outpost'] },
@@ -410,7 +444,7 @@ export const BOSS_ATTACK_KEYS: readonly BossAttackKey[] = [
   'escort_screen',
 ];
 
-export const BOSSES: Record<string, BossDef> = {
+export const BOSSES: Record<string, BossDef> = scaleCombatants({
   gary_fog: {
     key: 'gary_fog',
     label: 'GARY FOG',
@@ -500,7 +534,7 @@ export const BOSSES: Record<string, BossDef> = {
       { hpThreshold: 0.2, moveSpeed: 148, fireRate: 0.32, projectileSpeed: 340, projectileCount: 9, spread: 0.12, pattern: 'burst', accent: '#ff3355' },
     ],
   },
-};
+});
 
 export const FX: Record<string, FxDef> = {
   burst_ring: {
