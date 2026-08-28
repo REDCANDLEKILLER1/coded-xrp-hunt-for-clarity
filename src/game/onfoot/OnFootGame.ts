@@ -513,13 +513,28 @@ export class OnFootGame {
     c.restore();
   }
 
+  /**
+   * Marks a standable edge without drawing a box around it.
+   *
+   * This used to be a full blue outline rectangle plus a 2px line of solid
+   * green. Over the procedural interior that WAS the level -- there was
+   * nothing else to see. Over the painted rooms it read as leftover debug
+   * geometry: bright wireframe boxes stamped across the art.
+   *
+   * The edge still has to be marked, because the collision line and the
+   * painted ledge underneath it are not the same thing. So: no outline, and a
+   * soft glowing lip on the top edge only, at the alpha where you can find it
+   * when you look for it and stop noticing it when you do not.
+   */
   private drawPlatform(c: CanvasRenderingContext2D, platform: InteriorPlatform): void {
-    c.fillStyle = 'rgba(4,12,18,0.16)';
+    c.save();
+    c.fillStyle = 'rgba(4,12,18,0.14)';
     c.fillRect(platform.x, platform.y, platform.w, platform.h);
-    c.fillStyle = 'rgba(0,255,0,0.48)';
-    c.fillRect(platform.x, platform.y, platform.w, 2);
-    c.strokeStyle = 'rgba(54,163,255,0.34)';
-    c.strokeRect(platform.x, platform.y, platform.w, platform.h);
+    c.shadowColor = 'rgba(0,255,0,0.5)';
+    c.shadowBlur = 5;
+    c.fillStyle = 'rgba(0,255,0,0.24)';
+    c.fillRect(platform.x, platform.y, platform.w, 1);
+    c.restore();
   }
 
   private drawPlayer(c: CanvasRenderingContext2D): void {
@@ -627,32 +642,52 @@ export class OnFootGame {
     c.fillRect(0, 0, innerWidth, innerHeight);
   }
 
+  /**
+   * A slim strip, not a panel.
+   *
+   * This was a bordered 304x64 box in the top-left. On a landscape phone --
+   * about 350x230 of CSS pixels -- that is most of the width and a quarter of
+   * the height, sitting on top of the room the player is trying to read. Now
+   * the rooms have painted art, boxing it off costs more than it buys: three
+   * short lines with a shadow read fine straight over the background.
+   */
   private drawHud(c: CanvasRenderingContext2D): void {
     const compact = this.isLandscapeMobile();
-    const width = Math.min(compact ? 304 : 342, innerWidth - 24);
-    const height = compact ? 64 : 82;
-    c.fillStyle = 'rgba(2,6,11,0.68)';
-    c.fillRect(12, 10, width, height);
-    c.strokeStyle = 'rgba(54,163,255,0.62)';
-    c.strokeRect(12, 10, width, height);
+    const barW = compact ? 54 : 72;
+    const energyX = compact ? 92 : 118;
+
+    c.save();
+    // A shadow instead of a filled panel: legible over art, hides nothing.
+    c.shadowColor = 'rgba(0,0,0,0.9)';
+    c.shadowBlur = 4;
     c.textAlign = 'left';
-    c.font = `900 ${compact ? 10 : 12}px ui-sans-serif, system-ui`;
+    c.font = `900 ${compact ? 9 : 11}px ui-sans-serif, system-ui`;
     c.fillStyle = GREEN;
-    c.fillText(`XRPMAN // ${this.room.key.replace('_', ' ').toUpperCase()}`, 22, compact ? 26 : 32);
-    c.fillStyle = '#d8ffe8';
-    c.font = `800 ${compact ? 9 : 10}px ui-sans-serif, system-ui`;
-    c.fillText('HP', 22, compact ? 45 : 52);
-    c.fillStyle = '#173427'; c.fillRect(44, compact ? 38 : 44, compact ? 92 : 104, 8);
-    c.fillStyle = GREEN; c.fillRect(44, compact ? 38 : 44, (compact ? 92 : 104) * this.player.health / 100, 8);
-    c.fillStyle = '#d8ffe8'; c.fillText('ENERGY', compact ? 150 : 170, compact ? 45 : 52);
-    c.fillStyle = '#10283a'; c.fillRect(compact ? 194 : 220, compact ? 38 : 44, compact ? 72 : 82, 8);
-    c.fillStyle = BLUE; c.fillRect(compact ? 194 : 220, compact ? 38 : 44, (compact ? 72 : 82) * this.player.energy / 100, 8);
-    c.fillStyle = 'rgba(216,255,232,0.82)';
-    c.fillText(this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective, 22, compact ? 64 : 75);
+    c.fillText(`XRPMAN // ${this.room.key.replace('_', ' ').toUpperCase()}`, 12, compact ? 16 : 19);
+
+    const barY = compact ? 22 : 27;
+    c.fillStyle = '#173427'; c.fillRect(12, barY, barW, 3);
+    c.fillStyle = GREEN; c.fillRect(12, barY, barW * this.player.health / 100, 3);
+    c.fillStyle = '#10283a'; c.fillRect(energyX, barY, barW, 3);
+    c.fillStyle = BLUE; c.fillRect(energyX, barY, barW * this.player.energy / 100, 3);
+
+    c.font = `700 ${compact ? 7 : 8}px ui-sans-serif, system-ui`;
+    c.fillStyle = 'rgba(216,255,232,0.5)';
+    c.fillText('HP', 12 + barW + 5, barY + 3);
+    c.fillText('EN', energyX + barW + 5, barY + 3);
+
+    c.font = `700 ${compact ? 8 : 9}px ui-sans-serif, system-ui`;
+    c.fillStyle = 'rgba(216,255,232,0.66)';
+    c.fillText(
+      this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective,
+      12,
+      compact ? 37 : 44,
+    );
 
     c.textAlign = 'right';
-    c.fillStyle = 'rgba(54,163,255,0.95)';
-    c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 18, 24);
+    c.fillStyle = 'rgba(54,163,255,0.9)';
+    c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 12, compact ? 16 : 19);
+    c.restore();
 
     if (this.completionClock > 100) {
       c.textAlign = 'center';
