@@ -108,7 +108,7 @@
     "seeker_missile": {
       "src": "/assets/projectiles/seeker_missile.png",
       "type": "image",
-      "notes": "From futuristic_rocket_with_neon_glow.png: keyed off its black background, trimmed and scaled to 26x71"
+      "notes": "From futuristic_rocket_with_neon_glow.png: keyed off its black background, trimmed and scaled to 15x43"
     }
   },
   "vfx": {

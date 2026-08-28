@@ -170,6 +170,8 @@ const SHIELD_REGEN_DELAY = 7;
 /** Seconds per shield segment once regeneration starts. */
 const SHIELD_REGEN_STEP = 4.5;
 const SHIELD_PICKUP_EVERY_KILLS = 9;
+/** Half speed, so the pre-boss resupply is still on screen when you go for it. */
+const BOSS_RESUPPLY_DRIFT = 0.5;
 
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
@@ -500,6 +502,7 @@ export class Game2A {
     this.hazards = [];
     this.hostileShots = [];
     this.bolts = [];
+    this.dropBossResupply();
     this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
     this.missionBannerText = 'GUARDIAN SIGNAL // GARY FOG APPROACHING';
     this.missionBannerClock = 2.8;
@@ -526,6 +529,7 @@ export class Game2A {
     this.hazards = [];
     this.hostileShots = [];
     this.bolts = [];
+    this.dropBossResupply();
     this.warshipDirector.reset();
     this.cueMusic('boss_regulatory_warship');
     this.missionBannerText = 'CAPITAL SHIP // REGULATORY WARSHIP';
@@ -1167,6 +1171,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.dropBossResupply();
     // These used to arrive in silence. The boss track leads the entrance here
     // the same way it does for Gary Fog.
     this.cueMusic('boss_fight');
@@ -2706,8 +2711,38 @@ export class Game2A {
     }
   }
 
-  private dropPickup(def: PickupDef, x: number, y: number): void {
-    this.pickups.push({ x, y, w: def.hitbox.w, h: def.hitbox.h, vx: 0, vy: def.driftSpeed, pickupKey: def.key });
+  private dropPickup(def: PickupDef, x: number, y: number, driftScale = 1): void {
+    this.pickups.push({
+      x,
+      y,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: def.driftSpeed * driftScale,
+      pickupKey: def.key,
+    });
+  }
+
+  /**
+   * The resupply that falls in just before a boss opens fire.
+   *
+   * Reaching a boss on fumes used to be a dead end: every other drop is tied
+   * to a kill count, and the run of drones ends the moment the boss spawns, so
+   * whatever you limped in with was what you fought with. This guarantees a
+   * shield cell and a hull patch in the seconds before the fight starts, plus
+   * one random third pick, and drifts them at half speed so they are actually
+   * catchable during the entrance. Lanes stay left of the button cluster --
+   * a pickup you cannot reach without covering a button is not a pickup.
+   */
+  private dropBossResupply(): void {
+    const bonus = Math.random() < 0.5 ? PICKUPS.bomb : PICKUPS.weapon_upgrade;
+    const drops: PickupDef[] = [PICKUPS.shield_cell, PICKUPS.repair, bonus];
+    for (let i = 0; i < drops.length; i++) {
+      const lane = 0.18 + i * 0.24;
+      this.dropPickup(drops[i], this.w * lane, -22 - i * 30, BOSS_RESUPPLY_DRIFT);
+    }
+    this.missionBannerText = 'RESUPPLY DROP // GRAB IT';
+    this.missionBannerClock = 2.4;
   }
 
   /** Upgrade state a checkpoint carries, so continuing keeps what was earned. */

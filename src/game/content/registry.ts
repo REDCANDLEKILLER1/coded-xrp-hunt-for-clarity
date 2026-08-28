@@ -158,12 +158,13 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
     speed: 760,
   },
   // The player's homing rocket. Real art now; drawSeeker's procedural dart
-  // stays as the fallback. Draw size follows the sprite's 26:79 aspect.
+  // stays as the fallback. Drawn 40% smaller than the first pass — at 14x42
+  // it read as nearly as big as the fighter that launches it.
   seeker_missile: {
     key: 'seeker_missile',
     sprite: { category: 'projectiles', id: 'seeker_missile' },
-    draw: { w: 14, h: 42 },
-    hitbox: { w: 10, h: 22 },
+    draw: { w: 8, h: 25 },
+    hitbox: { w: 7, h: 16 },
     speed: 400,
   },
 };
