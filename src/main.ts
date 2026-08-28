@@ -12,6 +12,8 @@ import { showDebugLogView } from './game/ui/DebugLogView';
 import {
   loadCampaignProgress,
   missionCheckpointFor,
+  recordMissionCheckpoint,
+  saveCampaignProgress,
   type MissionCheckpointSnapshot,
 } from './game/content/CampaignProgress';
 
@@ -110,10 +112,27 @@ map = new CampaignMap(
   },
 );
 
+/** Where the stored checkpoint says the interior run had reached. */
+function savedInteriorRoom(): number {
+  return missionCheckpointFor(loadCampaignProgress(), 'ledger_prime')?.interiorRoom ?? 0;
+}
+
 window.addEventListener('coded:boarding-complete', () => {
   debugLog.log('mission', 'boarding complete -> on foot');
   canvas.style.visibility = 'hidden';
-  onFoot.show();
+  onFoot.show(savedInteriorRoom());
+});
+
+// Clearing a room is a save point of its own. The act checkpoint stays at the
+// boarding lock; this just records how far in the run got, so a defeat does not
+// cost every room already taken.
+window.addEventListener('coded:onfoot-room', (event) => {
+  const room = Number((event as CustomEvent<{ room: number }>).detail?.room ?? 0);
+  const progress = loadCampaignProgress();
+  const checkpoint = missionCheckpointFor(progress, 'ledger_prime');
+  if (!checkpoint || !Number.isFinite(room)) return;
+  debugLog.log('mission', 'interior checkpoint', { room });
+  saveCampaignProgress(recordMissionCheckpoint(progress, { ...checkpoint, interiorRoom: room }));
 });
 
 window.addEventListener('coded:onfoot-defeat', () => {
@@ -162,5 +181,8 @@ void game.start().then(() => {
   game.suspend();
   gameShell.hidden = false;
   canvas.style.visibility = 'hidden';
-  onFoot.show();
+  // Honours the saved room like every other way in, and ?room= overrides it
+  // for testing a single room without walking the warship to reach it.
+  const room = params.has('room') ? Number(params.get('room')) : savedInteriorRoom();
+  onFoot.show(Number.isFinite(room) ? room : 0);
 });

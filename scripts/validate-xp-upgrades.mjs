@@ -133,7 +133,10 @@ for (const ship of hulls) {
 // ---- pickups add barrels, they do not climb the ladder --------------------
 check(/this\.barrels = Math\.min\(MAX_BARRELS, this\.barrels \+ 1\)/.test(game), 'weapon pickups must add a barrel');
 check(/private currentVolley\(\)/.test(game), 'barrels must actually widen the volley');
-check(/shots\.length < MAX_VOLLEY/.test(game), 'the volley needs a ceiling');
+// The ceiling is now checked for a whole barrel PAIR, not one shot at a time.
+// The old form let a volley end mid-pair, which is how a four-beam gun ended
+// up firing four symmetric beams and one extra hanging off the left.
+check(/shots\.length \+ 2 > MAX_VOLLEY/.test(game), 'the volley needs a ceiling, applied per pair');
 
 // ---- the seeker missile ----------------------------------------------------
 // "a heat seeker missile that comes out automatically every four or five
@@ -208,8 +211,18 @@ console.log(`  level pays ~${Math.round(levelXp)} XP • QUAD at ${(quadAt * 100
 // A choice made under fire is a reflex test, not a choice.
 check(/if \(this\.upgradeOffer\.length > 0\) return;/.test(game), 'the fight must freeze while an upgrade is being chosen');
 // Never offer something that cannot do anything.
-check(/private upgradeAvailable\(/.test(game), 'maxed-out upgrades must be filtered out of the offer');
-check(/this\.pendingUpgrades = 0;\n      this\.score \+= 250;/.test(game), 'with everything maxed, a level must bank score rather than stall behind an empty overlay');
+check(/private upgradeAvailable\(/.test(game), 'there must be a rule for what is still upgradable');
+// This used to require the all-maxed case to bank score and show nothing.
+// That silently swallowed the rank -- the player levelled and saw no level-up
+// at all. The requirement is unchanged in substance (never stall behind an
+// overlay with no way out) but the fix is now a card that says what tapping
+// does, rather than skipping the moment entirely.
+check(/allUpgradesMaxed\(\)/.test(game), 'the all-maxed case must be handled explicitly');
+check(/TAP TO BANK/.test(game), 'an all-maxed overlay must tell the player how to leave it');
+check(
+  /this\.score \+= ALL_MAXED_SCORE;/.test(game),
+  'with everything maxed, the rank must still be worth something',
+);
 
 // Shields have to be more than extra hit points, or they are not worth a level.
 check(/private updateShield\(/.test(game), 'shields must regenerate');

@@ -143,8 +143,12 @@ export class OnFootGame {
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  show(): void {
-    this.resetRun();
+  /**
+   * @param startRoom Room to open in. Resuming a run that died deeper in the
+   *   warship starts where it left off rather than at the docking bay.
+   */
+  show(startRoom = 0): void {
+    this.resetRun(startRoom);
     this.visible = true;
     this.canvas.style.display = 'block';
     this.introClock = 0.82;
@@ -361,6 +365,11 @@ export class OnFootGame {
   private advanceRoom(): void {
     sfx.play('pickup');
     if (this.roomIndex < REGULATORY_INTERIOR_ROOMS.length - 1) {
+      // Clearing a room is a save point. Six rooms behind one checkpoint meant
+      // a death on the defense deck cost the whole interior.
+      window.dispatchEvent(new CustomEvent('coded:onfoot-room', {
+        detail: { room: this.roomIndex + 1 },
+      }));
       this.pendingRoomIndex = this.roomIndex + 1;
       this.transitionClock = 0.42;
       this.player.vx = 0;
@@ -889,12 +898,13 @@ export class OnFootGame {
     });
   }
 
-  private resetRun(): void {
-    this.roomIndex = 0;
+  private resetRun(startRoom = 0): void {
+    const index = clamp(Math.floor(startRoom), 0, REGULATORY_INTERIOR_ROOMS.length - 1);
+    this.roomIndex = index;
     this.player.health = 100;
     this.player.energy = 100;
     this.completionClock = 0;
-    this.enterRoom(0, false);
+    this.enterRoom(index, false);
   }
 
   private enterRoom(index: number, preserveVitals: boolean): void {

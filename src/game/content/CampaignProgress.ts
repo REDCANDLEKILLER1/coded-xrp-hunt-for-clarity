@@ -23,6 +23,15 @@ export interface MissionCheckpointSnapshot {
   shieldMax?: number;
   bombPower?: number;
   pulsePower?: number;
+  /**
+   * How far into the warship interior the run had got.
+   *
+   * Dying on foot used to send the player back to the boarding run, which
+   * meant flying into the hangar again and re-clearing every room already
+   * taken. Optional, so saves written before this parse unchanged and simply
+   * restart the interior from the docking bay.
+   */
+  interiorRoom?: number;
 }
 
 export interface CampaignProgress {
@@ -252,6 +261,9 @@ function sanitizeMissionCheckpoint(value: unknown): MissionCheckpointSnapshot | 
     xpLevel: clamp(safeCount(snapshot.xpLevel, 1), 1, 99),
     barrels: clamp(safeCount(snapshot.barrels, 0), 0, 3),
     shieldMax: clamp(safeCount(snapshot.shieldMax, 0), 0, 6),
+    // Bounded like the rest: untrusted local storage must not be able to name
+    // a room that does not exist.
+    interiorRoom: clamp(safeCount(snapshot.interiorRoom, 0), 0, 16),
     bombPower: clamp(safeNumber(snapshot.bombPower, 1), 1, 4),
     pulsePower: clamp(safeNumber(snapshot.pulsePower, 1), 1, 4),
   };

@@ -185,8 +185,47 @@ if (!earthMission || earthMission.key !== 'earth_ledger_prime' || earthMission.a
   console.error('Mission validation FAILED: Earth Level 1 mission skeleton is missing or incomplete.');
   process.exit(1);
 }
-if (earthMission.acts.at(-1)?.mode !== 'complete' || earthMission.checkpoints.length !== 4) {
-  console.error('Mission validation FAILED: Earth Level 1 completion/checkpoint spine is incomplete.');
+if (earthMission.acts.at(-1)?.mode !== 'complete') {
+  console.error('Mission validation FAILED: Earth Level 1 does not end on a completion act.');
+  process.exit(1);
+}
+
+// Checkpoint coverage, not a count.
+//
+// This asserted exactly four checkpoints, which said nothing about whether
+// they were in useful places -- four in a row at the start would have passed.
+// Level 1 runs about half an hour, and with four across twelve acts a death at
+// Gary Fog threw away Ledger City and the whole Defense Grid. What matters is
+// the gap: how many acts a single death can cost.
+const resumable = new Set(earthMission.checkpoints.map((checkpoint) => checkpoint.resumeActKey));
+for (const checkpoint of earthMission.checkpoints) {
+  if (!earthMission.acts.some((act) => act.key === checkpoint.resumeActKey)) {
+    console.error(`Mission validation FAILED: checkpoint ${checkpoint.key} resumes into "${checkpoint.resumeActKey}", which is not an act.`);
+    process.exit(1);
+  }
+}
+const duplicates = earthMission.checkpoints.length - resumable.size;
+if (duplicates > 0) {
+  console.error(`Mission validation FAILED: ${duplicates} checkpoint(s) resume into an act another already covers.`);
+  process.exit(1);
+}
+// The opening act cannot be a resume point (it IS the start) and the closing
+// one needs none. Every act between them should be reachable from a save.
+const middle = earthMission.acts.slice(1, -1);
+const uncovered = middle.filter((act) => !resumable.has(act.key));
+if (uncovered.length > 0) {
+  console.error(`Mission validation FAILED: no checkpoint resumes into ${uncovered.map((act) => act.key).join(', ')}.`);
+  process.exit(1);
+}
+// And the worst-case loss, stated in acts rather than left implicit.
+let worstGap = 0;
+let run = 0;
+for (const act of earthMission.acts) {
+  run = resumable.has(act.key) ? 0 : run + 1;
+  worstGap = Math.max(worstGap, run);
+}
+if (worstGap > 2) {
+  console.error(`Mission validation FAILED: a death can cost ${worstGap} acts of progress; two is the ceiling.`);
   process.exit(1);
 }
 

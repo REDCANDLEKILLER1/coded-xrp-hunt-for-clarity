@@ -78,7 +78,7 @@ type SeekerActor = Actor & { damage: number; angle: number; age: number };
  * Weapon is deliberately absent: a new gun is what levelling GIVES you, not
  * something you trade a shield for. The cards are the choice you still make.
  */
-type UpgradeKind = 'shield' | 'bomb' | 'pulse';
+type UpgradeKind = 'shield' | 'bomb' | 'pulse' | 'barrel';
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
@@ -195,7 +195,11 @@ const BOSS_TURN = 2.6;
 
 /** Extra barrels a hull can bolt on, and the ceiling on a single volley. */
 const MAX_BARRELS = 3;
-const MAX_VOLLEY = 6;
+/**
+ * Barrels come in pairs, so this wants to be odd -- at 6 an odd-base gun like
+ * BB SHOT or the Lance could only take two of its three barrels.
+ */
+const MAX_VOLLEY = 7;
 
 // Seeker missile. Unlocked deep in the ladder, then fires itself on a timer --
 // the reward for getting far enough is a weapon you do not have to aim.
@@ -212,6 +216,19 @@ const XP_WAVE_CLEAR = 40;
 const XP_PER_SCORE = 0.11;
 const UPGRADE_CHOICES = 3;
 const SHIELD_CAP = 6;
+/**
+ * Ceilings for the tracks that had none.
+ *
+ * Bomb yield and pulse reach grew without limit, so they were offered forever
+ * and "MAX" was a state the player could never see or plan around. Every track
+ * ends somewhere now, and a finished one says so on its card.
+ */
+const BOMB_POWER_CAP = 2.32;
+const PULSE_POWER_CAP = 2.26;
+/** Banked when a rank arrives with every track already full. */
+const ALL_MAXED_SCORE = 250;
+/** Free upgrade picks granted for putting a boss down. */
+const BOSS_UPGRADE_REWARD = 1;
 /** Seconds without a hit before shields start coming back. */
 const SHIELD_REGEN_DELAY = 7;
 /** Seconds per shield segment once regeneration starts. */
@@ -2758,7 +2775,9 @@ export class Game2A {
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#00ff88';
     this.ctx.font = '900 15px ui-sans-serif, system-ui';
-    this.ctx.fillText(`LEVEL ${this.xpLevel}`, this.w / 2, this.h * 0.16);
+    // "RANK", to match the HUD and to stay out of the way of "Level 1".
+    this.ctx.font = '900 19px ui-sans-serif, system-ui';
+    this.ctx.fillText(`RANK ${this.xpLevel}`, this.w / 2, this.h * 0.16);
     this.ctx.fillStyle = 'rgba(216,255,232,0.66)';
     this.ctx.font = '700 9px ui-sans-serif, system-ui';
     const queued = this.pendingUpgrades > 1 ? ` • ${this.pendingUpgrades} TO SPEND` : '';
@@ -2766,24 +2785,36 @@ export class Game2A {
 
     for (const card of this.upgradeCards()) {
       const info = this.upgradeInfo(card.kind);
+      const open = this.upgradeAvailable(card.kind);
       const { x, y, w, h } = card.rect;
+      // A finished track still shows -- the layout must not change shape as
+      // the run fills up -- but it reads as spent and cannot be taken.
+      this.ctx.globalAlpha = open ? 1 : 0.42;
       this.ctx.fillStyle = 'rgba(2,6,11,0.94)';
-      this.ctx.strokeStyle = info.accent;
+      this.ctx.strokeStyle = open ? info.accent : 'rgba(126,146,158,0.75)';
       this.ctx.lineWidth = 2;
       this.ctx.fillRect(x, y, w, h);
       this.ctx.strokeRect(x, y, w, h);
 
-      this.drawUpgradeGlyph(card.kind, x + w / 2, y + h * 0.3, Math.min(w, h) * 0.17, info.accent);
+      this.drawUpgradeGlyph(card.kind, x + w / 2, y + h * 0.3, Math.min(w, h) * 0.17, open ? info.accent : '#7e929e');
 
       this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = info.accent;
+      this.ctx.fillStyle = open ? info.accent : '#9fb0ba';
       this.ctx.font = '900 11px ui-sans-serif, system-ui';
       this.ctx.fillText(fitText(this.ctx, info.title, w - 12), x + w / 2, y + h * 0.62);
       this.ctx.fillStyle = 'rgba(216,255,232,0.72)';
       this.ctx.font = '600 8px ui-sans-serif, system-ui';
-      this.ctx.fillText(fitText(this.ctx, info.detail, w - 12), x + w / 2, y + h * 0.62 + 13);
+      const spentDetail = this.allUpgradesMaxed() ? `TAP TO BANK +${ALL_MAXED_SCORE}` : 'FULLY UPGRADED';
+      this.ctx.fillText(fitText(this.ctx, open ? info.detail : spentDetail, w - 12), x + w / 2, y + h * 0.62 + 13);
       this.ctx.fillStyle = 'rgba(216,255,232,0.4)';
       this.ctx.fillText(fitText(this.ctx, info.current, w - 12), x + w / 2, y + h * 0.62 + 25);
+      this.ctx.globalAlpha = 1;
+
+      if (!open) {
+        this.ctx.fillStyle = '#ffd24a';
+        this.ctx.font = '900 10px ui-sans-serif, system-ui';
+        this.ctx.fillText('MAX', x + w / 2, y + 15);
+      }
     }
     this.ctx.restore();
   }
@@ -2791,6 +2822,13 @@ export class Game2A {
   /** What each upgrade is called, does, and what the player already has. */
   private upgradeInfo(kind: UpgradeKind): { title: string; detail: string; current: string; accent: string } {
     switch (kind) {
+      case 'barrel':
+        return {
+          title: 'BARREL PAIR',
+          detail: '+2 SHOTS • BOTH SIDES',
+          current: `NOW: ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`,
+          accent: '#00ff88',
+        };
       case 'shield':
         return {
           title: 'SHIELD PLATING',
@@ -2891,7 +2929,10 @@ export class Game2A {
     bar(this.ctx, 14, barY, 72, 2, this.xp / this.xpForNextLevel(), '#00ff88');
     this.ctx.font = '800 8px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(0,255,136,0.8)';
-    this.ctx.fillText(`LV ${this.xpLevel}`, 92, barY + 2.5);
+    // "RANK", not "LV". Playtesters read `LV 4` on a level called Level 1 and
+    // reported reaching "level four" -- two different meanings of the same
+    // word, one of them wrong.
+    this.ctx.fillText(`RANK ${this.xpLevel}`, 92, barY + 2.5);
 
     // Seekers are not a consumable -- once the tier is earned they reload
     // forever. The bar shows the reload, and the infinity mark says that is
@@ -3269,6 +3310,10 @@ export class Game2A {
     this.completedBosses.add(boss.bossKey);
     this.score += def.score;
     this.special = 100;
+    // A boss is worth a free pick. Killing one used to hand over score and a
+    // hull point and nothing you could choose, which made the biggest fight in
+    // the level the least interesting thing to finish.
+    this.pendingUpgrades += BOSS_UPGRADE_REWARD;
     this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? this.playerDef().hp) + 1);
     this.ring(boss.x, boss.y);
     this.hostileShots = [];
@@ -3486,49 +3531,91 @@ export class Game2A {
   /** Upgrades with nothing left to give are not offered. */
   private upgradeAvailable(kind: UpgradeKind): boolean {
     if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
+    if (kind === 'bomb') return this.bombPower < BOMB_POWER_CAP;
+    if (kind === 'pulse') return this.pulsePower < PULSE_POWER_CAP;
+    if (kind === 'barrel') return this.barrels < MAX_BARRELS;
     return true;
   }
 
+  /**
+   * Opens the level-up choice.
+   *
+   * There is ALWAYS a choice on screen. This used to draw only from tracks
+   * that still had something to give, so as tracks filled the card count
+   * quietly shrank -- and once everything was full the level was converted to
+   * score in silence and the player never saw a level-up at all. Now every
+   * track shows, a finished one reads MAX and cannot be picked, and levelling
+   * is always a moment you are shown rather than one that happens off screen.
+   */
   private openUpgradeChoice(): void {
-    const pool = (['shield', 'bomb', 'pulse'] as UpgradeKind[]).filter((kind) => this.upgradeAvailable(kind));
-    if (pool.length === 0) {
-      // Everything is maxed. Bank the level as score rather than stalling the
-      // run behind an overlay with no buttons on it.
-      this.pendingUpgrades = 0;
-      this.score += 250;
+    const all: UpgradeKind[] = ['barrel', 'shield', 'bomb', 'pulse'];
+    const open = all.filter((kind) => this.upgradeAvailable(kind));
+
+    if (open.length === 0) {
+      // Genuinely everything maxed. Still shown, still a card, still a beat.
+      this.upgradeOffer = all.slice(0, UPGRADE_CHOICES);
+      sfx.play('levelUp');
       return;
     }
-    const offer: UpgradeKind[] = [];
-    while (offer.length < Math.min(UPGRADE_CHOICES, pool.length)) {
-      const pick = pool[Math.floor(Math.random() * pool.length)];
-      if (!offer.includes(pick)) offer.push(pick);
+
+    // Shuffle the open tracks, take up to the card count, then pad with maxed
+    // ones so the layout does not change shape as the run goes on.
+    const shuffled = [...open].sort(() => Math.random() - 0.5);
+    const offer = shuffled.slice(0, UPGRADE_CHOICES);
+    for (const kind of all) {
+      if (offer.length >= UPGRADE_CHOICES) break;
+      if (!offer.includes(kind)) offer.push(kind);
     }
+
     this.upgradeOffer = offer;
     sfx.play('levelUp');
     debugLog.log('combat', 'upgrade offer', { level: this.xpLevel, offer, pending: this.pendingUpgrades });
   }
 
+  /** True when no track has anything left to give. */
+  private allUpgradesMaxed(): boolean {
+    return !(['barrel', 'shield', 'bomb', 'pulse'] as UpgradeKind[]).some((kind) => this.upgradeAvailable(kind));
+  }
+
   private applyUpgrade(kind: UpgradeKind): void {
+    if (!this.upgradeAvailable(kind)) {
+      // A maxed card is on screen for completeness, not to be spent on -- but
+      // if EVERY card is maxed then none of them is clickable, and refusing
+      // them all would trap the player behind an overlay with no way out. In
+      // that case any tap banks the level and closes.
+      if (!this.allUpgradesMaxed()) return void sfx.play('deny');
+      this.score += ALL_MAXED_SCORE;
+      this.missionBannerText = `ALL SYSTEMS MAX // +${ALL_MAXED_SCORE}`;
+      this.missionBannerClock = 2.4;
+      this.pendingUpgrades = 0;
+      this.upgradeOffer = [];
+      sfx.play('levelUp');
+      return;
+    }
     switch (kind) {
+      case 'barrel':
+        this.barrels = Math.min(MAX_BARRELS, this.barrels + 1);
+        this.missionBannerText = `GUN // ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`;
+        break;
       case 'shield':
         this.shieldMax = Math.min(SHIELD_CAP, this.shieldMax + 1);
         this.shield = this.shieldMax;
         this.missionBannerText = `SHIELD // ${this.shieldMax} SEGMENTS`;
         break;
       case 'bomb':
-        this.bombPower += 0.22;
+        this.bombPower = Math.min(BOMB_POWER_CAP, this.bombPower + 0.22);
         this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
         this.missionBannerText = `BOMB // BLAST +${Math.round((this.bombPower - 1) * 100)}%`;
         break;
       case 'pulse':
-        this.pulsePower += 0.18;
+        this.pulsePower = Math.min(PULSE_POWER_CAP, this.pulsePower + 0.18);
         this.missionBannerText = `PULSE // FIELD +${Math.round((this.pulsePower - 1) * 100)}%`;
         break;
     }
     this.missionBannerClock = 2.4;
     debugLog.log('combat', 'upgrade taken', {
       kind,
-      weaponTier: this.weaponTier,
+      weaponTier: this.weaponTier(),
       shieldMax: this.shieldMax,
       bombs: `${this.bombs}/${this.maxBombs()}`,
       pulsePower: Math.round(this.pulsePower * 100) / 100,
@@ -3815,15 +3902,31 @@ export class Game2A {
    * ladder itself. Extra barrels alternate outward from the widest existing
    * one, angled slightly so a wide volley still converges.
    */
+  /**
+   * The gun as it currently fires: the weapon's own shots plus bolted-on
+   * barrels.
+   *
+   * Barrels add in PAIRS. They used to be appended one at a time alternating
+   * sides, so a four-beam gun with one barrel fired
+   * `-13, -5, 5, 13, -22` -- four symmetric beams and a single extra hanging
+   * off the left. It looked broken because it was: the muzzle flashes were no
+   * longer symmetric about the nose.
+   *
+   * The old loop also wasted barrels. It stopped at MAX_VOLLEY mid-pair, so a
+   * quad gun capped at two barrels and the third bought nothing at all.
+   */
   private currentVolley(): WeaponShotDef[] {
     const weapon = this.currentWeapon();
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
-    for (let i = 1; i <= this.barrels && shots.length < MAX_VOLLEY; i++) {
-      const side = i % 2 === 1 ? -1 : 1;
-      const step = Math.ceil(i / 2);
-      shots.push({ offsetX: side * (widest + 9 * step), angle: side * 0.045 * step });
+    for (let pair = 1; pair <= this.barrels; pair += 1) {
+      // A pair goes on together or not at all, so the gun stays symmetric.
+      if (shots.length + 2 > MAX_VOLLEY) break;
+      const offset = widest + 9 * pair;
+      const angle = 0.045 * pair;
+      shots.push({ offsetX: -offset, angle: -angle });
+      shots.push({ offsetX: offset, angle });
     }
     return shots;
   }
