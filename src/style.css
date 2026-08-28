@@ -704,3 +704,26 @@ canvas {
 }
 
 .debug-log-open .music-toggle { display: none; }
+
+/* Shown for a moment before a forced restart onto a new build. */
+.update-notice {
+  position: fixed;
+  z-index: 3000;
+  left: 50%;
+  /* Clear of the FULLSCREEN button that lives in the same place. */
+  bottom: max(58px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  padding: 9px 15px;
+  border: 1px solid #00ff88;
+  background: rgba(2, 6, 11, 0.94);
+  color: #d8ffe8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  box-shadow: 0 0 24px rgba(0, 255, 136, 0.32);
+}
+
+.update-notice strong { color: #00ff88; }

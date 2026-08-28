@@ -1,4 +1,5 @@
 import './style.css';
+import { watchForUpdates } from './game/core/UpdateWatch';
 import './landscape.css';
 import { Game2A } from './game/core/Game2A';
 import { CampaignMap } from './game/ui/CampaignMap';
@@ -159,6 +160,9 @@ returnMap.addEventListener('click', () => {
   map.show();
   music.cue('theme');
 });
+
+// A deploy used to reach nobody already playing. This restarts them into it.
+watchForUpdates(import.meta.url);
 
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
