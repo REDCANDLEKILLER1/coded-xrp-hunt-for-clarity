@@ -24,14 +24,18 @@ export function showDebugLogView(): void {
       <strong>CODED DEBUG LOG</strong>
       <div class="debug-log-actions">
         <button type="button" data-action="copy">COPY</button>
+        <button type="button" data-action="save">SAVE .JSON</button>
+        <button type="button" data-action="format">JSON</button>
         <button type="button" data-action="clear">CLEAR</button>
         <button type="button" data-action="close">CLOSE</button>
       </div>
     </header>
     <textarea readonly spellcheck="false"></textarea>
-    <p class="debug-log-hint">Tap COPY, then paste it back to whoever is debugging. CLEAR wipes the buffer before a fresh run.</p>
+    <p class="debug-log-hint">COPY pastes it into chat. SAVE .JSON downloads a structured file. JSON switches this view. CLEAR wipes the buffer before a fresh run.</p>
   `;
   const area = root.querySelector('textarea')!;
+  // Readable transcript by default; JSON is one tap away and is what SAVE writes.
+  let showingJson = false;
   area.value = text;
 
   // A near-empty transcript almost always means the run was never recorded
@@ -42,15 +46,38 @@ export function showDebugLogView(): void {
     const notice = document.createElement('p');
     notice.className = 'debug-log-empty';
     notice.textContent =
-      'No gameplay recorded yet. This page only shows what a previous run wrote. '
-      + 'Play first — open the game, deploy, fly for a bit — then come back to ?log '
-      + 'in the same browser. Private/incognito windows discard the log on close.';
+      'No gameplay recorded yet. This only shows what a previous run wrote. '
+      + 'Play first — deploy, fly for a bit — then reopen this log in the same browser. '
+      + 'Private/incognito windows discard the log on close.';
     root.insertBefore(notice, area);
   }
 
   document.body.appendChild(root);
   // The launcher button would otherwise sit invisibly beneath the viewer.
   document.body.classList.add('debug-log-open');
+
+  root.querySelector('[data-action="format"]')?.addEventListener('click', () => {
+    const button = root.querySelector<HTMLButtonElement>('[data-action="format"]')!;
+    showingJson = !showingJson;
+    area.value = showingJson ? debugLog.dumpJson() : debugLog.dump();
+    button.textContent = showingJson ? 'TEXT' : 'JSON';
+  });
+
+  root.querySelector('[data-action="save"]')?.addEventListener('click', () => {
+    const button = root.querySelector<HTMLButtonElement>('[data-action="save"]')!;
+    const blob = new Blob([debugLog.dumpJson()], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `coded-debug-${debugLog.fileStamp()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Revoking immediately can cancel the download on some mobile browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    button.textContent = 'SAVED';
+    setTimeout(() => { button.textContent = 'SAVE .JSON'; }, 2200);
+  });
 
   root.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
     const button = root.querySelector<HTMLButtonElement>('[data-action="copy"]')!;
@@ -69,7 +96,7 @@ export function showDebugLogView(): void {
 
   root.querySelector('[data-action="clear"]')?.addEventListener('click', () => {
     debugLog.clear();
-    area.value = debugLog.dump();
+    area.value = showingJson ? debugLog.dumpJson() : debugLog.dump();
   });
 
   root.querySelector('[data-action="close"]')?.addEventListener('click', () => closeView(root));
