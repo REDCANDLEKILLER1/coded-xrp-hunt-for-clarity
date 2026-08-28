@@ -28,6 +28,7 @@ type EnemyActor = Actor & {
   anchorX: number;
   phase: number;
   direction: -1 | 1;
+  fireClock: number;
   /** Combat stance. Enemies hold an arena station instead of falling through. */
   stance: EnemyStance;
   stationX: number;
@@ -78,6 +79,12 @@ const WAVE_CLEAR_BONUS = 150;        // for destroying every enemy on screen
 // with the wave to keep pressure rising without becoming unreadable on a phone.
 const ARENA_MAX_ENEMIES_BASE = 5;
 const ARENA_MAX_ENEMIES_CAP = 10;
+// Enemies were never able to shoot: EnemyDef had no firing fields and the only
+// hostile fire in the game came from bosses and ground turrets. Armed enemies
+// only fire while holding station or diving, never while entering or fleeing,
+// so a formation cannot open up before the player can see it.
+const ENEMY_FIRE_ARC = 0.62;      // how closely aimed at the player, 0..1
+const ENEMY_FIRE_JITTER = 0.6;    // seconds of spread so volleys are not synced
 
 const BURST_LIFE = 0.45;
 const BURST_MAX_RADIUS = 72;
@@ -494,6 +501,7 @@ export class Game2A {
       anchorX: x,
       phase: xRatio * Math.PI * 2,
       direction: xRatio < 0.5 ? 1 : -1,
+      fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
       stance: 'entering',
       stationX: x,
       stationY: this.pickStationY(),
@@ -587,7 +595,6 @@ export class Game2A {
     // player is not touching the screen, and by how much.
     debugLog.sample('move', 1000, 'input', 'player move', {
       source: usingPointer ? 'pointer' : 'axis',
-      tiltStatus: this.input.tiltStatus,
       ax: Math.round(axis.x * 100) / 100,
       ay: Math.round(axis.y * 100) / 100,
       x: Math.round(this.player.x),
@@ -607,7 +614,9 @@ export class Game2A {
   private playerLane(): { top: number; bottom: number } {
     const landscape = this.w > this.h;
     const top = this.h * (landscape ? 0.12 : 0.34);
-    const bottom = this.h - (landscape ? 76 : 96);
+    // The fighter must be able to sit at the very bottom edge. Reserving room
+    // for the on-canvas controls left it stranded a ship-height up.
+    const bottom = this.h - 22;
     return { top, bottom: Math.max(top + 40, bottom) };
   }
 
@@ -663,6 +672,7 @@ export class Game2A {
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: Math.random() < 0.5 ? -1 : 1,
+        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
         stance: 'entering',
         stationX: x,
         stationY: this.pickStationY(),
@@ -718,6 +728,10 @@ export class Game2A {
         drone.y -= speed * 0.65 * dt;
       }
 
+      if (drone.stance === 'holding' || drone.stance === 'diving') {
+        this.enemyFire(drone, def, dt);
+      }
+
       if (drone.stance !== 'fleeing') {
         this.dodgeIncomingFire(drone, speed, dt);
         // Patience runs down only while actually fighting.
@@ -756,6 +770,33 @@ export class Game2A {
       this.killedThisWave = 0;
       this.escapedThisWave = 0;
     }
+  }
+
+  /** An armed enemy shoots at the player while it is holding or diving. */
+  private enemyFire(drone: EnemyActor, def: EnemyDef, dt: number): void {
+    if (!def.fireRate || !def.projectileSpeed) return;
+    drone.fireClock -= dt;
+    if (drone.fireClock > 0) return;
+    drone.fireClock = def.fireRate + Math.random() * ENEMY_FIRE_JITTER;
+
+    const dx = this.player.x - drone.x;
+    const dy = this.player.y - drone.y;
+    const length = Math.max(1, Math.hypot(dx, dy));
+    // Only shoot when the player is roughly below: no blind shots upward.
+    if (dy / length < ENEMY_FIRE_ARC) return;
+
+    this.hostileShots.push({
+      x: drone.x,
+      y: drone.y + drone.h * 0.4,
+      w: 8,
+      h: 8,
+      vx: (dx / length) * def.projectileSpeed,
+      vy: (dy / length) * def.projectileSpeed,
+      damage: 1,
+      color: def.accent,
+      projectileKey: 'enemy_missile',
+    });
+    debugLog.sample('efire', 3000, 'combat', 'enemy fired', { enemy: drone.enemyKey });
   }
 
   /** How many enemies may share the arena at once, by wave. */
@@ -828,7 +869,9 @@ export class Game2A {
       hazard.y += hazard.vy * dt;
       if (!hazardDef.fires) continue;
       hazard.fireClock -= dt;
-      if (hazard.y < 24 || hazard.y > this.h - 96 || hazard.fireClock > 0) continue;
+      // The firing window used a fixed 96px bottom margin, which on a short
+      // landscape screen left almost no band in which a turret could shoot.
+      if (hazard.y < 20 || hazard.y > this.h - 28 || hazard.fireClock > 0) continue;
 
       const dx = this.player.x - hazard.x;
       const dy = this.player.y - hazard.y;

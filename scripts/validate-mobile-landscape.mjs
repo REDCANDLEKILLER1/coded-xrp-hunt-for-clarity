@@ -7,31 +7,15 @@ const main = fs.readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
 const game2a = fs.readFileSync(new URL('../src/game/core/Game2A.ts', import.meta.url), 'utf8');
 const styles = fs.readFileSync(new URL('../src/landscape.css', import.meta.url), 'utf8');
 
-for (const token of [
-  "window.addEventListener('deviceorientation'",
-  'TILT_DEADZONE',
-  'TILT_FULL_SCALE',
-  "innerWidth > innerHeight",
-  'calibrateTilt(',
-  // Neutral must never be latched from a single reading taken mid-rotation.
-  'SETTLE_MS',
-  'STABLE_SPREAD_DEG',
-  'collectCalibrationSample',
-  // Steering must come from the gravity vector: Euler beta/gamma are
-  // degenerate at the very attitude a phone is held at in landscape.
-  'gravityFromOrientation',
-  'projectToScreen',
-  'TILT_FULL_SCALE_X',
-  'neutralGravity',
-]) {
-  if (!input.includes(token)) throw new Error(`mobile-landscape: missing tilt input token ${token}`);
+// Tilt steering was removed: it was harder to aim than a finger and competed
+// with touch for control. Steering is pointer/keyboard only now.
+for (const banned of ['deviceorientation', 'TILT_FULL_SCALE', 'calibrateTilt', 'gravityFromOrientation']) {
+  if (input.includes(banned)) {
+    throw new Error(`mobile-landscape: tilt steering is back (${banned}); controls are pointer + keyboard only`);
+  }
 }
-
-if (/this\.neutralBeta|this\.neutralGamma/.test(input)) {
-  throw new Error('mobile-landscape: tilt is back on raw Euler neutrals — these flip ~180deg near landscape attitude');
-}
-if (!/const landscape = this\.w > this\.h/.test(game2a)) {
-  throw new Error('mobile-landscape: player lane is not landscape-aware — the fighter gets pinned to the bottom clamp');
+if (!/onPointerMove|onPointerDown/.test(input)) {
+  throw new Error('mobile-landscape: pointer steering is missing');
 }
 
 for (const token of [
@@ -87,4 +71,4 @@ if (!main.includes("import './landscape.css'")) throw new Error('mobile-landscap
 if (!main.includes('new LandscapeMode()')) throw new Error('mobile-landscape: landscape gate is not initialized');
 if (!styles.includes('.landscape-gate.is-visible')) throw new Error('mobile-landscape: portrait rotate gate styles missing');
 
-console.log('Mobile landscape validation passed: portrait gate with escape path, fullscreen/orientation attempt, calibrated four-axis tilt, and zoomed-out on-foot camera are wired.');
+console.log('Mobile landscape validation passed: portrait gate with escape path, fullscreen/orientation attempt, pointer-only steering, and zoomed-out on-foot camera are wired.');
