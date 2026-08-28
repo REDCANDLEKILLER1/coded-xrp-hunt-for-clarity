@@ -13,6 +13,14 @@ export interface MissionCheckpointSnapshot {
   bombs: number;
   score: number;
   savedAt: number;
+  /**
+   * Upgrade state. All optional: saves written before the XP system existed
+   * still parse, and a run resumed from one simply starts at level 1.
+   */
+  xpLevel?: number;
+  shieldMax?: number;
+  bombPower?: number;
+  pulsePower?: number;
 }
 
 export interface CampaignProgress {
@@ -236,6 +244,13 @@ function sanitizeMissionCheckpoint(value: unknown): MissionCheckpointSnapshot | 
     bombs: clamp(safeCount(snapshot.bombs, 0), 0, 9),
     score: safeCount(snapshot.score, 0),
     savedAt: safeCount(snapshot.savedAt, 0),
+    // Upgrade state. Bounded like everything else here: this is untrusted
+    // local storage, and a hand-edited save must not hand out a 900-segment
+    // shield or a pulse that covers the screen.
+    xpLevel: clamp(safeCount(snapshot.xpLevel, 1), 1, 99),
+    shieldMax: clamp(safeCount(snapshot.shieldMax, 0), 0, 6),
+    bombPower: clamp(safeNumber(snapshot.bombPower, 1), 1, 4),
+    pulsePower: clamp(safeNumber(snapshot.pulsePower, 1), 1, 4),
   };
 }
 
@@ -251,6 +266,11 @@ function safeMissionCheckpoints(value: unknown): Record<string, MissionCheckpoin
 
 function safeCount(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
+}
+
+/** Like safeCount, but keeps the fraction — upgrade multipliers are not integers. */
+function safeNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function safeKey(value: unknown, fallback: string): string {

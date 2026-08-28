@@ -22,6 +22,8 @@ export const SHIPS: Record<string, ShipDef> = {
     hp: 3,
     fireRate: 0.14,
     weaponKey: 'tier_1_bb',
+    // Ordnance hull: launches with a full bomb rack and a wider, faster-charging pulse.
+    loadout: { shield: 1, weaponTier: 1, bombs: 2, pulse: 1.4 },
   },
   xrpl_striker: {
     key: 'xrpl_striker',
@@ -34,6 +36,8 @@ export const SHIPS: Record<string, ShipDef> = {
     hp: 2,
     fireRate: 0.11,
     weaponKey: 'tier_1_bb',
+    // Gunship: skips the first rung of the weapon ladder entirely.
+    loadout: { shield: 0, weaponTier: 2, bombs: 0, pulse: 1 },
   },
   ledger_warden: {
     key: 'ledger_warden',
@@ -46,6 +50,8 @@ export const SHIPS: Record<string, ShipDef> = {
     hp: 5,
     fireRate: 0.17,
     weaponKey: 'tier_1_bb',
+    // Bulwark: the only hull that launches with a shield to lose.
+    loadout: { shield: 3, weaponTier: 1, bombs: 0, pulse: 1 },
   },
 };
 
@@ -179,9 +185,51 @@ export const WEAPONS: Record<string, WeaponDef> = {
       { offsetX: 7, angle: 0.18 },
     ],
   },
+  // The ladder is meant to hand out different guns, not the same gun with a
+  // bigger number, so the top two rungs change how you have to aim.
+  tier_4_quad: {
+    key: 'tier_4_quad',
+    label: 'QUAD BEAM',
+    tier: 4,
+    projectileKey: 'bb_shot',
+    fireRate: 0.12,
+    damage: 1,
+    shots: [
+      { offsetX: -13, angle: -0.06 },
+      { offsetX: -5, angle: 0 },
+      { offsetX: 5, angle: 0 },
+      { offsetX: 13, angle: 0.06 },
+    ],
+  },
+  // One heavy bolt that punches through a whole column. Slow enough that
+  // missing hurts, which keeps it a trade rather than a straight upgrade.
+  tier_5_lance: {
+    key: 'tier_5_lance',
+    label: 'CLARITY LANCE',
+    tier: 5,
+    projectileKey: 'bb_shot',
+    fireRate: 0.26,
+    damage: 3,
+    pierce: 3,
+    shots: [{ offsetX: 0, angle: 0 }],
+  },
 };
 
 export const PICKUPS: Record<string, PickupDef> = {
+  // No shield artwork exists yet -- pickups/ holds only weapon_upgrade, bomb
+  // and repair -- so this one draws through drawPickup's procedural fallback
+  // (a hexagon, distinct from the diamond and the discs). Drop a
+  // pickups/shield_cell image into the manifest and it takes over with no
+  // code change.
+  shield_cell: {
+    key: 'shield_cell',
+    label: 'SHIELD CELL',
+    sprite: { category: 'pickups', id: 'shield_cell' },
+    draw: { w: 22, h: 22 },
+    hitbox: { w: 17, h: 17 },
+    driftSpeed: 88,
+    effect: 'shield',
+  },
   weapon_upgrade: {
     key: 'weapon_upgrade',
     label: 'WEAPON UP',
@@ -263,8 +311,8 @@ export const HAZARDS: Record<string, HazardDef> = {
     hitbox: { w: 26, h: 26 },
     hp: 3,
     minWave: 1,
-    spawnRate: 7.5,
-    fireRate: 1.65,
+    spawnRate: 4.6,
+    fireRate: 1.05,
     projectileSpeed: 235,
     score: 350,
     accent: '#ff8a3d',
@@ -275,7 +323,7 @@ export const HAZARDS: Record<string, HazardDef> = {
   cannon_turret: {
     key: 'cannon_turret', label: 'CANNON TURRET', sprite: { category: 'hazards', id: 'cannon_turret' },
     draw: { w: 36, h: 36 }, hitbox: { w: 29, h: 29 }, hp: 4, minWave: 4,
-    spawnRate: 7.2, fireRate: 2.1, projectileSpeed: 220, score: 425, accent: '#ff6b3d',
+    spawnRate: 4.4, fireRate: 1.35, projectileSpeed: 220, score: 425, accent: '#ff6b3d',
     spawnWeight: 6, placement: 'edge', fires: true,
   },
   asteroid: {
@@ -287,25 +335,25 @@ export const HAZARDS: Record<string, HazardDef> = {
   cannon_tower: {
     key: 'cannon_tower', label: 'CANNON TOWER', sprite: { category: 'hazards', id: 'cannon_tower' },
     draw: { w: 36, h: 45 }, hitbox: { w: 27, h: 36 }, hp: 5, minWave: 6,
-    spawnRate: 7, fireRate: 1.45, projectileSpeed: 245, score: 500, accent: '#ff3d3d',
+    spawnRate: 4.3, fireRate: 0.95, projectileSpeed: 245, score: 500, accent: '#ff3d3d',
     spawnWeight: 5, placement: 'edge', fires: true,
   },
   laser_tower: {
     key: 'laser_tower', label: 'LASER TOWER', sprite: { category: 'hazards', id: 'laser_tower' },
     draw: { w: 32, h: 46 }, hitbox: { w: 24, h: 36 }, hp: 4, minWave: 7,
-    spawnRate: 6.8, fireRate: 0.9, projectileSpeed: 310, score: 550, accent: '#ff3355',
+    spawnRate: 4.2, fireRate: 0.62, projectileSpeed: 310, score: 550, accent: '#ff3355',
     spawnWeight: 4, placement: 'edge', fires: true,
   },
   missile_silo: {
     key: 'missile_silo', label: 'MISSILE SILO', sprite: { category: 'hazards', id: 'missile_silo' },
     draw: { w: 42, h: 46 }, hitbox: { w: 33, h: 36 }, hp: 7, minWave: 9,
-    spawnRate: 7.8, fireRate: 2.75, projectileSpeed: 190, score: 700, accent: '#ffd24a',
+    spawnRate: 4.8, fireRate: 1.8, projectileSpeed: 190, score: 700, accent: '#ffd24a',
     spawnWeight: 3, placement: 'edge', fires: true,
   },
   plasma_turret: {
     key: 'plasma_turret', label: 'PLASMA TURRET', sprite: { category: 'hazards', id: 'plasma_turret' },
     draw: { w: 40, h: 40 }, hitbox: { w: 32, h: 32 }, hp: 6, minWave: 11,
-    spawnRate: 6.4, fireRate: 1.1, projectileSpeed: 270, score: 800, accent: '#b56cff',
+    spawnRate: 4.0, fireRate: 0.78, projectileSpeed: 270, score: 800, accent: '#b56cff',
     spawnWeight: 3, placement: 'edge', fires: true,
   },
 };
@@ -490,7 +538,7 @@ export function validateContent(): string[] {
     checkSize(`pickups.${key}.draw`, def.draw);
     checkSize(`pickups.${key}.hitbox`, def.hitbox);
     if (!(def.driftSpeed > 0)) errors.push(`pickups.${key}: driftSpeed must be > 0`);
-    if (!['weapon_upgrade', 'bomb', 'repair'].includes(def.effect)) errors.push(`pickups.${key}: unknown effect "${def.effect}"`);
+    if (!['weapon_upgrade', 'bomb', 'repair', 'shield'].includes(def.effect)) errors.push(`pickups.${key}: unknown effect "${def.effect}"`);
   }
 
   const stageWaves = Object.values(STAGES).map((stage) => stage.minWave).sort((a, b) => a - b);
