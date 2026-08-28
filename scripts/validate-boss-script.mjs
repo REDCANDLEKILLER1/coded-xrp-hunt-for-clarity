@@ -117,6 +117,77 @@ check(/boss\.attackIndex \+= 1/.test(runner), 'the script must advance one move 
 const aim = game.split('private aimBossAttack(')[1]?.split('\n  }\n')[0] ?? '';
 check(/this\.player\.x/.test(aim), 'the fog wall gap must be placed relative to the player');
 
+// ---- the escort screen ---------------------------------------------------
+//
+// Auto-aim means the player is always on target, so a boss that only shoots
+// back is beaten by holding position. The screen makes the answer "clear the
+// escorts", which is a different job from reading a telegraph.
+const launch = game.split('private launchEscorts(')[1]?.split('\n  }\n')[0] ?? '';
+check(launch.length > 0, 'launchEscorts is missing');
+check(/escort: true/.test(launch), 'escorts must be tagged, or the shield cannot know they exist');
+check(
+  /patience: ESCORT_PATIENCE/.test(launch),
+  'escorts need a capped patience -- a shield with no timeout can deadlock the fight behind a stray escort',
+);
+check(/boss\.y/.test(launch), 'escorts should come out of the boss, not drop in from off-screen');
+
+const shielded = game.split('private bossShielded(')[1]?.split('\n  }\n')[0] ?? '';
+check(/drone\.escort/.test(shielded), 'the shield must key off live escorts');
+check(/!== .fleeing./.test(shielded), 'an escort that has broken off should not keep the shield up');
+
+const scale = game.split('private bossDamageScale(')[1]?.split('\n  }\n')[0] ?? '';
+check(/this\.bossShielded\(\)/.test(scale), 'the shield must gate boss damage');
+check(/return 0;/.test(scale), 'the shield should block outright -- a percentage is just a slower same fight');
+
+// A blocked hit has to look blocked, or it reads as the game dropping shots.
+const damage = game.split('private damageBoss(')[1]?.split('\n  }\n')[0] ?? '';
+check(/sfx\.play\(.deny.\)/.test(damage), 'a blocked hit needs a sound');
+check(/private drawBossShield\(/.test(game), 'the shield needs to be drawn');
+check(/SHIELDED/.test(game), 'the shield should say what to shoot instead');
+// It was defined but never called once already -- an aborted edit left the
+// renderer orphaned and the bubble simply did not appear.
+check(
+  /this\.drawBossShield\(this\.boss\)/.test(game),
+  'drawBossShield is defined but never called',
+);
+
+// Both authored bosses put a screen up, and never as the only move in a phase.
+for (const key of ['gary_fog', 'regulatory_behemoth']) {
+  const boss = BOSSES[key];
+  check(!!boss, `${key} is missing`);
+  if (!boss) continue;
+  const screens = boss.phases.filter((phase) => phase.attacks?.includes('escort_screen'));
+  check(screens.length > 0, `${key} never launches escorts`);
+  for (const [index, phase] of boss.phases.entries()) {
+    if (!phase.attacks?.includes('escort_screen')) continue;
+    check(phase.attacks.length > 1, `${key}.phases.${index}: a phase of nothing but escort screens loops forever`);
+  }
+  // Not in the opening phase: the player should meet the boss before the
+  // boss starts hiding behind other ships.
+  check(
+    !boss.phases[0].attacks?.includes('escort_screen'),
+    `${key}: the first phase should teach the boss, not screen it`,
+  );
+}
+
+// ---- the arena keeps some pressure on during a boss ---------------------
+const pressure = game.split('private bossPressure(')[1]?.split('\n  }\n')[0] ?? '';
+check(pressure.length > 0, 'bossPressure is missing -- the arena empties for every boss fight');
+check(/BOSS_PRESSURE_CAP/.test(pressure), 'boss-fight spawns need a cap, or the screen becomes a wall');
+const cap = Number(/const BOSS_PRESSURE_CAP = (\d+);/.exec(game)?.[1]);
+check(cap >= 3 && cap <= 8, `BOSS_PRESSURE_CAP of ${cap} is not a trickle`);
+check(/this\.bossPressure\(dt\)/.test(game), 'bossPressure is never called');
+
+// The capital ship scrambles fighters in its back half.
+const defenders = game.split('private warshipDefenders(')[1]?.split('\n  }\n')[0] ?? '';
+check(defenders.length > 0, 'warshipDefenders is missing');
+check(
+  /'engines'/.test(defenders) && /'hangar'/.test(defenders),
+  'the warship should launch fighters in its late phases',
+);
+check(/'batteries'/.test(defenders) === false, 'the warship should not scramble fighters from the opening phase');
+check(/this\.warshipDefenders\(dt\)/.test(game), 'warshipDefenders is never called');
+
 // ---- enemy ships need their own tactics ---------------------------------
 const tactics = game.split('const ENEMY_TACTICS:')[1]?.split('};')[0] ?? '';
 check(tactics.length > 0, 'ENEMY_TACTICS is missing');

@@ -170,7 +170,13 @@ export type BossAttackKey =
   | 'fog_wall'
   | 'radial'
   | 'charge'
-  | 'sweep_beam';
+  | 'sweep_beam'
+  /**
+   * Launches escorts and raises a shield behind them. The boss cannot be hurt
+   * while any escort is alive, so the answer is to clear the screen rather
+   * than to keep holding fire on a target that auto-aim was hitting anyway.
+   */
+  | 'escort_screen';
 
 export interface BossPhaseDef {
   /** Remaining-health ratio at or below which this phase becomes active. */

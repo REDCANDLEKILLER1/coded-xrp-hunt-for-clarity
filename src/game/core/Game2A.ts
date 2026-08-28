@@ -40,6 +40,8 @@ type EnemyActor = Actor & {
   dodgeCooldown: number;
   /** True at the ends of a hold pattern -- when rhythm shooters fire. */
   atRest: boolean;
+  /** Launched by a boss to screen it. The boss is immune while any survive. */
+  escort: boolean;
 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
 type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
@@ -233,6 +235,7 @@ const BOSS_RESUPPLY_DRIFT = 0.5;
  */
 const BOSS_ATTACKS: Record<BossAttackKey, { telegraph: number; active: number; recover: number; label: string }> = {
   aimed_volley: { telegraph: 0.55, active: 0, recover: 0.32, label: 'AIMED' },
+  escort_screen: { telegraph: 1.1, active: 0, recover: 0.5, label: 'LAUNCH' },
   fog_wall: { telegraph: 1.0, active: 0, recover: 0.45, label: 'FOG WALL' },
   radial: { telegraph: 0.8, active: 0, recover: 0.4, label: 'BURST' },
   charge: { telegraph: 0.9, active: 0.75, recover: 0.5, label: 'CHARGE' },
@@ -258,6 +261,23 @@ const FOG_WALL_GAP = 3;
 const RADIAL_SHOTS = 14;
 const RADIAL_GAP = 3;
 const BOSS_CHARGE_SPEED = 430;
+/** Escorts launched by a screen attack, and how long before they break off. */
+const ESCORT_COUNT = 4;
+const ESCORT_PATIENCE = 16;
+/**
+ * Pressure kept on during a boss fight.
+ *
+ * The arena used to empty completely the moment a boss spawned, which left a
+ * one-on-one duel where the only thing to do was hold position and fire. A
+ * steady trickle of drones means the screen has to be managed as well as the
+ * boss read.
+ */
+const BOSS_PRESSURE_INTERVAL = 3.4;
+const BOSS_PRESSURE_CAP = 5;
+/** Warship hangar launches: engine phase, then faster once the hangar is up. */
+const WARSHIP_LAUNCH_INTERVAL = 4.2;
+const WARSHIP_LAUNCH_FAST = 2.6;
+const WARSHIP_DEFENDER_CAP = 4;
 
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
@@ -312,6 +332,8 @@ export class Game2A {
   private bossFacing = Math.PI / 2;
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
+  private bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+  private warshipLaunchClock = WARSHIP_LAUNCH_INTERVAL;
   /** Cleared once the player has actually double-tapped, so the nudge stops. */
   private bombHintShown = false;
   private bombHintClock = 0;
@@ -680,11 +702,70 @@ export class Game2A {
     }
 
     warship.x = this.w / 2 + Math.sin(warship.age * 0.45) * Math.min(42, this.w * 0.08);
+    this.warshipDefenders(dt);
     warship.fireClock -= dt;
     if (warship.fireClock <= 0) {
       this.fireWarshipVolley();
       const phase = this.warshipDirector.phase;
       warship.fireClock = phase === 'batteries' ? 0.95 : phase === 'shield' ? 0.78 : phase === 'engines' ? 0.62 : 0.48;
+    }
+  }
+
+  /**
+   * Fighters scrambled off the capital ship in the back half of the fight.
+   *
+   * It is a warship with a hangar on it, and it used to sit there alone while
+   * its own systems were dismantled one at a time. Once the batteries and the
+   * shield relay are gone it starts putting fighters up -- more of them, and
+   * faster, once the engines go and the hangar itself is the target.
+   */
+  private warshipDefenders(dt: number): void {
+    const phase = this.warshipDirector.phase;
+    if (phase !== 'engines' && phase !== 'hangar') return;
+
+    this.warshipLaunchClock -= dt;
+    if (this.warshipLaunchClock > 0) return;
+    this.warshipLaunchClock = phase === 'hangar' ? WARSHIP_LAUNCH_FAST : WARSHIP_LAUNCH_INTERVAL;
+
+    const cap = phase === 'hangar' ? WARSHIP_DEFENDER_CAP + 2 : WARSHIP_DEFENDER_CAP;
+    if (this.drones.length >= cap) return;
+
+    const warship = this.warship;
+    if (!warship) return;
+    const count = phase === 'hangar' ? 2 : 1;
+    const key = availableEnemyKeys(ENEMIES, Math.max(4, this.wave)).slice(-1)[0] ?? 'regulator_drone';
+    const def = this.enemyDef(key);
+    for (let i = 0; i < count; i += 1) {
+      const x = clamp(warship.x + (i === 0 ? -1 : 1) * (26 + Math.random() * 40), 26, this.w - 26);
+      this.drones.push({
+        x,
+        y: warship.y + warship.h * 0.3,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.baseSpeed,
+        hp: def.hp,
+        enemyKey: key,
+        age: 0,
+        anchorX: x,
+        phase: Math.random() * Math.PI * 2,
+        direction: i === 0 ? -1 : 1,
+        fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
+        stance: 'entering',
+        stationX: x,
+        stationY: this.pickStationY(),
+        stanceClock: 0,
+        patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+        dodgeCooldown: 0,
+        atRest: false,
+        // Not escorts: the warship has no shield to hang on them, and the
+        // fight already has its own gate in the Fog Breaker relay.
+        escort: false,
+      });
+    }
+    if (this.missionBannerClock <= 0) {
+      this.missionBannerText = 'HANGAR LAUNCH // FIGHTERS INBOUND';
+      this.missionBannerClock = 1.8;
     }
   }
 
@@ -751,6 +832,7 @@ export class Game2A {
       patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
       dodgeCooldown: 0,
       atRest: false,
+      escort: false,
     });
   }
 
@@ -1039,6 +1121,7 @@ export class Game2A {
         patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
         dodgeCooldown: 0,
         atRest: false,
+        escort: false,
       });
     }
     this.moveDrones(dt);
@@ -1417,6 +1500,8 @@ export class Game2A {
       boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
     }
 
+    this.bossPressure(dt);
+
     if (script.length > 0) {
       this.runBossScript(boss, phase, script, dt);
       return;
@@ -1427,6 +1512,49 @@ export class Game2A {
       this.fireBossVolley(boss, phase);
       boss.fireClock = phase.fireRate;
     }
+  }
+
+  /**
+   * Keeps drones arriving while a boss is up.
+   *
+   * The arena emptied completely the moment a boss spawned, which turned every
+   * boss into a one-on-one where holding position and firing was the whole
+   * plan. A trickle -- capped, so it stays a fight and not a wall -- means the
+   * screen has to be managed while the boss is read. Escorts count toward the
+   * cap, so a screened boss does not also bury the player.
+   */
+  private bossPressure(dt: number): void {
+    this.bossSpawnClock -= dt;
+    if (this.bossSpawnClock > 0) return;
+    this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+    if (this.drones.length >= BOSS_PRESSURE_CAP) return;
+
+    const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
+    const def = this.enemyDef(enemyKey);
+    const x = 30 + Math.random() * Math.max(1, this.w - 60);
+    this.drones.push({
+      x,
+      y: -35,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: def.baseSpeed + this.wave * 7,
+      hp: def.hp,
+      enemyKey,
+      age: 0,
+      anchorX: x,
+      phase: Math.random() * Math.PI * 2,
+      direction: Math.random() < 0.5 ? -1 : 1,
+      fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+      stance: 'entering',
+      stationX: x,
+      stationY: this.pickStationY(),
+      stanceClock: 0,
+      patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+      dodgeCooldown: 0,
+      atRest: false,
+      escort: false,
+    });
   }
 
   /** The attack this boss is winding up, running, or recovering from. */
@@ -1517,6 +1645,11 @@ export class Game2A {
       return;
     }
 
+    if (key === 'escort_screen') {
+      this.launchEscorts(boss);
+      return;
+    }
+
     if (key === 'charge') {
       sfx.play('enemyShoot');
       return;
@@ -1541,6 +1674,55 @@ export class Game2A {
       const swing = Math.sin(boss.age * 3.1) * 0.7;
       this.pushBossShot(boss.x, boss.y + boss.h * 0.35, Math.PI / 2 + swing, phase.projectileSpeed, phase.accent);
     }
+  }
+
+  /**
+   * Launches the escort screen.
+   *
+   * They come out of the boss and fan down, so they are on screen and
+   * shootable rather than dropping in from off the top. Their patience is
+   * capped: if the player cannot clear them the escorts break off on their own
+   * and the shield falls, so the fight can never deadlock behind an escort
+   * that drifted somewhere awkward.
+   */
+  private launchEscorts(boss: BossActor): void {
+    const key = availableEnemyKeys(ENEMIES, this.wave)[0] ?? 'regulator_drone';
+    const def = this.enemyDef(key);
+    for (let i = 0; i < ESCORT_COUNT; i += 1) {
+      const spread = (i - (ESCORT_COUNT - 1) / 2) * 46;
+      const x = clamp(boss.x + spread, 26, this.w - 26);
+      this.drones.push({
+        x,
+        y: boss.y + boss.h * 0.3,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: def.baseSpeed,
+        hp: def.hp,
+        enemyKey: key,
+        age: 0,
+        anchorX: x,
+        phase: Math.random() * Math.PI * 2,
+        direction: i < ESCORT_COUNT / 2 ? -1 : 1,
+        fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
+        stance: 'entering',
+        stationX: x,
+        stationY: this.pickStationY(),
+        stanceClock: 0,
+        patience: ESCORT_PATIENCE,
+        dodgeCooldown: 0,
+        atRest: false,
+        escort: true,
+      });
+    }
+    this.missionBannerText = 'ESCORTS LAUNCHED // SHIELD UP';
+    this.missionBannerClock = 2.2;
+    sfx.play('enemyShoot');
+  }
+
+  /** True while any launched escort is still fighting. */
+  private bossShielded(): boolean {
+    return this.drones.some((drone) => drone.escort && drone.stance !== 'fleeing');
   }
 
   private pushBossShot(x: number, y: number, angle: number, speed: number, color: string): void {
@@ -2037,6 +2219,9 @@ export class Game2A {
     for (const drone of this.drones) this.drawDrone(drone);
     for (const hazard of this.hazards) this.drawHazard(hazard);
     if (this.boss) this.drawBoss(this.boss);
+    // Over the boss, not under it: the bubble is the explanation for why shots
+    // are bouncing, so it has to be the thing you see.
+    if (this.boss?.state === 'fight' && this.bossShielded()) this.drawBossShield(this.boss);
     if (this.warship) this.drawRegulatoryWarship();
     for (const bolt of this.bolts) this.drawBolt(bolt);
     for (const seeker of this.seekers) this.drawSeeker(seeker);
@@ -2306,11 +2491,47 @@ export class Game2A {
     c.restore();
   }
 
+  /**
+   * The escort shield.
+   *
+   * Drawn as a bubble with a live count, because a boss that simply stops
+   * taking damage looks broken. The count is the instruction: it says what to
+   * shoot instead.
+   */
+  private drawBossShield(boss: BossActor): void {
+    const remaining = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
+    const radius = Math.max(boss.w, boss.h) * 0.86;
+    const c = this.ctx;
+    c.save();
+    c.globalAlpha = 0.34 + 0.16 * Math.sin(this.clock * 6);
+    c.fillStyle = '#36a3ff';
+    c.beginPath();
+    c.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 0.95;
+    c.lineWidth = 3;
+    c.strokeStyle = '#8dcfff';
+    c.stroke();
+    c.fillStyle = '#d8ffe8';
+    c.textAlign = 'center';
+    c.font = '900 10px ui-sans-serif, system-ui';
+    // Above the bubble, but never up in the HUD strip and never down in the
+    // bottom row of buttons -- both of which it landed in on the first try.
+    c.fillText(
+      `SHIELDED • CLEAR ${remaining} ESCORT${remaining === 1 ? '' : 'S'}`,
+      clamp(boss.x, 74, this.w - 74),
+      clamp(boss.y - radius - 8, 52, this.h - 58),
+    );
+    c.restore();
+  }
+
   private drawBoss(boss: BossActor): void {
     const def = this.bossDef(boss.bossKey);
     const phase = def.phases[boss.phaseIndex];
     const script = phase.attacks ?? [];
-    if (boss.state === 'fight' && script.length > 0) this.drawBossTell(boss, phase, script);
+    if (boss.state === 'fight' && script.length > 0 && !this.bossShielded()) {
+      this.drawBossTell(boss, phase, script);
+    }
     // The boss keeps its nose on the player too, so the duel reads as two
     // fighters circling rather than one thing shooting downwards.
     const facing = boss.state === 'fight' ? this.bossFacing : Math.PI / 2;
@@ -3021,6 +3242,10 @@ export class Game2A {
    * window. Bosses with no script take full damage as before.
    */
   private bossDamageScale(boss: BossActor): number {
+    // The escort screen blocks outright rather than reducing. Auto-aim means
+    // the player is always on target, so a percentage would just be a slower
+    // version of the same fight; zero forces the screen to be cleared first.
+    if (this.bossShielded()) return 0;
     const script = this.bossDef(boss.bossKey).phases[boss.phaseIndex]?.attacks ?? [];
     if (script.length === 0) return 1;
     return boss.attackState === 'recover' ? BOSS_EXPOSED : BOSS_ARMOURED;
@@ -3029,7 +3254,13 @@ export class Game2A {
   private damageBoss(damage: number): void {
     const boss = this.boss;
     if (!boss || boss.state !== 'fight') return;
-    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage * this.bossDamageScale(boss));
+    const scale = this.bossDamageScale(boss);
+    if (scale === 0) {
+      // Say so, or a blocked hit reads as the game dropping shots.
+      this.ring(boss.x, boss.y + boss.h * 0.2);
+      return void sfx.play('deny');
+    }
+    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage * scale);
     if ((boss.hp ?? 0) > 0) return void sfx.play('hit');
     sfx.play('bigExplode');
 
@@ -3379,6 +3610,8 @@ export class Game2A {
     this.bolts = [];
     this.seekers = [];
     this.seekerClock = SEEKER_INTERVAL;
+    this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+    this.warshipLaunchClock = WARSHIP_LAUNCH_INTERVAL;
     // Restart the nudge each run: a player who has never dropped a bomb still
     // has not been taught, and the timer would otherwise be spent already.
     this.bombHintClock = 0;
