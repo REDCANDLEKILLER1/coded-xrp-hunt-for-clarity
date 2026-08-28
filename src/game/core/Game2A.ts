@@ -21,7 +21,22 @@ import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileD
 
 type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
-type EnemyActor = Actor & { enemyKey: string; age: number; anchorX: number; phase: number; direction: -1 | 1 };
+type EnemyStance = 'entering' | 'holding' | 'diving' | 'fleeing';
+type EnemyActor = Actor & {
+  enemyKey: string;
+  age: number;
+  anchorX: number;
+  phase: number;
+  direction: -1 | 1;
+  /** Combat stance. Enemies hold an arena station instead of falling through. */
+  stance: EnemyStance;
+  stationX: number;
+  stationY: number;
+  stanceClock: number;
+  /** Seconds of combat left before this enemy breaks off and runs. */
+  patience: number;
+  dodgeCooldown: number;
+};
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
 type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
 type BossActor = Actor & {
@@ -41,6 +56,28 @@ type WarshipActor = Actor & {
 type ProjectileActor = Actor & { damage: number; projectileKey: string };
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
+
+// Arena combat tuning.
+//
+// Enemies used to fall straight through the play area, and anything that
+// reached the bottom cost a life. On a short landscape screen a run was over in
+// about twenty-five seconds without the player ever losing a fight. They now
+// fly in, hold a station, manoeuvre, dodge, and eventually break off and run —
+// escaping costs score, never health.
+const ENEMY_STATION_TOP = 0.14;      // fraction of screen height
+const ENEMY_STATION_BOTTOM = 0.52;
+const ENEMY_PATIENCE_MIN = 9;        // seconds of combat before breaking off
+const ENEMY_PATIENCE_VARY = 7;
+const ENEMY_DIVE_CHANCE = 0.32;      // per opportunity, once settled
+const ENEMY_DODGE_RANGE = 92;        // px ahead of a bolt an enemy reacts to
+const ENEMY_DODGE_COOLDOWN = 0.55;
+const ENEMY_ESCAPE_PENALTY = 40;     // score lost when one gets away
+const WAVE_CLEAR_BONUS = 150;        // for destroying every enemy on screen
+// Enemies now linger for 9-16s instead of crossing in about one second, so the
+// arcade spawner has to be capped or the screen fills. The cap grows slowly
+// with the wave to keep pressure rising without becoming unreadable on a phone.
+const ARENA_MAX_ENEMIES_BASE = 5;
+const ARENA_MAX_ENEMIES_CAP = 10;
 
 const BURST_LIFE = 0.45;
 const BURST_MAX_RADIUS = 72;
@@ -74,6 +111,8 @@ export class Game2A {
   private clock = 0;
   private mode: Mode = 'title';
   private loggedMode: Mode | null = null;
+  private escapedThisWave = 0;
+  private killedThisWave = 0;
   private paused = false;
   private selectedShipKey = DEFAULT_SHIP.key;
   private player: Actor = this.newPlayer();
@@ -455,6 +494,12 @@ export class Game2A {
       anchorX: x,
       phase: xRatio * Math.PI * 2,
       direction: xRatio < 0.5 ? 1 : -1,
+      stance: 'entering',
+      stationX: x,
+      stationY: this.pickStationY(),
+      stanceClock: 0,
+      patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+      dodgeCooldown: 0,
     });
   }
 
@@ -600,7 +645,7 @@ export class Game2A {
 
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
-    if (this.droneClock <= 0) {
+    if (this.droneClock <= 0 && this.drones.length < this.arenaEnemyCap()) {
       const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
       const def = this.enemyDef(enemyKey);
       const x = 30 + Math.random() * Math.max(1, this.w - 60);
@@ -618,6 +663,12 @@ export class Game2A {
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: Math.random() < 0.5 ? -1 : 1,
+        stance: 'entering',
+        stationX: x,
+        stationY: this.pickStationY(),
+        stanceClock: 0,
+        patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+        dodgeCooldown: 0,
       });
     }
     this.moveDrones(dt);
@@ -628,29 +679,122 @@ export class Game2A {
     for (const drone of this.drones) {
       const def = this.enemyDef(drone.enemyKey);
       drone.age += dt;
-      drone.y += drone.vy * dt;
+      drone.stanceClock -= dt;
+      drone.dodgeCooldown = Math.max(0, drone.dodgeCooldown - dt);
+      const speed = def.baseSpeed + this.wave * 7;
 
-      if (def.behavior === 'straight') {
-        drone.x += Math.sin(drone.age * 1.8 + drone.phase) * 12 * dt;
-      } else if (def.behavior === 'sine') {
-        drone.x = drone.anchorX + Math.sin(drone.age * 3.2 + drone.phase) * 46;
-      } else if (def.behavior === 'zigzag') {
-        drone.x += drone.direction * (110 + this.wave * 4) * dt;
-        if (drone.x < 26 || drone.x > this.w - 26) drone.direction = drone.x < 26 ? 1 : -1;
+      if (drone.stance === 'entering') {
+        drone.y += speed * dt;
+        drone.x += (drone.stationX - drone.x) * Math.min(1, dt * 1.6);
+        if (drone.y >= drone.stationY) {
+          drone.y = drone.stationY;
+          drone.stance = 'holding';
+          drone.stanceClock = 0.8 + Math.random() * 1.6;
+        }
+      } else if (drone.stance === 'holding') {
+        this.holdStation(drone, def, speed, dt);
+        if (drone.stanceClock <= 0) {
+          drone.stanceClock = 1.2 + Math.random() * 2.2;
+          // A dive is a committed attack run that returns to station, not a
+          // one-way trip through the play area.
+          if (Math.random() < ENEMY_DIVE_CHANCE) {
+            drone.stance = 'diving';
+            drone.stanceClock = 1.5 + Math.random() * 0.9;
+          }
+        }
+      } else if (drone.stance === 'diving') {
+        const toPlayer = clamp(this.player.x - drone.x, -1, 1);
+        drone.x += toPlayer * speed * 1.15 * dt;
+        drone.y += speed * 0.95 * dt;
+        const lane = this.playerLane();
+        if (drone.stanceClock <= 0 || drone.y > lane.bottom - 12) {
+          drone.stance = 'holding';
+          drone.stanceClock = 1.4 + Math.random() * 1.8;
+          drone.stationX = this.pickStationX();
+        }
       } else {
-        const pursuit = clamp(this.player.x - drone.x, -1, 1);
-        drone.x += pursuit * Math.min(155, 58 + drone.age * 34) * dt;
+        // Fleeing: break for the nearest horizontal edge and climb out.
+        drone.x += drone.direction * speed * 1.5 * dt;
+        drone.y -= speed * 0.65 * dt;
       }
 
-      drone.x = clamp(drone.x, 24, this.w - 24);
-    }
-    this.drones = this.drones.filter((drone) => {
-      if (drone.y > this.h + 40) {
-        this.damagePlayer(1, drone.x, this.h - 18);
-        return false;
+      if (drone.stance !== 'fleeing') {
+        this.dodgeIncomingFire(drone, speed, dt);
+        // Patience runs down only while actually fighting.
+        drone.patience -= dt;
+        if (drone.patience <= 0) {
+          drone.stance = 'fleeing';
+          drone.direction = drone.x < this.w / 2 ? -1 : 1;
+        }
+        drone.x = clamp(drone.x, 24, this.w - 24);
+        drone.y = clamp(drone.y, 18, this.playerLane().bottom - 8);
       }
-      return true;
+    }
+
+    const before = this.drones.length;
+    this.drones = this.drones.filter((drone) => {
+      const gone = drone.y < -70 || drone.x < -70 || drone.x > this.w + 70;
+      if (!gone) return true;
+      // An enemy that gets away costs points, never health. Letting one slip
+      // past should sting, not end the run.
+      this.score = Math.max(0, this.score - ENEMY_ESCAPE_PENALTY);
+      this.escapedThisWave += 1;
+      debugLog.log('combat', 'enemy escaped', {
+        enemy: drone.enemyKey, penalty: ENEMY_ESCAPE_PENALTY, score: this.score,
+      });
+      return false;
     });
+
+    // Clearing a group by force is worth more than outlasting it.
+    if (before > 0 && this.drones.length === 0 && this.killedThisWave > 0 && this.escapedThisWave === 0) {
+      this.score += WAVE_CLEAR_BONUS;
+      this.missionBannerText = `FORMATION CLEARED  +${WAVE_CLEAR_BONUS}`;
+      this.missionBannerClock = 1.8;
+      debugLog.log('combat', 'formation cleared', { kills: this.killedThisWave, bonus: WAVE_CLEAR_BONUS });
+    }
+    if (this.drones.length === 0) {
+      this.killedThisWave = 0;
+      this.escapedThisWave = 0;
+    }
+  }
+
+  /** How many enemies may share the arena at once, by wave. */
+  private arenaEnemyCap(): number {
+    return Math.min(ARENA_MAX_ENEMIES_CAP, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2));
+  }
+
+  /** Station-keeping drift so a held position still reads as flying, not parking. */
+  private holdStation(drone: EnemyActor, def: EnemyDef, speed: number, dt: number): void {
+    const sway = def.behavior === 'zigzag' ? 74 : def.behavior === 'sine' ? 52 : 30;
+    const targetX = drone.stationX + Math.sin(drone.age * 1.7 + drone.phase) * sway;
+    const targetY = drone.stationY + Math.cos(drone.age * 1.1 + drone.phase) * 16;
+    drone.x += clamp(targetX - drone.x, -1, 1) * Math.min(speed, 150) * dt;
+    drone.y += clamp(targetY - drone.y, -1, 1) * 60 * dt;
+  }
+
+  /** Sidestep a bolt that is about to arrive. This is what reads as "smart". */
+  private dodgeIncomingFire(drone: EnemyActor, speed: number, dt: number): void {
+    if (drone.dodgeCooldown > 0) return;
+    for (const bolt of this.bolts) {
+      const closing = bolt.y - drone.y;
+      if (closing < 0 || closing > ENEMY_DODGE_RANGE) continue;
+      const offset = bolt.x - drone.x;
+      if (Math.abs(offset) > drone.w * 0.9) continue;
+      const away = offset >= 0 ? -1 : 1;
+      drone.x += away * speed * 1.35 * dt;
+      drone.stationX = clamp(drone.x + away * 40, 30, this.w - 30);
+      drone.dodgeCooldown = ENEMY_DODGE_COOLDOWN;
+      return;
+    }
+  }
+
+  private pickStationX(): number {
+    return 34 + Math.random() * Math.max(1, this.w - 68);
+  }
+
+  private pickStationY(): number {
+    const top = this.h * ENEMY_STATION_TOP;
+    return top + Math.random() * Math.max(1, this.h * ENEMY_STATION_BOTTOM - top);
   }
 
   private updateHazards(dt: number): void {
@@ -1154,14 +1298,16 @@ export class Game2A {
       this.ctx.lineWidth = 2;
       this.ctx.fillRect(x, y, w, h);
       this.ctx.strokeRect(x, y, w, h);
-      this.drawCentered(def.sprite, x + 42, y + h / 2, Math.min(34, def.draw.w), Math.min(42, def.draw.h));
+      const compact = h < 52;
+      const art = Math.min(h - 12, 38);
+      this.drawCentered(def.sprite, x + 36, y + h / 2, art * 0.8, art);
       this.ctx.textAlign = 'left';
       this.ctx.fillStyle = def.accent;
-      this.ctx.font = '700 13px ui-sans-serif, system-ui';
-      this.ctx.fillText(def.label, x + 76, y + 26);
+      this.ctx.font = `700 ${compact ? 11 : 13}px ui-sans-serif, system-ui`;
+      this.ctx.fillText(def.label, x + 70, y + h * 0.42);
       this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
-      this.ctx.font = '600 11px ui-sans-serif, system-ui';
-      this.ctx.fillText(`HP ${def.hp}   SPEED ${def.speed}   FIRE ${def.fireRate.toFixed(2)}`, x + 76, y + 49);
+      this.ctx.font = `600 ${compact ? 9 : 11}px ui-sans-serif, system-ui`;
+      this.ctx.fillText(`HP ${def.hp}   SPEED ${def.speed}   FIRE ${def.fireRate.toFixed(2)}`, x + 70, y + h * 0.78);
     }
 
     this.ctx.textAlign = 'center';
@@ -1777,6 +1923,7 @@ export class Game2A {
 
   private registerKill(drone: EnemyActor): void {
     this.score += this.enemyDef(drone.enemyKey).score;
+    this.killedThisWave += 1;
     this.special = Math.min(100, this.special + 8);
     this.kills += 1;
     this.ring(drone.x, drone.y);
@@ -1982,10 +2129,16 @@ export class Game2A {
   private shipCards(): Array<{ key: string; rect: Rect }> {
     const keys = Object.keys(SHIPS);
     const w = Math.min(this.w - 32, 430);
-    const h = 68;
-    const gap = 12;
+    // The card stack has to fit between the heading and the tap prompt. A fixed
+    // 68px card overflowed a short landscape screen, pushing the last ship
+    // entirely off the bottom where it could not be seen or chosen.
+    const top = 84;
+    const bottom = this.h - 52;
+    const available = Math.max(60, bottom - top);
+    const gap = available > 200 ? 12 : 7;
+    const h = clamp((available - gap * (keys.length - 1)) / keys.length, 34, 68);
     const total = keys.length * h + (keys.length - 1) * gap;
-    const startY = Math.max(76, (this.h - total) / 2);
+    const startY = Math.max(top, top + (available - total) / 2);
     return keys.map((key, index) => ({ key, rect: { x: (this.w - w) / 2, y: startY + index * (h + gap), w, h } }));
   }
 
