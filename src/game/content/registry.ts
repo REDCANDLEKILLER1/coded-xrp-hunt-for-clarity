@@ -148,6 +148,16 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
     hitbox: { w: 6, h: 6 },
     speed: 235,
   },
+  // The player's homing rocket. No art yet, so it draws through the procedural
+  // dart in drawSeeker; adding projectiles/seeker_missile to the manifest is
+  // the only change needed to swap real art in. See docs/asset-requests.md.
+  seeker_missile: {
+    key: 'seeker_missile',
+    sprite: { category: 'projectiles', id: 'seeker_missile' },
+    draw: { w: 14, h: 30 },
+    hitbox: { w: 10, h: 22 },
+    speed: 400,
+  },
 };
 
 export const WEAPONS: Record<string, WeaponDef> = {
@@ -216,11 +226,9 @@ export const WEAPONS: Record<string, WeaponDef> = {
 };
 
 export const PICKUPS: Record<string, PickupDef> = {
-  // No shield artwork exists yet -- pickups/ holds only weapon_upgrade, bomb
-  // and repair -- so this one draws through drawPickup's procedural fallback
-  // (a hexagon, distinct from the diamond and the discs). Drop a
-  // pickups/shield_cell image into the manifest and it takes over with no
-  // code change.
+  // Art from the Images_for_coded pack (pickup_shield), with its baked-in
+  // caption cropped away and the emblem boxed square. drawPickup's procedural
+  // hexagon remains the fallback if the file ever goes missing.
   shield_cell: {
     key: 'shield_cell',
     label: 'SHIELD CELL',

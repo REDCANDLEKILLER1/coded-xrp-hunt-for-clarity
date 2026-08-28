@@ -1985,8 +1985,16 @@ export class Game2A {
     }
   }
 
-  /** A stubby dart with a burning tail, drawn along its heading. */
+  /**
+   * The homing rocket. Uses projectiles/seeker_missile when that art exists and
+   * falls back to a procedural dart with a burning tail until it does -- the
+   * same pattern as every other sprite here, so dropping the image into the
+   * manifest is the whole integration.
+   */
   private drawSeeker(seeker: SeekerActor): void {
+    const def = this.projectileDef('seeker_missile');
+    if (this.drawFacing(def.sprite, seeker.x, seeker.y, def.draw.w, def.draw.h, seeker.angle)) return;
+
     this.ctx.save();
     this.ctx.translate(seeker.x, seeker.y);
     this.ctx.rotate(seeker.angle + Math.PI / 2);

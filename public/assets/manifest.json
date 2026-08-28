@@ -242,6 +242,11 @@
       "src": "/assets/pickups/repair.webp",
       "type": "image",
       "notes": "Phase O optimized v16 canon master: pickup_repair"
+    },
+    "shield_cell": {
+      "src": "/assets/pickups/shield_cell.png",
+      "type": "image",
+      "notes": "From the Images_for_coded pack: pickup_shield, caption cropped off and boxed to 44x44"
     }
   },
   "objectives": {},
