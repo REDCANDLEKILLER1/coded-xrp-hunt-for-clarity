@@ -18,6 +18,8 @@ export interface MissionCheckpointSnapshot {
    * still parse, and a run resumed from one simply starts at level 1.
    */
   xpLevel?: number;
+  /** Bolted-on barrels, which ride along whichever gun the level grants. */
+  barrels?: number;
   shieldMax?: number;
   bombPower?: number;
   pulsePower?: number;
@@ -248,6 +250,7 @@ function sanitizeMissionCheckpoint(value: unknown): MissionCheckpointSnapshot | 
     // local storage, and a hand-edited save must not hand out a 900-segment
     // shield or a pulse that covers the screen.
     xpLevel: clamp(safeCount(snapshot.xpLevel, 1), 1, 99),
+    barrels: clamp(safeCount(snapshot.barrels, 0), 0, 3),
     shieldMax: clamp(safeCount(snapshot.shieldMax, 0), 0, 6),
     bombPower: clamp(safeNumber(snapshot.bombPower, 1), 1, 4),
     pulsePower: clamp(safeNumber(snapshot.pulsePower, 1), 1, 4),

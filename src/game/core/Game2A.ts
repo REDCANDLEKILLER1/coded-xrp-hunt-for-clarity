@@ -18,7 +18,7 @@ import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef } from '../content/types';
+import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -56,7 +56,13 @@ type WarshipActor = Actor & {
   fireClock: number;
 };
 type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number };
-type UpgradeKind = 'weapon' | 'shield' | 'bomb' | 'pulse';
+/** A player missile that steers. `target` is re-acquired if its quarry dies. */
+type SeekerActor = Actor & { damage: number; angle: number; age: number };
+/**
+ * Weapon is deliberately absent: a new gun is what levelling GIVES you, not
+ * something you trade a shield for. The cards are the choice you still make.
+ */
+type UpgradeKind = 'shield' | 'bomb' | 'pulse';
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
@@ -93,7 +99,10 @@ const BURST_MAX_RADIUS = 72;
 const BURST_MIN_RADIUS = 6;
 const DEBRIS_MIN = 10;
 const DEBRIS_VARY = 6;
-const UPGRADE_EVERY_KILLS = 7;
+// Barrel drops. At every 7 kills a hull maxed its barrels inside the first
+// couple of minutes, which trivialised the early game now that the gun itself
+// is on a much longer clock. Three barrels now take ~72 kills.
+const UPGRADE_EVERY_KILLS = 24;
 const BOMB_EVERY_KILLS = 12;
 const REPAIR_EVERY_KILLS = 10;
 const MAX_BOMBS = 3;
@@ -105,8 +114,40 @@ const BOMB_LIFE = 0.55;
 // three upgrades. Weapon upgrades hand over a genuinely different gun rather
 // than the same gun with a bigger number, which is why the ladder tops out at
 // five distinct weapons.
-const XP_LEVEL_BASE = 55;
-const XP_LEVEL_STEP = 40;
+// RPG pacing, not arcade pacing.
+//
+// Level 1's 96 authored groups pay out roughly 13,800 XP once every enemy,
+// emplacement and wave-clear bonus is counted -- a number the validator
+// computes from the encounter data rather than a guess. This curve spends all
+// of it across twelve levels: the last arrives as the warship does. The first
+// pass charged 55 XP for level 2 and handed out a new gun every couple of
+// minutes, which is the arcade pacing this replaces.
+const XP_LEVEL_BASE = 420;
+const XP_LEVEL_STEP = 150;
+
+/**
+ * Levels at which the hull is handed a genuinely new gun.
+ *
+ * The weapon is no longer something you pick off a card: levelling gives it to
+ * you, and the gaps are wide on purpose. QUAD BEAM lands two-thirds of the way
+ * through the level and CLARITY LANCE only at the very end, so the ladder is a
+ * long-term goal rather than a five-minute climb.
+ */
+const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
+
+/** Extra barrels a hull can bolt on, and the ceiling on a single volley. */
+const MAX_BARRELS = 3;
+const MAX_VOLLEY = 6;
+
+// Seeker missile. Unlocked deep in the ladder, then fires itself on a timer --
+// the reward for getting far enough is a weapon you do not have to aim.
+const SEEKER_UNLOCK_LEVEL = WEAPON_TIER_LEVELS[2];
+const SEEKER_INTERVAL = 4.5;
+const SEEKER_SPEED = 400;
+/** How hard the missile can bend toward its target, in radians per second. */
+const SEEKER_TURN = 3.4;
+const SEEKER_DAMAGE = 3;
+const SEEKER_LIFE = 4.2;
 const XP_WAVE_CLEAR = 40;
 
 /** XP a kill is worth, per point of the enemy's score value. */
@@ -162,7 +203,12 @@ export class Game2A {
   private hazardClock = DEFAULT_HAZARD.spawnRate;
   private special = 100;
   private ringClock = 0;
-  private weaponTier = 1;
+  /** The rung of the weapon ladder this hull launches on. */
+  private baseWeaponTier = 1;
+  /** Barrels bolted on by pickups. Rides along whichever gun is equipped. */
+  private barrels = 0;
+  private seekers: SeekerActor[] = [];
+  private seekerClock = SEEKER_INTERVAL;
   private kills = 0;
   private bombs = 2;
   private xp = 0;
@@ -345,6 +391,7 @@ export class Game2A {
 
     this.movePlayer(dt);
     this.updateBolts(dt);
+    this.updateSeekers(dt);
 
     if (this.missionDirector.activeMission) {
       this.updateMission(dt);
@@ -609,7 +656,7 @@ export class Game2A {
         checkpointLabel: checkpoint.label,
         resumeActKey: checkpoint.resumeActKey,
         shipKey: this.selectedShipKey,
-        weaponTier: this.weaponTier,
+        weaponTier: this.weaponTier(),
         bombs: this.bombs,
         score: this.score,
         savedAt: Date.now(),
@@ -687,6 +734,75 @@ export class Game2A {
     return { top, bottom: Math.max(top + 40, bottom) };
   }
 
+  /** Everything the seeker will chase, nearest first. */
+  private seekerTargets(): Array<{ x: number; y: number }> {
+    const targets: Array<{ x: number; y: number }> = [];
+    for (const drone of this.drones) if ((drone.hp ?? 0) > 0) targets.push(drone);
+    for (const hazard of this.hazards) if ((hazard.hp ?? 0) > 0) targets.push(hazard);
+    if (this.boss?.state === 'fight') targets.push(this.boss);
+    if (this.warship?.state === 'fight') {
+      for (const system of this.warshipDirector.targetableSystems) targets.push(this.warshipSystemCenter(system));
+    }
+    return targets;
+  }
+
+  /**
+   * Seeker missiles: launched on their own timer once the ladder is deep
+   * enough, and steered rather than aimed. They turn at a fixed rate toward
+   * the nearest target, so they curve into things instead of snapping onto
+   * them -- a missile that cannot miss is not interesting to watch.
+   */
+  private updateSeekers(dt: number): void {
+    if (this.xpLevel >= SEEKER_UNLOCK_LEVEL) {
+      this.seekerClock -= dt;
+      if (this.seekerClock <= 0 && this.seekerTargets().length > 0) {
+        this.seekerClock = SEEKER_INTERVAL;
+        this.seekers.push({
+          x: this.player.x,
+          y: this.player.y - 18,
+          w: 10,
+          h: 22,
+          vx: 0,
+          vy: -SEEKER_SPEED,
+          damage: SEEKER_DAMAGE,
+          angle: -Math.PI / 2,
+          age: 0,
+        });
+        sfx.play('shoot');
+      }
+    }
+
+    const targets = this.seekerTargets();
+    for (const seeker of this.seekers) {
+      seeker.age += dt;
+      let best: { x: number; y: number } | null = null;
+      let bestDistance = Infinity;
+      for (const target of targets) {
+        const distance = Math.hypot(target.x - seeker.x, target.y - seeker.y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = target;
+        }
+      }
+      if (best) {
+        const desired = Math.atan2(best.y - seeker.y, best.x - seeker.x);
+        // Shortest way round, so a target behind the missile is not chased
+        // the long way about.
+        let delta = desired - seeker.angle;
+        while (delta > Math.PI) delta -= Math.PI * 2;
+        while (delta < -Math.PI) delta += Math.PI * 2;
+        seeker.angle += clamp(delta, -SEEKER_TURN * dt, SEEKER_TURN * dt);
+      }
+      seeker.vx = Math.cos(seeker.angle) * SEEKER_SPEED;
+      seeker.vy = Math.sin(seeker.angle) * SEEKER_SPEED;
+      seeker.x += seeker.vx * dt;
+      seeker.y += seeker.vy * dt;
+    }
+    this.seekers = this.seekers.filter((seeker) => (
+      seeker.age < SEEKER_LIFE && seeker.y > -60 && seeker.y < this.h + 60 && seeker.x > -60 && seeker.x < this.w + 60
+    ));
+  }
+
   private updateBolts(dt: number): void {
     this.boltClock -= dt;
     if (this.boltClock <= 0) {
@@ -694,7 +810,7 @@ export class Game2A {
       const projectile = this.projectileDef(weapon.projectileKey);
       const ship = this.playerDef();
       this.boltClock = weapon.fireRate * (ship.fireRate / DEFAULT_SHIP.fireRate);
-      for (const shot of weapon.shots) {
+      for (const shot of this.currentVolley()) {
         this.bolts.push({
           x: this.player.x + shot.offsetX,
           y: this.player.y - 24,
@@ -1164,6 +1280,50 @@ export class Game2A {
         this.damageBoss(bolt.damage);
       }
     }
+    // Seekers land on whatever they reach first, then die -- they do not pierce.
+    for (const seeker of this.seekers) {
+      let spent = false;
+      for (const drone of this.drones) {
+        if ((drone.hp ?? 0) <= 0 || !overlap(box(seeker, 0.8), box(drone, 0.8))) continue;
+        drone.hp = (drone.hp ?? 1) - seeker.damage;
+        if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
+        spent = true;
+        break;
+      }
+      if (!spent) {
+        for (const hazard of this.hazards) {
+          if ((hazard.hp ?? 0) <= 0 || !overlap(box(seeker, 0.8), box(hazard, 0.85))) continue;
+          hazard.hp = (hazard.hp ?? 1) - seeker.damage;
+          if ((hazard.hp ?? 0) <= 0) {
+            const def = this.hazardDef(hazard.hazardKey);
+            this.score += def.score;
+            this.awardXp(def.score * XP_PER_SCORE);
+            this.special = Math.min(100, this.special + 12);
+            sfx.play('explode', 1.2);
+          }
+          spent = true;
+          break;
+        }
+      }
+      if (!spent && this.boss?.state === 'fight' && overlap(box(seeker, 0.8), box(this.boss, 0.84))) {
+        this.damageBoss(seeker.damage);
+        spent = true;
+      }
+      if (!spent && this.warship?.state === 'fight') {
+        for (const system of this.warshipDirector.targetableSystems) {
+          if (!overlap(box(seeker, 0.8), this.warshipSystemBox(system))) continue;
+          this.warshipDirector.hit(system.key, seeker.damage);
+          spent = true;
+          break;
+        }
+      }
+      if (spent) {
+        seeker.life = 0;
+        this.ring(seeker.x, seeker.y);
+      }
+    }
+    this.seekers = this.seekers.filter((seeker) => seeker.life !== 0);
+
     this.bolts = this.bolts.filter((bolt) => bolt.life !== 0);
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
     this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
@@ -1240,7 +1400,7 @@ export class Game2A {
         checkpointLabel: boarding.label,
         resumeActKey: boarding.resumeActKey,
         shipKey: this.selectedShipKey,
-        weaponTier: this.weaponTier,
+        weaponTier: this.weaponTier(),
         bombs: this.bombs,
         score: this.score,
         savedAt: Date.now(),
@@ -1517,6 +1677,7 @@ export class Game2A {
     if (this.boss) this.drawBoss(this.boss);
     if (this.warship) this.drawRegulatoryWarship();
     for (const bolt of this.bolts) this.drawBolt(bolt);
+    for (const seeker of this.seekers) this.drawSeeker(seeker);
     for (const shot of this.hostileShots) this.drawHostileShot(shot);
     for (const pickup of this.pickups) this.drawPickup(pickup);
     for (const item of this.rings) this.drawRing(item);
@@ -1749,6 +1910,34 @@ export class Game2A {
     }
   }
 
+  /** A stubby dart with a burning tail, drawn along its heading. */
+  private drawSeeker(seeker: SeekerActor): void {
+    this.ctx.save();
+    this.ctx.translate(seeker.x, seeker.y);
+    this.ctx.rotate(seeker.angle + Math.PI / 2);
+    const flicker = 0.6 + 0.4 * Math.sin(this.clock * 30 + seeker.age * 12);
+    this.ctx.globalAlpha = flicker;
+    this.ctx.fillStyle = '#ffd24a';
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, 14);
+    this.ctx.lineTo(-4, 4);
+    this.ctx.lineTo(4, 4);
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.globalAlpha = 1;
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, -12);
+    this.ctx.lineTo(5, 6);
+    this.ctx.lineTo(-5, 6);
+    this.ctx.closePath();
+    this.ctx.fill();
+    this.ctx.strokeStyle = '#36a3ff';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.stroke();
+    this.ctx.restore();
+  }
+
   private drawPickup(pickup: PickupActor): void {
     const def = this.pickupDef(pickup.pickupKey);
     if (this.drawCentered(def.sprite, pickup.x, pickup.y, def.draw.w, def.draw.h)) return;
@@ -1875,15 +2064,6 @@ export class Game2A {
   /** What each upgrade is called, does, and what the player already has. */
   private upgradeInfo(kind: UpgradeKind): { title: string; detail: string; current: string; accent: string } {
     switch (kind) {
-      case 'weapon': {
-        const next = WEAPON_LADDER[Math.min(WEAPON_LADDER.length - 1, this.weaponTier)];
-        return {
-          title: next.label,
-          detail: next.pierce ? `${next.damage} DMG • PIERCES ${next.pierce}` : `${next.shots.length}-SHOT VOLLEY`,
-          current: `NOW: ${this.currentWeapon().label}`,
-          accent: '#00ff00',
-        };
-      }
       case 'shield':
         return {
           title: 'SHIELD PLATING',
@@ -1914,14 +2094,7 @@ export class Game2A {
     this.ctx.fillStyle = accent;
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
-    if (kind === 'weapon') {
-      // Upward chevron: the gun.
-      this.ctx.moveTo(cx, cy - r);
-      this.ctx.lineTo(cx + r * 0.8, cy + r * 0.7);
-      this.ctx.lineTo(cx, cy + r * 0.25);
-      this.ctx.lineTo(cx - r * 0.8, cy + r * 0.7);
-      this.ctx.closePath();
-    } else if (kind === 'shield') {
+    if (kind === 'shield') {
       // Hexagon, matching the shield-cell pickup.
       for (let i = 0; i < 6; i++) {
         const angle = -Math.PI / 2 + (i * Math.PI) / 3;
@@ -1994,9 +2167,10 @@ export class Game2A {
     this.ctx.fillText(`LV ${this.xpLevel}`, 92, barY + 2.5);
 
     const weapon = this.currentWeapon();
+    const gun = `${weapon.label}${this.barrels > 0 ? ` +${this.barrels}` : ''}`;
     const detail = mission && missionAct
-      ? `${missionAct.label} • T${weapon.tier} ${weapon.label} • ${ship.label}`
-      : `WAVE ${this.wave} • T${weapon.tier} ${weapon.label} • ${ship.label}`;
+      ? `${missionAct.label} • ${gun} • ${ship.label}`
+      : `WAVE ${this.wave} • ${gun} • ${ship.label}`;
     this.ctx.font = '600 8px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.5)';
     this.ctx.fillText(fitText(this.ctx, detail, leftWidth), 14, barY + 13);
@@ -2426,7 +2600,7 @@ export class Game2A {
 
     if (this.kills % SHIELD_PICKUP_EVERY_KILLS === 0) this.dropPickup(PICKUPS.shield_cell, drone.x, drone.y);
 
-    if (this.kills % UPGRADE_EVERY_KILLS === 0 && this.weaponTier < WEAPON_LADDER.length) {
+    if (this.kills % UPGRADE_EVERY_KILLS === 0 && this.barrels < MAX_BARRELS) {
       this.dropPickup(PICKUPS.weapon_upgrade, drone.x, drone.y);
     }
 
@@ -2444,9 +2618,10 @@ export class Game2A {
   }
 
   /** Upgrade state a checkpoint carries, so continuing keeps what was earned. */
-  private upgradeSnapshot(): Pick<MissionCheckpointSnapshot, 'xpLevel' | 'shieldMax' | 'bombPower' | 'pulsePower'> {
+  private upgradeSnapshot(): Pick<MissionCheckpointSnapshot, 'xpLevel' | 'barrels' | 'shieldMax' | 'bombPower' | 'pulsePower'> {
     return {
       xpLevel: this.xpLevel,
+      barrels: this.barrels,
       shieldMax: this.shieldMax,
       bombPower: this.bombPower,
       pulsePower: this.pulsePower,
@@ -2464,11 +2639,28 @@ export class Game2A {
     // A big score chunk can cross two thresholds at once; every crossing owes
     // the player a choice, so this loops rather than levelling once.
     let levelled = false;
+    const gunBefore = this.currentWeapon().key;
     while (this.xp >= this.xpForNextLevel()) {
       this.xp -= this.xpForNextLevel();
       this.xpLevel += 1;
       this.pendingUpgrades += 1;
       levelled = true;
+    }
+    if (levelled) {
+      // Every level tops the shields back up, so a hull that took a beating
+      // gets something out of the level even before the card is picked.
+      this.shield = this.shieldMax;
+      this.shieldQuietClock = 0;
+      this.shieldRegenClock = 0;
+      const gunNow = this.currentWeapon();
+      if (gunNow.key !== gunBefore) {
+        // Crossing a weapon level hands over a whole new gun. It is announced
+        // rather than offered -- there is no version of this the player declines.
+        this.missionBannerText = `NEW WEAPON // ${gunNow.label}`;
+        this.missionBannerClock = 3.2;
+        sfx.play('levelUp');
+        debugLog.log('combat', 'weapon granted', { level: this.xpLevel, weapon: gunNow.key, label: gunNow.label });
+      }
     }
     debugLog.sample('xp', 1500, 'combat', 'xp', {
       xp: Math.round(this.xp),
@@ -2478,6 +2670,8 @@ export class Game2A {
     if (levelled) {
       debugLog.log('combat', 'level up', {
         level: this.xpLevel,
+        weapon: this.currentWeapon().label,
+        barrels: this.barrels,
         pending: this.pendingUpgrades,
         nextAt: Math.round(this.xpForNextLevel()),
       });
@@ -2487,13 +2681,12 @@ export class Game2A {
 
   /** Upgrades with nothing left to give are not offered. */
   private upgradeAvailable(kind: UpgradeKind): boolean {
-    if (kind === 'weapon') return this.weaponTier < WEAPON_LADDER.length;
     if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
     return true;
   }
 
   private openUpgradeChoice(): void {
-    const pool = (['weapon', 'shield', 'bomb', 'pulse'] as UpgradeKind[]).filter((kind) => this.upgradeAvailable(kind));
+    const pool = (['shield', 'bomb', 'pulse'] as UpgradeKind[]).filter((kind) => this.upgradeAvailable(kind));
     if (pool.length === 0) {
       // Everything is maxed. Bank the level as score rather than stalling the
       // run behind an overlay with no buttons on it.
@@ -2513,10 +2706,6 @@ export class Game2A {
 
   private applyUpgrade(kind: UpgradeKind): void {
     switch (kind) {
-      case 'weapon':
-        this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
-        this.missionBannerText = `WEAPON // ${this.currentWeapon().label}`;
-        break;
       case 'shield':
         this.shieldMax = Math.min(SHIELD_CAP, this.shieldMax + 1);
         this.shield = this.shieldMax;
@@ -2564,7 +2753,11 @@ export class Game2A {
   private applyPickup(key: string): void {
     const def = this.pickupDef(key);
     sfx.play('pickup');
-    if (def.effect === 'weapon_upgrade') this.weaponTier = Math.min(WEAPON_LADDER.length, this.weaponTier + 1);
+    if (def.effect === 'weapon_upgrade') {
+      this.barrels = Math.min(MAX_BARRELS, this.barrels + 1);
+      this.missionBannerText = `+1 BARREL // ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`;
+      this.missionBannerClock = 2.2;
+    }
     if (def.effect === 'bomb') this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
     if (def.effect === 'repair') this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
     if (def.effect === 'shield') {
@@ -2611,6 +2804,8 @@ export class Game2A {
     this.warshipDirector.reset();
     this.completedBosses = new Set<string>();
     this.bolts = [];
+    this.seekers = [];
+    this.seekerClock = SEEKER_INTERVAL;
     this.pickups = [];
     this.rings = [];
     this.debris = [];
@@ -2645,10 +2840,10 @@ export class Game2A {
       if (checkpoint) {
         this.missionDirector.startAtAct(mission, checkpoint.resumeActKey);
         if (SHIPS[checkpoint.shipKey]) this.selectedShipKey = checkpoint.shipKey;
-        this.weaponTier = Math.min(WEAPON_LADDER.length, Math.max(1, checkpoint.weaponTier));
+        this.barrels = clamp(checkpoint.barrels ?? 0, 0, MAX_BARRELS);
         this.bombs = Math.min(this.maxBombs(), Math.max(0, checkpoint.bombs));
         this.score = Math.max(0, checkpoint.score);
-        this.kills = Math.max(0, (this.weaponTier - 1) * UPGRADE_EVERY_KILLS);
+        this.kills = 0;
         // A resumed run keeps the level it had reached: losing every upgrade at
         // a checkpoint would make continuing worse than restarting.
         this.xpLevel = Math.max(1, checkpoint.xpLevel ?? 1);
@@ -2723,7 +2918,8 @@ export class Game2A {
     this.xpLevel = 1;
     this.pendingUpgrades = 0;
     this.upgradeOffer = [];
-    this.weaponTier = clamp(loadout.weaponTier, 1, WEAPON_LADDER.length);
+    this.baseWeaponTier = clamp(loadout.weaponTier, 1, WEAPON_LADDER.length);
+    this.barrels = 0;
     this.shieldMax = clamp(loadout.shield, 0, SHIELD_CAP);
     this.shield = this.shieldMax;
     this.shieldQuietClock = 0;
@@ -2782,8 +2978,43 @@ export class Game2A {
     this.reset();
   }
 
+  /**
+   * Which gun the hull is holding.
+   *
+   * Derived from the level rather than stored, which is the point: a stored
+   * tier can drift out of range and silently fall back to the first gun, and a
+   * player who reaches CLARITY LANCE and then sees BB SHOT again has no way to
+   * tell a bug from a rule. There is nothing to desync here.
+   */
+  private weaponTier(): number {
+    let tier = this.baseWeaponTier;
+    for (const at of WEAPON_TIER_LEVELS) if (this.xpLevel >= at) tier += 1;
+    return clamp(tier, 1, WEAPON_LADDER.length);
+  }
+
   private currentWeapon(): WeaponDef {
-    return WEAPON_LADDER[this.weaponTier - 1] ?? WEAPON_LADDER[0];
+    return WEAPON_LADDER[this.weaponTier() - 1] ?? WEAPON_LADDER[0];
+  }
+
+  /**
+   * The volley actually fired: the gun's own shots plus any bolted-on barrels.
+   *
+   * Pickups add barrels to whatever gun is equipped rather than advancing the
+   * ladder, so drops still matter between levels without short-cutting the
+   * ladder itself. Extra barrels alternate outward from the widest existing
+   * one, angled slightly so a wide volley still converges.
+   */
+  private currentVolley(): WeaponShotDef[] {
+    const weapon = this.currentWeapon();
+    if (this.barrels <= 0) return weapon.shots;
+    const shots = [...weapon.shots];
+    const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
+    for (let i = 1; i <= this.barrels && shots.length < MAX_VOLLEY; i++) {
+      const side = i % 2 === 1 ? -1 : 1;
+      const step = Math.ceil(i / 2);
+      shots.push({ offsetX: side * (widest + 9 * step), angle: side * 0.045 * step });
+    }
+    return shots;
   }
 
   private projectileDef(key: string): ProjectileDef {
