@@ -14,6 +14,26 @@ type EnemyState = InteriorEnemySpawn & { w: number; h: number; fireClock: number
 const GREEN = '#00ff00';
 const BLUE = '#36a3ff';
 const RED = '#ff4c66';
+type AnimKey = 'idle' | 'run' | 'jump' | 'fire';
+
+/**
+ * Frame counts and playback for each strip, and which frames of the jump
+ * sequence stand for which part of a leap.
+ *
+ * The jump sheet is one continuous crouch-leap-tumble-land sequence, not a
+ * loop, so it is indexed by what the body is doing rather than played through:
+ * gathering on the way up, extended at the top, tucked on the way down.
+ */
+const ANIMS: Record<AnimKey, { frames: number; fps: number }> = {
+  idle: { frames: 6, fps: 6 },
+  run: { frames: 8, fps: 14 },
+  jump: { frames: 8, fps: 10 },
+  fire: { frames: 7, fps: 16 },
+};
+const ANIM_CELL = 128;
+const JUMP_RISE_FRAME = 2;
+const JUMP_APEX_FRAME = 4;
+const JUMP_FALL_FRAME = 5;
 const PLAYER_RENDER_SIZE = 84;
 /** Seconds of squash after a landing. */
 const ONFOOT_LAND_SQUASH = 0.17;
@@ -28,6 +48,19 @@ export class OnFootGame {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly sprite = new Image();
+  /**
+   * The real character animations, cut from the uploaded sheets.
+   *
+   * The old proto sheet was six near-identical standing frames, which is why
+   * XRPMan stood bolt upright through everything. These are separate strips
+   * because they have different frame counts and run at different speeds.
+   */
+  private readonly anims: Record<AnimKey, HTMLImageElement> = {
+    idle: new Image(),
+    run: new Image(),
+    jump: new Image(),
+    fire: new Image(),
+  };
   private readonly enemySprite = new Image();
   private readonly backgrounds = new Map<string, HTMLImageElement>();
   private visible = false;
@@ -90,6 +123,9 @@ export class OnFootGame {
     if (!ctx) throw new Error('On-foot canvas unavailable.');
     this.ctx = ctx;
     this.sprite.src = '/assets/characters/xrpman_onfoot_proto_sheet.png';
+    for (const key of Object.keys(this.anims) as AnimKey[]) {
+      this.anims[key].src = `/assets/characters/xrpman_${key}.png`;
+    }
     this.enemySprite.src = '/assets/enemies/regulator_drone.webp';
     // Only rooms that actually have art request it. A room without a
     // backgroundSrc draws its procedural interior by design, and asking the
@@ -557,6 +593,33 @@ export class OnFootGame {
     c.restore();
   }
 
+  /**
+   * Which strip is playing, and which frame of it.
+   *
+   * Priority is what the body is most committed to: firing wins, then being
+   * off the ground, then running. The run cycle is driven by `stride`, which
+   * advances with distance travelled, so the legs keep pace with the actual
+   * speed instead of cycling at a fixed rate while he skates.
+   */
+  private currentPose(running: boolean, airborne: boolean): { key: AnimKey; frame: number } {
+    if (this.fireCooldown > 0) {
+      const spent = 1 - this.fireCooldown / ONFOOT_PHYSICS.blastCooldown;
+      const frame = Math.min(ANIMS.fire.frames - 1, Math.floor(spent * ANIMS.fire.frames));
+      return { key: 'fire', frame };
+    }
+    if (airborne) {
+      const frame = this.player.vy < -120 ? JUMP_RISE_FRAME
+        : this.player.vy > 120 ? JUMP_FALL_FRAME
+          : JUMP_APEX_FRAME;
+      return { key: 'jump', frame };
+    }
+    if (running) {
+      return { key: 'run', frame: Math.floor(this.stride * 1.35) % ANIMS.run.frames };
+    }
+    const t = performance.now() / 1000 * ANIMS.idle.fps;
+    return { key: 'idle', frame: Math.floor(t) % ANIMS.idle.frames };
+  }
+
   private drawPlayer(c: CanvasRenderingContext2D): void {
     const flash = this.hurtCooldown > 0 && Math.floor(this.hurtCooldown * 16) % 2 === 0;
     if (flash) c.globalAlpha = 0.35;
@@ -588,8 +651,9 @@ export class OnFootGame {
     c.fill();
     c.restore();
 
-    if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
-      const frame = this.fireCooldown > 0.08 ? 5 : 4;
+    const pose = this.currentPose(running, airborne);
+    const strip = this.anims[pose.key];
+    if (strip.complete && strip.naturalWidth >= ANIM_CELL) {
       const face = this.player.facing === 'left' ? -1 : 1;
       c.save();
       c.translate(this.player.x - face * recoil * 3, this.player.y + bob - 5);
@@ -598,16 +662,29 @@ export class OnFootGame {
       c.shadowColor = this.fireCooldown > 0 ? GREEN : BLUE;
       c.shadowBlur = this.fireCooldown > 0 ? 18 : 11;
       c.drawImage(
-        this.sprite,
-        frame * 64,
+        strip,
+        pose.frame * ANIM_CELL,
         0,
-        64,
-        64,
+        ANIM_CELL,
+        ANIM_CELL,
         -PLAYER_RENDER_SIZE / 2,
         -PLAYER_RENDER_SIZE / 2,
         PLAYER_RENDER_SIZE,
         PLAYER_RENDER_SIZE,
       );
+      c.restore();
+    } else if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
+      // The proto sheet, still the fallback if a strip fails to load.
+      const frame = this.fireCooldown > 0.08 ? 5 : 4;
+      const face = this.player.facing === 'left' ? -1 : 1;
+      c.save();
+      c.translate(this.player.x - face * recoil * 3, this.player.y + bob - 5);
+      c.rotate(lean + (airborne ? face * 0.07 : 0));
+      c.scale(face * widen, squash);
+      c.shadowColor = this.fireCooldown > 0 ? GREEN : BLUE;
+      c.shadowBlur = this.fireCooldown > 0 ? 18 : 11;
+      c.drawImage(this.sprite, frame * 64, 0, 64, 64,
+        -PLAYER_RENDER_SIZE / 2, -PLAYER_RENDER_SIZE / 2, PLAYER_RENDER_SIZE, PLAYER_RENDER_SIZE);
       c.restore();
     } else {
       c.fillStyle = '#07140d';
