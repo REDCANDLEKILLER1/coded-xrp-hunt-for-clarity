@@ -148,6 +148,15 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
     hitbox: { w: 6, h: 6 },
     speed: 235,
   },
+  // The Clarity Lance round. A beam rather than a bolt, which is the visible
+  // payoff for reaching the top of the weapon ladder.
+  clarity_beam: {
+    key: 'clarity_beam',
+    sprite: { category: 'projectiles', id: 'clarity_beam' },
+    draw: { w: 18, h: 54 },
+    hitbox: { w: 9, h: 26 },
+    speed: 760,
+  },
   // The player's homing rocket. No art yet, so it draws through the procedural
   // dart in drawSeeker; adding projectiles/seeker_missile to the manifest is
   // the only change needed to swap real art in. See docs/asset-requests.md.
@@ -217,7 +226,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
     key: 'tier_5_lance',
     label: 'CLARITY LANCE',
     tier: 5,
-    projectileKey: 'bb_shot',
+    projectileKey: 'clarity_beam',
     fireRate: 0.26,
     damage: 3,
     pierce: 3,
