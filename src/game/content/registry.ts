@@ -157,13 +157,12 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
     hitbox: { w: 9, h: 26 },
     speed: 760,
   },
-  // The player's homing rocket. No art yet, so it draws through the procedural
-  // dart in drawSeeker; adding projectiles/seeker_missile to the manifest is
-  // the only change needed to swap real art in. See docs/asset-requests.md.
+  // The player's homing rocket. Real art now; drawSeeker's procedural dart
+  // stays as the fallback. Draw size follows the sprite's 26:79 aspect.
   seeker_missile: {
     key: 'seeker_missile',
     sprite: { category: 'projectiles', id: 'seeker_missile' },
-    draw: { w: 14, h: 30 },
+    draw: { w: 14, h: 42 },
     hitbox: { w: 10, h: 22 },
     speed: 400,
   },
