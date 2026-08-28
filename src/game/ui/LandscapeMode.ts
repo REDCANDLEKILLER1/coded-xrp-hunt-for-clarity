@@ -34,7 +34,7 @@ export class LandscapeMode {
         <div class="landscape-gate__phone" aria-hidden="true">↻</div>
         <div class="landscape-gate__eyebrow">CODED // MOBILE FLIGHT MODE</div>
         <strong>TURN PHONE SIDEWAYS</strong>
-        <span>Landscape gives you the full battlefield. Tilt steering turns itself on.</span>
+        <span>Landscape gives you the full battlefield. Drag anywhere to fly.</span>
         <div class="landscape-gate__fallback" hidden>
           <span class="landscape-gate__hint">This browser will not rotate the screen for us. Turn the phone sideways yourself — or keep playing in portrait.</span>
           <button type="button" class="landscape-gate__skip">CONTINUE ANYWAY</button>

@@ -19,6 +19,8 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = {
     minWave: 1,
     spawnWeight: 0,
     behavior: 'zigzag',
+    fireRate: 1.7,
+    projectileSpeed: 285,
     accent: '#ff5ce1',
   },
 };

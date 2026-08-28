@@ -63,6 +63,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     minWave: 1,
     spawnWeight: 8,
     behavior: 'sine',
+    fireRate: 2.6,
+    projectileSpeed: 210,
     accent: '#ff3355',
   },
   fog_raider: {
@@ -78,6 +80,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     minWave: 2,
     spawnWeight: 5,
     behavior: 'straight',
+    fireRate: 2.2,
+    projectileSpeed: 240,
     accent: '#b56cff',
   },
   whale_scout: {
@@ -93,6 +97,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     minWave: 3,
     spawnWeight: 3,
     behavior: 'zigzag',
+    fireRate: 3.0,
+    projectileSpeed: 195,
     accent: '#36a3ff',
   },
   rug_fighter: {
@@ -108,6 +114,8 @@ export const ENEMIES: Record<string, EnemyDef> = {
     minWave: 4,
     spawnWeight: 2,
     behavior: 'dive',
+    fireRate: 1.9,
+    projectileSpeed: 265,
     accent: '#ffd24a',
   },
 };
@@ -254,7 +262,7 @@ export const HAZARDS: Record<string, HazardDef> = {
     draw: { w: 32, h: 32 },
     hitbox: { w: 26, h: 26 },
     hp: 3,
-    minWave: 3,
+    minWave: 1,
     spawnRate: 7.5,
     fireRate: 1.65,
     projectileSpeed: 235,

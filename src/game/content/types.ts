@@ -53,6 +53,10 @@ export interface EnemyDef {
   spawnWeight: number;
   /** Named movement routine handled by the wave combat loop. */
   behavior: 'straight' | 'sine' | 'zigzag' | 'dive';
+  /** Seconds between shots while holding station. Omit for an unarmed enemy. */
+  fireRate?: number;
+  /** Travel speed of this enemy's shots (px/s). */
+  projectileSpeed?: number;
   /** Visual identifier used while enemy variants share a temporary sprite. */
   accent: string;
 }
