@@ -14,7 +14,29 @@ type EnemyState = InteriorEnemySpawn & { w: number; h: number; fireClock: number
 const GREEN = '#00ff00';
 const BLUE = '#36a3ff';
 const RED = '#ff4c66';
+type AnimKey = 'idle' | 'run' | 'jump' | 'fire';
+
+/**
+ * Frame counts and playback for each strip, and which frames of the jump
+ * sequence stand for which part of a leap.
+ *
+ * The jump sheet is one continuous crouch-leap-tumble-land sequence, not a
+ * loop, so it is indexed by what the body is doing rather than played through:
+ * gathering on the way up, extended at the top, tucked on the way down.
+ */
+const ANIMS: Record<AnimKey, { frames: number; fps: number }> = {
+  idle: { frames: 6, fps: 6 },
+  run: { frames: 8, fps: 14 },
+  jump: { frames: 8, fps: 10 },
+  fire: { frames: 7, fps: 16 },
+};
+const ANIM_CELL = 128;
+const JUMP_RISE_FRAME = 2;
+const JUMP_APEX_FRAME = 4;
+const JUMP_FALL_FRAME = 5;
 const PLAYER_RENDER_SIZE = 84;
+/** Seconds of squash after a landing. */
+const ONFOOT_LAND_SQUASH = 0.17;
 
 /**
  * L1-I authored Regulatory Warship interior slice.
@@ -26,6 +48,19 @@ export class OnFootGame {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly sprite = new Image();
+  /**
+   * The real character animations, cut from the uploaded sheets.
+   *
+   * The old proto sheet was six near-identical standing frames, which is why
+   * XRPMan stood bolt upright through everything. These are separate strips
+   * because they have different frame counts and run at different speeds.
+   */
+  private readonly anims: Record<AnimKey, HTMLImageElement> = {
+    idle: new Image(),
+    run: new Image(),
+    jump: new Image(),
+    fire: new Image(),
+  };
   private readonly enemySprite = new Image();
   private readonly backgrounds = new Map<string, HTMLImageElement>();
   private visible = false;
@@ -47,6 +82,19 @@ export class OnFootGame {
   private keys = new Set<string>();
   private fireCooldown = 0;
   private hurtCooldown = 0;
+  /**
+   * Animation state carried between frames.
+   *
+   * The character sheet is six near-identical standing frames -- there is no
+   * walk cycle, no jump pose and no firing pose in it, which is why XRPMan
+   * stood bolt upright through everything. Until real frames exist, the motion
+   * is built here instead: `stride` advances with distance travelled rather
+   * than with time, so the gait matches the speed, and `landClock` drives the
+   * squash on touchdown.
+   */
+  private stride = 0;
+  private landClock = 0;
+  private wasGrounded = false;
   private coyoteClock = 0;
   private jumpBufferClock = 0;
   private cameraX = 0;
@@ -75,6 +123,9 @@ export class OnFootGame {
     if (!ctx) throw new Error('On-foot canvas unavailable.');
     this.ctx = ctx;
     this.sprite.src = '/assets/characters/xrpman_onfoot_proto_sheet.png';
+    for (const key of Object.keys(this.anims) as AnimKey[]) {
+      this.anims[key].src = `/assets/characters/xrpman_${key}.png`;
+    }
     this.enemySprite.src = '/assets/enemies/regulator_drone.webp';
     // Only rooms that actually have art request it. A room without a
     // backgroundSrc draws its procedural interior by design, and asking the
@@ -123,6 +174,11 @@ export class OnFootGame {
   private update(dt: number): void {
     this.introClock = Math.max(0, this.introClock - dt);
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+    this.landClock = Math.max(0, this.landClock - dt);
+    // Distance-driven, so the legs keep up with however fast he is going.
+    if (this.player.grounded) this.stride += Math.abs(this.player.vx) * dt * 0.055;
+    if (this.player.grounded && !this.wasGrounded) this.landClock = ONFOOT_LAND_SQUASH;
+    this.wasGrounded = this.player.grounded;
     this.hurtCooldown = Math.max(0, this.hurtCooldown - dt);
     this.coyoteClock = Math.max(0, this.coyoteClock - dt);
     this.jumpBufferClock = Math.max(0, this.jumpBufferClock - dt);
@@ -368,7 +424,7 @@ export class OnFootGame {
     if (image?.complete && image.naturalWidth > 0) {
       c.save();
       c.filter = 'brightness(1.42) contrast(1.04) saturate(1.08)';
-      c.drawImage(image, 0, 0, this.room.worldWidth, this.room.worldHeight);
+      this.drawRoomCover(c, image);
       c.restore();
     } else {
       this.drawProceduralInterior(c);
@@ -380,6 +436,24 @@ export class OnFootGame {
     blueLift.addColorStop(1, 'rgba(0,0,0,0.10)');
     c.fillStyle = blueLift;
     c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
+  }
+
+  /**
+   * Fit the art to the room without distorting it.
+   *
+   * This used to stretch the image straight onto the room's dimensions. Every
+   * background is 1024x576, and on the wide decks that was a squash you would
+   * not notice. The maintenance shaft is the one vertical room -- 980x1180 --
+   * and there the same call smeared the art to twice its height. Scale by
+   * whichever axis needs more, centre across, and anchor to the bottom so
+   * floor detail lands on the floor rather than halfway up the wall.
+   */
+  private drawRoomCover(c: CanvasRenderingContext2D, image: HTMLImageElement): void {
+    const { worldWidth: w, worldHeight: h } = this.room;
+    const scale = Math.max(w / image.naturalWidth, h / image.naturalHeight);
+    const dw = image.naturalWidth * scale;
+    const dh = image.naturalHeight * scale;
+    c.drawImage(image, (w - dw) / 2, h - dh, dw, dh);
   }
 
   /**
@@ -495,13 +569,55 @@ export class OnFootGame {
     c.restore();
   }
 
+  /**
+   * Marks a standable edge without drawing a box around it.
+   *
+   * This used to be a full blue outline rectangle plus a 2px line of solid
+   * green. Over the procedural interior that WAS the level -- there was
+   * nothing else to see. Over the painted rooms it read as leftover debug
+   * geometry: bright wireframe boxes stamped across the art.
+   *
+   * The edge still has to be marked, because the collision line and the
+   * painted ledge underneath it are not the same thing. So: no outline, and a
+   * soft glowing lip on the top edge only, at the alpha where you can find it
+   * when you look for it and stop noticing it when you do not.
+   */
   private drawPlatform(c: CanvasRenderingContext2D, platform: InteriorPlatform): void {
-    c.fillStyle = 'rgba(4,12,18,0.16)';
+    c.save();
+    c.fillStyle = 'rgba(4,12,18,0.14)';
     c.fillRect(platform.x, platform.y, platform.w, platform.h);
-    c.fillStyle = 'rgba(0,255,0,0.48)';
-    c.fillRect(platform.x, platform.y, platform.w, 2);
-    c.strokeStyle = 'rgba(54,163,255,0.34)';
-    c.strokeRect(platform.x, platform.y, platform.w, platform.h);
+    c.shadowColor = 'rgba(0,255,0,0.5)';
+    c.shadowBlur = 5;
+    c.fillStyle = 'rgba(0,255,0,0.24)';
+    c.fillRect(platform.x, platform.y, platform.w, 1);
+    c.restore();
+  }
+
+  /**
+   * Which strip is playing, and which frame of it.
+   *
+   * Priority is what the body is most committed to: firing wins, then being
+   * off the ground, then running. The run cycle is driven by `stride`, which
+   * advances with distance travelled, so the legs keep pace with the actual
+   * speed instead of cycling at a fixed rate while he skates.
+   */
+  private currentPose(running: boolean, airborne: boolean): { key: AnimKey; frame: number } {
+    if (this.fireCooldown > 0) {
+      const spent = 1 - this.fireCooldown / ONFOOT_PHYSICS.blastCooldown;
+      const frame = Math.min(ANIMS.fire.frames - 1, Math.floor(spent * ANIMS.fire.frames));
+      return { key: 'fire', frame };
+    }
+    if (airborne) {
+      const frame = this.player.vy < -120 ? JUMP_RISE_FRAME
+        : this.player.vy > 120 ? JUMP_FALL_FRAME
+          : JUMP_APEX_FRAME;
+      return { key: 'jump', frame };
+    }
+    if (running) {
+      return { key: 'run', frame: Math.floor(this.stride * 1.35) % ANIMS.run.frames };
+    }
+    const t = performance.now() / 1000 * ANIMS.idle.fps;
+    return { key: 'idle', frame: Math.floor(t) % ANIMS.idle.frames };
   }
 
   private drawPlayer(c: CanvasRenderingContext2D): void {
@@ -509,33 +625,66 @@ export class OnFootGame {
     if (flash) c.globalAlpha = 0.35;
 
     const running = this.player.grounded && Math.abs(this.player.vx) > 40;
-    const bob = running ? Math.sin(performance.now() * 0.018) * 2 : 0;
+    const airborne = !this.player.grounded;
+
+    // The gait. Two beats per stride cycle: he rises on the push and drops on
+    // the plant, and leans into the direction he is actually moving.
+    const gait = Math.sin(this.stride);
+    const bob = running ? -Math.abs(gait) * 3.2 : Math.sin(performance.now() * 0.0022) * 0.8;
+    const lean = running ? Math.sign(this.player.vx) * 0.1 + gait * 0.035 : 0;
+    // Airborne: stretch on the way up, gather on the way down.
+    const rise = airborne ? clamp(-this.player.vy / 520, -1, 1) : 0;
+    // Landing squash, and its opposite while stretched in the air.
+    const land = this.landClock / ONFOOT_LAND_SQUASH;
+    const squash = 1 - land * 0.22 + rise * 0.1;
+    const widen = 1 + land * 0.2 - rise * 0.08 + (running ? Math.abs(gait) * 0.03 : 0);
+    // Firing kicks him back off the shot.
+    const recoil = this.fireCooldown > 0 ? Math.min(1, this.fireCooldown / 0.18) : 0;
 
     c.save();
     c.fillStyle = 'rgba(0,0,0,0.34)';
     c.beginPath();
-    c.ellipse(this.player.x, this.player.y + ONFOOT_PHYSICS.playerHeight / 2 + 4, 25, 6, 0, 0, Math.PI * 2);
+    // The shadow shrinks and fades as he climbs away from the floor.
+    const lift = airborne ? clamp(1 - Math.abs(this.player.vy) / 700, 0.45, 1) : 1;
+    c.globalAlpha = lift;
+    c.ellipse(this.player.x, this.player.y + ONFOOT_PHYSICS.playerHeight / 2 + 4, 25 * lift, 6 * lift, 0, 0, Math.PI * 2);
     c.fill();
     c.restore();
 
-    if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
-      const frame = this.fireCooldown > 0.08 ? 5 : 4;
+    const pose = this.currentPose(running, airborne);
+    const strip = this.anims[pose.key];
+    if (strip.complete && strip.naturalWidth >= ANIM_CELL) {
+      const face = this.player.facing === 'left' ? -1 : 1;
       c.save();
-      c.translate(this.player.x, this.player.y + bob - 5);
-      c.scale(this.player.facing === 'left' ? -1 : 1, 1);
+      c.translate(this.player.x - face * recoil * 3, this.player.y + bob - 5);
+      c.rotate(lean + (airborne ? face * 0.07 : 0));
+      c.scale(face * widen, squash);
       c.shadowColor = this.fireCooldown > 0 ? GREEN : BLUE;
       c.shadowBlur = this.fireCooldown > 0 ? 18 : 11;
       c.drawImage(
-        this.sprite,
-        frame * 64,
+        strip,
+        pose.frame * ANIM_CELL,
         0,
-        64,
-        64,
+        ANIM_CELL,
+        ANIM_CELL,
         -PLAYER_RENDER_SIZE / 2,
         -PLAYER_RENDER_SIZE / 2,
         PLAYER_RENDER_SIZE,
         PLAYER_RENDER_SIZE,
       );
+      c.restore();
+    } else if (this.sprite.complete && this.sprite.naturalWidth >= 384) {
+      // The proto sheet, still the fallback if a strip fails to load.
+      const frame = this.fireCooldown > 0.08 ? 5 : 4;
+      const face = this.player.facing === 'left' ? -1 : 1;
+      c.save();
+      c.translate(this.player.x - face * recoil * 3, this.player.y + bob - 5);
+      c.rotate(lean + (airborne ? face * 0.07 : 0));
+      c.scale(face * widen, squash);
+      c.shadowColor = this.fireCooldown > 0 ? GREEN : BLUE;
+      c.shadowBlur = this.fireCooldown > 0 ? 18 : 11;
+      c.drawImage(this.sprite, frame * 64, 0, 64, 64,
+        -PLAYER_RENDER_SIZE / 2, -PLAYER_RENDER_SIZE / 2, PLAYER_RENDER_SIZE, PLAYER_RENDER_SIZE);
       c.restore();
     } else {
       c.fillStyle = '#07140d';
@@ -609,32 +758,52 @@ export class OnFootGame {
     c.fillRect(0, 0, innerWidth, innerHeight);
   }
 
+  /**
+   * A slim strip, not a panel.
+   *
+   * This was a bordered 304x64 box in the top-left. On a landscape phone --
+   * about 350x230 of CSS pixels -- that is most of the width and a quarter of
+   * the height, sitting on top of the room the player is trying to read. Now
+   * the rooms have painted art, boxing it off costs more than it buys: three
+   * short lines with a shadow read fine straight over the background.
+   */
   private drawHud(c: CanvasRenderingContext2D): void {
     const compact = this.isLandscapeMobile();
-    const width = Math.min(compact ? 304 : 342, innerWidth - 24);
-    const height = compact ? 64 : 82;
-    c.fillStyle = 'rgba(2,6,11,0.68)';
-    c.fillRect(12, 10, width, height);
-    c.strokeStyle = 'rgba(54,163,255,0.62)';
-    c.strokeRect(12, 10, width, height);
+    const barW = compact ? 54 : 72;
+    const energyX = compact ? 92 : 118;
+
+    c.save();
+    // A shadow instead of a filled panel: legible over art, hides nothing.
+    c.shadowColor = 'rgba(0,0,0,0.9)';
+    c.shadowBlur = 4;
     c.textAlign = 'left';
-    c.font = `900 ${compact ? 10 : 12}px ui-sans-serif, system-ui`;
+    c.font = `900 ${compact ? 9 : 11}px ui-sans-serif, system-ui`;
     c.fillStyle = GREEN;
-    c.fillText(`XRPMAN // ${this.room.key.replace('_', ' ').toUpperCase()}`, 22, compact ? 26 : 32);
-    c.fillStyle = '#d8ffe8';
-    c.font = `800 ${compact ? 9 : 10}px ui-sans-serif, system-ui`;
-    c.fillText('HP', 22, compact ? 45 : 52);
-    c.fillStyle = '#173427'; c.fillRect(44, compact ? 38 : 44, compact ? 92 : 104, 8);
-    c.fillStyle = GREEN; c.fillRect(44, compact ? 38 : 44, (compact ? 92 : 104) * this.player.health / 100, 8);
-    c.fillStyle = '#d8ffe8'; c.fillText('ENERGY', compact ? 150 : 170, compact ? 45 : 52);
-    c.fillStyle = '#10283a'; c.fillRect(compact ? 194 : 220, compact ? 38 : 44, compact ? 72 : 82, 8);
-    c.fillStyle = BLUE; c.fillRect(compact ? 194 : 220, compact ? 38 : 44, (compact ? 72 : 82) * this.player.energy / 100, 8);
-    c.fillStyle = 'rgba(216,255,232,0.82)';
-    c.fillText(this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective, 22, compact ? 64 : 75);
+    c.fillText(`XRPMAN // ${this.room.key.replace('_', ' ').toUpperCase()}`, 12, compact ? 16 : 19);
+
+    const barY = compact ? 22 : 27;
+    c.fillStyle = '#173427'; c.fillRect(12, barY, barW, 3);
+    c.fillStyle = GREEN; c.fillRect(12, barY, barW * this.player.health / 100, 3);
+    c.fillStyle = '#10283a'; c.fillRect(energyX, barY, barW, 3);
+    c.fillStyle = BLUE; c.fillRect(energyX, barY, barW * this.player.energy / 100, 3);
+
+    c.font = `700 ${compact ? 7 : 8}px ui-sans-serif, system-ui`;
+    c.fillStyle = 'rgba(216,255,232,0.5)';
+    c.fillText('HP', 12 + barW + 5, barY + 3);
+    c.fillText('EN', energyX + barW + 5, barY + 3);
+
+    c.font = `700 ${compact ? 8 : 9}px ui-sans-serif, system-ui`;
+    c.fillStyle = 'rgba(216,255,232,0.66)';
+    c.fillText(
+      this.roomCleared() ? 'AREA SECURED // EXIT OPEN' : this.room.objective,
+      12,
+      compact ? 37 : 44,
+    );
 
     c.textAlign = 'right';
-    c.fillStyle = 'rgba(54,163,255,0.95)';
-    c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 18, 24);
+    c.fillStyle = 'rgba(54,163,255,0.9)';
+    c.fillText(`${this.roomIndex + 1}/${REGULATORY_INTERIOR_ROOMS.length}`, innerWidth - 12, compact ? 16 : 19);
+    c.restore();
 
     if (this.completionClock > 100) {
       c.textAlign = 'center';

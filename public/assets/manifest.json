@@ -27,6 +27,50 @@
         "fps": 8
       },
       "notes": "L1-H1 simplified 64px gameplay prototype derived from canonical XRPMan reference; frame order front/back/left/right/side-idle/side-fire; primary #00FF00 with electric-blue secondary accents"
+    },
+    "xrpman_idle": {
+      "src": "/assets/characters/xrpman_idle.png",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "frames": 6,
+        "fps": 6
+      },
+      "notes": "6 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+    },
+    "xrpman_run": {
+      "src": "/assets/characters/xrpman_run.png",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "frames": 8,
+        "fps": 14
+      },
+      "notes": "8 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+    },
+    "xrpman_jump": {
+      "src": "/assets/characters/xrpman_jump.png",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "frames": 8,
+        "fps": 10
+      },
+      "notes": "8 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+    },
+    "xrpman_fire": {
+      "src": "/assets/characters/xrpman_fire.png",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 128,
+        "frameHeight": 128,
+        "frames": 7,
+        "fps": 16
+      },
+      "notes": "7 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
     }
   },
   "enemies": {
@@ -104,6 +148,11 @@
       "src": "/assets/projectiles/clarity_beam.png",
       "type": "image",
       "notes": "From Coded_1 pack: compliance_breaker_beam_projectile, impact end cropped off, rotated nose-up, scaled to 18x54"
+    },
+    "seeker_missile": {
+      "src": "/assets/projectiles/seeker_missile.png",
+      "type": "image",
+      "notes": "From futuristic_rocket_with_neon_glow.png: keyed off its black background, trimmed and scaled to 15x43"
     }
   },
   "vfx": {
@@ -162,6 +211,26 @@
       "src": "/assets/interior/regulatory_security_checkpoint.webp",
       "type": "image",
       "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch"
+    },
+    "regulatory_access_corridor": {
+      "src": "/assets/interior/regulatory_access_corridor.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+    },
+    "regulatory_maintenance_shaft": {
+      "src": "/assets/interior/regulatory_maintenance_shaft.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+    },
+    "regulatory_field_control": {
+      "src": "/assets/interior/regulatory_field_control.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+    },
+    "regulatory_defense_deck": {
+      "src": "/assets/interior/regulatory_defense_deck.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
     }
   },
   "hazards": {

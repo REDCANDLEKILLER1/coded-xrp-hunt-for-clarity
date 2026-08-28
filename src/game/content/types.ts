@@ -156,6 +156,22 @@ export interface EnvironmentPropDef {
 
 export type BossAttackPattern = 'aimed' | 'spread' | 'sweep' | 'burst';
 
+/**
+ * One move in a boss's attack script.
+ *
+ * The fight used to be a single aimed stream on a timer, which is not a
+ * pattern -- there is nothing to read and nothing to learn, so it is both
+ * easy and unfair at once. Each of these telegraphs, fires, then leaves the
+ * boss open, and a phase runs them in a fixed order so the order can be
+ * learned.
+ */
+export type BossAttackKey =
+  | 'aimed_volley'
+  | 'fog_wall'
+  | 'radial'
+  | 'charge'
+  | 'sweep_beam';
+
 export interface BossPhaseDef {
   /** Remaining-health ratio at or below which this phase becomes active. */
   hpThreshold: number;
@@ -166,6 +182,12 @@ export interface BossPhaseDef {
   spread: number;
   pattern: BossAttackPattern;
   accent: string;
+  /**
+   * Ordered attack script for this phase. A phase without one falls back to
+   * the old timed volley, so bosses that have not been authored yet are
+   * unchanged.
+   */
+  attacks?: BossAttackKey[];
 }
 
 export interface BossDef {

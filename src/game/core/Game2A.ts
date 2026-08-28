@@ -18,7 +18,7 @@ import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
+import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -38,6 +38,8 @@ type EnemyActor = Actor & {
   /** Seconds of combat left before this enemy breaks off and runs. */
   patience: number;
   dodgeCooldown: number;
+  /** True at the ends of a hold pattern -- when rhythm shooters fire. */
+  atRest: boolean;
 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
 type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
@@ -49,6 +51,18 @@ type BossActor = Actor & {
   contactClock: number;
   phaseIndex: number;
   targetX: number;
+  /**
+   * Where the boss is in its attack script.
+   *
+   * `telegraph` is the tell -- long enough to read and react to. `active` runs
+   * sustained attacks. `recover` is the punish window: the boss cannot fire
+   * and takes extra damage, so learning the script is what actually kills it.
+   */
+  attackIndex: number;
+  attackState: 'telegraph' | 'active' | 'recover';
+  attackClock: number;
+  /** Where a fog wall leaves its gap, or where a charge is aimed. */
+  attackAim: number;
 };
 type WarshipActor = Actor & {
   state: 'intro' | 'fight' | 'disabled';
@@ -78,6 +92,37 @@ const ENEMY_STATION_BOTTOM = 0.52;
 const ENEMY_PATIENCE_MIN = 9;        // seconds of combat before breaking off
 const ENEMY_PATIENCE_VARY = 7;
 const ENEMY_DIVE_CHANCE = 0.32;      // per opportunity, once settled
+
+/**
+ * What each enemy behaviour actually does.
+ *
+ * `behavior` used to select nothing but a sway width -- 74px, 52px or 30px --
+ * so every ship in the game flew the identical hold-and-dive loop and only the
+ * numbers differed. These give each one a routine with its own rhythm and its
+ * own opening:
+ *
+ *   straight  pressure. Barely holds, dives often, comes straight down.
+ *   sine      weaver. A wide slow arc across the lane; fires at the extremes.
+ *   zigzag    darter. Sharp lateral dashes with a pause; fires when it stops.
+ *   dive      hunter. Tracks your column, then commits, then climbs out.
+ *
+ * `burst` is how many shots leave the guns at once, and `sway` the width of
+ * the hold pattern. `dive` is the per-opportunity chance of an attack run.
+ */
+const ENEMY_TACTICS: Record<EnemyDef['behavior'], {
+  sway: number;
+  swaySpeed: number;
+  dive: number;
+  burst: number;
+  spread: number;
+  /** Fires only at the ends of its movement, where the rhythm is readable. */
+  firesAtRest: boolean;
+}> = {
+  straight: { sway: 22, swaySpeed: 1.4, dive: 0.52, burst: 1, spread: 0, firesAtRest: false },
+  sine: { sway: 96, swaySpeed: 1.15, dive: 0.14, burst: 2, spread: 0.16, firesAtRest: true },
+  zigzag: { sway: 74, swaySpeed: 2.6, dive: 0.22, burst: 1, spread: 0, firesAtRest: true },
+  dive: { sway: 34, swaySpeed: 1.0, dive: 0.62, burst: 3, spread: 0.2, firesAtRest: false },
+};
 const ENEMY_DODGE_RANGE = 92;        // px ahead of a bolt an enemy reacts to
 const ENEMY_DODGE_COOLDOWN = 0.55;
 const ENEMY_ESCAPE_PENALTY = 40;     // score lost when one gets away
@@ -169,7 +214,50 @@ const SHIELD_CAP = 6;
 const SHIELD_REGEN_DELAY = 7;
 /** Seconds per shield segment once regeneration starts. */
 const SHIELD_REGEN_STEP = 4.5;
+/** The nudge holds off until the launch settles, then reads for 9 seconds. */
+const BOMB_HINT_DELAY = 2.5;
+const BOMB_HINT_LIFE = 9;
 const SHIELD_PICKUP_EVERY_KILLS = 9;
+/** Half speed, so the pre-boss resupply is still on screen when you go for it. */
+const BOSS_RESUPPLY_DRIFT = 0.5;
+
+/**
+ * The boss attack table.
+ *
+ * `telegraph` is how long the tell runs before anything is fired. It is the
+ * budget the player has to read the move and get somewhere safe, so it is
+ * generous on the attacks that punish hardest. `active` is how long a
+ * sustained attack keeps firing (0 for one-shot volleys). `recover` is dead
+ * time afterwards, during which the boss cannot fire and takes BOSS_EXPOSED
+ * damage -- that window is the whole reason to learn the script.
+ */
+const BOSS_ATTACKS: Record<BossAttackKey, { telegraph: number; active: number; recover: number; label: string }> = {
+  aimed_volley: { telegraph: 0.55, active: 0, recover: 0.32, label: 'AIMED' },
+  fog_wall: { telegraph: 1.0, active: 0, recover: 0.45, label: 'FOG WALL' },
+  radial: { telegraph: 0.8, active: 0, recover: 0.4, label: 'BURST' },
+  charge: { telegraph: 0.9, active: 0.75, recover: 0.5, label: 'CHARGE' },
+  sweep_beam: { telegraph: 0.85, active: 1.5, recover: 0.5, label: 'SWEEP' },
+};
+
+/**
+ * Damage taken while winding up or attacking, and while open afterwards.
+ *
+ * These have to be read against the timings above, not chosen on their own.
+ * The first pass used 0.45/1.85 with recoveries longer than the wind-ups, so
+ * the boss spent more than half of every cycle exposed and the "armour" came
+ * out to an average multiplier of about 1.0 -- it died faster than before the
+ * script existed. Recovery is roughly a third of a cycle now, which puts the
+ * average near 0.7: a real reduction, with a window worth aiming for.
+ */
+const BOSS_ARMOURED = 0.3;
+const BOSS_EXPOSED = 1.6;
+/** Shots in a fog wall, and how many adjacent ones are left out as the gap. */
+const FOG_WALL_SHOTS = 13;
+const FOG_WALL_GAP = 3;
+/** Shots in a radial burst, and the arc left open in it. */
+const RADIAL_SHOTS = 14;
+const RADIAL_GAP = 3;
+const BOSS_CHARGE_SPEED = 430;
 
 const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
@@ -224,6 +312,9 @@ export class Game2A {
   private bossFacing = Math.PI / 2;
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
+  /** Cleared once the player has actually double-tapped, so the nudge stops. */
+  private bombHintShown = false;
+  private bombHintClock = 0;
   private kills = 0;
   private bombs = 2;
   private xp = 0;
@@ -369,6 +460,21 @@ export class Game2A {
     if (this.launchClock <= 0 && this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
     if (this.launchClock <= 0 && this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
+    // Always drained, so a double-tap made in a menu cannot fire a frame later
+    // once play resumes.
+    const doubleTap = this.input.consumeDoubleTap();
+    if (
+      doubleTap
+      && this.mode === 'play'
+      && !this.paused
+      && this.launchClock <= 0
+      && this.upgradeOffer.length === 0
+      && !this.inControls(doubleTap.x, doubleTap.y)
+    ) {
+      this.bombHintShown = true;
+      this.useBomb();
+    }
+
     const tap = this.input.consumeTap();
     if (!tap) return;
     if (this.mode === 'title') return void (this.mode = 'select');
@@ -428,6 +534,11 @@ export class Game2A {
     if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
     if (this.bossClearClock > 0) this.bossClearClock = Math.max(0, this.bossClearClock - dt);
     if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
+    // The double-tap nudge only runs while it is still true and still useful:
+    // in flight, with a bomb in the rack, and only until the player uses one.
+    if (!this.bombHintShown && this.bombs > 0 && this.launchClock <= 0) {
+      this.bombHintClock += dt;
+    }
     if (this.victoryPendingClock > 0) {
       this.victoryPendingClock = Math.max(0, this.victoryPendingClock - dt);
       if (this.victoryPendingClock === 0) this.finishRun(true);
@@ -500,6 +611,7 @@ export class Game2A {
     this.hazards = [];
     this.hostileShots = [];
     this.bolts = [];
+    this.dropBossResupply();
     this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
     this.missionBannerText = 'GUARDIAN SIGNAL // GARY FOG APPROACHING';
     this.missionBannerClock = 2.8;
@@ -518,6 +630,10 @@ export class Game2A {
       contactClock: 0,
       phaseIndex: 0,
       targetX: this.w / 2,
+      attackIndex: 0,
+      attackState: 'telegraph',
+      attackClock: BOSS_ATTACKS.aimed_volley.telegraph,
+      attackAim: this.w / 2,
     };
   }
 
@@ -526,6 +642,7 @@ export class Game2A {
     this.hazards = [];
     this.hostileShots = [];
     this.bolts = [];
+    this.dropBossResupply();
     this.warshipDirector.reset();
     this.cueMusic('boss_regulatory_warship');
     this.missionBannerText = 'CAPITAL SHIP // REGULATORY WARSHIP';
@@ -633,6 +750,7 @@ export class Game2A {
       stanceClock: 0,
       patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
       dodgeCooldown: 0,
+      atRest: false,
     });
   }
 
@@ -920,6 +1038,7 @@ export class Game2A {
         stanceClock: 0,
         patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
         dodgeCooldown: 0,
+        atRest: false,
       });
     }
     this.moveDrones(dt);
@@ -948,7 +1067,7 @@ export class Game2A {
           drone.stanceClock = 1.2 + Math.random() * 2.2;
           // A dive is a committed attack run that returns to station, not a
           // one-way trip through the play area.
-          if (Math.random() < ENEMY_DIVE_CHANCE) {
+          if (Math.random() < ENEMY_TACTICS[def.behavior].dive) {
             drone.stance = 'diving';
             drone.stanceClock = 1.5 + Math.random() * 0.9;
           }
@@ -1019,6 +1138,13 @@ export class Game2A {
     if (!def.fireRate || !def.projectileSpeed) return;
     drone.fireClock -= dt;
     if (drone.fireClock > 0) return;
+    const tactics = ENEMY_TACTICS[def.behavior];
+    // A rhythm shooter holds fire until it stops moving. Missing that beat
+    // costs it the shot rather than delaying it, so the tempo stays readable.
+    if (tactics.firesAtRest && drone.stance === 'holding' && !drone.atRest) {
+      drone.fireClock = 0.12;
+      return;
+    }
     drone.fireClock = def.fireRate + Math.random() * ENEMY_FIRE_JITTER;
 
     const dx = this.player.x - drone.x;
@@ -1027,17 +1153,22 @@ export class Game2A {
     // Only shoot when the player is roughly below: no blind shots upward.
     if (dy / length < ENEMY_FIRE_ARC) return;
 
-    this.hostileShots.push({
-      x: drone.x,
-      y: drone.y + drone.h * 0.4,
-      w: 8,
-      h: 8,
-      vx: (dx / length) * def.projectileSpeed,
-      vy: (dy / length) * def.projectileSpeed,
-      damage: 1,
-      color: def.accent,
-      projectileKey: 'enemy_missile',
-    });
+    const aim = Math.atan2(dy, dx);
+    const middle = (tactics.burst - 1) / 2;
+    for (let i = 0; i < tactics.burst; i += 1) {
+      const angle = aim + (i - middle) * tactics.spread;
+      this.hostileShots.push({
+        x: drone.x,
+        y: drone.y + drone.h * 0.4,
+        w: 8,
+        h: 8,
+        vx: Math.cos(angle) * def.projectileSpeed,
+        vy: Math.sin(angle) * def.projectileSpeed,
+        damage: 1,
+        color: def.accent,
+        projectileKey: 'enemy_missile',
+      });
+    }
     sfx.play('enemyShoot');
     debugLog.sample('efire', 3000, 'combat', 'enemy fired', { enemy: drone.enemyKey });
   }
@@ -1049,11 +1180,32 @@ export class Game2A {
 
   /** Station-keeping drift so a held position still reads as flying, not parking. */
   private holdStation(drone: EnemyActor, def: EnemyDef, speed: number, dt: number): void {
-    const sway = def.behavior === 'zigzag' ? 74 : def.behavior === 'sine' ? 52 : 30;
-    const targetX = drone.stationX + Math.sin(drone.age * 1.7 + drone.phase) * sway;
+    const tactics = ENEMY_TACTICS[def.behavior];
+    const beat = drone.age * tactics.swaySpeed + drone.phase;
+
+    let targetX: number;
+    if (def.behavior === 'zigzag') {
+      // Dash, stop, dash. A triangle wave sharpened toward its ends, so the
+      // ship snaps across and then sits still for the moment you can hit it.
+      const wave = Math.asin(Math.sin(beat)) / (Math.PI / 2);
+      targetX = drone.stationX + Math.sign(wave) * Math.pow(Math.abs(wave), 0.42) * tactics.sway;
+    } else if (def.behavior === 'dive') {
+      // A hunter lines up over the player instead of over its own station.
+      targetX = clamp(this.player.x, 30, this.w - 30);
+    } else {
+      targetX = drone.stationX + Math.sin(beat) * tactics.sway;
+    }
+
     const targetY = drone.stationY + Math.cos(drone.age * 1.1 + drone.phase) * 16;
-    drone.x += clamp(targetX - drone.x, -1, 1) * Math.min(speed, 150) * dt;
+    // The weaver needs to actually cross ground, so it is not speed-capped as
+    // hard as the others.
+    const lateral = def.behavior === 'sine' ? Math.min(speed * 1.35, 210) : Math.min(speed, 150);
+    drone.x += clamp(targetX - drone.x, -1, 1) * lateral * dt;
     drone.y += clamp(targetY - drone.y, -1, 1) * 60 * dt;
+
+    // Rhythm shooters fire at the ends of their travel, where they pause. That
+    // pause is both the tell and the window.
+    drone.atRest = Math.abs(targetX - drone.x) < 14;
   }
 
   /** Sidestep a bolt that is about to arrive. This is what reads as "smart". */
@@ -1167,6 +1319,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.dropBossResupply();
     // These used to arrive in silence. The boss track leads the entrance here
     // the same way it does for Gary Fog.
     this.cueMusic('boss_fight');
@@ -1185,6 +1338,10 @@ export class Game2A {
       contactClock: 0,
       phaseIndex: 0,
       targetX: this.w / 2,
+      attackIndex: 0,
+      attackState: 'telegraph',
+      attackClock: BOSS_ATTACKS.aimed_volley.telegraph,
+      attackAim: this.w / 2,
     };
   }
 
@@ -1241,20 +1398,163 @@ export class Game2A {
     boss.phaseIndex = bossPhaseIndex(def, boss.hp ?? def.hp);
     const phase = def.phases[boss.phaseIndex];
     if (Math.abs(boss.targetX - boss.x) < 12) boss.targetX = 52 + Math.random() * Math.max(1, this.w - 104);
-    boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
     // A duel needs the boss to be somewhere other than a fixed altitude --
     // "make it to where the balls can move around the screen". It drifts across
     // a wide band on a slow second wave, so it comes down to meet you and then
     // pulls back up, and the fighter has to keep repositioning.
     const roam = clamp(this.h * 0.2, 30, 120);
     const centre = this.bossRestY() + roam;
-    boss.y = centre + Math.sin(boss.age * 1.7) * this.bossDriftY() + Math.sin(boss.age * 0.43) * roam;
+    const script = phase.attacks ?? [];
+    // A charge drives the boss itself. Letting the idle drift keep writing y
+    // would cancel the dive, so during one the boss only steers itself, and
+    // afterwards it eases back to the drift instead of snapping.
+    const charging = script.length > 0
+      && boss.attackState === 'active'
+      && this.bossAttack(boss, script) === 'charge';
+    if (!charging) {
+      const drift = centre + Math.sin(boss.age * 1.7) * this.bossDriftY() + Math.sin(boss.age * 0.43) * roam;
+      boss.y += (drift - boss.y) * Math.min(1, dt * 3.2);
+      boss.x += Math.sign(boss.targetX - boss.x) * phase.moveSpeed * dt;
+    }
+
+    if (script.length > 0) {
+      this.runBossScript(boss, phase, script, dt);
+      return;
+    }
 
     boss.fireClock -= dt;
     if (boss.fireClock <= 0) {
       this.fireBossVolley(boss, phase);
       boss.fireClock = phase.fireRate;
     }
+  }
+
+  /** The attack this boss is winding up, running, or recovering from. */
+  private bossAttack(boss: BossActor, script: readonly BossAttackKey[]): BossAttackKey {
+    return script[boss.attackIndex % script.length];
+  }
+
+  /**
+   * Runs one phase's attack script.
+   *
+   * Fixed order, never shuffled: the point is that the sequence can be
+   * learned. A move telegraphs, fires, then leaves the boss open, and the
+   * script advances only after the recovery -- so a player who reads the tell
+   * gets a guaranteed punish window every single cycle.
+   */
+  private runBossScript(boss: BossActor, phase: BossPhaseDef, script: readonly BossAttackKey[], dt: number): void {
+    const key = this.bossAttack(boss, script);
+    const timing = BOSS_ATTACKS[key];
+    boss.attackClock -= dt;
+
+    if (boss.attackState === 'telegraph') {
+      // The aim is locked at the START of the tell, not when the shot goes
+      // out. Otherwise the warning marker chases the player and there is
+      // nothing to dodge -- the tell has to become a promise.
+      if (boss.attackClock <= 0) {
+        this.fireBossAttack(boss, phase, key);
+        boss.attackState = timing.active > 0 ? 'active' : 'recover';
+        boss.attackClock = timing.active > 0 ? timing.active : timing.recover;
+      }
+      return;
+    }
+
+    if (boss.attackState === 'active') {
+      this.sustainBossAttack(boss, phase, key, dt);
+      if (boss.attackClock <= 0) {
+        boss.attackState = 'recover';
+        boss.attackClock = timing.recover;
+      }
+      return;
+    }
+
+    if (boss.attackClock <= 0) {
+      boss.attackIndex += 1;
+      const next = BOSS_ATTACKS[this.bossAttack(boss, script)];
+      boss.attackState = 'telegraph';
+      boss.attackClock = next.telegraph;
+      this.aimBossAttack(boss, this.bossAttack(boss, script));
+    }
+  }
+
+  /** Locks in where the next attack will land, at the moment the tell starts. */
+  private aimBossAttack(boss: BossActor, key: BossAttackKey): void {
+    boss.attackAim = key === 'fog_wall'
+      // The gap opens where the player is standing when the wall is called.
+      // Staying put is safe; the punish is for panicking mid-tell.
+      ? clamp(this.player.x, 40, this.w - 40)
+      : this.player.x;
+  }
+
+  private fireBossAttack(boss: BossActor, phase: BossPhaseDef, key: BossAttackKey): void {
+    const originY = boss.y + boss.h * 0.35;
+    if (key === 'aimed_volley') {
+      this.fireBossVolley(boss, phase);
+      return;
+    }
+
+    if (key === 'fog_wall') {
+      // A curtain across the whole width with one hole in it. Read the tell,
+      // stand in the hole.
+      const gapIndex = Math.round(((boss.attackAim - 40) / Math.max(1, this.w - 80)) * (FOG_WALL_SHOTS - 1));
+      for (let i = 0; i < FOG_WALL_SHOTS; i += 1) {
+        if (Math.abs(i - gapIndex) < FOG_WALL_GAP / 2 + 0.5) continue;
+        const x = 40 + (i / (FOG_WALL_SHOTS - 1)) * (this.w - 80);
+        this.pushBossShot(x, originY, Math.PI / 2, phase.projectileSpeed * 0.82, phase.accent);
+      }
+      sfx.play('enemyShoot');
+      return;
+    }
+
+    if (key === 'radial') {
+      const skip = Math.floor(Math.random() * RADIAL_SHOTS);
+      for (let i = 0; i < RADIAL_SHOTS; i += 1) {
+        if (Math.abs(i - skip) < RADIAL_GAP / 2 + 0.5) continue;
+        const angle = (i / RADIAL_SHOTS) * Math.PI * 2;
+        this.pushBossShot(boss.x, boss.y, angle, phase.projectileSpeed * 0.9, phase.accent);
+      }
+      sfx.play('enemyShoot');
+      return;
+    }
+
+    if (key === 'charge') {
+      sfx.play('enemyShoot');
+      return;
+    }
+
+    // sweep_beam fires continuously in sustainBossAttack.
+  }
+
+  private sustainBossAttack(boss: BossActor, phase: BossPhaseDef, key: BossAttackKey, dt: number): void {
+    if (key === 'charge') {
+      // Dives at the column it marked, then the recovery pulls it back up.
+      boss.x += clamp(boss.attackAim - boss.x, -1, 1) * BOSS_CHARGE_SPEED * dt;
+      boss.y += BOSS_CHARGE_SPEED * 0.62 * dt;
+      boss.y = Math.min(boss.y, this.playerLane().bottom - 46);
+      return;
+    }
+
+    if (key === 'sweep_beam') {
+      boss.fireClock -= dt;
+      if (boss.fireClock > 0) return;
+      boss.fireClock = 0.075;
+      const swing = Math.sin(boss.age * 3.1) * 0.7;
+      this.pushBossShot(boss.x, boss.y + boss.h * 0.35, Math.PI / 2 + swing, phase.projectileSpeed, phase.accent);
+    }
+  }
+
+  private pushBossShot(x: number, y: number, angle: number, speed: number, color: string): void {
+    this.hostileShots.push({
+      x,
+      y,
+      w: 10,
+      h: 10,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      damage: 1,
+      color,
+      projectileKey: 'enemy_red_bullet',
+    });
   }
 
   private fireBossVolley(boss: BossActor, phase: BossPhaseDef): void {
@@ -1750,8 +2050,29 @@ export class Game2A {
     if (this.launchClock > 0) this.drawLaunchReveal();
     if (this.bossClearClock > 0) this.bossClearBanner();
     if (this.missionBannerClock > 0) this.drawMissionBanner();
+    if (!this.bombHintShown && this.bombHintClock > 0) this.drawBombHint();
     if (this.upgradeOffer.length > 0) this.drawUpgradeChoice();
     if (this.paused) this.pause();
+  }
+
+  /**
+   * Teaches the double-tap, once.
+   *
+   * It waits a beat after the fighter is flying so it is not competing with
+   * the launch cinematic, pulses so it reads as a prompt rather than a label,
+   * and retires itself the first time a bomb goes off however it was fired.
+   */
+  private drawBombHint(): void {
+    if (this.bombHintClock < BOMB_HINT_DELAY) return;
+    const remaining = BOMB_HINT_DELAY + BOMB_HINT_LIFE - this.bombHintClock;
+    if (remaining <= 0) return;
+    this.ctx.save();
+    this.ctx.textAlign = 'center';
+    this.ctx.globalAlpha = Math.min(1, remaining) * (0.74 + 0.26 * Math.sin(this.clock * 5));
+    this.ctx.fillStyle = '#ffd24a';
+    this.ctx.font = '900 12px ui-sans-serif, system-ui';
+    this.ctx.fillText('DOUBLE-TAP ANYWHERE TO DROP A BOMB', this.w / 2, this.h - 34);
+    this.ctx.restore();
   }
 
   private drawLaunchReveal(): void {
@@ -1895,9 +2216,101 @@ export class Game2A {
     this.ctx.restore();
   }
 
+  /**
+   * Draws the tell, so the script can actually be read.
+   *
+   * A telegraph the player cannot see is just a delay. Each move paints the
+   * shape of what is coming, in the space where it will land, filling up over
+   * the wind-up so the timing is legible too. The recovery paints the opposite
+   * signal -- the boss glows open, because that is when hitting it counts.
+   */
+  private drawBossTell(boss: BossActor, phase: BossPhaseDef, script: readonly BossAttackKey[]): void {
+    const key = this.bossAttack(boss, script);
+    const timing = BOSS_ATTACKS[key];
+    const c = this.ctx;
+
+    if (boss.attackState === 'recover') {
+      const t = clamp(boss.attackClock / Math.max(0.01, timing.recover), 0, 1);
+      c.save();
+      c.globalAlpha = 0.3 + 0.35 * t;
+      c.strokeStyle = '#00ff88';
+      c.lineWidth = 3;
+      c.beginPath();
+      c.arc(boss.x, boss.y, Math.max(boss.w, boss.h) * 0.72, 0, Math.PI * 2);
+      c.stroke();
+      c.globalAlpha = 0.85;
+      c.fillStyle = '#00ff88';
+      c.textAlign = 'center';
+      c.font = '900 10px ui-sans-serif, system-ui';
+      c.fillText('OPEN', boss.x, boss.y - Math.max(boss.w, boss.h) * 0.72 - 6);
+      c.restore();
+      return;
+    }
+
+    if (boss.attackState !== 'telegraph') return;
+    // 0 at the start of the wind-up, 1 the instant it fires.
+    const charge = 1 - clamp(boss.attackClock / Math.max(0.01, timing.telegraph), 0, 1);
+
+    c.save();
+    c.strokeStyle = phase.accent;
+    c.fillStyle = phase.accent;
+    c.lineWidth = 2;
+    c.globalAlpha = 0.35 + 0.45 * charge;
+
+    if (key === 'fog_wall') {
+      // Paint the curtain, and leave the gap unpainted. Stand in the gap.
+      const gapIndex = Math.round(((boss.attackAim - 40) / Math.max(1, this.w - 80)) * (FOG_WALL_SHOTS - 1));
+      for (let i = 0; i < FOG_WALL_SHOTS; i += 1) {
+        if (Math.abs(i - gapIndex) < FOG_WALL_GAP / 2 + 0.5) continue;
+        const x = 40 + (i / (FOG_WALL_SHOTS - 1)) * (this.w - 80);
+        c.fillRect(x - 3, boss.y + boss.h * 0.35, 6, 10 + 26 * charge);
+      }
+    } else if (key === 'charge') {
+      // The column it is about to dive down.
+      c.globalAlpha = 0.16 + 0.24 * charge;
+      c.fillRect(boss.attackAim - 26, boss.y, 52, this.h - boss.y);
+      c.globalAlpha = 0.6 + 0.4 * charge;
+      c.beginPath();
+      c.moveTo(boss.attackAim - 13, boss.y + 34);
+      c.lineTo(boss.attackAim + 13, boss.y + 34);
+      c.lineTo(boss.attackAim, boss.y + 52);
+      c.closePath();
+      c.fill();
+    } else if (key === 'radial') {
+      c.beginPath();
+      c.arc(boss.x, boss.y, 26 + 54 * charge, 0, Math.PI * 2);
+      c.stroke();
+    } else if (key === 'sweep_beam') {
+      const swing = Math.sin(boss.age * 3.1) * 0.7 + Math.PI / 2;
+      c.globalAlpha = 0.28 + 0.4 * charge;
+      c.lineWidth = 3;
+      c.beginPath();
+      c.moveTo(boss.x, boss.y);
+      c.lineTo(boss.x + Math.cos(swing) * this.h, boss.y + Math.sin(swing) * this.h);
+      c.stroke();
+    } else {
+      // An aimed volley: a short lead line down the firing angle.
+      const angle = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+      c.lineWidth = 3;
+      c.beginPath();
+      c.moveTo(boss.x, boss.y);
+      c.lineTo(boss.x + Math.cos(angle) * (40 + 70 * charge), boss.y + Math.sin(angle) * (40 + 70 * charge));
+      c.stroke();
+    }
+
+    c.globalAlpha = 0.9;
+    c.fillStyle = phase.accent;
+    c.textAlign = 'center';
+    c.font = '900 9px ui-sans-serif, system-ui';
+    c.fillText(timing.label, boss.x, boss.y - Math.max(boss.w, boss.h) * 0.6);
+    c.restore();
+  }
+
   private drawBoss(boss: BossActor): void {
     const def = this.bossDef(boss.bossKey);
     const phase = def.phases[boss.phaseIndex];
+    const script = phase.attacks ?? [];
+    if (boss.state === 'fight' && script.length > 0) this.drawBossTell(boss, phase, script);
     // The boss keeps its nose on the player too, so the duel reads as two
     // fighters circling rather than one thing shooting downwards.
     const facing = boss.state === 'fight' ? this.bossFacing : Math.PI / 2;
@@ -2259,6 +2672,16 @@ export class Game2A {
     this.ctx.fillStyle = 'rgba(0,255,136,0.8)';
     this.ctx.fillText(`LV ${this.xpLevel}`, 92, barY + 2.5);
 
+    // Seekers are not a consumable -- once the tier is earned they reload
+    // forever. The bar shows the reload, and the infinity mark says that is
+    // all there is to it, so nobody plays around them thinking they are rare.
+    if (this.xpLevel >= SEEKER_UNLOCK_LEVEL && leftWidth > 190) {
+      const charge = 1 - clamp(this.seekerClock / SEEKER_INTERVAL, 0, 1);
+      bar(this.ctx, 122, barY, 30, 2, charge, '#ff6b3d');
+      this.ctx.fillStyle = 'rgba(255,107,61,0.85)';
+      this.ctx.fillText('SEEKER \u221e', 156, barY + 2.5);
+    }
+
     const weapon = this.currentWeapon();
     const gun = `${weapon.label}${this.barrels > 0 ? ` +${this.barrels}` : ''}`;
     const detail = mission && missionAct
@@ -2310,6 +2733,9 @@ export class Game2A {
     this.padButton(this.zone.assets, 'D', 'rgba(255,210,74,0.75)');
     this.padButton(this.zone.bomb, 'BOMB', this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.35)', {
       badge: String(this.bombs),
+      // The button stays, but it says out loud that you never have to reach
+      // for it: the same bomb is two taps under the thumb already steering.
+      caption: '2× TAP',
     });
     this.drawSpecialButton();
   }
@@ -2431,7 +2857,7 @@ export class Game2A {
     circle: { cx: number; cy: number; r: number },
     label: string,
     color: string,
-    options: { badge?: string; glow?: number; ring?: number } = {},
+    options: { badge?: string; caption?: string; glow?: number; ring?: number } = {},
   ): void {
     const { cx, cy, r } = circle;
     this.ctx.save();
@@ -2486,6 +2912,15 @@ export class Game2A {
       this.ctx.fillStyle = color;
       this.ctx.font = `800 ${Math.max(8, Math.round(r * 0.36))}px ui-sans-serif, system-ui`;
       this.ctx.fillText(options.badge, bx, by + r * 0.13);
+    }
+
+    if (options.caption !== undefined) {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = color;
+      this.ctx.globalAlpha = 0.7;
+      this.ctx.font = `800 ${Math.max(7, Math.round(r * 0.24))}px ui-sans-serif, system-ui`;
+      this.ctx.fillText(fitText(this.ctx, options.caption, r * 2.4), cx, cy + r * 0.52);
+      this.ctx.globalAlpha = 1;
     }
     this.ctx.restore();
   }
@@ -2548,6 +2983,7 @@ export class Game2A {
 
   private useBomb(): void {
     if (this.bombs <= 0 || this.mode !== 'play') return void sfx.play('deny');
+    this.bombHintShown = true;
     this.bombs -= 1;
     this.bombClock = BOMB_LIFE;
     sfx.play('bomb');
@@ -2576,10 +3012,24 @@ export class Game2A {
     }
   }
 
+  /**
+   * How much of a hit lands right now.
+   *
+   * A scripted boss is armoured while it winds up and attacks, and wide open
+   * while it recovers. That is what makes reading the tell worth anything: you
+   * cannot simply out-trade it, you have to survive the move and punish the
+   * window. Bosses with no script take full damage as before.
+   */
+  private bossDamageScale(boss: BossActor): number {
+    const script = this.bossDef(boss.bossKey).phases[boss.phaseIndex]?.attacks ?? [];
+    if (script.length === 0) return 1;
+    return boss.attackState === 'recover' ? BOSS_EXPOSED : BOSS_ARMOURED;
+  }
+
   private damageBoss(damage: number): void {
     const boss = this.boss;
     if (!boss || boss.state !== 'fight') return;
-    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage);
+    boss.hp = Math.max(0, (boss.hp ?? this.bossDef(boss.bossKey).hp) - damage * this.bossDamageScale(boss));
     if ((boss.hp ?? 0) > 0) return void sfx.play('hit');
     sfx.play('bigExplode');
 
@@ -2706,8 +3156,38 @@ export class Game2A {
     }
   }
 
-  private dropPickup(def: PickupDef, x: number, y: number): void {
-    this.pickups.push({ x, y, w: def.hitbox.w, h: def.hitbox.h, vx: 0, vy: def.driftSpeed, pickupKey: def.key });
+  private dropPickup(def: PickupDef, x: number, y: number, driftScale = 1): void {
+    this.pickups.push({
+      x,
+      y,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: def.driftSpeed * driftScale,
+      pickupKey: def.key,
+    });
+  }
+
+  /**
+   * The resupply that falls in just before a boss opens fire.
+   *
+   * Reaching a boss on fumes used to be a dead end: every other drop is tied
+   * to a kill count, and the run of drones ends the moment the boss spawns, so
+   * whatever you limped in with was what you fought with. This guarantees a
+   * shield cell and a hull patch in the seconds before the fight starts, plus
+   * one random third pick, and drifts them at half speed so they are actually
+   * catchable during the entrance. Lanes stay left of the button cluster --
+   * a pickup you cannot reach without covering a button is not a pickup.
+   */
+  private dropBossResupply(): void {
+    const bonus = Math.random() < 0.5 ? PICKUPS.bomb : PICKUPS.weapon_upgrade;
+    const drops: PickupDef[] = [PICKUPS.shield_cell, PICKUPS.repair, bonus];
+    for (let i = 0; i < drops.length; i++) {
+      const lane = 0.18 + i * 0.24;
+      this.dropPickup(drops[i], this.w * lane, -22 - i * 30, BOSS_RESUPPLY_DRIFT);
+    }
+    this.missionBannerText = 'RESUPPLY DROP // GRAB IT';
+    this.missionBannerClock = 2.4;
   }
 
   /** Upgrade state a checkpoint carries, so continuing keeps what was earned. */
@@ -2899,6 +3379,9 @@ export class Game2A {
     this.bolts = [];
     this.seekers = [];
     this.seekerClock = SEEKER_INTERVAL;
+    // Restart the nudge each run: a player who has never dropped a bomb still
+    // has not been taught, and the timer would otherwise be spent already.
+    this.bombHintClock = 0;
     this.playerFacing = -Math.PI / 2;
     this.bossFacing = Math.PI / 2;
     this.pickups = [];

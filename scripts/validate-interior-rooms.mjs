@@ -135,6 +135,28 @@ for (const room of rooms) {
   check(/^#[0-9a-f]{6}$/i.test(room.accent), `interior.${room.key}: needs an accent for its procedural lighting`);
 }
 
+// Every room has art now, must actually use it, and must point at a file the
+// runtime manifest knows about. All six spent time on the procedural stand-in;
+// nothing should quietly slide back to it.
+const runtimeManifest = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));
+for (const key of rooms.map((entry) => entry.key)) {
+  const room = rooms.find((entry) => entry.key === key);
+  check(!!room, `room ${key} is missing`);
+  if (!room) continue;
+  const want = `/assets/interior/regulatory_${key}.webp`;
+  check(room.backgroundSrc === want, `interior.${key}: backgroundSrc should be ${want}, got ${room.backgroundSrc ?? 'nothing'}`);
+  const listed = Object.values(runtimeManifest.interior ?? {}).some((entry) => entry.src === room.backgroundSrc);
+  check(listed, `interior.${key}: ${room.backgroundSrc} is not registered in the runtime manifest`);
+}
+
+// Art is 1024x576 for every room; the shaft is 980x1180. Stretching onto the
+// room smeared it to twice its height, so the draw must preserve aspect.
+check(/private drawRoomCover\(/.test(runtime), 'room art must be fitted, not stretched onto the room dimensions');
+check(
+  !/c\.drawImage\(image, 0, 0, this\.room\.worldWidth, this\.room\.worldHeight\)/.test(runtime),
+  'the aspect-destroying stretch is back',
+);
+
 // The interior was silent; it shares the flight game's synthesised voices now.
 check(/from '\.\.\/audio\/Sfx'/.test(runtime), 'the interior must make noise');
 for (const voice of ["'shoot'", "'enemyShoot'", "'hurt'", "'explode'"]) {

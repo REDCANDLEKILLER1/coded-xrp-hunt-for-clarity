@@ -77,36 +77,50 @@
     font-size: 8px;
   }
 
+  /* The header was ~90px of a 447px-tall screen -- a fifth of the map's
+     room spent on a title you have already read. One slim row instead. */
   .campaign-header {
-    padding: max(7px, env(safe-area-inset-top)) 14px 7px;
-    gap: 12px;
+    align-items: center;
+    padding: max(4px, env(safe-area-inset-top)) 12px 4px;
+    gap: 10px;
   }
 
   .campaign-header h1 {
-    font-size: clamp(17px, 3vw, 24px);
+    margin: 0;
+    /* One line. Wrapping cost a second row of header on a 274px-tall screen. */
+    white-space: nowrap;
+    font-size: clamp(12px, 2.2vw, 15px);
+    text-shadow: none;
   }
 
-  .campaign-subtitle,
-  .campaign-record span {
-    font-size: 8px;
+  .campaign-header .eyebrow,
+  .campaign-subtitle {
+    display: none;
   }
 
   .campaign-record span {
-    min-width: 68px;
-    padding: 5px 7px;
+    min-width: 54px;
+    padding: 3px 6px;
+    font-size: 7px;
   }
 
   .campaign-record strong {
-    font-size: 12px;
+    margin-top: 0;
+    font-size: 11px;
   }
 
   /* Landscape phones have width to spare and very little height. The mobile
      stacked layout reserves a 250px minimum for the map, which leaves too
      little room for the mission panel — DEPLOY ends up clipped below the fold
      with no way to scroll to it, because the screen and layout are both
-     overflow:hidden. Put the panel beside the map instead of under it. */
+     overflow:hidden. Put the panel beside the map instead of under it.
+
+     34vw was a third of the screen given to reference text. The map cannot be
+     overlaid instead -- four planets sit between 75% and 93% of its width, and
+     a panel on top of them is a panel you cannot tap through -- so the space
+     comes from making the panel genuinely small. */
   .campaign-layout {
-    grid-template-columns: minmax(0, 1fr) minmax(190px, 34vw);
+    grid-template-columns: minmax(0, 1fr) minmax(172px, 21vw);
     grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
   }
@@ -123,8 +137,18 @@
   .mission-sector { font-size: 7px; letter-spacing: 0.14em; }
   .mission-panel h2 { font-size: 15px; }
   .mission-status { font-size: 7px; }
-  .mission-briefing { margin: 5px 0 7px; font-size: 9px; line-height: 1.35; }
-  .mission-targets { margin-bottom: 7px; }
+  .mission-briefing { display: none; }
+  /* The phone breakpoint puts these side by side, which is right in a
+     full-width panel under the map and wrong in a 172px column beside it --
+     the second cell overflowed and clipped SURFACE BOSS. Always stacked here. */
+  .mission-targets { grid-template-columns: 1fr; gap: 4px; margin-bottom: 7px; }
+  .mission-targets div { padding: 5px 7px; }
+  .mission-targets div:last-child { display: block; }
+
+  /* The legend collided with the LOG/music buttons in the bottom-left and with
+     FULLSCREEN in the bottom-right. There is no free corner on a screen this
+     short, and a green/blue/grey key is self-evident, so it goes. */
+  .map-legend { display: none; }
   .mission-targets dt { font-size: 6px; }
   .mission-targets dd, .mission-targets b { font-size: 8px; }
 
@@ -210,4 +234,23 @@
 .fullscreen-nudge:focus-visible {
   outline: 2px solid #36a3ff;
   outline-offset: 2px;
+}
+
+/* Very short landscape -- 274px tall and less. The mission panel has to fit
+   BEGIN DEFENSE and the arcade route without scrolling for them. */
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 300px) {
+  .campaign-header { padding: max(3px, env(safe-area-inset-top)) 12px 3px; }
+  .campaign-header h1 { font-size: 13px; }
+  .campaign-record span { min-width: 46px; padding: 2px 5px; font-size: 6px; }
+  .campaign-record strong { font-size: 10px; }
+
+  .mission-panel { padding: 7px 9px max(7px, env(safe-area-inset-bottom)); }
+  .mission-panel h2 { margin: 2px 0; font-size: 13px; }
+  .mission-status { margin-bottom: 2px; padding: 1px 4px; font-size: 6px; }
+  .mission-targets { gap: 3px; margin-bottom: 5px; }
+  .mission-targets div { padding: 3px 6px; }
+  .mission-targets dt { font-size: 5px; }
+  .mission-targets dd { margin-top: 2px; }
+  .deploy-button, .test-button { padding: 6px; font-size: 8px; }
+  .test-button { margin-top: 4px; }
 }

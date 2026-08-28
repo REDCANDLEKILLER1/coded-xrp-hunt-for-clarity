@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { BossDef, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
+import type { BossAttackKey, BossDef, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from './BossDirector';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
@@ -157,14 +157,14 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
     hitbox: { w: 9, h: 26 },
     speed: 760,
   },
-  // The player's homing rocket. No art yet, so it draws through the procedural
-  // dart in drawSeeker; adding projectiles/seeker_missile to the manifest is
-  // the only change needed to swap real art in. See docs/asset-requests.md.
+  // The player's homing rocket. Real art now; drawSeeker's procedural dart
+  // stays as the fallback. Drawn 40% smaller than the first pass — at 14x42
+  // it read as nearly as big as the fighter that launches it.
   seeker_missile: {
     key: 'seeker_missile',
     sprite: { category: 'projectiles', id: 'seeker_missile' },
-    draw: { w: 14, h: 30 },
-    hitbox: { w: 10, h: 22 },
+    draw: { w: 8, h: 25 },
+    hitbox: { w: 7, h: 16 },
     speed: 400,
   },
 };
@@ -400,6 +400,15 @@ export function selectHazardKey(wave: number, roll = Math.random()): string {
   return available[available.length - 1];
 }
 
+/** Every move the boss script runner knows how to execute. */
+export const BOSS_ATTACK_KEYS: readonly BossAttackKey[] = [
+  'aimed_volley',
+  'fog_wall',
+  'radial',
+  'charge',
+  'sweep_beam',
+];
+
 export const BOSSES: Record<string, BossDef> = {
   gary_fog: {
     key: 'gary_fog',
@@ -407,13 +416,27 @@ export const BOSSES: Record<string, BossDef> = {
     sprite: { category: 'bosses', id: 'gary_fog_phase1' },
     draw: { w: 98, h: 104 },
     hitbox: { w: 75, h: 69 },
-    hp: 36,
+    // Gary Fog is the first real boss, so his script is a teacher. Phase 1 is
+    // two moves you can count -- aimed, then a wall with a gap -- and nothing
+    // else, until you can do both in your sleep. Phase 2 adds the dive. Phase 3
+    // is all of it with the ring on the front, and by then the order is the
+    // only thing keeping you alive.
+    hp: 88,
     triggerWave: 5,
     score: 600,
     phases: [
-      { hpThreshold: 1, moveSpeed: 72, fireRate: 1.05, projectileSpeed: 205, projectileCount: 1, spread: 0, pattern: 'aimed', accent: '#b56cff' },
-      { hpThreshold: 0.62, moveSpeed: 96, fireRate: 0.82, projectileSpeed: 225, projectileCount: 3, spread: 0.22, pattern: 'spread', accent: '#d06cff' },
-      { hpThreshold: 0.28, moveSpeed: 124, fireRate: 0.58, projectileSpeed: 250, projectileCount: 5, spread: 0.19, pattern: 'burst', accent: '#ff5ce1' },
+      {
+        hpThreshold: 1, moveSpeed: 72, fireRate: 1.05, projectileSpeed: 205, projectileCount: 3, spread: 0.2,
+        pattern: 'spread', accent: '#b56cff', attacks: ['aimed_volley', 'fog_wall'],
+      },
+      {
+        hpThreshold: 0.62, moveSpeed: 96, fireRate: 0.82, projectileSpeed: 225, projectileCount: 4, spread: 0.22,
+        pattern: 'spread', accent: '#d06cff', attacks: ['aimed_volley', 'fog_wall', 'charge'],
+      },
+      {
+        hpThreshold: 0.28, moveSpeed: 124, fireRate: 0.58, projectileSpeed: 250, projectileCount: 5, spread: 0.19,
+        pattern: 'burst', accent: '#ff5ce1', attacks: ['radial', 'charge', 'fog_wall', 'sweep_beam'],
+      },
     ],
   },
   regulatory_behemoth: {
@@ -617,6 +640,14 @@ export function validateContent(): string[] {
       if (!(phase.moveSpeed > 0 && phase.fireRate > 0 && phase.projectileSpeed > 0)) errors.push(`bosses.${key}.phases.${index}: movement, fire rate, and projectile speed must be > 0`);
       if (!(Number.isInteger(phase.projectileCount) && phase.projectileCount > 0)) errors.push(`bosses.${key}.phases.${index}: projectileCount must be a positive integer`);
       if (!(phase.spread >= 0) || !phase.accent) errors.push(`bosses.${key}.phases.${index}: spread and accent are invalid`);
+      // An attack script must name real moves, and a phase with an empty one
+      // would silently fall back to the old timed volley.
+      if (phase.attacks !== undefined) {
+        if (phase.attacks.length === 0) errors.push(`bosses.${key}.phases.${index}: attacks must not be empty`);
+        for (const attack of phase.attacks) {
+          if (!BOSS_ATTACK_KEYS.includes(attack)) errors.push(`bosses.${key}.phases.${index}: unknown attack "${attack}"`);
+        }
+      }
       priorThreshold = phase.hpThreshold;
     }
     if (def.phases.length > 0 && bossPhaseIndex(def, def.hp) !== 0) errors.push(`bosses.${key}: full health must resolve to phase 1`);
