@@ -12,6 +12,16 @@ import type { Vec2 } from './Types';
 export class Input {
   private keys = new Set<string>();
   pointer: Vec2 | null = null;
+  /**
+   * Where the current gesture started.
+   *
+   * Steering used to ask "is the finger over a button right now?", which made
+   * every button a wall: dragging the fighter across one stopped it dead, and
+   * on a phone you cannot lift your thumb over an obstacle. What a gesture is
+   * for is decided once, at pointer-down, from this point — a drag that begins
+   * on open canvas keeps steering all the way across the button cluster.
+   */
+  pointerOrigin: Vec2 | null = null;
   private tap: Vec2 | null = null;
   private fireSpecial = false;
   private pausePressed = false;
@@ -83,6 +93,7 @@ export class Input {
     event.preventDefault();
     const point = this.toCanvasPoint(event);
     this.pointer = point;
+    this.pointerOrigin = point;
     this.tap = point;
   };
 
@@ -94,6 +105,7 @@ export class Input {
 
   private readonly onPointerUp = (): void => {
     this.pointer = null;
+    this.pointerOrigin = null;
   };
 
   private toCanvasPoint(event: PointerEvent): Vec2 {

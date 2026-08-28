@@ -70,11 +70,11 @@
 }
 
 @media (pointer: coarse) and (orientation: landscape) {
+  /* Landscape keeps the same bottom-left utility row; only the padding tightens. */
   .return-map {
-    top: max(6px, env(safe-area-inset-top));
-    min-width: 84px;
-    padding: 6px 10px;
-    font-size: 9px;
+    min-width: 78px;
+    padding: 5px 9px;
+    font-size: 8px;
   }
 
   .campaign-header {

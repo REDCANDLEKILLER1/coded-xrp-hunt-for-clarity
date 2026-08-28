@@ -239,12 +239,26 @@ export class Game2A {
   private get w(): number { return innerWidth; }
   private get h(): number { return innerHeight; }
 
+  /**
+   * The action pad: round arcade buttons stacked into the bottom-right corner,
+   * with the two utility buttons up in the top-right.
+   *
+   * They used to be four rectangles spread across the whole bottom edge, PAUSE
+   * on the left and the rest on the right, which ate the full width of the
+   * play area. Cornering them keeps the left four-fifths of the screen clear
+   * to fly in.
+   */
   private get zone() {
+    const edge = 14;
+    const big = clamp(Math.min(this.w, this.h) * 0.125, 26, 38);
+    const mid = big * 0.74;
+    const tiny = clamp(big * 0.46, 13, 17);
+    const row = this.h - edge - big;
     return {
-      pause: { x: 16, y: this.h - 76, w: 72, h: 52 },
-      bomb: { x: this.w - 208, y: this.h - 82, w: 84, h: 58 },
-      special: { x: this.w - 112, y: this.h - 86, w: 96, h: 62 },
-      assets: { x: this.w - 58, y: 14, w: 42, h: 34 },
+      special: { cx: this.w - edge - big, cy: row, r: big },
+      bomb: { cx: this.w - edge - big * 2 - mid - 10, cy: row + big - mid, r: mid },
+      pause: { cx: this.w - edge - tiny, cy: edge + tiny, r: tiny },
+      assets: { cx: this.w - edge - tiny * 3 - 10, cy: edge + tiny, r: tiny },
     };
   }
 
@@ -272,11 +286,11 @@ export class Game2A {
       return this.reset();
     }
     if (this.mode === 'victory') return this.reset();
-    if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
-    if (inside(this.zone.pause, tap.x, tap.y)) return void this.setPaused(!this.paused);
+    if (inCircle(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
+    if (inCircle(this.zone.pause, tap.x, tap.y)) return void this.setPaused(!this.paused);
     if (this.launchClock > 0) return;
-    if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
-    if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
+    if (inCircle(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
+    if (inCircle(this.zone.special, tap.x, tap.y)) this.useSpecial();
   }
 
   private update(dt: number): void {
@@ -582,8 +596,12 @@ export class Game2A {
 
   private movePlayer(dt: number): void {
     const pointer = this.input.pointer;
+    const origin = this.input.pointerOrigin;
     const axis = this.input.axis();
-    const usingPointer = Boolean(pointer && !this.inControls(pointer.x, pointer.y));
+    // Ask where the gesture STARTED, not where the finger is now. Testing the
+    // live position turned every button into a wall the fighter could not be
+    // dragged across -- you cannot lift a thumb over an obstacle mid-drag.
+    const usingPointer = Boolean(pointer && origin && !this.inControls(origin.x, origin.y));
     if (usingPointer && pointer) {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
@@ -1719,95 +1737,83 @@ export class Game2A {
     this.ctx.restore();
   }
 
+  /**
+   * Compact HUD.
+   *
+   * The readout used to run down the left edge to y=128 at 10-13px. On a
+   * 274px-tall landscape phone that is nearly half the screen given over to
+   * text the player reads once. Everything now lives in a ~40px strip along
+   * the top at roughly half the old size and well under full opacity, so the
+   * playfield gets the room back.
+   */
   private hud(): void {
-    this.ctx.textAlign = 'left';
-    this.ctx.fillStyle = '#d8ffe8';
-    this.ctx.font = '700 13px ui-sans-serif, system-ui';
-    this.ctx.fillText(`SCORE ${this.score}`, 16, 24);
-
     const ship = this.playerDef();
     const mission = this.missionDirector.activeMission;
     const missionAct = this.missionDirector.currentAct;
+    // Keep the left stack out of the top-right utility buttons.
+    const leftWidth = Math.min(this.w * 0.5, this.zone.assets.cx - this.zone.assets.r - 24);
 
-    if (mission && missionAct) {
-      this.ctx.font = '700 10px ui-sans-serif, system-ui';
-      this.ctx.fillStyle = '#36a3ff';
-      this.ctx.fillText(missionAct.label, 16, 44);
-      this.ctx.font = '600 10px ui-sans-serif, system-ui';
-      this.ctx.fillStyle = 'rgba(216,255,232,0.7)';
-      if (this.warship) {
-        this.ctx.fillStyle = this.warship.state === 'disabled' ? '#00ff88' : '#ffd24a';
-        this.ctx.fillText(this.warshipDirector.objective, 16, 80);
-      } else if (this.earthEncounterDirector.active) {
-        const groupLabel = this.earthEncounterDirector.currentGroupLabel ?? 'INBOUND';
-        this.ctx.fillText(`FORMATION ${this.earthEncounterDirector.currentGroupNumber}/${this.earthEncounterDirector.totalGroups} • ${groupLabel}`, 16, 80);
-      } else if (missionAct.mode === 'boss') {
-        this.ctx.fillStyle = '#ffd24a';
-        this.ctx.fillText('GUARDIAN SIGNAL DETECTED', 16, 80);
-      } else if (missionAct.key === 'final_assault' && this.fogGateActive) {
-        this.ctx.fillStyle = '#36a3ff';
-        this.ctx.fillText('FOG LOCK ACTIVE • USE FOG BREAKER', 16, 80);
-      }
-      const weapon = this.currentWeapon();
-      this.ctx.fillStyle = '#00ff00';
-      this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
-      this.ctx.fillStyle = ship.accent;
-      this.ctx.fillText(ship.label, 16, 112);
+    this.ctx.save();
+    this.ctx.textAlign = 'left';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.9)';
+    this.ctx.font = '800 11px ui-sans-serif, system-ui';
+    this.ctx.fillText(`SCORE ${this.score}`, 14, 15);
 
-      const stage = this.currentStage();
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = stage.accent;
-      this.ctx.fillText(stage.label, this.w / 2, 24);
-      this.ctx.font = '600 10px ui-sans-serif, system-ui';
-      this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
-      this.ctx.fillText(this.warship ? this.warshipDirector.objective : missionAct.objective, this.w / 2, 42);
-      this.ctx.textAlign = 'left';
-    } else {
-      this.ctx.fillText(`WAVE ${this.wave}`, 16, 44);
-      const threatKeys = availableEnemyKeys(ENEMIES, this.wave);
-      const newestThreat = ENEMIES[threatKeys[threatKeys.length - 1]].label;
-      this.ctx.font = '600 10px ui-sans-serif, system-ui';
-      this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
-      if (!this.boss) {
-        this.ctx.fillText(`THREATS ${threatKeys.length} • LATEST ${newestThreat}`, 16, 80);
-        const weapon = this.currentWeapon();
-        this.ctx.fillStyle = '#00ff00';
-        this.ctx.fillText(`WEAPON T${weapon.tier} • ${weapon.label}`, 16, 96);
-        this.ctx.fillStyle = ship.accent;
-        this.ctx.fillText(ship.label, 16, 112);
-        this.ctx.fillStyle = 'rgba(216,255,232,0.65)';
-        this.ctx.fillText(`ACT ${Math.min(BOSS_LADDER.length, this.completedBosses.size + 1)}/${BOSS_LADDER.length}`, 16, 128);
-      }
-      const stage = this.currentStage();
-      this.ctx.textAlign = 'center';
-      this.ctx.fillStyle = stage.accent;
-      this.ctx.fillText(stage.label, this.w / 2, 24);
-      this.ctx.textAlign = 'left';
+    // Health, thin and directly under the score.
+    bar(this.ctx, 14, 21, 72, 3, (this.player.hp ?? 0) / ship.hp, ship.accent);
+
+    const weapon = this.currentWeapon();
+    const detail = mission && missionAct
+      ? `${missionAct.label} • T${weapon.tier} ${weapon.label} • ${ship.label}`
+      : `WAVE ${this.wave} • T${weapon.tier} ${weapon.label} • ${ship.label}`;
+    this.ctx.font = '600 8px ui-sans-serif, system-ui';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.5)';
+    this.ctx.fillText(fitText(this.ctx, detail, leftWidth), 14, 34);
+
+    // The one line that tells the player what to do right now.
+    let objective = mission && missionAct ? missionAct.objective : '';
+    if (this.warship) objective = this.warshipDirector.objective;
+    else if (this.earthEncounterDirector.active) {
+      const groupLabel = this.earthEncounterDirector.currentGroupLabel ?? 'INBOUND';
+      objective = `FORMATION ${this.earthEncounterDirector.currentGroupNumber}/${this.earthEncounterDirector.totalGroups} • ${groupLabel}`;
+    } else if (missionAct?.mode === 'boss') objective = 'GUARDIAN SIGNAL DETECTED';
+    else if (missionAct?.key === 'final_assault' && this.fogGateActive) objective = 'FOG LOCK ACTIVE • USE FOG BREAKER';
+    if (objective) {
+      this.ctx.fillStyle = this.fogGateActive ? 'rgba(54,163,255,0.85)' : 'rgba(216,255,232,0.44)';
+      this.ctx.fillText(fitText(this.ctx, objective, leftWidth), 14, 44);
     }
 
-    bar(this.ctx, 16, 58, 128, 8, (this.player.hp ?? 0) / ship.hp, ship.accent);
-    bar(this.ctx, this.w - 144, 20, 128, 8, this.special / 100, '#36a3ff');
+    const stage = this.currentStage();
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = stage.accent;
+    this.ctx.globalAlpha = 0.72;
+    this.ctx.font = '800 9px ui-sans-serif, system-ui';
+    this.ctx.fillText(stage.label, this.w / 2, 15);
+    this.ctx.globalAlpha = 1;
+
     if (this.boss && this.boss.state === 'fight') {
       const def = this.bossDef(this.boss.bossKey);
       const phase = def.phases[this.boss.phaseIndex];
-      const bossBarWidth = Math.min(360, this.w - 64);
+      const bossBarWidth = Math.min(280, this.w - 80);
       const bossBarX = (this.w - bossBarWidth) / 2;
-      this.ctx.textAlign = 'center';
       this.ctx.fillStyle = phase.accent;
-      this.ctx.font = '800 11px ui-sans-serif, system-ui';
-      this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 80);
-      bar(this.ctx, bossBarX, 86, bossBarWidth, 9, (this.boss.hp ?? 0) / def.hp, phase.accent);
+      this.ctx.font = '800 9px ui-sans-serif, system-ui';
+      this.ctx.fillText(`${def.label} • PHASE ${this.boss.phaseIndex + 1}`, this.w / 2, 29);
+      bar(this.ctx, bossBarX, 33, bossBarWidth, 5, (this.boss.hp ?? 0) / def.hp, phase.accent);
     }
     if (this.warship?.state === 'fight') {
-      this.ctx.textAlign = 'center';
       this.ctx.fillStyle = '#ff8a3d';
-      this.ctx.font = '900 11px ui-sans-serif, system-ui';
-      this.ctx.fillText(`REGULATORY WARSHIP • ${this.warshipDirector.phase.toUpperCase()}`, this.w / 2, 80);
+      this.ctx.font = '800 9px ui-sans-serif, system-ui';
+      this.ctx.fillText(`REGULATORY WARSHIP • ${this.warshipDirector.phase.toUpperCase()}`, this.w / 2, 29);
     }
-    this.button(this.zone.pause, 'PAUSE', '#00ff88');
-    this.button(this.zone.bomb, `BOMB ${this.bombs}`, this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.4)');
+    this.ctx.restore();
+
+    this.padButton(this.zone.pause, this.paused ? '▶' : '❚❚', '#00ff88');
+    this.padButton(this.zone.assets, 'D', 'rgba(255,210,74,0.75)');
+    this.padButton(this.zone.bomb, 'BOMB', this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.35)', {
+      badge: String(this.bombs),
+    });
     this.drawSpecialButton();
-    this.button(this.zone.assets, 'D', '#ffd24a');
   }
 
   private bossClearBanner(): void {
@@ -1828,14 +1834,16 @@ export class Game2A {
 
     // First these sat centred at 36% of the screen height, then top-right --
     // both land in the band the fighter and the diving enemies share. The
-    // bottom strip between PAUSE and BOMB is the one lane nothing else uses:
-    // enemies hold station in the top half, and down here the fighter is
-    // already under the player's thumb.
-    const gapLeft = this.zone.pause.x + this.zone.pause.w + 10;
-    const gap = this.zone.bomb.x - 10 - gapLeft;
+    // bottom strip is the one lane nothing else uses: enemies hold station in
+    // the top half, and down here the fighter is already under the player's
+    // thumb. With the pad cornered to the right, the whole left run is free.
+    // Starts clear of the bottom-left utility row (STAR MAP / LOG / music),
+    // ends clear of the action pad.
+    const gapLeft = 200;
+    const gapRight = this.zone.bomb.cx - this.zone.bomb.r - 12;
     const height = 18;
-    const width = Math.min(280, Math.max(120, gap));
-    const x = gap >= width ? gapLeft + (gap - width) / 2 : Math.max(10, (this.w - width) / 2);
+    const width = Math.min(280, Math.max(120, gapRight - gapLeft));
+    const x = Math.max(10, gapLeft + (gapRight - gapLeft - width) / 2);
     // Sits one row up from the very bottom edge: the FULLSCREEN nudge parks
     // there until the player takes the game fullscreen, and two overlapping
     // bottom-centre elements is exactly the "in the way" this move was fixing.
@@ -1871,26 +1879,36 @@ export class Game2A {
     return { blocked: gateBlocked || shieldBlocked, ready };
   }
 
+  /** Wide rectangular button for the menu screens (ship select, GAME OVER). */
+  private button(rect: Rect, label: string, color: string): void {
+    this.ctx.fillStyle = 'rgba(2,6,11,0.72)';
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = 1;
+    this.ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    this.ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    this.ctx.textAlign = 'center';
+    this.ctx.fillStyle = '#d8ffe8';
+    this.ctx.font = '700 12px ui-sans-serif, system-ui';
+    this.ctx.fillText(fitText(this.ctx, label, rect.w - 14), rect.x + rect.w / 2, rect.y + rect.h / 2 + 4);
+  }
+
   private drawSpecialButton(): void {
-    const rect = this.zone.special;
+    const circle = this.zone.special;
     const label = hasFogBreaker(this.progress) ? 'FOG BREAK' : 'PULSE';
     const { blocked, ready } = this.specialCue();
+    // The charge meter used to be a bar across the top-right. Wearing it as a
+    // ring on the button puts the number where the decision is.
+    const charge = this.special / 100;
+
     if (!blocked) {
-      this.button(rect, label, ready ? '#36a3ff' : 'rgba(54,163,255,0.45)');
+      this.padButton(circle, label, ready ? '#36a3ff' : 'rgba(54,163,255,0.5)', { ring: charge });
       return;
     }
 
     // 2.5 Hz reads as "press me" without strobing.
     const beat = 0.5 + 0.5 * Math.sin(this.clock * Math.PI * 5);
     const accent = ready ? '#8fd6ff' : '#ffd24a';
-
-    this.ctx.save();
-    this.ctx.globalAlpha = 0.18 + 0.42 * beat;
-    this.ctx.fillStyle = accent;
-    this.ctx.fillRect(rect.x - 6, rect.y - 6, rect.w + 12, rect.h + 12);
-    this.ctx.restore();
-
-    this.button(rect, label, accent);
+    this.padButton(circle, label, accent, { ring: charge, glow: 0.16 + 0.34 * beat });
 
     this.ctx.save();
     this.ctx.globalAlpha = 0.5 + 0.5 * beat;
@@ -1899,22 +1917,79 @@ export class Game2A {
     this.ctx.font = '900 10px ui-sans-serif, system-ui';
     this.ctx.fillText(
       ready ? 'TAP TO BREAK THE FOG' : `CHARGING ${Math.floor(this.special)}%`,
-      this.w - 16,
-      rect.y - 10,
+      this.w - 14,
+      circle.cy - circle.r - 10,
     );
     this.ctx.restore();
     this.ctx.textAlign = 'left';
   }
 
-  private button(rect: Rect, label: string, color: string): void {
-    this.ctx.fillStyle = 'rgba(2,6,11,0.72)';
+  /**
+   * A round arcade button. The old ones were plain stroked rectangles; these
+   * read as something you press -- a filled disc, a bright rim, an optional
+   * count badge for BOMB and an optional charge ring for the special.
+   */
+  private padButton(
+    circle: { cx: number; cy: number; r: number },
+    label: string,
+    color: string,
+    options: { badge?: string; glow?: number; ring?: number } = {},
+  ): void {
+    const { cx, cy, r } = circle;
+    this.ctx.save();
+
+    if (options.glow) {
+      this.ctx.globalAlpha = options.glow;
+      this.ctx.fillStyle = color;
+      this.ctx.beginPath();
+      this.ctx.arc(cx, cy, r + 7, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.globalAlpha = 1;
+    }
+
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    this.ctx.fillStyle = 'rgba(2,6,11,0.6)';
+    this.ctx.fill();
+    this.ctx.lineWidth = 2;
     this.ctx.strokeStyle = color;
-    this.ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
-    this.ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+    this.ctx.stroke();
+
+    // Inner rim: depth without needing artwork.
+    this.ctx.beginPath();
+    this.ctx.arc(cx, cy, r - 4, 0, Math.PI * 2);
+    this.ctx.lineWidth = 1;
+    this.ctx.strokeStyle = 'rgba(216,255,232,0.16)';
+    this.ctx.stroke();
+
+    if (options.ring !== undefined && options.ring > 0) {
+      this.ctx.beginPath();
+      this.ctx.arc(cx, cy, r + 3.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, options.ring));
+      this.ctx.lineWidth = 3;
+      this.ctx.strokeStyle = color;
+      this.ctx.stroke();
+    }
+
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#d8ffe8';
-    this.ctx.font = '700 12px ui-sans-serif, system-ui';
-    this.ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 4);
+    this.ctx.font = `800 ${Math.max(8, Math.round(r * 0.34))}px ui-sans-serif, system-ui`;
+    this.ctx.fillText(fitText(this.ctx, label, r * 1.85), cx, cy + r * 0.12);
+
+    if (options.badge !== undefined) {
+      const bx = cx + r * 0.72;
+      const by = cy - r * 0.72;
+      this.ctx.beginPath();
+      this.ctx.arc(bx, by, r * 0.34, 0, Math.PI * 2);
+      this.ctx.fillStyle = 'rgba(2,6,11,0.92)';
+      this.ctx.fill();
+      this.ctx.lineWidth = 1;
+      this.ctx.strokeStyle = color;
+      this.ctx.stroke();
+      this.ctx.fillStyle = color;
+      this.ctx.font = `800 ${Math.max(8, Math.round(r * 0.36))}px ui-sans-serif, system-ui`;
+      this.ctx.fillText(options.badge, bx, by + r * 0.13);
+    }
+    this.ctx.restore();
   }
 
   private assetPanel(): void {
@@ -2269,7 +2344,8 @@ export class Game2A {
   }
 
   private inControls(x: number, y: number): boolean {
-    return inside(this.zone.pause, x, y) || inside(this.zone.bomb, x, y) || inside(this.zone.special, x, y) || inside(this.zone.assets, x, y);
+    const zone = this.zone;
+    return inCircle(zone.pause, x, y) || inCircle(zone.bomb, x, y) || inCircle(zone.special, x, y) || inCircle(zone.assets, x, y);
   }
 
   private enemyDef(key: string): EnemyDef {
@@ -2353,6 +2429,11 @@ function box(actor: Actor, scale: number): Rect {
 
 function overlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** Circular hit test with a few px of thumb forgiveness past the drawn edge. */
+function inCircle(circle: { cx: number; cy: number; r: number }, x: number, y: number): boolean {
+  return Math.hypot(x - circle.cx, y - circle.cy) <= circle.r + 6;
 }
 
 function inside(rect: Rect, x: number, y: number): boolean {
