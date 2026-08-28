@@ -1,3 +1,4 @@
+import { sfx } from '../audio/Sfx';
 import {
   ONFOOT_PHYSICS,
   REGULATORY_INTERIOR_ROOMS,
@@ -8,7 +9,7 @@ import {
 
 type Shot = { x: number; y: number; vx: number; vy: number; hostile: boolean; life: number };
 type Facing = 'left' | 'right';
-type EnemyState = InteriorEnemySpawn & { w: number; h: number; fireClock: number; alive: boolean };
+type EnemyState = InteriorEnemySpawn & { w: number; h: number; fireClock: number; alive: boolean; maxHealth: number };
 
 const GREEN = '#00ff00';
 const BLUE = '#36a3ff';
@@ -75,7 +76,11 @@ export class OnFootGame {
     this.ctx = ctx;
     this.sprite.src = '/assets/characters/xrpman_onfoot_proto_sheet.png';
     this.enemySprite.src = '/assets/enemies/regulator_drone.webp';
+    // Only rooms that actually have art request it. A room without a
+    // backgroundSrc draws its procedural interior by design, and asking the
+    // network for a file nobody made would just be a 404 per room per load.
     for (const room of REGULATORY_INTERIOR_ROOMS) {
+      if (!room.backgroundSrc) continue;
       const image = new Image();
       image.src = room.backgroundSrc;
       this.backgrounds.set(room.key, image);
@@ -154,7 +159,7 @@ export class OnFootGame {
     this.updateShots(dt);
     this.updateCamera(dt);
 
-    if (this.roomCleared() && this.player.x > this.room.exitX) this.advanceRoom();
+    if (this.roomCleared() && this.atExit()) this.advanceRoom();
 
     if (this.player.health <= 0 || this.player.y > this.room.worldHeight + 120) {
       this.hide();
@@ -172,8 +177,16 @@ export class OnFootGame {
     this.cameraX = clamp(this.cameraX, 0, maxCameraX);
 
     const floorScreenTarget = innerHeight - (this.isLandscapeMobile() ? 34 : 0);
-    const targetCameraY = this.room.floorY - floorScreenTarget / scale;
     const maxCameraY = Math.max(0, this.room.worldHeight - visibleWorldHeight);
+    if (this.room.verticalCamera) {
+      // A climb needs the camera to climb too. Pinning the floor would leave
+      // the top of the shaft permanently off-screen.
+      const followY = this.player.y - visibleWorldHeight * 0.58;
+      this.cameraY += (clamp(followY, 0, maxCameraY) - this.cameraY) * Math.min(1, dt * 6);
+      this.cameraY = clamp(this.cameraY, 0, maxCameraY);
+      return;
+    }
+    const targetCameraY = this.room.floorY - floorScreenTarget / scale;
     this.cameraY = clamp(targetCameraY, 0, maxCameraY);
   }
 
@@ -217,6 +230,7 @@ export class OnFootGame {
     if (!this.visible || this.transitionClock > 0 || this.fireCooldown > 0 || this.player.energy < ONFOOT_PHYSICS.blastCost) return;
     this.fireCooldown = ONFOOT_PHYSICS.blastCooldown;
     this.player.energy -= ONFOOT_PHYSICS.blastCost;
+    sfx.play('shoot');
     const direction = this.player.facing === 'right' ? 1 : -1;
     this.shots.push({
       x: this.player.x + direction * 32,
@@ -234,6 +248,7 @@ export class OnFootGame {
       enemy.fireClock -= dt;
       if (enemy.fireClock > 0) continue;
       enemy.fireClock = enemy.fireSeconds;
+      sfx.play('enemyShoot');
       const dx = this.player.x - enemy.x;
       const dy = (this.player.y - 10) - enemy.y;
       const length = Math.max(1, Math.hypot(dx, dy));
@@ -260,6 +275,7 @@ export class OnFootGame {
         if (this.hurtCooldown <= 0 && Math.hypot(shot.x - this.player.x, shot.y - this.player.y) < 30) {
           this.player.health = Math.max(0, this.player.health - 16);
           this.hurtCooldown = 0.75;
+          sfx.play('hurt');
           this.player.vx += shot.vx > 0 ? 105 : -105;
           continue;
         }
@@ -273,6 +289,9 @@ export class OnFootGame {
           if (hit.health <= 0) {
             hit.health = 0;
             hit.alive = false;
+            sfx.play('explode');
+          } else {
+            sfx.play('hit');
           }
           continue;
         }
@@ -284,6 +303,7 @@ export class OnFootGame {
   }
 
   private advanceRoom(): void {
+    sfx.play('pickup');
     if (this.roomIndex < REGULATORY_INTERIOR_ROOMS.length - 1) {
       this.pendingRoomIndex = this.roomIndex + 1;
       this.transitionClock = 0.42;
@@ -293,14 +313,26 @@ export class OnFootGame {
     }
     if (this.completionClock <= 0) {
       this.completionClock = 999;
+      sfx.play('levelUp');
       window.dispatchEvent(new CustomEvent('coded:onfoot-prototype-clear', {
-        detail: { roomKey: this.room.key, next: 'access_corridor' },
+        detail: { roomKey: this.room.key, next: 'core_access' },
       }));
     }
   }
 
   private roomCleared(): boolean {
     return this.enemies.every((enemy) => !enemy.alive);
+  }
+
+  /**
+   * Rooms whose exit sits at a height must be climbed to, not walked past --
+   * without the height check the shaft's far wall is reachable along its floor
+   * and the whole climb is optional.
+   */
+  private atExit(): boolean {
+    if (this.player.x <= this.room.exitX) return false;
+    if (this.room.exitY === undefined) return true;
+    return Math.abs(this.player.y - this.room.exitY) < 130;
   }
 
   private draw(): void {
@@ -339,8 +371,7 @@ export class OnFootGame {
       c.drawImage(image, 0, 0, this.room.worldWidth, this.room.worldHeight);
       c.restore();
     } else {
-      c.fillStyle = '#0a1a29';
-      c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
+      this.drawProceduralInterior(c);
     }
 
     const blueLift = c.createLinearGradient(0, 0, 0, this.room.worldHeight);
@@ -349,6 +380,103 @@ export class OnFootGame {
     blueLift.addColorStop(1, 'rgba(0,0,0,0.10)');
     c.fillStyle = blueLift;
     c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
+  }
+
+  /**
+   * Stand-in interior for rooms whose art has not landed yet.
+   *
+   * A flat fill read as a bug rather than a room, and with four new rooms
+   * shipping ahead of their backgrounds that is most of the level. This paints
+   * hull plating, bulkhead ribs, strip lighting and floor grating in the room's
+   * own accent -- enough that the space reads as a deck of a warship. Every
+   * value is derived from the room's fixed geometry, so nothing shimmers frame
+   * to frame.
+   */
+  private drawProceduralInterior(c: CanvasRenderingContext2D): void {
+    const { worldWidth: w, worldHeight: h, floorY, accent } = this.room;
+    // Two constraints decide where this detail goes. The camera pins the floor
+    // to the bottom of a short landscape screen, so only ~430px above the floor
+    // is ever on screen; and the objective panel covers the top of that. So the
+    // structure lives in the lower band, where it is actually seen, and it is
+    // drawn at real opacity -- the first pass used 4% alphas that vanished.
+    const ceiling = Math.max(0, floorY - 430);
+    const band = floorY - ceiling;
+
+    const base = c.createLinearGradient(0, ceiling, 0, h);
+    base.addColorStop(0, '#04101c');
+    base.addColorStop(0.55, '#0b1e2f');
+    base.addColorStop(1, '#040c15');
+    c.fillStyle = base;
+    c.fillRect(0, 0, w, h);
+
+    // Bulkhead ribs down the length of the room.
+    const ribGap = 200;
+    c.save();
+    for (let x = ribGap * 0.5; x < w; x += ribGap) {
+      c.fillStyle = 'rgba(126,186,232,0.10)';
+      c.fillRect(x - 30, ceiling, 60, band);
+      c.fillStyle = 'rgba(126,186,232,0.20)';
+      c.fillRect(x - 30, ceiling, 3, band);
+      c.fillRect(x + 27, ceiling, 3, band);
+    }
+    c.restore();
+
+    // Wall panelling across the lower two-thirds, where the eye actually is.
+    c.save();
+    c.strokeStyle = 'rgba(126,186,232,0.14)';
+    c.lineWidth = 2;
+    for (let y = floorY - 70; y > ceiling + band * 0.28; y -= 86) {
+      c.beginPath();
+      c.moveTo(0, y);
+      c.lineTo(w, y);
+      c.stroke();
+    }
+    for (let x = 100; x < w; x += 100) {
+      c.strokeStyle = 'rgba(126,186,232,0.07)';
+      c.lineWidth = 1;
+      c.beginPath();
+      c.moveTo(x, floorY - 240);
+      c.lineTo(x, floorY);
+      c.stroke();
+    }
+    c.restore();
+
+    // Accent strip lighting, low enough to clear the objective panel.
+    c.save();
+    const lightY = ceiling + band * 0.42;
+    for (let x = 70; x < w; x += ribGap) {
+      const glow = c.createRadialGradient(x + ribGap * 0.26, lightY, 4, x + ribGap * 0.26, lightY, 150);
+      glow.addColorStop(0, `${accent}55`);
+      glow.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = glow;
+      c.fillRect(x - 80, lightY - 130, ribGap + 160, 260);
+      c.fillStyle = accent;
+      c.globalAlpha = 0.85;
+      c.fillRect(x, lightY - 3, ribGap * 0.5, 6);
+      c.globalAlpha = 1;
+    }
+    c.restore();
+
+    // Floor grating, and a bright deck line so the ground reads as solid.
+    c.save();
+    c.fillStyle = 'rgba(4,11,19,0.94)';
+    c.fillRect(0, floorY, w, h - floorY);
+    c.strokeStyle = 'rgba(126,186,232,0.22)';
+    c.lineWidth = 1;
+    for (let x = 0; x < w; x += 36) {
+      c.beginPath();
+      c.moveTo(x, floorY);
+      c.lineTo(x, h);
+      c.stroke();
+    }
+    c.strokeStyle = accent;
+    c.globalAlpha = 0.7;
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(0, floorY);
+    c.lineTo(w, floorY);
+    c.stroke();
+    c.restore();
   }
 
   private drawWorld(c: CanvasRenderingContext2D): void {
@@ -438,8 +566,7 @@ export class OnFootGame {
       c.fillStyle = 'rgba(255,255,255,0.22)';
       c.fillRect(enemy.x - 25, enemy.y - enemy.h / 2 - 10, 50, 4);
       c.fillStyle = RED;
-      const maxHealth = this.room.key === 'docking_bay' ? 80 : enemy.x > 800 ? 120 : 100;
-      c.fillRect(enemy.x - 25, enemy.y - enemy.h / 2 - 10, 50 * enemy.health / maxHealth, 4);
+      c.fillRect(enemy.x - 25, enemy.y - enemy.h / 2 - 10, 50 * enemy.health / enemy.maxHealth, 4);
     }
   }
 
@@ -513,10 +640,10 @@ export class OnFootGame {
       c.textAlign = 'center';
       c.fillStyle = GREEN;
       c.font = '900 15px ui-sans-serif, system-ui';
-      c.fillText('SECURITY CHECKPOINT CLEARED', innerWidth / 2, compact ? 86 : 122);
+      c.fillText('WARSHIP INTERIOR CLEARED', innerWidth / 2, compact ? 86 : 122);
       c.fillStyle = BLUE;
       c.font = '800 10px ui-sans-serif, system-ui';
-      c.fillText('ACCESS CORRIDOR IS NEXT', innerWidth / 2, compact ? 103 : 143);
+      c.fillText('CORE ACCESS // LEDGER DEFENSE CORE IS NEXT', innerWidth / 2, compact ? 103 : 143);
     }
   }
 
@@ -622,6 +749,7 @@ export class OnFootGame {
       h: 48,
       fireClock: Math.min(0.8, spawn.fireSeconds),
       alive: true,
+      maxHealth: spawn.health,
     }));
     this.shots = [];
     this.cameraX = 0;
