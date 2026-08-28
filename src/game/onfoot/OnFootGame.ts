@@ -143,8 +143,12 @@ export class OnFootGame {
     requestAnimationFrame((t) => this.frame(t));
   }
 
-  show(): void {
-    this.resetRun();
+  /**
+   * @param startRoom Room index to open in, for playtesting a single room
+   *   without walking the whole warship to reach it. Defaults to the first.
+   */
+  show(startRoom = 0): void {
+    this.resetRun(startRoom);
     this.visible = true;
     this.canvas.style.display = 'block';
     this.introClock = 0.82;
@@ -889,12 +893,13 @@ export class OnFootGame {
     });
   }
 
-  private resetRun(): void {
-    this.roomIndex = 0;
+  private resetRun(startRoom = 0): void {
+    const index = Math.max(0, Math.min(REGULATORY_INTERIOR_ROOMS.length - 1, Math.floor(startRoom)));
+    this.roomIndex = index;
     this.player.health = 100;
     this.player.energy = 100;
     this.completionClock = 0;
-    this.enterRoom(0, false);
+    this.enterRoom(index, false);
   }
 
   private enterRoom(index: number, preserveVitals: boolean): void {

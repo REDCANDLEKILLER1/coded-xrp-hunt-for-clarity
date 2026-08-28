@@ -157,10 +157,25 @@ void game.start().then(() => {
     return;
   }
 
-  if (!params.has('onfoot')) return;
+  /*
+   * PLAYTEST BUILD.
+   *
+   * On this branch the warship interior is the DEFAULT route, so the preview
+   * link opens straight into the boarding sequence and the on-foot section can
+   * be tested without playing the whole flight level to reach it. `main` boots
+   * to the star map and this branch is not meant to change that.
+   *
+   *   /            the interior, from the docking bay
+   *   /?room=3     the interior, opening in room 4 of 6
+   *   /?map        the normal campaign shell
+   *   /?flight     the arcade flight test
+   */
+  if (params.has('map')) return;
+
+  const room = Number(params.get('room') ?? 0);
   map.hide();
   game.suspend();
   gameShell.hidden = false;
   canvas.style.visibility = 'hidden';
-  onFoot.show();
+  onFoot.show(Number.isFinite(room) ? room : 0);
 });
