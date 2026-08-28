@@ -3,8 +3,12 @@
  *
  * Phones have no usable console, so a playtester needs to be able to finish a
  * run and then hand over a transcript of what the game actually did. Events are
- * kept in a ring buffer, mirrored to sessionStorage so a reload does not lose
- * them, and rendered as selectable text by the `?log` route.
+ * kept in a ring buffer, mirrored to localStorage, and rendered as selectable
+ * text by the `?log` route.
+ *
+ * localStorage, not sessionStorage: sessionStorage is scoped to one tab, so a
+ * tester who played in one tab and then opened `?log` in another got an empty
+ * transcript. The log has to outlive both a reload and a new tab to be useful.
  *
  * Rules that keep this safe to leave switched on:
  *  - fixed memory ceiling (ring buffer, oldest dropped first);
@@ -13,7 +17,7 @@
  */
 
 const MAX_ENTRIES = 1500;
-const STORAGE_KEY = 'coded.debuglog.v1';
+const STORAGE_KEY = 'coded.debuglog.v2';
 
 export type LogCategory =
   | 'boot' | 'input' | 'tilt' | 'orientation' | 'mode'
@@ -48,7 +52,7 @@ class DebugLog {
   clear(): void {
     this.entries = [];
     this.lastSample.clear();
-    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* storage unavailable */ }
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* storage unavailable */ }
   }
 
   /** Plain-text transcript, oldest first. This is what a tester hands over. */
@@ -78,9 +82,20 @@ class DebugLog {
     this.persistTimer = window.setTimeout(() => {
       this.persistTimer = null;
       try {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.entries.slice(-MAX_ENTRIES)));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(this.entries.slice(-MAX_ENTRIES)));
       } catch { /* quota or private mode: keep running in memory only */ }
     }, 1000);
+  }
+
+  /** Write straight away; used when the page is about to go away. */
+  flush(): void {
+    if (this.persistTimer !== null) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.entries.slice(-MAX_ENTRIES)));
+    } catch { /* quota or private mode: keep running in memory only */ }
   }
 
   /** Pull back anything written before a reload, so a crash still leaves a trail. */
@@ -88,7 +103,7 @@ class DebugLog {
     if (this.restored) return;
     this.restored = true;
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const prior = JSON.parse(raw) as Entry[];
       if (!Array.isArray(prior) || prior.length === 0) return;
@@ -103,6 +118,12 @@ export const debugLog = new DebugLog();
 
 // Reachable from a desktop console when one is available; harmless on a phone.
 (window as unknown as { codedLog?: unknown }).codedLog = debugLog;
+
+// Navigating to `?log` (or anywhere) must not lose the tail of the session.
+window.addEventListener('pagehide', () => debugLog.flush());
+window.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') debugLog.flush();
+});
 
 window.addEventListener('error', (e) => {
   debugLog.log('error', 'uncaught', { message: String(e.message), source: `${e.filename}:${e.lineno}` });
