@@ -274,12 +274,16 @@ if (step.spawns.length !== 0 || step.completed) {
   console.error('Earth encounter director FAILED: advanced while an authored threat was still active.');
   process.exit(1);
 }
+// The group count is derived, not hardcoded: it was pinned at 4 when the act
+// happened to have four groups, which made growing the level a test failure.
+// The contract is that the director completes once every group has cleared.
+const expectedGroups = encounters.EARTH_FLIGHT_ENCOUNTERS.orbital_approach.groups.length;
 let guard = 0;
-while (!step.completed && guard < 20) {
+while (!step.completed && guard < expectedGroups * 3 + 10) {
   step = encounterDirector.update(10, 0);
   guard += 1;
 }
-if (!step.completed || encounterDirector.totalGroups !== 4) {
+if (!step.completed || encounterDirector.totalGroups !== expectedGroups) {
   console.error('Earth encounter director FAILED: authored act did not complete after all groups cleared.');
   process.exit(1);
 }
