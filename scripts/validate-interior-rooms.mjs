@@ -135,11 +135,11 @@ for (const room of rooms) {
   check(/^#[0-9a-f]{6}$/i.test(room.accent), `interior.${room.key}: needs an accent for its procedural lighting`);
 }
 
-// The four rooms whose art has landed must actually use it, and must point at
-// a file the runtime manifest knows about. They shipped on the procedural
-// stand-in for a while; nothing should quietly slide back to it now.
+// Every room has art now, must actually use it, and must point at a file the
+// runtime manifest knows about. All six spent time on the procedural stand-in;
+// nothing should quietly slide back to it.
 const runtimeManifest = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));
-for (const key of ['access_corridor', 'maintenance_shaft', 'field_control', 'defense_deck']) {
+for (const key of rooms.map((entry) => entry.key)) {
   const room = rooms.find((entry) => entry.key === key);
   check(!!room, `room ${key} is missing`);
   if (!room) continue;

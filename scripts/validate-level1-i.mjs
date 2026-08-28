@@ -40,25 +40,37 @@ if (runtime.includes("rgba(0,0,0,0.42)")) {
   throw new Error('L1-I mobile visibility regression: heavy 42% vignette returned');
 }
 
-// Interior art stays tracked in the manifest so the files are not orphaned,
-// but no ROOM may point at one until it is a complete file. The two originals
-// are truncated and, critically, still decode: Chromium reports naturalWidth
-// 1024 and paints the fragment, so the runtime's `complete && naturalWidth > 0`
-// guard cannot tell them from real art. Rooms draw the procedural interior
-// instead until usable bytes land.
+// Every room's art must be present AND complete before a room may point at it.
+// This used to forbid two filenames outright, because their first delivery
+// reached the repo truncated. That is the wrong shape of check -- the files
+// are fine now, and a name-based ban would have to be edited every time art
+// lands. What actually matters is that no room points at a partial file:
+// Chromium DECODES a truncated WebP, reports naturalWidth 1024, and paints the
+// fragment, so the runtime's `complete && naturalWidth > 0` guard cannot tell
+// one from real art and the room draws a near-blank wash instead of falling
+// back. So: read each referenced file's own declared length and check the
+// bytes are all there.
 const interior = manifest.interior ?? {};
-for (const key of ['regulatory_docking_bay', 'regulatory_security_checkpoint']) {
-  if (!interior[key]?.src) throw new Error(`L1-I manifest missing interior.${key}`);
-  const file = new URL(`../public${interior[key].src}`, import.meta.url);
-  if (!fs.existsSync(file)) throw new Error(`L1-I runtime asset missing: ${interior[key].src}`);
+for (const [key, entry] of Object.entries(interior)) {
+  if (!entry?.src) throw new Error(`L1-I manifest missing src for interior.${key}`);
+  const file = new URL(`../public${entry.src}`, import.meta.url);
+  if (!fs.existsSync(file)) throw new Error(`L1-I runtime asset missing: ${entry.src}`);
 }
 
-// Match an actual assignment, not a mention: the room file documents these
-// filenames in a comment explaining why nothing points at them.
-const truncated = ['regulatory_docking_bay.webp', 'regulatory_security_checkpoint.webp'];
-for (const name of truncated) {
-  if (new RegExp(`backgroundSrc:\\s*'[^']*${name.replace('.', '\\.')}'`).test(rooms)) {
-    throw new Error(`L1-I: a room points at ${name}, which is truncated and decodes to a blank wash`);
+for (const [, src] of rooms.matchAll(/backgroundSrc:\s*'([^']+)'/g)) {
+  const file = new URL(`../public${src}`, import.meta.url);
+  if (!fs.existsSync(file)) throw new Error(`L1-I: a room points at ${src}, which does not exist`);
+  const bytes = fs.readFileSync(file);
+  // RIFF: "RIFF" + uint32le payload length + "WEBP". The declared length
+  // covers everything after those first 8 bytes.
+  if (bytes.subarray(0, 4).toString() !== 'RIFF' || bytes.subarray(8, 12).toString() !== 'WEBP') {
+    throw new Error(`L1-I: ${src} is not a WebP file`);
+  }
+  const declared = bytes.readUInt32LE(4) + 8;
+  if (bytes.length !== declared) {
+    throw new Error(
+      `L1-I: a room points at ${src}, which is truncated -- ${bytes.length} of ${declared} bytes`,
+    );
   }
 }
 
