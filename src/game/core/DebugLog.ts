@@ -21,7 +21,7 @@ const STORAGE_KEY = 'coded.debuglog.v2';
 
 export type LogCategory =
   | 'boot' | 'input' | 'tilt' | 'orientation' | 'mode'
-  | 'mission' | 'combat' | 'asset' | 'error' | 'note';
+  | 'mission' | 'combat' | 'asset' | 'audio' | 'error' | 'note';
 
 type Entry = { t: number; cat: LogCategory; msg: string; data?: Record<string, unknown> };
 

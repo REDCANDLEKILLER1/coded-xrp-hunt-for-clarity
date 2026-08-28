@@ -257,7 +257,7 @@ export class Game2A {
 
   private actions(): void {
     if (this.input.consumeDiagnostics()) this.showAssets = !this.showAssets;
-    if (this.input.consumePause() && this.mode === 'play') this.paused = !this.paused;
+    if (this.input.consumePause() && this.mode === 'play') this.setPaused(!this.paused);
     if (this.launchClock <= 0 && this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
     if (this.launchClock <= 0 && this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
@@ -273,7 +273,7 @@ export class Game2A {
     }
     if (this.mode === 'victory') return this.reset();
     if (inside(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
-    if (inside(this.zone.pause, tap.x, tap.y)) return void (this.paused = !this.paused);
+    if (inside(this.zone.pause, tap.x, tap.y)) return void this.setPaused(!this.paused);
     if (this.launchClock > 0) return;
     if (inside(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
     if (inside(this.zone.special, tap.x, tap.y)) this.useSpecial();
@@ -2057,6 +2057,17 @@ export class Game2A {
 
   private saveProgress(): void {
     saveCampaignProgress(this.progress);
+  }
+
+  /**
+   * The theme song plays over the pause menu, so pausing is a music cue as much
+   * as a game-state change. 'resume' sends the director back to whatever the
+   * mission was playing rather than guessing a track.
+   */
+  private setPaused(paused: boolean): void {
+    if (this.paused === paused) return;
+    this.paused = paused;
+    this.cueMusic(paused ? 'paused' : 'resume');
   }
 
   private cueMusic(cue: string): void {

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "note": "Audio is deliberately NOT in /assets/manifest.json: AssetLoader preloads every entry there as an Image, so an mp3 in that file registers as a broken sprite. This file is the source of truth for music.",
+  "tracks": {
+    "theme": {
+      "src": "/assets/audio/theme.mp3",
+      "title": "CODED — The Hunt for Clarity (Theme)",
+      "loop": true,
+      "gain": 0.55
+    },
+    "level_one": {
+      "src": "/assets/audio/level_one.mp3",
+      "title": "Neon Horizon Defense",
+      "loop": true,
+      "gain": 0.42
+    },
+    "boss_fight": {
+      "src": "/assets/audio/boss_fight.mp3",
+      "title": "Boss Fight 1",
+      "loop": true,
+      "gain": 0.5
+    }
+  },
+  "cues": {
+    "silence": null,
+    "theme": "theme",
+    "paused": "theme",
+    "level1": "level_one",
+    "warship_disabled": "level_one",
+    "warship_interior": "level_one",
+    "boss_gary_fog": "boss_fight",
+    "boss_regulatory_warship": "boss_fight",
+    "boss_ledger_defense_core": "boss_fight"
+  }
+}

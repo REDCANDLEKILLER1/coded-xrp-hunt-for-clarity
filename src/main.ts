@@ -6,6 +6,7 @@ import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
 import { LandscapeMode } from './game/ui/LandscapeMode';
 import { OnFootGame } from './game/onfoot/OnFootGame';
 import { debugLog } from './game/core/DebugLog';
+import { MusicDirector } from './game/audio/MusicDirector';
 import { showDebugLogView } from './game/ui/DebugLogView';
 import {
   loadCampaignProgress,
@@ -36,6 +37,29 @@ debugLog.log('boot', 'startup', {
 if (new URLSearchParams(location.search).has('log')) {
   showDebugLogView();
 }
+
+// Nothing was listening to the `coded:music-cue` events the game has been
+// dispatching all along, so the campaign played silent. The director listens,
+// and the theme is cued immediately -- it will sit pending until the player's
+// first gesture, which autoplay policy requires before anything can be heard.
+const music = new MusicDirector();
+music.cue('theme');
+
+const muteButton = document.createElement('button');
+muteButton.type = 'button';
+muteButton.className = 'music-toggle';
+const paintMute = (): void => {
+  muteButton.textContent = music.isMuted ? '♪ OFF' : '♪ ON';
+  muteButton.setAttribute('aria-pressed', String(music.isMuted));
+  muteButton.title = music.isMuted ? 'Turn music on' : 'Turn music off';
+};
+muteButton.addEventListener('click', (event) => {
+  event.stopPropagation();
+  music.setMuted(!music.isMuted);
+  paintMute();
+});
+paintMute();
+document.body.appendChild(muteButton);
 
 const logButton = document.createElement('button');
 logButton.type = 'button';
@@ -98,6 +122,7 @@ window.addEventListener('coded:onfoot-defeat', () => {
   }
   gameShell.hidden = true;
   map.show();
+  music.cue('theme');
 });
 
 returnMap.addEventListener('click', () => {
@@ -106,6 +131,7 @@ returnMap.addEventListener('click', () => {
   game.suspend();
   gameShell.hidden = true;
   map.show();
+  music.cue('theme');
 });
 
 void game.start().then(() => {

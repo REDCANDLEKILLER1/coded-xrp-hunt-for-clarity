@@ -624,3 +624,35 @@ canvas {
 .debug-log-open .debug-log-button {
   display: none;
 }
+
+/* Sits beside the LOG button, same muted treatment: both are utilities, not
+   part of the game's own HUD, so neither should compete with it. */
+.music-toggle {
+  position: fixed;
+  z-index: 1100;
+  top: max(6px, env(safe-area-inset-top));
+  left: calc(max(6px, env(safe-area-inset-left)) + 46px);
+  padding: 5px 9px;
+  border: 1px solid rgba(54, 163, 255, 0.45);
+  border-radius: 3px;
+  color: rgba(216, 255, 232, 0.72);
+  background: rgba(2, 6, 11, 0.72);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  opacity: 0.55;
+  touch-action: manipulation;
+}
+
+.music-toggle:hover,
+.music-toggle:focus-visible {
+  opacity: 1;
+  border-color: #36a3ff;
+}
+
+.music-toggle:focus-visible {
+  outline: 2px solid #36a3ff;
+  outline-offset: 2px;
+}
+
+.debug-log-open .music-toggle { display: none; }
