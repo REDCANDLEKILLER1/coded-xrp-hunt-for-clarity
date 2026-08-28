@@ -175,6 +175,7 @@ const DEFAULT_SHIP = SHIPS.player;
 const DEFAULT_ENEMY = ENEMIES.regulator_drone;
 const DEFAULT_HAZARD = HAZARDS.basic_turret;
 const BURST_RING = FX.burst_ring;
+const HIT_SPARK = FX.hit_spark;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
 const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
@@ -2063,7 +2064,12 @@ export class Game2A {
     const radius = (1 - alpha) * BURST_MAX_RADIUS + BURST_MIN_RADIUS;
     this.ctx.save();
     this.ctx.globalAlpha = Math.min(1, alpha);
-    const drawn = this.drawCentered(BURST_RING.sprite, item.x, item.y, radius * 2, radius * 2);
+    // Each burst plays its OWN animation: the sheet is stepped by this ring's
+    // age, not the global clock, or every burst on screen would show the same
+    // frame regardless of when it started.
+    const age = BURST_LIFE - (item.life ?? 0);
+    const drawn = this.sprites.draw(HIT_SPARK.sprite.category, HIT_SPARK.sprite.id, item.x - radius, item.y - radius, radius * 2, radius * 2, age)
+      || this.drawCentered(BURST_RING.sprite, item.x, item.y, radius * 2, radius * 2);
     this.ctx.restore();
     if (drawn) return;
     this.ctx.strokeStyle = `rgba(0,255,136,${alpha})`;

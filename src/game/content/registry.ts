@@ -468,6 +468,12 @@ export const FX: Record<string, FxDef> = {
     key: 'burst_ring',
     sprite: { category: 'vfx', id: 'burst_ring' },
   },
+  // Animated kill burst. burst_ring stays as the fallback, so it is still a
+  // referenced asset rather than an orphan.
+  hit_spark: {
+    key: 'hit_spark',
+    sprite: { category: 'vfx', id: 'hit_spark' },
+  },
 };
 
 export const SPECIALS: Record<string, SpecialDef> = {

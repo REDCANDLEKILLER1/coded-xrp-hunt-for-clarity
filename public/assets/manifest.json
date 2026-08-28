@@ -111,6 +111,17 @@
       "src": "/assets/vfx/burst_ring.webp",
       "type": "image",
       "notes": "Phase Q optimized v16 canon master: fx_explosion_impact"
+    },
+    "hit_spark": {
+      "src": "/assets/vfx/hit_spark.png",
+      "type": "spritesheet",
+      "sheet": {
+        "frames": 6,
+        "frameWidth": 96,
+        "frameHeight": 96,
+        "fps": 13
+      },
+      "notes": "From Coded_1 pack: special_weapon_hit_spark_6frame, keyed off black and boxed to 6x96px frames"
     }
   },
   "ui": {},
