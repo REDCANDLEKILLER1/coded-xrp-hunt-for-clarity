@@ -169,6 +169,9 @@ const SHIELD_CAP = 6;
 const SHIELD_REGEN_DELAY = 7;
 /** Seconds per shield segment once regeneration starts. */
 const SHIELD_REGEN_STEP = 4.5;
+/** The nudge holds off until the launch settles, then reads for 9 seconds. */
+const BOMB_HINT_DELAY = 2.5;
+const BOMB_HINT_LIFE = 9;
 const SHIELD_PICKUP_EVERY_KILLS = 9;
 /** Half speed, so the pre-boss resupply is still on screen when you go for it. */
 const BOSS_RESUPPLY_DRIFT = 0.5;
@@ -226,6 +229,9 @@ export class Game2A {
   private bossFacing = Math.PI / 2;
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
+  /** Cleared once the player has actually double-tapped, so the nudge stops. */
+  private bombHintShown = false;
+  private bombHintClock = 0;
   private kills = 0;
   private bombs = 2;
   private xp = 0;
@@ -371,6 +377,21 @@ export class Game2A {
     if (this.launchClock <= 0 && this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
     if (this.launchClock <= 0 && this.input.consumeBomb() && this.mode === 'play') this.useBomb();
 
+    // Always drained, so a double-tap made in a menu cannot fire a frame later
+    // once play resumes.
+    const doubleTap = this.input.consumeDoubleTap();
+    if (
+      doubleTap
+      && this.mode === 'play'
+      && !this.paused
+      && this.launchClock <= 0
+      && this.upgradeOffer.length === 0
+      && !this.inControls(doubleTap.x, doubleTap.y)
+    ) {
+      this.bombHintShown = true;
+      this.useBomb();
+    }
+
     const tap = this.input.consumeTap();
     if (!tap) return;
     if (this.mode === 'title') return void (this.mode = 'select');
@@ -430,6 +451,11 @@ export class Game2A {
     if (this.bombClock > 0) this.bombClock = Math.max(0, this.bombClock - dt);
     if (this.bossClearClock > 0) this.bossClearClock = Math.max(0, this.bossClearClock - dt);
     if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
+    // The double-tap nudge only runs while it is still true and still useful:
+    // in flight, with a bomb in the rack, and only until the player uses one.
+    if (!this.bombHintShown && this.bombs > 0 && this.launchClock <= 0) {
+      this.bombHintClock += dt;
+    }
     if (this.victoryPendingClock > 0) {
       this.victoryPendingClock = Math.max(0, this.victoryPendingClock - dt);
       if (this.victoryPendingClock === 0) this.finishRun(true);
@@ -1755,8 +1781,29 @@ export class Game2A {
     if (this.launchClock > 0) this.drawLaunchReveal();
     if (this.bossClearClock > 0) this.bossClearBanner();
     if (this.missionBannerClock > 0) this.drawMissionBanner();
+    if (!this.bombHintShown && this.bombHintClock > 0) this.drawBombHint();
     if (this.upgradeOffer.length > 0) this.drawUpgradeChoice();
     if (this.paused) this.pause();
+  }
+
+  /**
+   * Teaches the double-tap, once.
+   *
+   * It waits a beat after the fighter is flying so it is not competing with
+   * the launch cinematic, pulses so it reads as a prompt rather than a label,
+   * and retires itself the first time a bomb goes off however it was fired.
+   */
+  private drawBombHint(): void {
+    if (this.bombHintClock < BOMB_HINT_DELAY) return;
+    const remaining = BOMB_HINT_DELAY + BOMB_HINT_LIFE - this.bombHintClock;
+    if (remaining <= 0) return;
+    this.ctx.save();
+    this.ctx.textAlign = 'center';
+    this.ctx.globalAlpha = Math.min(1, remaining) * (0.74 + 0.26 * Math.sin(this.clock * 5));
+    this.ctx.fillStyle = '#ffd24a';
+    this.ctx.font = '900 12px ui-sans-serif, system-ui';
+    this.ctx.fillText('DOUBLE-TAP ANYWHERE TO DROP A BOMB', this.w / 2, this.h - 34);
+    this.ctx.restore();
   }
 
   private drawLaunchReveal(): void {
@@ -2264,6 +2311,16 @@ export class Game2A {
     this.ctx.fillStyle = 'rgba(0,255,136,0.8)';
     this.ctx.fillText(`LV ${this.xpLevel}`, 92, barY + 2.5);
 
+    // Seekers are not a consumable -- once the tier is earned they reload
+    // forever. The bar shows the reload, and the infinity mark says that is
+    // all there is to it, so nobody plays around them thinking they are rare.
+    if (this.xpLevel >= SEEKER_UNLOCK_LEVEL && leftWidth > 190) {
+      const charge = 1 - clamp(this.seekerClock / SEEKER_INTERVAL, 0, 1);
+      bar(this.ctx, 122, barY, 30, 2, charge, '#ff6b3d');
+      this.ctx.fillStyle = 'rgba(255,107,61,0.85)';
+      this.ctx.fillText('SEEKER \u221e', 156, barY + 2.5);
+    }
+
     const weapon = this.currentWeapon();
     const gun = `${weapon.label}${this.barrels > 0 ? ` +${this.barrels}` : ''}`;
     const detail = mission && missionAct
@@ -2315,6 +2372,9 @@ export class Game2A {
     this.padButton(this.zone.assets, 'D', 'rgba(255,210,74,0.75)');
     this.padButton(this.zone.bomb, 'BOMB', this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.35)', {
       badge: String(this.bombs),
+      // The button stays, but it says out loud that you never have to reach
+      // for it: the same bomb is two taps under the thumb already steering.
+      caption: '2× TAP',
     });
     this.drawSpecialButton();
   }
@@ -2436,7 +2496,7 @@ export class Game2A {
     circle: { cx: number; cy: number; r: number },
     label: string,
     color: string,
-    options: { badge?: string; glow?: number; ring?: number } = {},
+    options: { badge?: string; caption?: string; glow?: number; ring?: number } = {},
   ): void {
     const { cx, cy, r } = circle;
     this.ctx.save();
@@ -2491,6 +2551,15 @@ export class Game2A {
       this.ctx.fillStyle = color;
       this.ctx.font = `800 ${Math.max(8, Math.round(r * 0.36))}px ui-sans-serif, system-ui`;
       this.ctx.fillText(options.badge, bx, by + r * 0.13);
+    }
+
+    if (options.caption !== undefined) {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillStyle = color;
+      this.ctx.globalAlpha = 0.7;
+      this.ctx.font = `800 ${Math.max(7, Math.round(r * 0.24))}px ui-sans-serif, system-ui`;
+      this.ctx.fillText(fitText(this.ctx, options.caption, r * 2.4), cx, cy + r * 0.52);
+      this.ctx.globalAlpha = 1;
     }
     this.ctx.restore();
   }
@@ -2553,6 +2622,7 @@ export class Game2A {
 
   private useBomb(): void {
     if (this.bombs <= 0 || this.mode !== 'play') return void sfx.play('deny');
+    this.bombHintShown = true;
     this.bombs -= 1;
     this.bombClock = BOMB_LIFE;
     sfx.play('bomb');
@@ -2934,6 +3004,9 @@ export class Game2A {
     this.bolts = [];
     this.seekers = [];
     this.seekerClock = SEEKER_INTERVAL;
+    // Restart the nudge each run: a player who has never dropped a bomb still
+    // has not been taught, and the timer would otherwise be spent already.
+    this.bombHintClock = 0;
     this.playerFacing = -Math.PI / 2;
     this.bossFacing = Math.PI / 2;
     this.pickups = [];

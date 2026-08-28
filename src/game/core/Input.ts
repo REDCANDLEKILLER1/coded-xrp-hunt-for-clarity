@@ -1,6 +1,15 @@
 import type { Vec2 } from './Types';
 
 /**
+ * How close together, in time and in canvas pixels, two taps have to land to
+ * count as one double-tap. 280ms is comfortably above a deliberate double and
+ * below the gap between two aimed single taps; 48px is about a thumb, so the
+ * gesture survives the drift you get holding a phone one-handed.
+ */
+const DOUBLE_TAP_MS = 280;
+const DOUBLE_TAP_SLOP = 48;
+
+/**
  * Pointer and keyboard input.
  *
  * Tilt steering was removed after playtesting: it was harder to aim than a
@@ -23,6 +32,9 @@ export class Input {
    */
   pointerOrigin: Vec2 | null = null;
   private tap: Vec2 | null = null;
+  private doubleTap: Vec2 | null = null;
+  private lastTapAt = 0;
+  private lastTapPoint: Vec2 | null = null;
   private fireSpecial = false;
   private pausePressed = false;
   private diagnosticsPressed = false;
@@ -40,6 +52,19 @@ export class Input {
   consumeTap(): Vec2 | null {
     const value = this.tap;
     this.tap = null;
+    return value;
+  }
+
+  /**
+   * A double-tap anywhere, reported once.
+   *
+   * Reaching for the bomb button means lifting the steering thumb off the
+   * canvas, which on a phone costs you the fighter for as long as it takes.
+   * A double-tap keeps the thumb where it already is.
+   */
+  consumeDoubleTap(): Vec2 | null {
+    const value = this.doubleTap;
+    this.doubleTap = null;
     return value;
   }
 
@@ -95,6 +120,22 @@ export class Input {
     this.pointer = point;
     this.pointerOrigin = point;
     this.tap = point;
+
+    const now = performance.now();
+    const previous = this.lastTapPoint;
+    const paired = previous !== null
+      && now - this.lastTapAt <= DOUBLE_TAP_MS
+      && Math.hypot(point.x - previous.x, point.y - previous.y) <= DOUBLE_TAP_SLOP;
+    if (paired) {
+      this.doubleTap = point;
+      // Consume both taps, so a triple tap is one double and one single rather
+      // than two overlapping doubles.
+      this.lastTapPoint = null;
+      this.lastTapAt = 0;
+    } else {
+      this.lastTapPoint = point;
+      this.lastTapAt = now;
+    }
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
