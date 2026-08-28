@@ -26,6 +26,21 @@ export function showDebugLogView(): void {
   `;
   const area = root.querySelector('textarea')!;
   area.value = text;
+
+  // A near-empty transcript almost always means the run was never recorded
+  // rather than that nothing happened, so say what to do instead of showing a
+  // single boot line and looking broken.
+  const gameplayEntries = debugLog.size() - countBootOnly(text);
+  if (gameplayEntries <= 0) {
+    const notice = document.createElement('p');
+    notice.className = 'debug-log-empty';
+    notice.textContent =
+      'No gameplay recorded yet. This page only shows what a previous run wrote. '
+      + 'Play first — open the game, deploy, fly for a bit — then come back to ?log '
+      + 'in the same browser. Private/incognito windows discard the log on close.';
+    root.insertBefore(notice, area);
+  }
+
   document.body.appendChild(root);
 
   root.querySelector('[data-action="copy"]')?.addEventListener('click', async () => {
@@ -54,4 +69,8 @@ export function showDebugLogView(): void {
     url.searchParams.delete('log');
     history.replaceState(null, '', url.toString());
   });
+}
+
+function countBootOnly(text: string): number {
+  return text.split('\n').filter((line) => /\[boot\]/.test(line)).length;
 }
