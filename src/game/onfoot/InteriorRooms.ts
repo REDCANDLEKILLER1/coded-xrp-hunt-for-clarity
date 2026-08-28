@@ -108,6 +108,7 @@ export const REGULATORY_INTERIOR_ROOMS: InteriorRoom[] = [
   // the space is the pressure rather than the enemy count.
   {
     key: 'access_corridor',
+    backgroundSrc: '/assets/interior/regulatory_access_corridor.webp',
     label: 'REGULATORY WARSHIP // ACCESS CORRIDOR',
     objective: 'PUSH THROUGH THE CORRIDOR // REACH THE MAINTENANCE SHAFT',
     accent: '#00d8a4',
@@ -134,6 +135,7 @@ export const REGULATORY_INTERIOR_ROOMS: InteriorRoom[] = [
   // mandatory -- otherwise the far wall could be reached along the floor.
   {
     key: 'maintenance_shaft',
+    backgroundSrc: '/assets/interior/regulatory_maintenance_shaft.webp',
     label: 'REGULATORY WARSHIP // MAINTENANCE SHAFT',
     objective: 'CLIMB THE SHAFT // REACH FIELD CONTROL',
     accent: '#ffd24a',
@@ -166,6 +168,7 @@ export const REGULATORY_INTERIOR_ROOMS: InteriorRoom[] = [
   // instead of funnelling them.
   {
     key: 'field_control',
+    backgroundSrc: '/assets/interior/regulatory_field_control.webp',
     label: 'REGULATORY WARSHIP // FIELD CONTROL CHAMBER',
     objective: 'CUT THE FIELD CONTROL // OPEN THE DEFENSE DECK',
     accent: '#b56cff',
@@ -194,6 +197,7 @@ export const REGULATORY_INTERIOR_ROOMS: InteriorRoom[] = [
   // layers, with the exit behind the highest of them.
   {
     key: 'defense_deck',
+    backgroundSrc: '/assets/interior/regulatory_defense_deck.webp',
     label: 'REGULATORY WARSHIP // DEFENSE SYSTEMS DECK',
     objective: 'SILENCE THE DECK // CORE ACCESS BEYOND',
     accent: '#ff4c66',

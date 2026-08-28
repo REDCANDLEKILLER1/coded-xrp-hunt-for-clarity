@@ -167,6 +167,26 @@
       "src": "/assets/interior/regulatory_security_checkpoint.webp",
       "type": "image",
       "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch"
+    },
+    "regulatory_access_corridor": {
+      "src": "/assets/interior/regulatory_access_corridor.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+    },
+    "regulatory_maintenance_shaft": {
+      "src": "/assets/interior/regulatory_maintenance_shaft.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+    },
+    "regulatory_field_control": {
+      "src": "/assets/interior/regulatory_field_control.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+    },
+    "regulatory_defense_deck": {
+      "src": "/assets/interior/regulatory_defense_deck.webp",
+      "type": "image",
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
     }
   },
   "hazards": {

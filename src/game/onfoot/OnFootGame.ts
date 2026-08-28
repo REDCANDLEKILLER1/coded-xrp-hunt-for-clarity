@@ -368,7 +368,7 @@ export class OnFootGame {
     if (image?.complete && image.naturalWidth > 0) {
       c.save();
       c.filter = 'brightness(1.42) contrast(1.04) saturate(1.08)';
-      c.drawImage(image, 0, 0, this.room.worldWidth, this.room.worldHeight);
+      this.drawRoomCover(c, image);
       c.restore();
     } else {
       this.drawProceduralInterior(c);
@@ -380,6 +380,24 @@ export class OnFootGame {
     blueLift.addColorStop(1, 'rgba(0,0,0,0.10)');
     c.fillStyle = blueLift;
     c.fillRect(0, 0, this.room.worldWidth, this.room.worldHeight);
+  }
+
+  /**
+   * Fit the art to the room without distorting it.
+   *
+   * This used to stretch the image straight onto the room's dimensions. Every
+   * background is 1024x576, and on the wide decks that was a squash you would
+   * not notice. The maintenance shaft is the one vertical room -- 980x1180 --
+   * and there the same call smeared the art to twice its height. Scale by
+   * whichever axis needs more, centre across, and anchor to the bottom so
+   * floor detail lands on the floor rather than halfway up the wall.
+   */
+  private drawRoomCover(c: CanvasRenderingContext2D, image: HTMLImageElement): void {
+    const { worldWidth: w, worldHeight: h } = this.room;
+    const scale = Math.max(w / image.naturalWidth, h / image.naturalHeight);
+    const dw = image.naturalWidth * scale;
+    const dh = image.naturalHeight * scale;
+    c.drawImage(image, (w - dw) / 2, h - dh, dw, dh);
   }
 
   /**
