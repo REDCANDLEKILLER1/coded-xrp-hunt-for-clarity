@@ -407,6 +407,7 @@ export const BOSS_ATTACK_KEYS: readonly BossAttackKey[] = [
   'radial',
   'charge',
   'sweep_beam',
+  'escort_screen',
 ];
 
 export const BOSSES: Record<string, BossDef> = {
@@ -434,8 +435,12 @@ export const BOSSES: Record<string, BossDef> = {
         pattern: 'spread', accent: '#d06cff', attacks: ['aimed_volley', 'fog_wall', 'charge'],
       },
       {
+        // The screen opens the last phase: he hides behind his escorts before
+        // he shows you anything else, so the phase starts as a fight you
+        // cannot win by holding fire on him.
         hpThreshold: 0.28, moveSpeed: 124, fireRate: 0.58, projectileSpeed: 250, projectileCount: 5, spread: 0.19,
-        pattern: 'burst', accent: '#ff5ce1', attacks: ['radial', 'charge', 'fog_wall', 'sweep_beam'],
+        pattern: 'burst', accent: '#ff5ce1',
+        attacks: ['escort_screen', 'radial', 'charge', 'fog_wall', 'sweep_beam'],
       },
     ],
   },
@@ -449,9 +454,20 @@ export const BOSSES: Record<string, BossDef> = {
     triggerWave: 9,
     score: 900,
     phases: [
-      { hpThreshold: 1, moveSpeed: 58, fireRate: 0.9, projectileSpeed: 220, projectileCount: 3, spread: 0.2, pattern: 'spread', accent: '#ff8a3d' },
-      { hpThreshold: 0.58, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18, pattern: 'sweep', accent: '#ff5b3d' },
-      { hpThreshold: 0.24, moveSpeed: 105, fireRate: 0.48, projectileSpeed: 270, projectileCount: 6, spread: 0.16, pattern: 'burst', accent: '#ff3355' },
+      {
+        hpThreshold: 1, moveSpeed: 58, fireRate: 0.9, projectileSpeed: 220, projectileCount: 3, spread: 0.2,
+        pattern: 'spread', accent: '#ff8a3d', attacks: ['aimed_volley', 'sweep_beam'],
+      },
+      {
+        // Halfway down it starts launching fighters to defend it.
+        hpThreshold: 0.58, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18,
+        pattern: 'sweep', accent: '#ff5b3d', attacks: ['escort_screen', 'fog_wall', 'aimed_volley'],
+      },
+      {
+        hpThreshold: 0.24, moveSpeed: 105, fireRate: 0.48, projectileSpeed: 270, projectileCount: 6, spread: 0.16,
+        pattern: 'burst', accent: '#ff3355',
+        attacks: ['escort_screen', 'radial', 'charge', 'sweep_beam'],
+      },
     ],
   },
   clarity_destroyer: {
