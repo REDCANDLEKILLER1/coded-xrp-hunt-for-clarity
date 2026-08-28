@@ -4,7 +4,7 @@
   "tracks": {
     "theme": {
       "src": "/assets/audio/theme.mp3",
-      "title": "CODED — The Hunt for Clarity (Theme)",
+      "title": "CODED \u2014 The Hunt for Clarity (Theme)",
       "loop": true,
       "gain": 0.55
     },
@@ -30,6 +30,7 @@
     "warship_interior": "level_one",
     "boss_gary_fog": "boss_fight",
     "boss_regulatory_warship": "boss_fight",
-    "boss_ledger_defense_core": "boss_fight"
+    "boss_ledger_defense_core": "boss_fight",
+    "boss_fight": "boss_fight"
   }
 }

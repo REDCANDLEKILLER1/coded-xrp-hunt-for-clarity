@@ -7,6 +7,7 @@ import { LandscapeMode } from './game/ui/LandscapeMode';
 import { OnFootGame } from './game/onfoot/OnFootGame';
 import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
+import { sfx } from './game/audio/Sfx';
 import { showDebugLogView } from './game/ui/DebugLogView';
 import {
   loadCampaignProgress,
@@ -48,16 +49,22 @@ music.cue('theme');
 const muteButton = document.createElement('button');
 muteButton.type = 'button';
 muteButton.className = 'music-toggle';
+// One switch for music and effects: two separate audio toggles on a phone HUD
+// is more chrome than the screen can spare.
 const paintMute = (): void => {
-  muteButton.textContent = music.isMuted ? '♪ OFF' : '♪ ON';
-  muteButton.setAttribute('aria-pressed', String(music.isMuted));
-  muteButton.title = music.isMuted ? 'Turn music on' : 'Turn music off';
+  const off = music.isMuted;
+  muteButton.textContent = off ? '♪ OFF' : '♪ ON';
+  muteButton.setAttribute('aria-pressed', String(off));
+  muteButton.title = off ? 'Turn sound on' : 'Turn sound off';
 };
 muteButton.addEventListener('click', (event) => {
   event.stopPropagation();
-  music.setMuted(!music.isMuted);
+  const next = !music.isMuted;
+  music.setMuted(next);
+  sfx.setMuted(next);
   paintMute();
 });
+sfx.setMuted(music.isMuted);
 paintMute();
 document.body.appendChild(muteButton);
 

@@ -47,15 +47,14 @@ canvas {
   user-select: none;
 }
 
-/* The utility row -- STAR MAP, LOG, music -- lives along the bottom-left.
-   Top-centre put STAR MAP straight over the stage label, and top-left put LOG
-   over the score. With the action pad cornered bottom-right, this strip is the
-   one place browser chrome and canvas HUD do not collide. */
+/* STAR MAP sits top-right, under the pause/diagnostics discs and clear of
+   both the stage label it used to cover and the flight path. LOG and the sound
+   toggle stay bottom-left. */
 .return-map {
   position: fixed;
   z-index: 8;
-  bottom: max(6px, env(safe-area-inset-bottom));
-  left: max(6px, env(safe-area-inset-left));
+  top: calc(max(6px, env(safe-area-inset-top)) + 42px);
+  right: max(6px, env(safe-area-inset-right));
   min-width: 84px;
   padding: 5px 10px;
   border: 1px solid rgba(0, 255, 136, 0.72);
@@ -601,7 +600,7 @@ canvas {
   position: fixed;
   z-index: 1100;
   bottom: max(6px, env(safe-area-inset-bottom));
-  left: calc(max(6px, env(safe-area-inset-left)) + 112px);
+  left: max(6px, env(safe-area-inset-left));
   padding: 5px 9px;
   border: 1px solid rgba(0, 255, 136, 0.45);
   border-radius: 3px;
@@ -638,7 +637,7 @@ canvas {
   position: fixed;
   z-index: 1100;
   bottom: max(6px, env(safe-area-inset-bottom));
-  left: calc(max(6px, env(safe-area-inset-left)) + 158px);
+  left: calc(max(6px, env(safe-area-inset-left)) + 46px);
   padding: 5px 9px;
   border: 1px solid rgba(54, 163, 255, 0.45);
   border-radius: 3px;
