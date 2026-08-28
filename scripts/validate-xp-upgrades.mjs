@@ -89,9 +89,122 @@ const progress = readFileSync('src/game/content/CampaignProgress.ts', 'utf8');
 check(/private awardXp\(/.test(game), 'kills must pay XP');
 check(/while \(this\.xp >= this\.xpForNextLevel\(\)\)/.test(game), 'a single big award must be able to cross more than one level');
 check(/private applyUpgrade\(kind: UpgradeKind\)/.test(game), 'there must be an upgrade to apply');
-for (const kind of ['weapon', 'shield', 'bomb', 'pulse']) {
+for (const kind of ['shield', 'bomb', 'pulse']) {
   check(new RegExp(`case '${kind}':`).test(game), `upgrade "${kind}" is not implemented`);
 }
+// A new gun is what levelling GIVES you, not a card you trade a shield for.
+check(!/'weapon' \| 'shield'/.test(game), 'weapon must not be an upgrade card — levelling grants it');
+check(/NEW WEAPON \/\//.test(game), 'crossing a weapon level must announce the new gun');
+// Every level tops the shields back up.
+check(/this\.shield = this\.shieldMax;\n      this\.shieldQuietClock = 0;/.test(game), 'levelling must refill shields to max');
+
+// ---- the gun is derived, and can never regress ----------------------------
+// Reported: "when you upgrade the fifth time it gives you the first gun again".
+// A stored tier can drift out of range and fall back to WEAPON_LADDER[0]; a
+// derived one cannot. This walks the whole progression for every hull.
+check(/private weaponTier\(\): number \{/.test(game), 'the weapon tier must be derived from the level, not stored');
+check(!/this\.weaponTier = /.test(game), 'nothing may assign the weapon tier directly');
+
+const num = (name) => {
+  const match = game.match(new RegExp(`^const ${name} = ([\\d.]+);`, 'm'));
+  check(!!match, `could not read ${name} from Game2A`);
+  return match ? Number(match[1]) : NaN;
+};
+const tierLevels = JSON.parse((game.match(/^const WEAPON_TIER_LEVELS = (\[[^\]]*\]);/m) ?? [])[1] ?? '[]');
+check(tierLevels.length > 0, 'WEAPON_TIER_LEVELS is missing');
+check(tierLevels.every((v, i) => i === 0 || v > tierLevels[i - 1]), 'weapon levels must strictly increase');
+
+const tierFor = (level, base) => {
+  let tier = base;
+  for (const at of tierLevels) if (level >= at) tier += 1;
+  return Math.min(ladder.length, Math.max(1, tier));
+};
+for (const ship of hulls) {
+  let previous = 0;
+  for (let level = 1; level <= 40; level++) {
+    const tier = tierFor(level, ship.loadout.weaponTier);
+    check(tier >= previous, `ships.${ship.key}: gun went backwards at level ${level} (${previous} -> ${tier})`);
+    check(tier >= 1 && tier <= ladder.length, `ships.${ship.key}: level ${level} yields tier ${tier}, off the ladder`);
+    previous = tier;
+  }
+  check(previous === ladder.length, `ships.${ship.key}: never reaches the top of the ladder`);
+}
+
+// ---- pickups add barrels, they do not climb the ladder --------------------
+check(/this\.barrels = Math\.min\(MAX_BARRELS, this\.barrels \+ 1\)/.test(game), 'weapon pickups must add a barrel');
+check(/private currentVolley\(\)/.test(game), 'barrels must actually widen the volley');
+check(/shots\.length < MAX_VOLLEY/.test(game), 'the volley needs a ceiling');
+
+// ---- the seeker missile ----------------------------------------------------
+// "a heat seeker missile that comes out automatically every four or five
+// seconds if you upgrade so far ... so it seeks out a Target".
+check(/const SEEKER_UNLOCK_LEVEL = WEAPON_TIER_LEVELS\[2\];/.test(game), 'the seeker must unlock deep in the ladder, not at a hand-typed level');
+const interval = Number((game.match(/^const SEEKER_INTERVAL = ([\d.]+);/m) ?? [])[1]);
+check(interval >= 4 && interval <= 5, `the seeker fires every ${interval}s — asked for four or five`);
+check(/private updateSeekers\(/.test(game), 'the seeker needs an update');
+check(/this\.updateSeekers\(dt\);/.test(game), 'the seeker update is never called');
+// It must steer, not snap: a turn rate is what makes it a missile.
+check(/const SEEKER_TURN = /.test(game), 'the seeker must have a turn rate');
+check(/clamp\(delta, -SEEKER_TURN \* dt, SEEKER_TURN \* dt\)/.test(game), 'the seeker must turn at a limited rate, not snap onto its target');
+check(/while \(delta > Math\.PI\) delta -= Math\.PI \* 2;/.test(game), 'the seeker must take the shortest way round, or it chases backwards targets the long way');
+// It has to be able to run out, or misses accumulate forever.
+check(/seeker\.age < SEEKER_LIFE/.test(game), 'seekers must expire');
+check(/this\.seekers = \[\];/.test(game), 'seekers must not survive a reset');
+// And it has to actually hit things.
+for (const [what, pattern] of [
+  ['drones', /if \(\(drone\.hp \?\? 0\) <= 0 \|\| !overlap\(box\(seeker/],
+  ['hazards', /if \(\(hazard\.hp \?\? 0\) <= 0 \|\| !overlap\(box\(seeker/],
+  ['the boss', /this\.boss\?\.state === 'fight' && overlap\(box\(seeker/],
+  ['the warship', /!overlap\(box\(seeker, 0\.8\), this\.warshipSystemBox\(system\)\)/],
+]) {
+  check(pattern.test(game), `seekers do not hit ${what}`);
+}
+
+// ---- RPG pacing, measured against the XP the level actually pays ----------
+const base = num('XP_LEVEL_BASE');
+const step = num('XP_LEVEL_STEP');
+const perScore = num('XP_PER_SCORE');
+const waveClear = num('XP_WAVE_CLEAR');
+const cumulative = (level) => (level - 1) * base + step * ((level - 1) * (level - 2)) / 2;
+
+// What Level 1 pays out, from the authored encounters and the real score values.
+const encBundle = await build({
+  entryPoints: ['src/game/content/EarthFlightEncounters.ts', 'src/game/content/EarthThreats.ts'],
+  bundle: true, format: 'esm', write: false, logLevel: 'silent', outdir: 'out',
+});
+const pick = async (name) => import(`data:text/javascript;base64,${Buffer.from(
+  encBundle.outputFiles.find((f) => f.path.endsWith(`${name}.js`)).text).toString('base64')}`);
+const { EARTH_FLIGHT_ENCOUNTERS } = await pick('EarthFlightEncounters');
+const earth = await pick('EarthThreats');
+const { ENEMIES, HAZARDS } = await import(
+  `data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`
+);
+const scoreOf = (spawn) => spawn.kind === 'enemy'
+  ? (earth.EARTH_ENEMIES?.[spawn.enemyKey] ?? ENEMIES[spawn.enemyKey])?.score ?? 0
+  : (earth.EARTH_HAZARDS?.[spawn.hazardKey] ?? HAZARDS[spawn.hazardKey])?.score ?? 0;
+
+let levelXp = 0;
+for (const encounter of Object.values(EARTH_FLIGHT_ENCOUNTERS)) {
+  for (const group of encounter.groups) {
+    levelXp += waveClear;
+    for (const spawn of group.spawns) levelXp += scoreOf(spawn) * perScore;
+  }
+}
+check(levelXp > 0, 'could not price the level in XP — the scraper is broken');
+
+const quadLevel = tierLevels[2];
+const lanceLevel = tierLevels[3];
+const quadAt = cumulative(quadLevel) / levelXp;
+const lanceAt = cumulative(lanceLevel) / levelXp;
+
+// "it's supposed to take longer ... less like a video arcade game and more like
+// a long-term RPG". The fourth gun must be past the halfway mark and the fifth
+// must be a genuine end-of-level goal.
+check(quadAt > 0.45, `QUAD BEAM arrives ${(quadAt * 100).toFixed(0)}% into the level — still arcade pacing`);
+check(lanceAt > 0.8, `CLARITY LANCE arrives ${(lanceAt * 100).toFixed(0)}% into the level — not a long-term goal`);
+check(lanceAt <= 1.2, `CLARITY LANCE needs ${(lanceAt * 100).toFixed(0)}% of the level's XP — unreachable`);
+check(cumulative(2) >= 120, `level 2 costs ${cumulative(2)} XP — too cheap for RPG pacing`);
+console.log(`  level pays ~${Math.round(levelXp)} XP • QUAD at ${(quadAt * 100).toFixed(0)}% • LANCE at ${(lanceAt * 100).toFixed(0)}%`);
 // A choice made under fire is a reflex test, not a choice.
 check(/if \(this\.upgradeOffer\.length > 0\) return;/.test(game), 'the fight must freeze while an upgrade is being chosen');
 // Never offer something that cannot do anything.
@@ -117,4 +230,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log(`xp-upgrades: OK — ${hulls.length} distinct hulls, ${ladder.length}-rung weapon ladder, 4 upgrade paths.`);
+console.log(`xp-upgrades: OK — ${hulls.length} distinct hulls, ${ladder.length} guns granted by level, barrels from drops, 3 upgrade cards.`);
