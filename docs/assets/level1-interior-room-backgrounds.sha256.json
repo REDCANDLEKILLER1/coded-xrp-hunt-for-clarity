@@ -1,0 +1,26 @@
+{
+  "target": "CODED Regulatory Warship remaining Level 1 room backgrounds",
+  "dimensions": "1024x576",
+  "files": [
+    {
+      "filename": "regulatory_access_corridor.webp",
+      "bytes": 70348,
+      "sha256": "fda3c7f348315298e35ab2b78eb3d613ed2ddc254b31011bd64686bb41d9f9b3"
+    },
+    {
+      "filename": "regulatory_maintenance_shaft.webp",
+      "bytes": 67026,
+      "sha256": "b260a1037de5afa20af91bfa2f13164396521a7fa54a2068db3fedd9e03efe95"
+    },
+    {
+      "filename": "regulatory_field_control.webp",
+      "bytes": 98986,
+      "sha256": "c1ff9d4bc28b9aa02b7aa255d80df2db93d57e442c12fba600b7b742c122e7b5"
+    },
+    {
+      "filename": "regulatory_defense_deck.webp",
+      "bytes": 81958,
+      "sha256": "f643dc998020ae269ad32f7aa22585efd100b02bcb1ab17fe6f18b1184e3615f"
+    }
+  ]
+}
