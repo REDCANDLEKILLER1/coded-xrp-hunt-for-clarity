@@ -4,6 +4,7 @@ import { SpriteRenderer } from '../core/Sprite';
 import { sfx } from '../audio/Sfx';
 import { debugLog } from '../core/DebugLog';
 import { Cockpit, type CockpitContact, type CockpitState } from './Cockpit';
+import { TiltSource } from './Tilt';
 import {
   FAR_PLANE,
   NEAR_PLANE,
@@ -134,6 +135,7 @@ export class Space3DGame {
   private readonly sprites: SpriteRenderer;
   private readonly cockpit: Cockpit;
   private readonly loop = new Loop((dt) => this.tick(dt));
+  private readonly tilt = new TiltSource();
   private assetsReady = false;
   private visible = false;
 
@@ -202,6 +204,8 @@ export class Space3DGame {
     this.shell.appendChild(this.canvas);
     this.bindInput();
     window.addEventListener('resize', () => this.resize());
+    // Rotating the handset invalidates the neutral pose entirely.
+    window.addEventListener('orientationchange', () => this.tilt.recalibrate('orientation change'));
   }
 
   /**
@@ -267,6 +271,7 @@ export class Space3DGame {
     this.bossHp = 0;
     this.escortsLaunched = false;
     this.seedSky();
+    this.tilt.recalibrate('run start');
     this.banner(`${this.leg.label} // ${this.leg.destination}`, 3.4);
   }
 
@@ -318,6 +323,9 @@ export class Space3DGame {
       this.pointerStart = { x: event.clientX, y: event.clientY };
       this.pointerMoved = false;
       this.pointerDownAt = this.clock;
+      // iOS will not hand over the sensor without a live gesture, so take the
+      // grant from the first touch rather than making the player find a button.
+      if (this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
     });
 
     this.canvas.addEventListener('pointermove', (event) => {
@@ -407,8 +415,17 @@ export class Space3DGame {
     if (this.rollClock > 0) this.rollClock = Math.max(0, this.rollClock - dt);
     if (this.rollCooldown > 0) this.rollCooldown = Math.max(0, this.rollCooldown - dt);
 
+    // Tilt flies the ship when the sensor is live. Drag stays as the fallback
+    // for desktop, for a denied permission, and for headless verification --
+    // a denied prompt must not leave an unplayable level with no way out.
+    this.tilt.update(dt);
     let stickX = this.stickX;
     let stickY = this.stickY;
+    if (this.tilt.ready && this.pointerId === null) {
+      const lean = this.tilt.read();
+      stickX = lean.x;
+      stickY = lean.y;
+    }
     if (this.keys.has('arrowleft') || this.keys.has('a')) stickX = -1;
     if (this.keys.has('arrowright') || this.keys.has('d')) stickX = 1;
     if (this.keys.has('arrowup') || this.keys.has('w')) stickY = -1;
