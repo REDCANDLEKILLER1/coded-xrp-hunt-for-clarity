@@ -173,7 +173,13 @@
       "notes": "From Coded_1 pack: special_weapon_hit_spark_6frame, keyed off black and boxed to 6x96px frames"
     }
   },
-  "ui": {},
+  "ui": {
+    "regulatory_warship_cockpit": {
+      "src": "/assets/ui/cockpit/regulatory_warship_cockpit_overlay.webp",
+      "type": "image",
+      "notes": "Stolen Regulatory Warship canopy. Alpha aperture is the forward view: safe rect x 0.20-0.80, y 0.03-0.57, vanishing point at (0.50, 0.30). Optimized from the 1672x941 approved PNG at q0.86; alpha is bit-identical to the source."
+    }
+  },
   "backgrounds": {
     "ledger_city": {
       "src": "/assets/backgrounds/ledger_city.webp",
