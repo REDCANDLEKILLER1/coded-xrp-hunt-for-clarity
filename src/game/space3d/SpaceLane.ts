@@ -95,16 +95,16 @@ export const LEDGER_TRANSIT: SpaceLeg = {
   destination: 'XRPL CORE',
   backdrop: 'deep_space_lane',
   squadrons: [
-    { enemyKey: 'regulator_drone', count: 3, pattern: 'joust', hp: 1, speed: 165, standoff: 420, fireInterval: 0, delay: 2.5, entryRange: 1700, score: 40 },
-    { enemyKey: 'regulator_drone', count: 4, pattern: 'joust', hp: 1, speed: 180, standoff: 400, fireInterval: 3.0, delay: 14, entryRange: 1800, score: 40 },
-    { enemyKey: 'fast_scout', count: 3, pattern: 'orbit', hp: 2, speed: 210, standoff: 520, fireInterval: 2.6, delay: 15, entryRange: 1900, score: 60 },
-    { enemyKey: 'fog_raider', count: 4, pattern: 'orbit', hp: 2, speed: 190, standoff: 480, fireInterval: 2.4, delay: 16, entryRange: 1900, score: 70 },
-    { enemyKey: 'rug_fighter', count: 3, pattern: 'tail', hp: 3, speed: 205, standoff: 360, fireInterval: 2.2, delay: 16, entryRange: 1600, score: 85 },
-    { enemyKey: 'whale_scout', count: 3, pattern: 'stand_off', hp: 4, speed: 150, standoff: 900, fireInterval: 2.0, delay: 17, entryRange: 2100, score: 120 },
-    { enemyKey: 'fast_scout', count: 5, pattern: 'orbit', hp: 2, speed: 225, standoff: 500, fireInterval: 2.1, delay: 16, entryRange: 2000, score: 60 },
-    { enemyKey: 'rug_fighter', count: 4, pattern: 'tail', hp: 3, speed: 215, standoff: 340, fireInterval: 2.0, delay: 17, entryRange: 1700, score: 85 },
-    { enemyKey: 'whale_scout', count: 4, pattern: 'stand_off', hp: 5, speed: 160, standoff: 850, fireInterval: 1.9, delay: 18, entryRange: 2200, score: 120 },
-    { enemyKey: 'fog_raider', count: 6, pattern: 'joust', hp: 3, speed: 210, standoff: 420, fireInterval: 1.9, delay: 18, entryRange: 2000, score: 70 },
+    { enemyKey: 'regulator_drone', count: 3, pattern: 'joust', hp: 1, speed: 80, standoff: 840, fireInterval: 0, delay: 2.5, entryRange: 5400, score: 40 },
+    { enemyKey: 'regulator_drone', count: 4, pattern: 'joust', hp: 1, speed: 85, standoff: 800, fireInterval: 3.0, delay: 14, entryRange: 5800, score: 40 },
+    { enemyKey: 'fast_scout', count: 3, pattern: 'orbit', hp: 2, speed: 100, standoff: 1040, fireInterval: 2.6, delay: 15, entryRange: 6100, score: 60 },
+    { enemyKey: 'fog_raider', count: 4, pattern: 'orbit', hp: 2, speed: 90, standoff: 960, fireInterval: 2.4, delay: 16, entryRange: 6100, score: 70 },
+    { enemyKey: 'rug_fighter', count: 3, pattern: 'tail', hp: 3, speed: 100, standoff: 720, fireInterval: 2.2, delay: 16, entryRange: 5100, score: 85 },
+    { enemyKey: 'whale_scout', count: 3, pattern: 'stand_off', hp: 4, speed: 70, standoff: 1800, fireInterval: 2.0, delay: 17, entryRange: 6700, score: 120 },
+    { enemyKey: 'fast_scout', count: 5, pattern: 'orbit', hp: 2, speed: 110, standoff: 1000, fireInterval: 2.1, delay: 16, entryRange: 6400, score: 60 },
+    { enemyKey: 'rug_fighter', count: 4, pattern: 'tail', hp: 3, speed: 105, standoff: 680, fireInterval: 2.0, delay: 17, entryRange: 5400, score: 85 },
+    { enemyKey: 'whale_scout', count: 4, pattern: 'stand_off', hp: 5, speed: 75, standoff: 1700, fireInterval: 1.9, delay: 18, entryRange: 7000, score: 120 },
+    { enemyKey: 'fog_raider', count: 6, pattern: 'joust', hp: 3, speed: 100, standoff: 840, fireInterval: 1.9, delay: 18, entryRange: 6400, score: 70 },
   ],
   boss: {
     spriteKey: 'cyber_battleship',
@@ -121,8 +121,8 @@ export const LEDGER_TRANSIT: SpaceLeg = {
      */
     hp: 300,
     size: 320,
-    standoff: 780,
-    speed: 95,
+    standoff: 1900,
+    speed: 52,
     // Fixed order, and every attack costs it its guard on the recovery.
     // Recoveries are deliberately shorter than the wind-ups: the guard is a
     // real defence, not a decoration that makes the fight longer on paper.

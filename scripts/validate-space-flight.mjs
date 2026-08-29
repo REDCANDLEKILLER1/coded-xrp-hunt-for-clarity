@@ -154,6 +154,17 @@ check(Boolean(manifest.bosses?.[bossKey]), `the leg boss is bosses.${bossKey}, w
 check(Boolean(manifest.backgrounds?.[backdrop]), `the leg backdrop is backgrounds.${backdrop}, which is not in the manifest`);
 check(enemyKeys.length >= 8, `a leg of ${enemyKeys.length} squadrons is too short for a whole level`);
 
+// The fog curve is tied to the far plane; retuning one without the other
+// silently kills the depth cue. Sample across the whole range, not two points.
+{
+  const samples = [200, 1200, 3000, 6000, 9000].map((d) => depthAlpha(d));
+  for (let i = 1; i < samples.length; i += 1) {
+    check(samples[i] < samples[i - 1], `depth fog must keep falling: it flattens by ${[200,1200,3000,6000,9000][i]} units`);
+  }
+  check(samples[0] > 0.85, 'a contact right in front of you must be solid');
+  check(samples[samples.length - 1] < 0.35, 'a contact at the edge of the field must be faint');
+}
+
 // ---- the canopy -----------------------------------------------------------
 const cockpitEntry = manifest.ui?.regulatory_warship_cockpit;
 check(Boolean(cockpitEntry), 'the cockpit overlay must be in the manifest');
@@ -185,11 +196,32 @@ check(sceneAt >= 0 && frameAt > sceneAt, 'the canopy must be drawn AFTER the sce
 check(/camera\.cx = frame\.cx/.test(game) && /camera\.cy = frame\.cy/.test(game),
   'the vanishing point must sit at the canopy aperture, not the middle of the screen');
 // Instruments are code, not paint.
-for (const [name, needle] of [['radar', 'drawRadar'], ['elevation dish', 'drawThreatDish'], ['hull', 'drawHullScreen'], ['nav', 'drawMainScreen']]) {
+// drawThreatDish and drawMainScreen are gone on purpose. The console is
+// cropped above the corner dishes so a landscape screen gets ~58% sky instead
+// of ~29%, and the radar moved onto the big centre screen -- where it also
+// absorbed the elevation readout as up/down arrows, so a separate dish would
+// now be saying the same thing twice in less space.
+for (const [name, needle] of [['radar', 'drawRadar'], ['hull', 'drawHullScreen'], ['target', 'drawTargetScreen']]) {
   check(new RegExp(`private ${needle}\\(`).test(cockpit), `the ${name} instrument is not drawn in code`);
   check(new RegExp(`this\\.${needle}\\(`).test(cockpit), `${needle} is defined but never called`);
 }
 check(/contact\.bearing/.test(cockpit) && /contact\.range/.test(cockpit), 'the radar must plot real bearings and ranges');
+check(/contact\.elevation/.test(cockpit), 'the radar must show which contacts are above and below');
+// The radar has to be on the big screen, not a corner dish: at 38px it could
+// show that something existed but never where.
+check(/this\.drawRadar\(px\(ART\.mainScreen/.test(cockpit), 'the radar belongs on the main screen');
+// The crop is the whole point, so check the VALUE, not just that the constant
+// exists. Uncropped, a landscape screen drops from ~57% sky back to ~40%.
+{
+  const bottom = Number(cockpit.match(/const CONSOLE_BOTTOM = ([\d.]+);/)?.[1]);
+  const top = Number(cockpit.match(/const CONSOLE_TOP = ([\d.]+);/)?.[1]);
+  check(bottom > 0 && bottom <= 0.9, `the console must be cropped above the corner dishes (CONSOLE_BOTTOM=${bottom})`);
+  check(bottom - top < 0.35, 'the console band is too deep: landscape needs the sky more than it needs bezel');
+  // The band is anchored by its CROPPED edge; anchoring the full art height
+  // left the missing slice as a gap and the console floated mid-screen.
+  check(/h - CONSOLE_LIFT - CONSOLE_BOTTOM \* artH/.test(cockpit),
+    'the band must be anchored by its cropped edge, or it floats with sky beneath it');
+}
 check(/state\.contacts/.test(cockpit), 'the radar must read live contacts, not a canned animation');
 
 // ---- open space, not a lane ----------------------------------------------
@@ -250,14 +282,52 @@ check(
 check(/buttons\(frame: CockpitFrame\): CockpitButton\[\]/.test(cockpit), 'button geometry needs a single definition');
 check(/this\.buttons\(frame\)/.test(cockpit), 'the painter must use the shared button geometry');
 check(/this\.cockpit\.buttons\(this\.cockpit\.layout\(/.test(game), 'the hit test must use the shared button geometry');
-check(/mode === 'console'/.test(cockpit.slice(cockpit.indexOf('buttons(frame: CockpitFrame)'), cockpit.indexOf('drawButtons('))),
-  'portrait must place buttons at thumb-safe positions, not by canopy art fraction');
+// Buttons branch on whether the band is OVERSCANNED, not on the layout mode:
+// both orientations render the console band now, so branching on mode sent
+// landscape down the portrait path and parked its buttons at the screen edge.
+check(/frame\.overscanned/.test(cockpit.slice(cockpit.indexOf('buttons(frame: CockpitFrame)'), cockpit.indexOf('drawButtons('))),
+  'portrait must place buttons at thumb-safe positions, and landscape on the artwork shoulders');
 
 // ---- the missile is a decision, not a spam button ------------------------
 check(/MISSILE_CHARGE_SECONDS/.test(game), 'the missile must charge');
 check(/if \(this\.missileCharge < 1\)/.test(game), 'an uncharged missile must refuse to fire');
 check(/MISSILE_TURN_RATE/.test(game), 'the seeker must have a bounded turn rate so it can be out-flown');
 check(!/barrel roll.{0,40}lock/i.test(game), 'a roll must not defeat a seeker by animation');
+
+// ---- the rescale: space has to be big enough to see something coming -----
+{
+  const cruise = Number(game.match(/const CRUISE = (\d+);/)?.[1]);
+  const despawn = Number(game.match(/const DESPAWN_RANGE = (\d+);/)?.[1]);
+  const throttle = 0.72;
+  const rows = [...leg.matchAll(/speed: (\d+), standoff: (\d+),[\s\S]{0,80}?entryRange: (\d+)/g)]
+    .map((m) => ({ speed: +m[1], standoff: +m[2], entry: +m[3] }));
+  check(rows.length >= 8, 'could not read the squadron table');
+  const approaches = rows.map((r) => (r.entry - r.standoff) / (cruise * throttle + r.speed));
+  const shortest = Math.min(...approaches);
+  // The complaint this fixes: "everything's moving too fast you can't ever
+  // find any enemies... they don't disappear out of nowhere and fly by".
+  check(shortest > 12, `a squadron closes in ${shortest.toFixed(1)}s — too fast to see anything coming`);
+  check(Math.max(...approaches) < 90, 'approaches this long are dead air, not tension');
+  check(despawn > Math.max(...rows.map((r) => r.entry)) * 1.3,
+    'contacts must not evaporate shortly after spawning');
+  for (const r of rows) {
+    check(r.entry < FAR_PLANE, `a squadron enters at ${r.entry}, beyond the far plane — it would spawn invisible`);
+  }
+}
+
+// A contact at spawn range projects to a few pixels, so the bracket is the
+// only thing making it findable. It must never shrink away.
+check(/const BRACKET_MIN_PIXELS = (\d+)/.test(game), 'target brackets need a size floor');
+check(Number(game.match(/const BRACKET_MIN_PIXELS = (\d+)/)?.[1]) >= 14, 'the bracket floor is too small to find');
+check(/private drawTargetBracket\(/.test(game) && /this\.drawTargetBracket\(/.test(game),
+  'the bracket must be defined and drawn');
+check(!/p\.depth < 1500/.test(game), 'brackets must not be gated to close range');
+
+// ---- warp -----------------------------------------------------------------
+check(/WARP_MULTIPLIER/.test(game) && /WARP_HEAT_PER_SECOND/.test(game), 'warp must exist and must heat');
+check(/this\.warpLocked = true/.test(game), 'maxing the coil must lock warp out, or the limit can be feathered');
+check(/WARP_RESET_HEAT/.test(game), 'a locked coil must need real cooling before it re-engages');
+check(/'warp'/.test(cockpit), 'warp needs a console button');
 
 // ---- shields are directional --------------------------------------------
 check(/private takeHitFrom\(/.test(game), 'damage must know which side it came from');
