@@ -1,3 +1,4 @@
+import { scaleCombatants } from './registry';
 import type { EnemyDef, HazardDef } from './types';
 
 /**
@@ -5,7 +6,7 @@ import type { EnemyDef, HazardDef } from './types';
  * They stay out of the global arcade registry so ARCADE TEST RUN preserves
  * the previously validated random bestiary while the campaign is authored.
  */
-export const EARTH_ENEMIES: Record<string, EnemyDef> = {
+export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
   fast_scout: {
     key: 'fast_scout',
     label: 'FAST SCOUT',
@@ -23,9 +24,9 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = {
     projectileSpeed: 285,
     accent: '#ff5ce1',
   },
-};
+});
 
-export const EARTH_HAZARDS: Record<string, HazardDef> = {
+export const EARTH_HAZARDS: Record<string, HazardDef> = scaleCombatants({
   armored_space_mine: {
     key: 'armored_space_mine',
     label: 'ARMORED SPACE MINE',
@@ -43,7 +44,7 @@ export const EARTH_HAZARDS: Record<string, HazardDef> = {
     placement: 'lane',
     fires: false,
   },
-};
+});
 
 export function validateEarthThreats(): string[] {
   const errors: string[] = [];

@@ -17,8 +17,13 @@ export function nextBossKey(
 }
 
 /** Resolves the active phase from remaining health. Phases must be stored high threshold to low. */
-export function bossPhaseIndex(boss: BossDef, hp: number): number {
-  const ratio = Math.max(0, hp) / boss.hp;
+/**
+ * @param maxHp The boss's actual maximum, which is scaled to the player's
+ *   firepower at spawn and so is not `boss.hp`. Defaults to the definition's
+ *   value for callers that have not scaled anything.
+ */
+export function bossPhaseIndex(boss: BossDef, hp: number, maxHp = boss.hp): number {
+  const ratio = Math.max(0, hp) / Math.max(1, maxHp);
   let active = 0;
   for (let index = 0; index < boss.phases.length; index += 1) {
     if (ratio <= boss.phases[index].hpThreshold) active = index;
