@@ -219,8 +219,13 @@ check(/this\.drawRadar\(px\(ART\.mainScreen/.test(cockpit), 'the radar belongs o
   check(bottom - top < 0.35, 'the console band is too deep: landscape needs the sky more than it needs bezel');
   // The band is anchored by its CROPPED edge; anchoring the full art height
   // left the missing slice as a gap and the console floated mid-screen.
-  check(/h - CONSOLE_LIFT - CONSOLE_BOTTOM \* artH/.test(cockpit),
+  // Anchored by the CROPPED edge, whatever that fraction is called. Pinning
+  // the constant's name broke the moment the crop became orientation-
+  // dependent, while the behaviour it guards was still correct.
+  check(/const artY = h - CONSOLE_LIFT - bottom \* artH;/.test(cockpit),
     'the band must be anchored by its cropped edge, or it floats with sky beneath it');
+  check(!/const artY = h - artH - CONSOLE_LIFT;/.test(cockpit),
+    'anchoring the full art height leaves the cropped slice as a gap under the console');
 }
 check(/state\.contacts/.test(cockpit), 'the radar must read live contacts, not a canned animation');
 
