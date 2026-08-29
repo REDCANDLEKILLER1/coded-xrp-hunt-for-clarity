@@ -210,7 +210,62 @@ check(/private drawOffscreenCues\(/.test(game) && /this\.drawOffscreenCues\(/.te
 // screen and can never bring you all the way around.
 check(/TURN_RATE/.test(game) && /yawRate/.test(game) && /pitchRate/.test(game), 'steering must set a turn rate');
 check(/this\.camera\.yaw = wrapAngle\(/.test(game), 'heading must wrap rather than grow without bound');
-check(/private autoFire\(/.test(game), 'firing must be automatic: a fire button costs the thumb that is flying');
+// Firing used to have to be AUTOMATIC, on the reasoning that a fire button
+// costs the thumb flying the ship. That was right until tilt started flying
+// it. The thumb is free now, so the trigger is the point -- and the rule that
+// replaces it is the one that keeps the old reasoning true: a weapon touch
+// must never become the steering pointer.
+check(/private fireGuns\(/.test(game), 'the guns must be on a held trigger');
+check(/private get gunsHeld\(/.test(game), 'held-fire needs a single definition of "the trigger is down"');
+check(!/private autoFire\(/.test(game), 'auto-fire must be gone: shooting is a decision now');
+
+// ---- a weapon touch must never steer ------------------------------------
+const down = game.slice(game.indexOf("addEventListener('pointerdown'"), game.indexOf("addEventListener('pointermove'"));
+check(/const button = this\.buttonAt\(/.test(down), 'pointerdown must test the buttons before claiming the pointer for steering');
+check(
+  down.indexOf('this.buttonAt(') < down.indexOf('this.pointerId = event.pointerId'),
+  'the button test must come BEFORE the steering pointer is claimed, or holding a button disables tilt',
+);
+check(/this\.weaponPointers\.set\(event\.pointerId, button\);[\s\S]{0,200}?return;/.test(down),
+  'a pointer that hits a button must be claimed by the weapon and go no further');
+const move = game.slice(game.indexOf("addEventListener('pointermove'"), game.indexOf('const release ='));
+check(/if \(this\.weaponPointers\.has\(event\.pointerId\)\) return;/.test(move),
+  'a finger sliding on a button must not steer');
+check(/this\.tilt\.ready && this\.pointerId === null/.test(game),
+  'tilt must yield only to the STEERING pointer, never to a weapon touch');
+// setPointerCapture throws when the pointer is already gone -- a real race on
+// a fast tap. Called before the state is recorded it would drop the press.
+check(/private tryCapture\(/.test(game), 'pointer capture must be best-effort, not able to abort the handler');
+// The one legitimate call lives inside tryCapture; anywhere else it can abort
+// a handler mid-way and lose the press.
+const outsideTryCapture = game.replace(/private tryCapture\([\s\S]*?\n  \}/, '');
+check(!/setPointerCapture\(/.test(outsideTryCapture), 'capture must go through tryCapture so a throw cannot lose the press');
+check(
+  down.indexOf('this.weaponPointers.set(') < down.indexOf('this.tryCapture('),
+  'the weapon press must be recorded BEFORE capture is attempted',
+);
+
+// Draw geometry and hit rect must come from one place, or the button you can
+// see stops being the button you can press after any layout change.
+check(/buttons\(frame: CockpitFrame\): CockpitButton\[\]/.test(cockpit), 'button geometry needs a single definition');
+check(/this\.buttons\(frame\)/.test(cockpit), 'the painter must use the shared button geometry');
+check(/this\.cockpit\.buttons\(this\.cockpit\.layout\(/.test(game), 'the hit test must use the shared button geometry');
+check(/mode === 'console'/.test(cockpit.slice(cockpit.indexOf('buttons(frame: CockpitFrame)'), cockpit.indexOf('drawButtons('))),
+  'portrait must place buttons at thumb-safe positions, not by canopy art fraction');
+
+// ---- the missile is a decision, not a spam button ------------------------
+check(/MISSILE_CHARGE_SECONDS/.test(game), 'the missile must charge');
+check(/if \(this\.missileCharge < 1\)/.test(game), 'an uncharged missile must refuse to fire');
+check(/MISSILE_TURN_RATE/.test(game), 'the seeker must have a bounded turn rate so it can be out-flown');
+check(!/barrel roll.{0,40}lock/i.test(game), 'a roll must not defeat a seeker by animation');
+
+// ---- shields are directional --------------------------------------------
+check(/private takeHitFrom\(/.test(game), 'damage must know which side it came from');
+check(/shieldAft/.test(game) && /shieldFore/.test(game), 'shields must be fore and aft');
+check(!/this\.takeHit\(\);\s*\n\s*break;/.test(game), 'damage must route through the directional path');
+
+// ---- the roll moved --------------------------------------------------
+check(/DOUBLE_TAP_SECONDS/.test(game), 'the roll must be a double tap now that a single tap is ambiguous');
 check(/Math\.abs\(dx\) > 6 \|\| Math\.abs\(dy\) > 6/.test(game), 'the stick must engage from where the finger went down');
 
 // Fast bolts must be swept, not sampled, or they tunnel through everything.
@@ -240,8 +295,15 @@ const bossHp = Number(leg.match(/hp: (\d+),\n\s+\/\*\*[\s\S]*?size:|hp: (\d+),\s
   || Number(leg.slice(leg.indexOf('boss: {')).match(/hp: (\d+)/)?.[1]);
 check(shotInterval > 0, 'could not read the fire interval');
 check(bossHp > 0, 'could not read the boss health');
-// Two barrels per volley, every hit landing: the best any player can do.
+// Two barrels per volley, every hit landing. "Perfect" now also means heat is
+// MANAGED -- burst fire keeps the cadence at full rate, and a player who holds
+// the trigger down forever is choosing a slower gun. So the ceiling is still
+// the un-slowed rate; what changed is that reaching it is a skill.
 const perfectDps = (2 / shotInterval) * average;
+// And heat must stay a tax, not a wall: a gun that got dramatically slower
+// would take the fight away at the moment it is most needed.
+const slowdown = Number(game.match(/const HEAT_MAX_SLOWDOWN = ([\d.]+);/)?.[1]);
+check(slowdown > 1 && slowdown <= 2.5, `heat slowdown of ${slowdown}x is either no penalty at all or a wall`);
 const ttk = bossHp / perfectDps;
 check(ttk >= 25, `the boss dies in ${ttk.toFixed(0)}s of PERFECT shooting — a level boss must outlast a held trigger`);
 check(ttk <= 45, `the boss takes ${ttk.toFixed(0)}s of perfect shooting — past this it is a sponge, not a fight`);

@@ -19,7 +19,14 @@ import { debugLog } from '../core/DebugLog';
  * and both are preserved here with their reasoning.
  */
 
-export type TiltStatus = 'unavailable' | 'needs_permission' | 'calibrating' | 'ready' | 'denied';
+/**
+ * `waiting` is the diagnostic that matters: the listener is attached and the
+ * browser claims a sensor exists, but no reading has ever arrived. That is a
+ * completely different fault from `calibrating` (readings arriving, pose not
+ * settled) and from `denied`, and without separating them a phone that simply
+ * never fires the event is indistinguishable from one still settling.
+ */
+export type TiltStatus = 'unavailable' | 'needs_permission' | 'waiting' | 'calibrating' | 'ready' | 'denied';
 
 export interface TiltSample {
   /** Front-to-back tilt, degrees. */
@@ -147,6 +154,7 @@ export class TiltSource {
   private latest: Vec3 | null = null;
   private stick = { x: 0, y: 0 };
   private samples: Vec3[] = [];
+  private sampleCount = 0;
   private calibrationStart = 0;
   private unsubscribe: (() => void) | null = null;
 
@@ -221,15 +229,21 @@ export class TiltSource {
   }
 
   /** Drops the neutral pose and starts sampling for a new one. */
+  /** Readings seen since the listener was attached. Zero means the sensor is silent. */
+  get samplesSeen(): number {
+    return this.sampleCount;
+  }
+
   recalibrate(reason: string): void {
     if (this.statusValue === 'unavailable' || this.statusValue === 'denied') return;
+    if (this.statusValue === 'needs_permission' || this.statusValue === 'waiting') return;
     this.neutral = null;
     this.samples = [];
     this.calibrationStart = this.env.now();
     this.stick.x = 0;
     this.stick.y = 0;
     this.statusValue = 'calibrating';
-    debugLog.log('input', 'tilt recalibrating', { reason });
+    debugLog.log('input', 'tilt recalibrating', { reason, samplesSeen: this.sampleCount });
   }
 
   dispose(): void {
@@ -239,7 +253,7 @@ export class TiltSource {
 
   private bind(): void {
     if (this.unsubscribe) return;
-    this.statusValue = 'calibrating';
+    this.statusValue = 'waiting';
     this.calibrationStart = this.env.now();
     this.samples = [];
     this.unsubscribe = this.env.subscribe((sample) => this.onSample(sample));
@@ -247,6 +261,8 @@ export class TiltSource {
 
   private onSample(sample: TiltSample): void {
     if (!Number.isFinite(sample.beta) || !Number.isFinite(sample.gamma)) return;
+    this.sampleCount += 1;
+    if (this.statusValue === 'waiting') this.statusValue = 'calibrating';
     const gravity = gravityFromOrientation(sample.beta, sample.gamma);
     this.latest = gravity;
     if (this.neutral) return;

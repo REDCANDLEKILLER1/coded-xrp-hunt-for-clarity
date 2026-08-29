@@ -3,7 +3,7 @@ import { Loop } from '../core/Loop';
 import { SpriteRenderer } from '../core/Sprite';
 import { sfx } from '../audio/Sfx';
 import { debugLog } from '../core/DebugLog';
-import { Cockpit, type CockpitContact, type CockpitState } from './Cockpit';
+import { Cockpit, type CockpitButtonId, type CockpitContact, type CockpitState } from './Cockpit';
 import { TiltSource } from './Tilt';
 import {
   FAR_PLANE,
@@ -79,6 +79,7 @@ type Bolt = {
   life: number;
 };
 
+type Missile = { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
 type Burst = { x: number; y: number; z: number; life: number; max: number };
 /** Stars sit on a unit sphere: infinitely far, so they turn but never pass. */
 type Star = { x: number; y: number; z: number; mag: number };
@@ -102,7 +103,31 @@ const PITCH_LIMIT = 1.32;
 const STICK_TRAVEL = 0.26;
 
 const PLAYER_HP = 8;
+/**
+ * Guns are held now, not automatic, so the cadence is what the trigger buys
+ * you rather than a constant. SHOT_INTERVAL keeps its name and value: the
+ * boss time-to-kill validator is computed from it.
+ */
 const SHOT_INTERVAL = 0.17;
+/** Heat per second of held fire, and how fast it bleeds off. */
+const HEAT_PER_SECOND = 0.34;
+const HEAT_COOL_PER_SECOND = 0.46;
+/** Above this the guns slow down. They never cut out -- see fireGuns(). */
+const HEAT_SOFT_LIMIT = 0.75;
+const HEAT_MAX_SLOWDOWN = 2.1;
+/** Seconds to refill the missile. */
+const MISSILE_CHARGE_SECONDS = 7;
+const MISSILE_SPEED = 1150;
+/** How hard a missile can bend toward its mark, radians per second. */
+const MISSILE_TURN_RATE = 2.4;
+const MISSILE_DAMAGE = 6;
+/** Half-angle of the cone a missile will look inside for something to chase. */
+const MISSILE_SEEK_CONE = 0.42;
+/** Seconds without damage before a shield bank starts coming back. */
+const SHIELD_REGEN_DELAY = 4.5;
+const SHIELD_REGEN_PER_SECOND = 0.22;
+/** Two taps on empty glass inside this window is a barrel roll. */
+const DOUBLE_TAP_SECONDS = 0.32;
 const BOLT_SPEED = 1750;
 const BOLT_SIZE = 10;
 const HOSTILE_BOLT_SPEED = 700;
@@ -158,6 +183,7 @@ export class Space3DGame {
 
   private contacts: Contact[] = [];
   private bolts: Bolt[] = [];
+  private missiles: Missile[] = [];
   private bursts: Burst[] = [];
   private stars: Star[] = [];
   private motes: Mote[] = [];
@@ -178,11 +204,29 @@ export class Space3DGame {
   private viewW = 0;
   private viewH = 0;
 
+  /**
+   * The STEERING pointer, and only ever that.
+   *
+   * Weapon touches are tracked separately in `weaponPointers`. Letting a
+   * finger on the GUN button also register as the steering pointer would
+   * disable tilt for as long as you were shooting -- you would stop being able
+   * to fly the moment you started firing, which is the whole game.
+   */
   private pointerId: number | null = null;
   private pointerStart = { x: 0, y: 0 };
   private pointerMoved = false;
   private pointerDownAt = 0;
+  /** pointerId -> which button it is holding. */
+  private readonly weaponPointers = new Map<number, CockpitButtonId>();
+  private lastTapAt = -1;
   private readonly keys = new Set<string>();
+
+  private gunHeat = 0;
+  private gunClock = 0;
+  private missileCharge = 1;
+  private shieldFore = 1;
+  private shieldAft = 1;
+  private shieldQuiet = 0;
 
   constructor(private readonly shell: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -203,6 +247,7 @@ export class Space3DGame {
     this.cockpit = new Cockpit(ctx, this.assets);
     this.shell.appendChild(this.canvas);
     this.bindInput();
+    this.armTiltPermission();
     window.addEventListener('resize', () => this.resize());
     // Rotating the handset invalidates the neutral pose entirely.
     window.addEventListener('orientationchange', () => this.tilt.recalibrate('orientation change'));
@@ -264,7 +309,14 @@ export class Space3DGame {
     this.rollCooldown = 0;
     this.contacts = [];
     this.bolts = [];
+    this.missiles = [];
     this.bursts = [];
+    this.gunHeat = 0;
+    this.gunClock = 0;
+    this.missileCharge = 1;
+    this.shieldFore = 1;
+    this.shieldAft = 1;
+    this.shieldQuiet = 0;
     this.squadronIndex = 0;
     this.squadronClock = 2.0;
     this.fireClock = 0;
@@ -317,19 +369,37 @@ export class Space3DGame {
     this.canvas.addEventListener('pointerdown', (event) => {
       if (!this.visible) return;
       event.preventDefault();
-      if (this.mode === 'won' || this.mode === 'lost') return void this.restart();
-      this.pointerId = event.pointerId;
-      this.canvas.setPointerCapture(event.pointerId);
-      this.pointerStart = { x: event.clientX, y: event.clientY };
-      this.pointerMoved = false;
-      this.pointerDownAt = this.clock;
       // iOS will not hand over the sensor without a live gesture, so take the
       // grant from the first touch rather than making the player find a button.
       if (this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
+      if (this.mode === 'won' || this.mode === 'lost') return void this.restart();
+
+      // Buttons are tested FIRST, and a hit claims the pointer for the weapon
+      // and nothing else. It never becomes the steering pointer, so tilt keeps
+      // flying the ship while you shoot.
+      const button = this.buttonAt(event.clientX, event.clientY);
+      if (button) {
+        this.weaponPointers.set(event.pointerId, button);
+        this.tryCapture(event.pointerId);
+        if (button === 'missile') this.fireMissile();
+        return;
+      }
+
+      // Only one steering pointer. A second finger on empty glass is ignored
+      // rather than fighting the first for the stick.
+      if (this.pointerId !== null) return;
+      this.pointerId = event.pointerId;
+      this.pointerStart = { x: event.clientX, y: event.clientY };
+      this.pointerMoved = false;
+      this.pointerDownAt = this.clock;
+      this.tryCapture(event.pointerId);
     });
 
     this.canvas.addEventListener('pointermove', (event) => {
-      if (!this.visible || event.pointerId !== this.pointerId) return;
+      if (!this.visible) return;
+      // A finger sliding around on a weapon button must never steer.
+      if (this.weaponPointers.has(event.pointerId)) return;
+      if (event.pointerId !== this.pointerId) return;
       event.preventDefault();
       const travel = Math.min(this.viewW, this.viewH) * STICK_TRAVEL;
       const dx = event.clientX - this.pointerStart.x;
@@ -340,9 +410,18 @@ export class Space3DGame {
     });
 
     const release = (event: PointerEvent): void => {
+      if (this.weaponPointers.delete(event.pointerId)) return;
       if (event.pointerId !== this.pointerId) return;
-      // A tap that never became a drag is a barrel roll: the only thing to press.
-      if (!this.pointerMoved && this.clock - this.pointerDownAt < 0.35) this.startRoll();
+      // The roll moved to a DOUBLE tap. A single tap used to do it, which is
+      // ambiguous now that there are buttons to press and a glass to miss.
+      if (!this.pointerMoved && this.clock - this.pointerDownAt < 0.35) {
+        if (this.clock - this.lastTapAt < DOUBLE_TAP_SECONDS) {
+          this.startRoll();
+          this.lastTapAt = -1;
+        } else {
+          this.lastTapAt = this.clock;
+        }
+      }
       this.pointerId = null;
       this.stickX = 0;
       this.stickY = 0;
@@ -358,8 +437,64 @@ export class Space3DGame {
         if (this.mode === 'won' || this.mode === 'lost') this.restart();
         else this.startRoll();
       }
+      if (event.key.toLowerCase() === 'm') this.fireMissile();
     });
     window.addEventListener('keyup', (event) => this.keys.delete(event.key.toLowerCase()));
+  }
+
+  /**
+   * Pointer capture is a nicety, not a prerequisite.
+   *
+   * It throws if the pointer is already gone by the time the handler runs --
+   * a real race on a fast tap. Called inline it would abort the rest of the
+   * handler, so the press would be registered by the browser and dropped by
+   * us. State is set first and capture is attempted after, best-effort.
+   */
+  private tryCapture(pointerId: number): void {
+    try {
+      this.canvas.setPointerCapture(pointerId);
+    } catch {
+      // Without capture a finger that slides off the canvas stops steering,
+      // which is survivable; losing the press entirely is not.
+    }
+  }
+
+  /** Which button, if any, is under a client-space point. */
+  private buttonAt(clientX: number, clientY: number): CockpitButtonId | null {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    // Same geometry the painter uses -- see Cockpit.buttons().
+    for (const button of this.cockpit.buttons(this.cockpit.layout(this.viewW, this.viewH))) {
+      if (Math.hypot(x - button.cx, y - button.cy) <= button.r * 1.15) return button.id;
+    }
+    return null;
+  }
+
+  /** True while a finger is holding the trigger, or the keyboard is. */
+  private get gunsHeld(): boolean {
+    for (const id of this.weaponPointers.values()) if (id === 'guns') return true;
+    return this.keys.has(' ') === false && (this.keys.has('f') || this.keys.has('control'));
+  }
+
+  /**
+   * Takes the iOS sensor grant from the first gesture ANYWHERE on the page.
+   *
+   * The canvas handler alone was not enough. iOS will not hand over the
+   * accelerometer without a live user gesture, and a player who opens the
+   * level and simply starts tilting -- which is exactly what you would do when
+   * told the game is flown by tilting -- never touches the canvas, so the
+   * prompt never appears and tilt silently never starts. This mirrors how
+   * MusicDirector takes the audio unlock.
+   */
+  private armTiltPermission(): void {
+    const grab = (): void => {
+      if (this.tilt.status !== 'needs_permission') return;
+      void this.tilt.requestPermission();
+    };
+    for (const type of ['pointerdown', 'touchend', 'click', 'keydown']) {
+      document.addEventListener(type, grab, { capture: true, passive: true });
+    }
   }
 
   private startRoll(): void {
@@ -404,7 +539,9 @@ export class Space3DGame {
     this.updateContacts(dt);
     if (this.mode === 'boss') this.updateBoss(dt);
     this.updateBolts(dt);
-    this.autoFire(dt);
+    this.updateMissiles(dt);
+    this.fireGuns(dt);
+    this.updateShields(dt);
     this.collide();
     for (const burst of this.bursts) burst.life -= dt;
     this.bursts = this.bursts.filter((burst) => burst.life > 0);
@@ -791,19 +928,34 @@ export class Space3DGame {
     });
   }
 
-  private autoFire(dt: number): void {
-    // Auto-fire straight down the nose. In a cockpit you aim by pointing the
-    // ship, so the crosshair never moves and a fire button would only cost the
-    // thumb that is flying.
-    this.fireClock -= dt;
-    if (this.fireClock > 0) return;
-    this.fireClock = SHOT_INTERVAL;
+  /**
+   * Held-trigger guns.
+   *
+   * Firing used to be automatic, and the validator used to assert that it must
+   * be, on the reasoning that a fire button costs the thumb flying the ship.
+   * That reasoning was correct right up until tilt started flying the ship;
+   * now the thumb is free and a trigger is what makes shooting a decision.
+   *
+   * Heat slows the cadence but never stops it. A gun that cuts out entirely
+   * would take the fight away from the player at the exact moment they most
+   * need it, which reads as the game breaking rather than as a limit.
+   */
+  private fireGuns(dt: number): void {
+    const firing = this.gunsHeld;
+    this.gunHeat = clamp(
+      this.gunHeat + (firing ? HEAT_PER_SECOND : -HEAT_COOL_PER_SECOND) * dt,
+      0,
+      1,
+    );
+    this.gunClock -= dt;
+    if (!firing || this.gunClock > 0) return;
+
+    const over = Math.max(0, this.gunHeat - HEAT_SOFT_LIMIT) / (1 - HEAT_SOFT_LIMIT);
+    this.gunClock = SHOT_INTERVAL * (1 + over * (HEAT_MAX_SLOWDOWN - 1));
+
     const dir = forward(this.camera);
     const right = normalise({ x: dir.z, y: 0, z: -dir.x });
     for (const side of [-1, 1]) {
-      // Spawned well clear of the eye. Muzzles at 40 units put the bolt inside
-      // the near field, where the divide draws a 10-unit round as a
-      // screen-filling green cone for its first few frames.
       this.bolts.push({
         x: this.camera.x + right.x * side * 30 + dir.x * MUZZLE_AHEAD,
         y: this.camera.y + right.y * side * 30 + dir.y * MUZZLE_AHEAD + 18,
@@ -817,6 +969,83 @@ export class Space3DGame {
       });
     }
     sfx.play('shoot');
+  }
+
+  /**
+   * The special: a heavy seeker that has to be charged for.
+   *
+   * It picks the nearest contact inside a cone off the nose. PR 3 replaces
+   * that with the formal target lock -- the seeker steering below is written
+   * against "a mark" rather than "the nearest thing" so that swap is a
+   * one-line change rather than a rewrite.
+   */
+  private fireMissile(): void {
+    if (this.mode !== 'flying' && this.mode !== 'boss') return;
+    if (this.missileCharge < 1) {
+      sfx.play('deny');
+      return;
+    }
+    this.missileCharge = 0;
+    const dir = forward(this.camera);
+    this.missiles.push({
+      x: this.camera.x + dir.x * MUZZLE_AHEAD,
+      y: this.camera.y + dir.y * MUZZLE_AHEAD + 14,
+      z: this.camera.z + dir.z * MUZZLE_AHEAD,
+      vx: dir.x * MISSILE_SPEED,
+      vy: dir.y * MISSILE_SPEED,
+      vz: dir.z * MISSILE_SPEED,
+      life: 5.5,
+    });
+    sfx.play('bomb');
+    this.banner('MISSILE AWAY', 1.1);
+  }
+
+  /** Missiles steer toward their mark at a bounded rate, so they can be out-turned. */
+  private updateMissiles(dt: number): void {
+    this.missileCharge = Math.min(1, this.missileCharge + dt / MISSILE_CHARGE_SECONDS);
+    for (const missile of this.missiles) {
+      const mark = this.seekTarget(missile);
+      if (mark) {
+        const toward = normalise({ x: mark.x - missile.x, y: mark.y - missile.y, z: mark.z - missile.z });
+        const heading = normalise({ x: missile.vx, y: missile.vy, z: missile.vz });
+        // Bounded turn: a seeker that snaps to its mark cannot be beaten by
+        // flying, and beating it by flying is the entire point.
+        const blend = Math.min(1, MISSILE_TURN_RATE * dt);
+        const steered = normalise({
+          x: heading.x + (toward.x - heading.x) * blend,
+          y: heading.y + (toward.y - heading.y) * blend,
+          z: heading.z + (toward.z - heading.z) * blend,
+        });
+        missile.vx = steered.x * MISSILE_SPEED;
+        missile.vy = steered.y * MISSILE_SPEED;
+        missile.vz = steered.z * MISSILE_SPEED;
+      }
+      missile.x += missile.vx * dt;
+      missile.y += missile.vy * dt;
+      missile.z += missile.vz * dt;
+      missile.life -= dt;
+    }
+    this.missiles = this.missiles.filter((missile) => missile.life > 0);
+  }
+
+  /** Nearest contact inside the seeker cone, or null when it has lost the plot. */
+  private seekTarget(missile: { x: number; y: number; z: number; vx: number; vy: number; vz: number }):
+  { x: number; y: number; z: number } | null {
+    const heading = normalise({ x: missile.vx, y: missile.vy, z: missile.vz });
+    let best: { x: number; y: number; z: number } | null = null;
+    let bestRange = Infinity;
+    const consider = (x: number, y: number, z: number): void => {
+      const dx = x - missile.x;
+      const dy = y - missile.y;
+      const dz = z - missile.z;
+      const range = Math.hypot(dx, dy, dz) || 1;
+      const cone = (dx * heading.x + dy * heading.y + dz * heading.z) / range;
+      if (cone < Math.cos(MISSILE_SEEK_CONE)) return;
+      if (range < bestRange) { bestRange = range; best = { x, y, z }; }
+    };
+    for (const contact of this.contacts) consider(contact.x, contact.y, contact.z);
+    if (this.mode === 'boss' && this.bossHp > 0) consider(this.boss.x, this.boss.y, this.boss.z);
+    return best;
   }
 
   private updateBolts(dt: number): void {
@@ -869,6 +1098,33 @@ export class Space3DGame {
         if (this.bossHp <= 0) this.win();
       }
     }
+    // Missiles: same swept test, bigger radius, much bigger bite.
+    for (const missile of this.missiles) {
+      if (missile.life <= 0) continue;
+      const from = { x: missile.x - missile.vx * (1 / 60), y: missile.y - missile.vy * (1 / 60), z: missile.z - missile.vz * (1 / 60) };
+      const to = { x: missile.x, y: missile.y, z: missile.z };
+      for (const contact of this.contacts) {
+        if (contact.hp <= 0) continue;
+        if (segmentDistance(from, to, contact) > contact.size * 0.7) continue;
+        contact.hp -= MISSILE_DAMAGE;
+        missile.life = 0;
+        this.burst(contact.x, contact.y, contact.z);
+        sfx.play('bigExplode');
+        if (contact.hp <= 0) this.score += contact.score;
+        break;
+      }
+      if (missile.life <= 0) continue;
+      if (this.mode === 'boss' && this.bossHp > 0 && segmentDistance(from, to, this.boss) <= this.leg.boss.size * 0.55) {
+        // A missile ignores the guard: it is the answer to a boss that is
+        // armoured while winding up, and the reason to save one.
+        this.bossHp -= MISSILE_DAMAGE;
+        missile.life = 0;
+        this.burst(this.boss.x, this.boss.y, this.boss.z);
+        sfx.play('bigExplode');
+        if (this.bossHp <= 0) this.win();
+      }
+    }
+    this.missiles = this.missiles.filter((missile) => missile.life > 0);
     this.bolts = this.bolts.filter((bolt) => bolt.life > 0);
     this.contacts = this.contacts.filter((contact) => contact.hp > 0);
 
@@ -889,7 +1145,8 @@ export class Space3DGame {
       const range = Math.hypot(bolt.x - this.camera.x, bolt.y - this.camera.y, bolt.z - this.camera.z);
       if (range > 46) continue;
       bolt.life = 0;
-      this.takeHit();
+      // Trace back along the bolt's own travel to find which side it came from.
+      this.takeHitFrom(bolt.x - bolt.vx, bolt.y - bolt.vy, bolt.z - bolt.vz);
       break;
     }
 
@@ -898,10 +1155,52 @@ export class Space3DGame {
       if (range > contact.size * 0.5 + 44) continue;
       contact.hp = 0;
       this.burst(contact.x, contact.y, contact.z);
-      this.takeHit();
+      this.takeHitFrom(contact.x, contact.y, contact.z);
       break;
     }
     this.contacts = this.contacts.filter((contact) => contact.hp > 0);
+  }
+
+  /** Shields come back once nothing has hit you for a while. */
+  private updateShields(dt: number): void {
+    this.shieldQuiet += dt;
+    if (this.shieldQuiet < SHIELD_REGEN_DELAY) return;
+    const gain = SHIELD_REGEN_PER_SECOND * dt;
+    this.shieldFore = Math.min(1, this.shieldFore + gain);
+    this.shieldAft = Math.min(1, this.shieldAft + gain);
+  }
+
+  /**
+   * Damage, resolved against the bank that was facing it.
+   *
+   * Whether a hit lands forward or aft is decided by where it came FROM
+   * relative to the nose, not by where the shooter happens to be now. That is
+   * what makes a fighter on your six genuinely dangerous: it drains a bank you
+   * cannot turn toward without giving up the shot you are lining up.
+   *
+   * @param fromX where the damage originated, in world space
+   */
+  private takeHitFrom(fromX: number, fromY: number, fromZ: number): void {
+    const dir = forward(this.camera);
+    const toward = normalise({
+      x: fromX - this.camera.x,
+      y: fromY - this.camera.y,
+      z: fromZ - this.camera.z,
+    });
+    const ahead = toward.x * dir.x + toward.y * dir.y + toward.z * dir.z;
+    const aft = ahead < 0;
+    this.shieldQuiet = 0;
+
+    const bank = aft ? this.shieldAft : this.shieldFore;
+    if (bank > 0) {
+      const drained = Math.max(0, bank - 0.34);
+      if (aft) this.shieldAft = drained; else this.shieldFore = drained;
+      sfx.play('hit');
+      this.banner(aft ? 'AFT SHIELD' : 'FWD SHIELD', 0.8);
+      this.graceClock = HIT_GRACE * 0.45;
+      return;
+    }
+    this.takeHit();
   }
 
   private takeHit(): void {
@@ -961,6 +1260,10 @@ export class Space3DGame {
       const p = project(this.camera, bolt.x, bolt.y, bolt.z);
       if (p.visible) drawables.push({ depth: p.depth, paint: () => this.drawBolt(bolt, p) });
     }
+    for (const missile of this.missiles) {
+      const p = project(this.camera, missile.x, missile.y, missile.z);
+      if (p.visible) drawables.push({ depth: p.depth, paint: () => this.drawMissile(missile, p) });
+    }
     for (const burst of this.bursts) {
       const p = project(this.camera, burst.x, burst.y, burst.z);
       if (p.visible) drawables.push({ depth: p.depth, paint: () => this.drawBurst(burst, p) });
@@ -978,9 +1281,31 @@ export class Space3DGame {
     // not a layer in the scene.
     const frame = this.cockpit.layout(w, h);
     const drawn = this.cockpit.drawFrame(frame);
-    if (drawn) this.cockpit.drawInstruments(frame, this.cockpitState());
+    if (drawn) {
+      const state = this.cockpitState();
+      this.cockpit.drawInstruments(frame, state);
+      this.cockpit.drawButtons(frame, state, new Set(this.weaponPointers.values()));
+    }
     this.drawOffscreenCues(w, h);
     this.drawBanner(w, h, drawn);
+  }
+
+  /**
+   * Tilt state in one word, for the nav screen.
+   *
+   * DENIED, SILENT and CALIBRATING are three different faults that all present
+   * as "tilt isn't working", and a tester cannot tell them apart without being
+   * told which one it is.
+   */
+  private tiltReadout(): string {
+    switch (this.tilt.status) {
+      case 'ready': return 'READY';
+      case 'calibrating': return 'CALIBRATING';
+      case 'waiting': return 'SILENT';
+      case 'needs_permission': return 'TAP TO ALLOW';
+      case 'denied': return 'DENIED';
+      default: return 'NO SENSOR';
+    }
   }
 
   /** What the instruments are reading. */
@@ -1010,10 +1335,16 @@ export class Space3DGame {
     return {
       hull: this.hp,
       hullMax: PLAYER_HP,
+      shieldFore: this.shieldFore,
+      shieldAft: this.shieldAft,
+      gunHeat: this.gunHeat,
+      gunsFiring: this.gunsHeld,
+      missileCharge: this.missileCharge,
       throttle: this.throttle,
       bossHealth: this.mode === 'boss' && this.bossHp > 0 ? Math.max(0, this.bossHp / this.leg.boss.hp) : null,
       bossLabel: this.leg.boss.label,
       status: this.mode === 'boss' ? 'INTERCEPT' : `NAV ${this.leg.destination}`,
+      tiltStatus: this.tiltReadout(),
       contacts,
       radarRange: RADAR_RANGE,
       rollReady: this.rollCooldown <= 0,
@@ -1154,6 +1485,26 @@ export class Space3DGame {
       ctx.arc(p.sx, p.sy, size * 0.6, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  private drawMissile(missile: Missile, p: ReturnType<typeof project>): void {
+    if (!onScreen(this.camera, p, 80)) return;
+    const size = clamp(screenSize(this.camera, 26, p.depth), 2, 44);
+    const { ctx } = this;
+    ctx.save();
+    if (!this.sprites.draw('projectiles', 'seeker_missile', p.sx - size / 2, p.sy - size, size, size * 2, this.clock)) {
+      ctx.fillStyle = AMBER;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, size * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // A short exhaust so it reads as under power rather than falling.
+    ctx.globalAlpha = 0.55 + 0.3 * Math.sin(this.clock * 40);
+    ctx.fillStyle = '#ffd27a';
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy + size * 0.7, size * 0.28, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 

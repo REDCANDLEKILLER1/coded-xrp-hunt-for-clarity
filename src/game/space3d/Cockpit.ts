@@ -47,6 +47,27 @@ const CONSOLE_OVERSCAN = 1.18;
 /** Lifts the portrait band clear of the shell's own bottom-left buttons. */
 const CONSOLE_LIFT = 32;
 
+/**
+ * Where the weapon buttons sit on the canopy, as fractions of the artwork.
+ *
+ * The right shoulder of the console, checked against the art: clear panel
+ * between the strut and the radar dish. They are drawn as machined bezels so
+ * they read as part of the panel rather than as chrome floating over it.
+ */
+const BUTTON_ART = {
+  guns: { x: 0.836, y: 0.676, r: 0.029 },
+  missile: { x: 0.887, y: 0.745, r: 0.024 },
+} as const;
+/**
+ * Portrait cannot use those fractions. The band is drawn at 1.18x screen
+ * width, which puts the right shoulder 18-36px from the edge -- too cramped
+ * for a thumb, which needs about 44px. Portrait therefore places the buttons
+ * at explicit screen positions instead, inset from the edge and larger.
+ */
+const CONSOLE_BUTTON_INSET = 46;
+const CONSOLE_BUTTON_RADIUS = 27;
+const CONSOLE_BUTTON_GAP = 66;
+
 const RED = '#ff2d3d';
 const AMBER = '#ffb020';
 const CYAN = '#4fd8ff';
@@ -63,15 +84,36 @@ export interface CockpitContact {
   capital?: boolean;
 }
 
+export type CockpitButtonId = 'guns' | 'missile';
+
+/** A round console button: one circle, used for BOTH painting and hit-testing. */
+export interface CockpitButton {
+  id: CockpitButtonId;
+  cx: number;
+  cy: number;
+  r: number;
+}
+
 export interface CockpitState {
   hull: number;
   hullMax: number;
+  /** Forward shield bank, 0..1. */
+  shieldFore: number;
+  /** Aft shield bank, 0..1. Being tailed is what drains this one. */
+  shieldAft: number;
+  /** 0..1; at 1 the guns have slowed themselves down. */
+  gunHeat: number;
+  gunsFiring: boolean;
+  /** 0..1 charge on the missile. */
+  missileCharge: number;
   throttle: number;
   /** 0..1, or null when nothing is engaged. */
   bossHealth: number | null;
   bossLabel: string;
   /** Text for the main screen. */
   status: string;
+  /** Short tilt state, shown so a tester can say which stage is failing. */
+  tiltStatus: string;
   contacts: CockpitContact[];
   /** Radar's outer ring, in world units. */
   radarRange: number;
@@ -199,6 +241,95 @@ export class Cockpit {
       source.w * (art.w / ART_W), source.h * scale,
     );
     return true;
+  }
+
+  /**
+   * Where the weapon buttons are, in screen pixels.
+   *
+   * This is the ONLY definition. Both the painter and the hit test call it, so
+   * the circle you can see and the circle you can press cannot drift apart --
+   * which is the classic way a touch control quietly stops working after a
+   * layout change.
+   */
+  buttons(frame: CockpitFrame): CockpitButton[] {
+    if (frame.mode === 'console') {
+      const x = frame.aperture.w - CONSOLE_BUTTON_INSET;
+      const base = frame.art.y + frame.art.h * 0.70;
+      return [
+        { id: 'guns', cx: x, cy: base, r: CONSOLE_BUTTON_RADIUS },
+        { id: 'missile', cx: x, cy: base + CONSOLE_BUTTON_GAP, r: CONSOLE_BUTTON_RADIUS * 0.82 },
+      ];
+    }
+    const { art } = frame;
+    return (['guns', 'missile'] as CockpitButtonId[]).map((id) => ({
+      id,
+      cx: art.x + BUTTON_ART[id].x * art.w,
+      cy: art.y + BUTTON_ART[id].y * art.h,
+      r: BUTTON_ART[id].r * art.w,
+    }));
+  }
+
+  /**
+   * Machined bezels, so they belong to the panel.
+   *
+   * @param held which button the player currently has a finger on
+   */
+  drawButtons(frame: CockpitFrame, state: CockpitState, held: ReadonlySet<CockpitButtonId>): void {
+    const { ctx } = this;
+    for (const button of this.buttons(frame)) {
+      const isGuns = button.id === 'guns';
+      const down = held.has(button.id);
+      const ready = isGuns ? true : state.missileCharge >= 1;
+      const fill = isGuns ? state.gunHeat : state.missileCharge;
+
+      ctx.save();
+      ctx.translate(button.cx, button.cy);
+
+      // Seat: a well cut INTO the panel, not a disc laid on top of it. The
+      // outer ring is the shadowed cut line and the inner one the lit lip, in
+      // the artwork's own red rather than a neutral grey that would read as UI.
+      ctx.fillStyle = 'rgba(10,4,6,0.92)';
+      ctx.beginPath();
+      ctx.arc(0, 0, button.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = Math.max(2, button.r * 0.16);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(196,74,74,0.55)';
+      ctx.lineWidth = Math.max(1, button.r * 0.07);
+      ctx.beginPath();
+      ctx.arc(0, 0, button.r * 0.93, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // The ring IS the readout: heat climbing on the guns, charge filling on
+      // the missile. A separate gauge would be one more thing to look away at.
+      if (fill > 0.01) {
+        ctx.strokeStyle = isGuns
+          ? (state.gunHeat > 0.75 ? RED : AMBER)
+          : (ready ? '#4fd8ff' : 'rgba(79,216,255,0.55)');
+        ctx.lineWidth = Math.max(2, button.r * 0.16);
+        ctx.beginPath();
+        ctx.arc(0, 0, button.r * 0.80, -Math.PI / 2, -Math.PI / 2 + Math.min(1, fill) * Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // Face.
+      ctx.globalAlpha = down ? 1 : 0.82;
+      ctx.fillStyle = isGuns
+        ? (down ? '#ff6a3d' : 'rgba(255,80,60,0.5)')
+        : (ready ? (down ? '#8fe9ff' : 'rgba(79,216,255,0.6)') : 'rgba(90,110,130,0.45)');
+      ctx.beginPath();
+      ctx.arc(0, 0, button.r * (down ? 0.52 : 0.58), 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = down ? '#fff' : 'rgba(255,225,220,0.85)';
+      ctx.font = `700 ${Math.max(6, button.r * 0.34)}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(isGuns ? 'GUN' : 'MSL', 0, button.r * 0.02);
+      ctx.restore();
+    }
   }
 
   /** Draws everything that moves: radar, gauges, screens. */
@@ -350,6 +481,13 @@ export class Cockpit {
       ctx.fillStyle = RED;
       ctx.fillRect(x + (w - barW) / 2, y + h * 0.62, barW * state.bossHealth, Math.max(3, h * 0.07));
     } else {
+      // Tilt state, in words. Without it "tilt isn't working" could mean the
+      // sensor is silent, the grant was refused, or the pose never settled --
+      // three different faults that look identical from the outside.
+      ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
+      ctx.font = `${Math.max(6, w * 0.055)}px "Courier New", monospace`;
+      ctx.fillText(`TILT ${state.tiltStatus}`, x + w / 2, y + h * 0.5);
+
       // A scrolling nav trace, so the screen is alive between fights.
       ctx.strokeStyle = 'rgba(255,45,61,0.5)';
       ctx.lineWidth = 1;
@@ -365,6 +503,15 @@ export class Cockpit {
     ctx.restore();
   }
 
+  /**
+   * Shields and damage, left of the glass.
+   *
+   * Fore and aft are separate banks because being tailed has to FEEL different
+   * from being met head-on. When the aft bank is the one draining, that is the
+   * instrument telling you to turn before the hull starts taking it -- which
+   * is the same thing the radar and the edge chevrons are saying, said a third
+   * way, because it is the thing most worth noticing.
+   */
   private drawHullScreen(x: number, y: number, w: number, h: number, state: CockpitState): void {
     const { ctx } = this;
     if (w < 24) return;
@@ -375,20 +522,42 @@ export class Cockpit {
     ctx.fillStyle = 'rgba(6,1,3,0.55)';
     ctx.fillRect(x, y, w, h);
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255,45,61,0.7)';
-    ctx.font = `${Math.max(6, w * 0.1)}px "Courier New", monospace`;
-    ctx.fillText('HULL', x + w * 0.08, y + h * 0.24);
+    ctx.textBaseline = 'alphabetic';
+    const label = Math.max(5, w * 0.085);
 
+    const bar = (row: number, name: string, value: number, colour: string) => {
+      const by = y + h * row;
+      ctx.fillStyle = 'rgba(255,45,61,0.62)';
+      ctx.font = `${label}px "Courier New", monospace`;
+      ctx.fillText(name, x + w * 0.07, by + h * 0.09);
+      const bx = x + w * 0.30;
+      const bw = w * 0.62;
+      const bh = Math.max(3, h * 0.11);
+      ctx.fillStyle = 'rgba(120,30,40,0.32)';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = colour;
+      ctx.fillRect(bx, by, bw * Math.max(0, Math.min(1, value)), bh);
+    };
+
+    // Shields first: they are what you lose before it starts to matter.
+    bar(0.13, 'FWD', state.shieldFore, state.shieldFore > 0.25 ? CYAN : AMBER);
+    bar(0.38, 'AFT', state.shieldAft, state.shieldAft > 0.25 ? CYAN : AMBER);
+
+    // Hull as discrete segments -- a bar would let you ignore losing one.
+    ctx.fillStyle = 'rgba(255,45,61,0.62)';
+    ctx.font = `${label}px "Courier New", monospace`;
+    ctx.fillText('HULL', x + w * 0.07, y + h * 0.72);
     const segments = state.hullMax;
-    const segW = (w * 0.84) / segments;
+    const segW = (w * 0.62) / segments;
     for (let i = 0; i < segments; i += 1) {
       const lit = i < state.hull;
       ctx.fillStyle = lit ? (state.hull <= 2 ? RED : AMBER) : 'rgba(120,30,40,0.3)';
-      ctx.fillRect(x + w * 0.08 + i * segW, y + h * 0.36, segW * 0.72, h * 0.2);
+      ctx.fillRect(x + w * 0.30 + i * segW, y + h * 0.63, segW * 0.74, h * 0.11);
     }
-    ctx.fillStyle = 'rgba(255,45,61,0.6)';
-    ctx.font = `${Math.max(5, w * 0.085)}px "Courier New", monospace`;
-    ctx.fillText(state.rollReady ? 'ROLL RDY' : 'ROLL ...', x + w * 0.08, y + h * 0.82);
+
+    ctx.fillStyle = state.rollReady ? 'rgba(79,216,255,0.7)' : 'rgba(120,140,160,0.55)';
+    ctx.font = `${Math.max(5, w * 0.075)}px "Courier New", monospace`;
+    ctx.fillText(state.rollReady ? 'ROLL RDY' : 'ROLL ...', x + w * 0.07, y + h * 0.93);
     ctx.restore();
   }
 
