@@ -89,9 +89,19 @@ type Mote = { x: number; y: number; z: number };
 type Mode = 'flying' | 'boss' | 'won' | 'lost';
 
 const FOCAL = 470;
-/** Cruise speed, world units per second. */
-const CRUISE = 240;
-const THROTTLE_MIN = 0.35;
+/**
+ * Cruise speed, world units per second.
+ *
+ * Halved from 240. At the old speed a squadron went from spawning to being on
+ * top of you in 3.3-4.1 seconds, closing at 320-400 u/s, and the whole play
+ * radius was crossed in 27 -- so contacts appeared out of nothing, flew past,
+ * and were gone. Space does not work like that. Everything here is slower and
+ * further apart so that a contact you can see coming stays a contact you can
+ * see coming, for twenty seconds or more.
+ */
+const CRUISE = 130;
+/** All the way down to a near stop: holding position is a tactic. */
+const THROTTLE_MIN = 0.12;
 const THROTTLE_MAX = 1.0;
 /** Radians per second at full stick. */
 const TURN_RATE = 1.35;
@@ -128,6 +138,19 @@ const SHIELD_REGEN_DELAY = 4.5;
 const SHIELD_REGEN_PER_SECOND = 0.22;
 /** Two taps on empty glass inside this window is a barrel roll. */
 const DOUBLE_TAP_SECONDS = 0.32;
+/**
+ * The warp drive: hold it and cross real distance, but the coil heats.
+ *
+ * Open space is big now -- squadrons scramble six thousand units out and the
+ * leg is long -- so there has to be a way to cover ground deliberately. It is
+ * a hold, not a toggle, and it overheats, so it is a decision about when
+ * rather than a speed you simply travel at.
+ */
+const WARP_MULTIPLIER = 4.2;
+const WARP_HEAT_PER_SECOND = 0.28;
+const WARP_COOL_PER_SECOND = 0.20;
+/** Once the coil maxes out it must fall back to this before it will re-engage. */
+const WARP_RESET_HEAT = 0.35;
 const BOLT_SPEED = 1750;
 const BOLT_SIZE = 10;
 const HOSTILE_BOLT_SPEED = 700;
@@ -145,9 +168,19 @@ const MOTE_COUNT = 90;
 /** The box dust is recycled inside, centred on the ship. */
 const MOTE_SPAN = 900;
 const BURST_LIFE = 0.45;
-const RADAR_RANGE = 2600;
-/** Contacts further out than this stop being simulated in detail. */
-const DESPAWN_RANGE = 4600;
+const RADAR_RANGE = 8000;
+/**
+ * Contacts further out than this stop being simulated.
+ *
+ * Nearly 2.5x the old radius. A fighter that flies past you has to still be
+ * out there and still be findable, rather than evaporating the moment it is
+ * behind you -- that vanishing is what made the fight feel like scenery
+ * rushing by instead of an engagement.
+ */
+const DESPAWN_RANGE = 11000;
+
+/** No target bracket shrinks below this, however far away its contact is. */
+const BRACKET_MIN_PIXELS = 22;
 
 const RED = '#ff4c66';
 const GREEN = '#00ff6a';
@@ -223,6 +256,9 @@ export class Space3DGame {
 
   private gunHeat = 0;
   private gunClock = 0;
+  private warpHeat = 0;
+  /** Latched when the coil maxes: blocks re-engaging until it has cooled. */
+  private warpLocked = false;
   private missileCharge = 1;
   private shieldFore = 1;
   private shieldAft = 1;
@@ -313,6 +349,8 @@ export class Space3DGame {
     this.bursts = [];
     this.gunHeat = 0;
     this.gunClock = 0;
+    this.warpHeat = 0;
+    this.warpLocked = false;
     this.missileCharge = 1;
     this.shieldFore = 1;
     this.shieldAft = 1;
@@ -477,6 +515,17 @@ export class Space3DGame {
     return this.keys.has(' ') === false && (this.keys.has('f') || this.keys.has('control'));
   }
 
+  /** True while warp is demanded AND the coil will accept it. */
+  private get warpHeld(): boolean {
+    if (this.warpLocked) return false;
+    for (const id of this.weaponPointers.values()) if (id === 'warp') return true;
+    return this.keys.has('shift');
+  }
+
+  private get warpReady(): boolean {
+    return !this.warpLocked;
+  }
+
   /**
    * Takes the iOS sensor grant from the first gesture ANYWHERE on the page.
    *
@@ -586,8 +635,20 @@ export class Space3DGame {
     const spin = this.rollClock > 0 ? (1 - this.rollClock / ROLL_TIME) * Math.PI * 2 : 0;
     this.camera.roll = -bank + spin;
 
+    // Warp: heat while engaged, cool while not. Maxing the coil latches it out
+    // until it has cooled well down, so you cannot feather the limit -- you
+    // have to actually let go, which is the cost that makes it a decision.
+    const warping = this.warpHeld;
+    this.warpHeat = clamp(
+      this.warpHeat + (warping ? WARP_HEAT_PER_SECOND : -WARP_COOL_PER_SECOND) * dt,
+      0,
+      1,
+    );
+    if (this.warpHeat >= 1) this.warpLocked = true;
+    if (this.warpLocked && this.warpHeat <= WARP_RESET_HEAT) this.warpLocked = false;
+
     const dir = forward(this.camera);
-    const speed = CRUISE * this.throttle;
+    const speed = CRUISE * this.throttle * (warping ? WARP_MULTIPLIER : 1);
     this.camera.x += dir.x * speed * dt;
     this.camera.y += dir.y * speed * dt;
     this.camera.z += dir.z * speed * dt;
@@ -1340,6 +1401,9 @@ export class Space3DGame {
       gunHeat: this.gunHeat,
       gunsFiring: this.gunsHeld,
       missileCharge: this.missileCharge,
+      warpHeat: this.warpHeat,
+      warpEngaged: this.warpHeld,
+      warpReady: this.warpReady,
       throttle: this.throttle,
       bossHealth: this.mode === 'boss' && this.bossHp > 0 ? Math.max(0, this.bossHp / this.leg.boss.hp) : null,
       bossLabel: this.leg.boss.label,
@@ -1402,7 +1466,9 @@ export class Space3DGame {
   private drawMotes(): void {
     const { ctx } = this;
     const dir = forward(this.camera);
-    const back = CRUISE * this.throttle * 0.055;
+    // Dust streaks stretch with actual speed, warp included -- it is the only
+    // thing on screen that can show how fast you are really going.
+    const back = CRUISE * this.throttle * (this.warpHeld ? WARP_MULTIPLIER : 1) * 0.055;
     ctx.save();
     ctx.lineCap = 'round';
     for (const mote of this.motes) {
@@ -1436,17 +1502,40 @@ export class Space3DGame {
     }
     ctx.restore();
 
-    // A box on anything close enough to shoot, so a contact against the
-    // backdrop is findable without hunting for a dark shape.
-    if (p.depth < 1500 && size > 6) {
-      ctx.save();
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = RED;
-      ctx.lineWidth = 1;
-      const b = size * 0.75;
-      ctx.strokeRect(p.sx - b / 2, p.sy - b / 2, b, b);
-      ctx.restore();
+    this.drawTargetBracket(p.sx, p.sy, size, false);
+  }
+
+  /**
+   * Corner brackets on a contact, with a FLOOR on their size.
+   *
+   * Engagements start thousands of units out now, where a fighter projects to
+   * about seven pixels -- findable only if you already knew where to look. The
+   * bracket never shrinks below a readable size, so a distant contact is a
+   * mark you can see and fly toward instead of a dark speck against a
+   * starfield.
+   *
+   * This does not move anything or aim anything. The bracket is drawn at the
+   * contact's true projected position; only its own size is floored.
+   */
+  private drawTargetBracket(sx: number, sy: number, hullSize: number, locked: boolean): void {
+    const { ctx } = this;
+    const b = Math.max(BRACKET_MIN_PIXELS, hullSize * 0.8);
+    const arm = b * 0.3;
+    const half = b / 2;
+    ctx.save();
+    ctx.globalAlpha = locked ? 0.95 : 0.62;
+    ctx.strokeStyle = locked ? AMBER : RED;
+    ctx.lineWidth = locked ? 2 : 1.4;
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      const cx = sx + dx * half;
+      const cy = sy + dy * half;
+      ctx.beginPath();
+      ctx.moveTo(cx - dx * arm, cy);
+      ctx.lineTo(cx, cy);
+      ctx.lineTo(cx, cy - dy * arm);
+      ctx.stroke();
     }
+    ctx.restore();
   }
 
   private drawBoss(p: ReturnType<typeof project>): void {
@@ -1460,6 +1549,11 @@ export class Space3DGame {
       ctx.fillStyle = 'rgba(255,76,102,0.25)';
       ctx.fillRect(-size / 2, -size / 2, size, size);
     }
+    ctx.restore();
+    this.drawTargetBracket(p.sx, p.sy, size, true);
+    ctx.save();
+    ctx.translate(p.sx, p.sy);
+    ctx.rotate(this.camera.roll);
     // The guard, drawn only while it is up, so the opening is something you can
     // SEE rather than something you have to have memorised.
     if (this.bossState === 'windUp') {

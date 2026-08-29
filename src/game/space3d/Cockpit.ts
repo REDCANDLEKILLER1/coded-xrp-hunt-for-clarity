@@ -31,10 +31,46 @@ const ART = {
 const ART_W = 1672;
 const ART_H = 941;
 const ART_ASPECT = ART_W / ART_H;
-/** Below this viewport aspect the canopy stops fitting and the console takes over. */
-const CONSOLE_ASPECT = 1.15;
+/**
+ * The canopy arch is retired from normal play.
+ *
+ * Drawing the whole frame left only ~29% of a landscape screen as sky, against
+ * ~81% in portrait -- measured, and the reason "you can't see anything on
+ * landscape". The artwork's own opening is barely a third of its area, so ANY
+ * layout that shows the full canopy inherits that. Both orientations now show
+ * the console band and give the rest of the screen to the view, with the
+ * artwork's outer struts drawn down the screen edges so it still reads as
+ * sitting inside a ship rather than as a HUD floating in space.
+ *
+ * Kept as a threshold rather than deleted: a very wide, short window still
+ * wants slightly different treatment, and the value documents the decision.
+ */
+const CONSOLE_ASPECT = 99;
+/** How much of the artwork's width is strut, drawn down each screen edge. */
+const STRUT_SOURCE_WIDTH = 0.13;
+/** Strut slice width as a fraction of the screen. */
+const STRUT_SCREEN_WIDTH = 0.085;
 /** Where the console band starts in the artwork -- just below the glass. */
 const CONSOLE_TOP = 0.55;
+/**
+ * ...and where it ends.
+ *
+ * Cropped above the artwork's two corner radar dishes. Showing the full depth
+ * of the console left only ~40% of a landscape screen as sky; stopping here
+ * gives ~58%, which is the difference between being able to find a fight and
+ * not. The dishes are no loss: the radar moves to the centre screen, where it
+ * is large enough to actually read.
+ */
+const CONSOLE_BOTTOM = 0.86;
+/**
+ * ...but only in landscape.
+ *
+ * The crop exists to buy a landscape screen its sky. Portrait already had 81%
+ * and does not need it -- and applying it there squeezed the band to 80px,
+ * which put the missile button 7px from the bottom edge with a 22px radius and
+ * left the radar 50px tall. Portrait keeps the full console depth.
+ */
+const CONSOLE_BOTTOM_PORTRAIT = 1.0;
 /**
  * How much wider than the screen the portrait band is drawn.
  *
@@ -57,6 +93,10 @@ const CONSOLE_LIFT = 32;
 const BUTTON_ART = {
   guns: { x: 0.836, y: 0.676, r: 0.029 },
   missile: { x: 0.887, y: 0.745, r: 0.024 },
+  // Warp sits on the LEFT shoulder, away from the weapons: it is a flight
+  // control, and putting it under the trigger thumb would mean jumping to
+  // lightspeed every time you meant to shoot.
+  warp: { x: 0.163, y: 0.676, r: 0.029 },
 } as const;
 /**
  * Portrait cannot use those fractions. The band is drawn at 1.18x screen
@@ -84,7 +124,7 @@ export interface CockpitContact {
   capital?: boolean;
 }
 
-export type CockpitButtonId = 'guns' | 'missile';
+export type CockpitButtonId = 'guns' | 'missile' | 'warp';
 
 /** A round console button: one circle, used for BOTH painting and hit-testing. */
 export interface CockpitButton {
@@ -106,6 +146,11 @@ export interface CockpitState {
   gunsFiring: boolean;
   /** 0..1 charge on the missile. */
   missileCharge: number;
+  /** 0..1 warp coil heat. At 1 the drive cuts out until it cools. */
+  warpHeat: number;
+  warpEngaged: boolean;
+  /** False while the coil is too hot to re-engage. */
+  warpReady: boolean;
   throttle: number;
   /** 0..1, or null when nothing is engaged. */
   bossHealth: number | null;
@@ -125,6 +170,16 @@ export interface CockpitState {
 export interface CockpitFrame {
   /** 'canopy' shows the whole frame; 'console' shows only the panel band. */
   mode: 'canopy' | 'console';
+  /**
+   * True when the band is overscanned wider than the screen.
+   *
+   * Buttons branch on THIS, not on `mode`. Both orientations render the
+   * console band now, so branching on mode silently sent landscape down the
+   * portrait path and parked the buttons at the screen edge instead of on the
+   * artwork's shoulders -- where they had been carefully placed and where the
+   * art actually has flat panel for them.
+   */
+  overscanned: boolean;
   /** Vanishing point, in screen pixels. */
   cx: number;
   cy: number;
@@ -177,6 +232,7 @@ export class Cockpit {
     const py = (fy: number) => artY + fy * artH;
     return {
       mode: 'canopy',
+      overscanned: false,
       cx: px(ART.vanishing.x),
       cy: py(ART.vanishing.y),
       aperture: {
@@ -201,23 +257,33 @@ export class Cockpit {
    * the placement maths has to know which mode it is in.
    */
   private consoleLayout(w: number, h: number): CockpitFrame {
-    const artW = w * CONSOLE_OVERSCAN;
+    // Portrait wants the band wider than the screen so the instruments are
+    // legible; a wide landscape screen does not -- overscanning there would
+    // make the console taller than the view it is supposed to sit under.
+    const portrait = w / h < 1;
+    const overscan = portrait ? CONSOLE_OVERSCAN : 1;
+    const bottom = portrait ? CONSOLE_BOTTOM_PORTRAIT : CONSOLE_BOTTOM;
+    const artW = w * overscan;
     const artH = artW / ART_ASPECT;
     const artX = (w - artW) / 2;
-    // Lifted off the bottom edge rather than flush to it: the app shell parks
-    // its log and mute buttons in that corner, and they land straight on the
-    // left radar dish otherwise.
-    const artY = h - artH - CONSOLE_LIFT;
-    const bandH = (1 - CONSOLE_TOP) * artH + CONSOLE_LIFT;
+    // Anchor the DRAWN edge, not the artwork's edge.
+    //
+    // The band is cropped at CONSOLE_BOTTOM, so anchoring the full art height
+    // to the bottom of the screen left the missing 14% as a gap and the
+    // console floated with sky both above and below it. Position it so the
+    // cropped bottom lands where the console is meant to sit.
+    const artY = h - CONSOLE_LIFT - bottom * artH;
+    const bandH = (bottom - CONSOLE_TOP) * artH + CONSOLE_LIFT;
     return {
       mode: 'console',
+      overscanned: portrait,
       cx: w / 2,
       // The view centre sits above the band, biased high so the reticle is not
       // buried in the panel on a very tall screen.
       cy: (h - bandH) * 0.46,
       aperture: { x: 0, y: 0, w, h: h - bandH },
       art: { x: artX, y: artY, w: artW, h: artH },
-      source: { x: 0, y: ART_H * CONSOLE_TOP, w: ART_W, h: ART_H * (1 - CONSOLE_TOP) },
+      source: { x: 0, y: ART_H * CONSOLE_TOP, w: ART_W, h: ART_H * (bottom - CONSOLE_TOP) },
       present: true,
     };
   }
@@ -252,16 +318,17 @@ export class Cockpit {
    * layout change.
    */
   buttons(frame: CockpitFrame): CockpitButton[] {
-    if (frame.mode === 'console') {
+    if (frame.overscanned) {
       const x = frame.aperture.w - CONSOLE_BUTTON_INSET;
       const base = frame.art.y + frame.art.h * 0.70;
       return [
         { id: 'guns', cx: x, cy: base, r: CONSOLE_BUTTON_RADIUS },
         { id: 'missile', cx: x, cy: base + CONSOLE_BUTTON_GAP, r: CONSOLE_BUTTON_RADIUS * 0.82 },
+        { id: 'warp', cx: CONSOLE_BUTTON_INSET, cy: base, r: CONSOLE_BUTTON_RADIUS * 0.82 },
       ];
     }
     const { art } = frame;
-    return (['guns', 'missile'] as CockpitButtonId[]).map((id) => ({
+    return (['guns', 'missile', 'warp'] as CockpitButtonId[]).map((id) => ({
       id,
       cx: art.x + BUTTON_ART[id].x * art.w,
       cy: art.y + BUTTON_ART[id].y * art.h,
@@ -278,9 +345,10 @@ export class Cockpit {
     const { ctx } = this;
     for (const button of this.buttons(frame)) {
       const isGuns = button.id === 'guns';
+      const isWarp = button.id === 'warp';
       const down = held.has(button.id);
-      const ready = isGuns ? true : state.missileCharge >= 1;
-      const fill = isGuns ? state.gunHeat : state.missileCharge;
+      const ready = isGuns ? true : isWarp ? state.warpReady : state.missileCharge >= 1;
+      const fill = isGuns ? state.gunHeat : isWarp ? state.warpHeat : state.missileCharge;
 
       ctx.save();
       ctx.translate(button.cx, button.cy);
@@ -306,7 +374,9 @@ export class Cockpit {
       if (fill > 0.01) {
         ctx.strokeStyle = isGuns
           ? (state.gunHeat > 0.75 ? RED : AMBER)
-          : (ready ? '#4fd8ff' : 'rgba(79,216,255,0.55)');
+          : isWarp
+            ? (state.warpHeat > 0.75 ? RED : '#a97bff')
+            : (ready ? '#4fd8ff' : 'rgba(79,216,255,0.55)');
         ctx.lineWidth = Math.max(2, button.r * 0.16);
         ctx.beginPath();
         ctx.arc(0, 0, button.r * 0.80, -Math.PI / 2, -Math.PI / 2 + Math.min(1, fill) * Math.PI * 2);
@@ -317,7 +387,9 @@ export class Cockpit {
       ctx.globalAlpha = down ? 1 : 0.82;
       ctx.fillStyle = isGuns
         ? (down ? '#ff6a3d' : 'rgba(255,80,60,0.5)')
-        : (ready ? (down ? '#8fe9ff' : 'rgba(79,216,255,0.6)') : 'rgba(90,110,130,0.45)');
+        : isWarp
+          ? (ready ? (down ? '#c9a8ff' : 'rgba(169,123,255,0.55)') : 'rgba(90,110,130,0.45)')
+          : (ready ? (down ? '#8fe9ff' : 'rgba(79,216,255,0.6)') : 'rgba(90,110,130,0.45)');
       ctx.beginPath();
       ctx.arc(0, 0, button.r * (down ? 0.52 : 0.58), 0, Math.PI * 2);
       ctx.fill();
@@ -327,7 +399,7 @@ export class Cockpit {
       ctx.font = `700 ${Math.max(6, button.r * 0.34)}px "Courier New", monospace`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(isGuns ? 'GUN' : 'MSL', 0, button.r * 0.02);
+      ctx.fillText(isGuns ? 'GUN' : isWarp ? 'WARP' : 'MSL', 0, button.r * 0.02);
       ctx.restore();
     }
   }
@@ -339,32 +411,40 @@ export class Cockpit {
     const py = (fy: number) => art.y + fy * art.h;
     const pr = (fr: number) => fr * art.w;
 
-    this.drawRadar(px(ART.radarLeft.x), py(ART.radarLeft.y), pr(ART.radarLeft.r), state);
-    this.drawThreatDish(px(ART.radarRight.x), py(ART.radarRight.y), pr(ART.radarRight.r), state);
-    this.drawMainScreen(px(ART.mainScreen.x), py(ART.mainScreen.y), pr(ART.mainScreen.w), ART.mainScreen.h * art.h, state);
+    // The radar IS the main screen now. It used to be a 38px corner dish that
+    // could show a dot but never a situation.
+    this.drawRadar(px(ART.mainScreen.x), py(ART.mainScreen.y), pr(ART.mainScreen.w), ART.mainScreen.h * art.h, state);
     this.drawHullScreen(px(ART.leftScreen.x), py(ART.leftScreen.y), pr(ART.leftScreen.w), ART.leftScreen.h * art.h, state);
     this.drawTargetScreen(px(ART.rightScreen.x), py(ART.rightScreen.y), pr(ART.rightScreen.w), ART.rightScreen.h * art.h, state);
   }
 
   /**
-   * The 360 degree plan radar: a top-down disc with your nose at 12 o'clock.
+   * The 360 degree plan radar, on the biggest screen in the panel.
    *
-   * Bearing sets the angle, range sets the distance from the middle, so a
-   * contact drawn at the BOTTOM of the dish is directly behind you. This is
-   * the instrument that makes free flight playable instead of a guessing game.
+   * Your nose is always at the top; a contact drawn at the BOTTOM is directly
+   * behind you. Range sets distance from the middle, so the ring you are
+   * inside tells you how close something is.
+   *
+   * This was a 38-pixel corner dish. At that size it could show that something
+   * existed but never where, which in open space is most of what you need to
+   * know -- so it moves here, where it is readable.
    */
-  private drawRadar(cx: number, cy: number, r: number, state: CockpitState): void {
+  private drawRadar(x: number, y: number, w: number, h: number, state: CockpitState): void {
     const { ctx } = this;
-    if (r < 6) return;
+    if (w < 40) return;
+    const cx = x + w / 2;
+    const cy = y + h * 0.52;
+    const r = Math.min(w * 0.42, h * 0.42);
+
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.rect(x, y, w, h);
     ctx.clip();
+    ctx.fillStyle = 'rgba(2,10,4,0.82)';
+    ctx.fillRect(x, y, w, h);
 
-    ctx.fillStyle = 'rgba(4,1,2,0.82)';
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-
-    ctx.strokeStyle = 'rgba(255,45,61,0.35)';
+    // Range rings.
+    ctx.strokeStyle = 'rgba(0,255,106,0.28)';
     ctx.lineWidth = 1;
     for (const ring of [0.33, 0.66, 1]) {
       ctx.beginPath();
@@ -372,146 +452,77 @@ export class Cockpit {
       ctx.stroke();
     }
     ctx.beginPath();
-    ctx.moveTo(cx - r, cy);
-    ctx.lineTo(cx + r, cy);
-    ctx.moveTo(cx, cy - r);
-    ctx.lineTo(cx, cy + r);
+    ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+    ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
     ctx.stroke();
 
-    // Sweep, so a dead radar and a radar with nothing on it look different.
-    const sweep = (state.clock * 1.5) % (Math.PI * 2);
+    // Cardinals, relative to the nose.
+    ctx.fillStyle = 'rgba(0,255,106,0.55)';
+    ctx.font = `${Math.max(6, r * 0.17)}px "Courier New", monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', cx, cy - r - r * 0.14);
+    ctx.fillText('S', cx, cy + r + r * 0.14);
+    ctx.fillText('E', cx + r + r * 0.14, cy);
+    ctx.fillText('W', cx - r - r * 0.14, cy);
+
+    // Sweep, so a radar with nothing on it still looks alive.
+    const sweep = (state.clock * 1.1) % (Math.PI * 2);
     const grad = ctx.createConicGradient?.(sweep - Math.PI / 2, cx, cy);
     if (grad) {
-      grad.addColorStop(0, 'rgba(255,45,61,0.34)');
-      grad.addColorStop(0.12, 'rgba(255,45,61,0)');
-      grad.addColorStop(1, 'rgba(255,45,61,0)');
+      grad.addColorStop(0, 'rgba(0,255,106,0.22)');
+      grad.addColorStop(0.1, 'rgba(0,255,106,0)');
+      grad.addColorStop(1, 'rgba(0,255,106,0)');
       ctx.fillStyle = grad;
-      ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     for (const contact of state.contacts) {
       const t = Math.min(1, contact.range / state.radarRange);
       if (t >= 1) continue;
-      // Screen up is forward, so bearing 0 plots at the top.
-      const x = cx + Math.sin(contact.bearing) * t * r;
-      const y = cy - Math.cos(contact.bearing) * t * r;
-      const size = contact.capital ? Math.max(2.4, r * 0.13) : Math.max(1.3, r * 0.065);
-      ctx.fillStyle = contact.capital ? AMBER : contact.hostile ? RED : CYAN;
-      ctx.beginPath();
-      ctx.arc(x, y, size, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // You, always at the middle, always pointing up.
-    ctx.strokeStyle = CYAN;
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - r * 0.16);
-    ctx.lineTo(cx + r * 0.1, cy + r * 0.09);
-    ctx.lineTo(cx - r * 0.1, cy + r * 0.09);
-    ctx.closePath();
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  /**
-   * The right dish reads elevation instead of repeating the left one.
-   * Out here a contact can be directly above or below you, and a plan radar
-   * cannot say so -- two identical dishes would waste the one that could.
-   */
-  private drawThreatDish(cx: number, cy: number, r: number, state: CockpitState): void {
-    const { ctx } = this;
-    if (r < 6) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = 'rgba(4,1,2,0.82)';
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    ctx.strokeStyle = 'rgba(255,45,61,0.3)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(cx - r, cy);
-    ctx.lineTo(cx + r, cy);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(255,45,61,0.5)';
-    ctx.font = `${Math.max(5, r * 0.24)}px "Courier New", monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText('ELEV', cx, cy - r * 0.62);
-
-    const nearest = [...state.contacts].sort((a, b) => a.range - b.range).slice(0, 9);
-    for (const contact of nearest) {
-      const t = Math.min(1, contact.range / state.radarRange);
-      const x = cx + Math.sin(contact.bearing) * t * r * 0.9;
-      const y = cy - (contact.elevation) * r * 0.8;
+      const px = cx + Math.sin(contact.bearing) * t * r;
+      const py = cy - Math.cos(contact.bearing) * t * r;
+      const size = contact.capital ? Math.max(3.4, r * 0.09) : Math.max(2.2, r * 0.045);
       ctx.fillStyle = contact.capital ? AMBER : RED;
       ctx.beginPath();
-      ctx.arc(x, y, contact.capital ? Math.max(2.2, r * 0.12) : Math.max(1.2, r * 0.06), 0, Math.PI * 2);
+      ctx.arc(px, py, size, 0, Math.PI * 2);
       ctx.fill();
-    }
-    ctx.strokeStyle = CYAN;
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.09, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
 
-  private drawMainScreen(x: number, y: number, w: number, h: number, state: CockpitState): void {
-    const { ctx } = this;
-    if (w < 30) return;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    ctx.fillStyle = 'rgba(6,1,3,0.6)';
-    ctx.fillRect(x, y, w, h);
-    ctx.textAlign = 'center';
-    ctx.fillStyle = RED;
-    ctx.font = `700 ${Math.max(7, w * 0.075)}px "Courier New", monospace`;
-    ctx.fillText(state.status, x + w / 2, y + h * 0.3);
-
-    if (state.bossHealth !== null) {
-      ctx.fillStyle = 'rgba(255,45,61,0.75)';
-      ctx.font = `${Math.max(6, w * 0.058)}px "Courier New", monospace`;
-      ctx.fillText(state.bossLabel, x + w / 2, y + h * 0.52);
-      const barW = w * 0.76;
-      ctx.fillStyle = 'rgba(255,45,61,0.22)';
-      ctx.fillRect(x + (w - barW) / 2, y + h * 0.62, barW, Math.max(3, h * 0.07));
-      ctx.fillStyle = RED;
-      ctx.fillRect(x + (w - barW) / 2, y + h * 0.62, barW * state.bossHealth, Math.max(3, h * 0.07));
-    } else {
-      // Tilt state, in words. Without it "tilt isn't working" could mean the
-      // sensor is silent, the grant was refused, or the pose never settled --
-      // three different faults that look identical from the outside.
-      ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
-      ctx.font = `${Math.max(6, w * 0.055)}px "Courier New", monospace`;
-      ctx.fillText(`TILT ${state.tiltStatus}`, x + w / 2, y + h * 0.5);
-
-      // A scrolling nav trace, so the screen is alive between fights.
-      ctx.strokeStyle = 'rgba(255,45,61,0.5)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let i = 0; i <= 40; i += 1) {
-        const t = i / 40;
-        const sx = x + t * w;
-        const sy = y + h * 0.62 + Math.sin(t * 9 + state.clock * 2.2) * h * 0.14;
-        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+      // Above or below gets an arrow, because a plan radar alone cannot say so
+      // and out here a contact really can be directly over your head.
+      if (Math.abs(contact.elevation) > 0.25) {
+        const up = contact.elevation > 0;
+        const a = size * 2.1;
+        ctx.beginPath();
+        ctx.moveTo(px + size * 1.7, py + (up ? a : -a));
+        ctx.lineTo(px + size * 1.7 - size * 0.9, py + (up ? -a * 0.1 : a * 0.1));
+        ctx.lineTo(px + size * 1.7 + size * 0.9, py + (up ? -a * 0.1 : a * 0.1));
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.stroke();
     }
+
+    // You, at the middle, always pointing up.
+    ctx.fillStyle = '#00ff6a';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r * 0.13);
+    ctx.lineTo(cx + r * 0.08, cy + r * 0.07);
+    ctx.lineTo(cx - r * 0.08, cy + r * 0.07);
+    ctx.closePath();
+    ctx.fill();
+
+    // Footer, the way the reference lays it out.
+    ctx.fillStyle = 'rgba(0,255,106,0.6)';
+    ctx.font = `${Math.max(5, w * 0.045)}px "Courier New", monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(`RNG ${(state.radarRange / 1000).toFixed(1)}k`, x + w * 0.04, y + h * 0.93);
+    ctx.textAlign = 'right';
+    ctx.fillText(`CONTACTS ${state.contacts.length}`, x + w * 0.96, y + h * 0.93);
     ctx.restore();
   }
 
-  /**
-   * Shields and damage, left of the glass.
-   *
-   * Fore and aft are separate banks because being tailed has to FEEL different
-   * from being met head-on. When the aft bank is the one draining, that is the
-   * instrument telling you to turn before the hull starts taking it -- which
-   * is the same thing the radar and the edge chevrons are saying, said a third
-   * way, because it is the thing most worth noticing.
-   */
   private drawHullScreen(x: number, y: number, w: number, h: number, state: CockpitState): void {
     const { ctx } = this;
     if (w < 24) return;
@@ -561,6 +572,13 @@ export class Cockpit {
     ctx.restore();
   }
 
+  /**
+   * The right screen: what the ship is doing, and anything urgent.
+   *
+   * It absorbed the old centre screen's readouts when the radar took that slot
+   * -- boss health during a fight, and tilt state the rest of the time, which
+   * is what tells a tester whether the sensor is live at all.
+   */
   private drawTargetScreen(x: number, y: number, w: number, h: number, state: CockpitState): void {
     const { ctx } = this;
     if (w < 24) return;
@@ -571,19 +589,36 @@ export class Cockpit {
     ctx.fillStyle = 'rgba(6,1,3,0.55)';
     ctx.fillRect(x, y, w, h);
     ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(255,45,61,0.7)';
-    ctx.font = `${Math.max(6, w * 0.1)}px "Courier New", monospace`;
-    const hostiles = state.contacts.filter((c) => c.hostile).length;
-    ctx.fillText(`CONTACTS ${hostiles}`, x + w * 0.08, y + h * 0.24);
+    ctx.textBaseline = 'alphabetic';
+    const label = Math.max(5, w * 0.085);
 
-    // Throttle bar: the one thing the art has no dial for and flight needs.
-    ctx.fillStyle = 'rgba(120,30,40,0.3)';
-    ctx.fillRect(x + w * 0.08, y + h * 0.4, w * 0.84, h * 0.16);
-    ctx.fillStyle = AMBER;
-    ctx.fillRect(x + w * 0.08, y + h * 0.4, w * 0.84 * state.throttle, h * 0.16);
+    if (state.bossHealth !== null) {
+      ctx.fillStyle = RED;
+      ctx.font = `700 ${label}px "Courier New", monospace`;
+      ctx.fillText(state.bossLabel.slice(0, 16), x + w * 0.07, y + h * 0.2);
+      ctx.fillStyle = 'rgba(120,30,40,0.32)';
+      ctx.fillRect(x + w * 0.07, y + h * 0.27, w * 0.86, Math.max(3, h * 0.12));
+      ctx.fillStyle = RED;
+      ctx.fillRect(x + w * 0.07, y + h * 0.27, w * 0.86 * state.bossHealth, Math.max(3, h * 0.12));
+    } else {
+      ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
+      ctx.font = `${label}px "Courier New", monospace`;
+      ctx.fillText(`TILT ${state.tiltStatus}`, x + w * 0.07, y + h * 0.24);
+    }
+
+    // Throttle: the control the whole rescale exists to make worth having.
+    ctx.fillStyle = 'rgba(255,45,61,0.62)';
+    ctx.font = `${label}px "Courier New", monospace`;
+    ctx.fillText(`THR ${Math.round(state.throttle * 100)}%`, x + w * 0.07, y + h * 0.58);
+    ctx.fillStyle = 'rgba(120,30,40,0.32)';
+    ctx.fillRect(x + w * 0.07, y + h * 0.65, w * 0.86, Math.max(3, h * 0.12));
+    ctx.fillStyle = state.throttle > 0.85 ? '#ff8a3d' : AMBER;
+    ctx.fillRect(x + w * 0.07, y + h * 0.65, w * 0.86 * state.throttle, Math.max(3, h * 0.12));
+
+    const hostiles = state.contacts.filter((c) => c.hostile).length;
     ctx.fillStyle = 'rgba(255,45,61,0.6)';
-    ctx.font = `${Math.max(5, w * 0.085)}px "Courier New", monospace`;
-    ctx.fillText(`THR ${Math.round(state.throttle * 100)}%`, x + w * 0.08, y + h * 0.82);
+    ctx.font = `${Math.max(5, w * 0.075)}px "Courier New", monospace`;
+    ctx.fillText(`CONTACTS ${hostiles}`, x + w * 0.07, y + h * 0.93);
     ctx.restore();
   }
 }

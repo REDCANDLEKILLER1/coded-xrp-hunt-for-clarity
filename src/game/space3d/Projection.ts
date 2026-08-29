@@ -61,8 +61,14 @@ export interface ViewPoint {
  * culled at the near plane instead.
  */
 export const NEAR_PLANE = 30;
-/** Past this a contact is too small to be worth a draw call -- but it still exists. */
-export const FAR_PLANE = 4200;
+/**
+ * Past this a contact is too small to be worth a draw call -- but it still exists.
+ *
+ * Pushed out with the rest of the scale. Contacts are engaged from thousands
+ * of units away now, and a far plane closer than the spawn range would simply
+ * refuse to draw the approach that the whole rescale exists to give you.
+ */
+export const FAR_PLANE = 12000;
 
 /**
  * World space into view space: translate to the eye, then unrotate by the
@@ -147,7 +153,12 @@ export function depthAlpha(depth: number): number {
   if (depth >= FAR_PLANE) return 0;
   const t = 1 - (depth - NEAR_PLANE) / (FAR_PLANE - NEAR_PLANE);
   // Ease in, so the far half stays faint and the near quarter is solid.
-  return Math.min(1, t * t * 2.6);
+  //
+  // The multiplier is tied to the far plane. At 2.6 it was tuned for a 4200
+  // plane; against the rescaled 12000 it saturated at 1 for everything inside
+  // 2000 units, so nothing read as distant any more and the depth cue died
+  // silently. Distance has to keep costing contrast all the way out.
+  return Math.min(1, t * t * 1.15);
 }
 
 /**

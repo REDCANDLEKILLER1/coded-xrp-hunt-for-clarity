@@ -63,7 +63,7 @@ class Sfx {
     const t = ctx.currentTime;
     switch (voice) {
       case 'shoot':
-        this.blip(t, 'square', 880, 300, 0.07, 0.16);
+        this.laser(t);
         break;
       case 'enemyShoot':
         this.blip(t, 'sawtooth', 420, 170, 0.09, 0.1);
@@ -142,6 +142,26 @@ class Sfx {
     osc.connect(gain).connect(master);
     osc.start(at);
     osc.stop(at + length + 0.02);
+  }
+
+  /**
+   * A gun that sounds like a weapon rather than a toy.
+   *
+   * The old shot was a single square-wave blip sliding 880 -> 300 Hz, which is
+   * the classic 8-bit "pew" and reads as comic next to this artwork. A laser
+   * needs three things layered: a fast, deep pitch sweep for the discharge, a
+   * detuned second voice a little behind it so the sound has width instead of
+   * sounding like one thin tone, and a filtered noise crack at the head for
+   * the impact of it. Sawtooth rather than square, because the extra harmonics
+   * are what make it sound like energy instead of a beep.
+   */
+  private laser(at: number): void {
+    // Main discharge: very fast, very wide sweep.
+    this.blip(at, 'sawtooth', 2600, 140, 0.15, 0.13);
+    // Detuned partner, slightly late and quieter: width and a bit of menace.
+    this.blip(at + 0.012, 'sawtooth', 1900, 110, 0.17, 0.07);
+    // The crack at the front, so it has an attack rather than a fade-in.
+    this.burst(at, 0.05, 5200, 0.10);
   }
 
   /** Filtered noise sweeping downwards: the body of an explosion. */
