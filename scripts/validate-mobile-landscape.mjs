@@ -1,3 +1,12 @@
+// Portrait is playable, and fullscreen is an option.
+//
+// This file used to assert a portrait GATE: a full-screen card telling the
+// player to turn the phone sideways, with START behind it and an escape hatch
+// in case the browser refused to rotate. The gate is gone -- the game plays
+// portrait, the flight half is a vertical shooter and the warship interior
+// scrolls -- so the checks are inverted: nothing may block portrait, and the
+// fullscreen offer must stay out of the way.
+
 import fs from 'node:fs';
 
 const input = fs.readFileSync(new URL('../src/game/core/Input.ts', import.meta.url), 'utf8');
@@ -7,89 +16,78 @@ const main = fs.readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
 const game2a = fs.readFileSync(new URL('../src/game/core/Game2A.ts', import.meta.url), 'utf8');
 const styles = fs.readFileSync(new URL('../src/landscape.css', import.meta.url), 'utf8');
 
+const fail = (message) => { throw new Error(`mobile-landscape: ${message}`); };
+
 // Tilt steering was removed: it was harder to aim than a finger and competed
-// with touch for control. Steering is pointer/keyboard only now.
+// with touch for control. Steering is pointer/keyboard only.
 for (const banned of ['deviceorientation', 'TILT_FULL_SCALE', 'calibrateTilt', 'gravityFromOrientation']) {
-  if (input.includes(banned)) {
-    throw new Error(`mobile-landscape: tilt steering is back (${banned}); controls are pointer + keyboard only`);
-  }
+  if (input.includes(banned)) fail(`tilt steering is back (${banned}); controls are pointer + keyboard only`);
 }
-if (!/onPointerMove|onPointerDown/.test(input)) {
-  throw new Error('mobile-landscape: pointer steering is missing');
-}
+if (!/onPointerMove|onPointerDown/.test(input)) fail('pointer steering is missing');
 
-for (const token of [
-  "orientation.lock('landscape')",
-  'requestFullscreen',
+// ---- nothing may block portrait ----------------------------------------
+for (const banned of [
+  'landscape-gate',
   'TURN PHONE SIDEWAYS',
-  'isMobileLike()',
-]) {
-  if (!landscape.includes(token)) throw new Error(`mobile-landscape: missing landscape gate token ${token}`);
-}
-
-for (const token of [
-  'worldScale()',
-  'visibleWorldWidth',
-  'cameraY',
-  'innerHeight / 520',
-  '0.62',
-  '0.74',
-]) {
-  if (!onFoot.includes(token)) throw new Error(`mobile-landscape: missing zoomed-out on-foot token ${token}`);
-}
-
-// Fullscreen and orientation lock both need transient user activation, and
-// rotating a phone is not a gesture. An earlier build tried to piggyback on
-// "the first pointerdown anywhere"; on a real device the address bar stayed up,
-// which costs a third of an already short landscape screen. There must be
-// something explicit to press, and it must not be one-shot -- a refused or
-// exited fullscreen has to be retryable.
-for (const token of [
-  'landscape-gate__start',
   'PRESS START',
-  'fullscreen-nudge',
-  'goFullscreen',
-  'isFullscreen()',
-  'fullscreenchange',
-]) {
-  if (!landscape.includes(token)) {
-    throw new Error(`mobile-landscape: no explicit way to force fullscreen — missing ${token}`);
-  }
-}
-if (/lockAttempted/.test(landscape)) {
-  throw new Error('mobile-landscape: fullscreen is latched to one attempt; a refused or exited fullscreen must be retryable');
-}
-if (!/\.fullscreen-nudge\.is-visible/.test(styles)) {
-  throw new Error('mobile-landscape: fullscreen nudge has no visible state');
-}
-// The nudge is a DOM overlay on top of the canvas HUD. Parked in a bottom
-// corner it would swallow taps meant for PAUSE, BOMB or FOG BREAK.
-if (!/\.fullscreen-nudge\s*\{[^}]*left:\s*50%/.test(styles)) {
-  throw new Error('mobile-landscape: fullscreen nudge must sit clear of the canvas HUD buttons');
-}
-for (const token of [
-  'dismissed',
-  'landscape-gate__skip',
   'CONTINUE ANYWAY',
-  'revealFallback',
-  'canLockOrientation',
+  'requiresLandscape',
 ]) {
-  if (!landscape.includes(token)) {
-    throw new Error(`mobile-landscape: portrait gate has no escape path — missing ${token}`);
-  }
+  if (landscape.includes(banned)) fail(`the portrait gate is back (${banned}); portrait must be playable`);
+  if (styles.includes(banned)) fail(`portrait gate styles are back (${banned})`);
 }
-if (!/requiresLandscape\s*=[^;]*!this\.dismissed/.test(landscape)) {
-  throw new Error('mobile-landscape: refresh() does not honour the dismissed escape, gate can trap the player');
-}
-if (!/if \(innerHeight > innerWidth\) this\.revealFallback\(\);/.test(landscape)) {
-  throw new Error('mobile-landscape: failed orientation lock does not reveal the manual-rotate fallback');
-}
-if (!styles.includes('.landscape-gate__fallback')) {
-  throw new Error('mobile-landscape: escape-path styles missing');
-}
+// A gate would have to hide behind a dismissal flag; there should be none.
+if (/dismissed/.test(landscape)) fail('a dismissable gate implies a gate; portrait needs no dismissing');
 
-if (!main.includes("import './landscape.css'")) throw new Error('mobile-landscape: landscape styles are not loaded');
-if (!main.includes('new LandscapeMode()')) throw new Error('mobile-landscape: landscape gate is not initialized');
-if (!styles.includes('.landscape-gate.is-visible')) throw new Error('mobile-landscape: portrait rotate gate styles missing');
+// Both orientations get a layout class, so the CSS can size for the one it has.
+if (!/mobile-landscape-active/.test(landscape)) fail('landscape layout class is missing');
+if (!/mobile-portrait-active/.test(landscape)) fail('portrait gets no layout class of its own');
 
-console.log('Mobile landscape validation passed: portrait gate with escape path, fullscreen/orientation attempt, pointer-only steering, and zoomed-out on-foot camera are wired.');
+// ---- fullscreen stays available, retryable, and out of the way ---------
+for (const token of ["orientation.lock('landscape')", 'requestFullscreen', 'goFullscreen', 'isFullscreen()', 'fullscreenchange', 'isMobileLike()']) {
+  if (!landscape.includes(token)) fail(`fullscreen must still be offered — missing ${token}`);
+}
+// A refused or exited fullscreen has to be retryable.
+if (/lockAttempted/.test(landscape)) fail('fullscreen is latched to one attempt; it must be retryable');
+if (!/\.fullscreen-nudge\.is-visible/.test(styles)) fail('fullscreen offer has no visible state');
+
+// It is a DOM overlay above the canvas HUD, so where it sits matters. It used
+// to be a bar pinned to the bottom CENTRE -- across the play area and the
+// ship's own lane. Every canvas control lives in a corner: pause and map
+// top-right, LOG and sound bottom-left, bomb and pulse bottom-right.
+const nudge = /\.fullscreen-nudge\s*\{([^}]*)\}/.exec(styles)?.[1] ?? '';
+if (!nudge) fail('fullscreen offer has no rule');
+if (/left:\s*50%/.test(nudge)) fail('the fullscreen offer is back across the middle of the play area');
+if (!/top:/.test(nudge)) fail('the fullscreen offer should be anchored to the top, clear of the three busy corners');
+const size = Number(/width:\s*(\d+)px/.exec(nudge)?.[1]);
+if (!(size > 0 && size <= 34)) fail(`the fullscreen offer is ${size}px wide; it should be a chip, not a bar`);
+
+// ---- the on-foot camera still scrolls ----------------------------------
+// Portrait sees less of a room at once, which is fine as long as it scrolls.
+for (const token of ['worldScale()', 'visibleWorldWidth', 'cameraX', 'cameraY']) {
+  if (!onFoot.includes(token)) fail(`missing scrolling on-foot camera token ${token}`);
+}
+if (!/innerHeight \/ 520/.test(onFoot)) fail('the landscape zoom-out is missing');
+
+// ---- the developer panel is not one stray tap from the play area -------
+// "ASSETS 56/56 loaded • missing 0 • errors 0" opened over a portrait game
+// because the D button sits in a corner that is inside the battlefield there.
+if (!/private readonly diagnostics = hasDiagnosticsFlag\(\);/.test(game2a)) {
+  fail('the asset panel must be gated behind a diagnostics flag');
+}
+if (!/this\.diagnostics && inCircle\(this\.zone\.assets/.test(game2a)) {
+  fail('the diagnostics button must not be tappable outside the debug route');
+}
+if (!/if \(this\.diagnostics\) this\.padButton\(this\.zone\.assets/.test(game2a)) {
+  fail('the diagnostics button must not be drawn outside the debug route');
+}
+if (!/this\.showAssets && this\.diagnostics/.test(game2a)) {
+  fail('the diagnostics panel must not open outside the debug route');
+}
+// A genuine asset failure still has to report itself to everyone.
+if (!/this\.reportAssets \|\|/.test(game2a)) fail('a real asset failure must still report itself');
+
+if (!main.includes("import './landscape.css'")) fail('landscape styles are not loaded');
+if (!main.includes('new LandscapeMode()')) fail('fullscreen offer is not initialized');
+
+console.log('mobile-landscape: OK — portrait plays, fullscreen is a corner chip, diagnostics are debug-only.');

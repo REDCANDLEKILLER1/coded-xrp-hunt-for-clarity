@@ -418,6 +418,18 @@ export class Game2A {
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
   private showAssets = false;
+  /**
+   * Whether the asset diagnostics are reachable at all.
+   *
+   * The D button sat in the top-right of the play area, and a tap anywhere
+   * near it toggled a developer panel over the game. In portrait that corner
+   * is inside the battlefield, so players opened "ASSETS 56/56 loaded •
+   * missing 0 • errors 0" by accident and had no idea what it was. It is a
+   * debug tool now, on the ?log route with the rest of them.
+   *
+   * A genuine asset failure still reports itself without any of this.
+   */
+  private readonly diagnostics = hasDiagnosticsFlag();
   private reportAssets = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -531,6 +543,8 @@ export class Game2A {
   }
 
   private actions(): void {
+    // The keyboard shortcut stays unconditional: it cannot be hit by accident
+    // with a thumb, and it is how the panel gets opened during development.
     if (this.input.consumeDiagnostics()) this.showAssets = !this.showAssets;
     if (this.input.consumePause() && this.mode === 'play') this.setPaused(!this.paused);
     if (this.launchClock <= 0 && this.input.consumeSpecial() && this.mode === 'play') this.useSpecial();
@@ -567,7 +581,7 @@ export class Game2A {
       if (picked) this.applyUpgrade(picked.kind);
       return;
     }
-    if (inCircle(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
+    if (this.diagnostics && inCircle(this.zone.assets, tap.x, tap.y)) return void (this.showAssets = !this.showAssets);
     if (inCircle(this.zone.pause, tap.x, tap.y)) return void this.setPaused(!this.paused);
     if (this.launchClock > 0) return;
     if (inCircle(this.zone.bomb, tap.x, tap.y)) return void this.useBomb();
@@ -2066,7 +2080,7 @@ export class Game2A {
     if (this.mode === 'play') this.play();
     if (this.mode === 'results') this.results();
     if (this.mode === 'victory') this.victory();
-    if (this.reportAssets || this.showAssets) this.assetPanel();
+    if (this.reportAssets || (this.showAssets && this.diagnostics)) this.assetPanel();
   }
 
   private background(): void {
@@ -3035,7 +3049,7 @@ export class Game2A {
     this.ctx.restore();
 
     this.padButton(this.zone.pause, this.paused ? '▶' : '❚❚', '#00ff88');
-    this.padButton(this.zone.assets, 'D', 'rgba(255,210,74,0.75)');
+    if (this.diagnostics) this.padButton(this.zone.assets, 'D', 'rgba(255,210,74,0.75)');
     this.padButton(this.zone.bomb, 'BOMB', this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.35)', {
       badge: String(this.bombs),
       // The button stays, but it says out loud that you never have to reach
@@ -3877,7 +3891,11 @@ export class Game2A {
 
   private inControls(x: number, y: number): boolean {
     const zone = this.zone;
-    return inCircle(zone.pause, x, y) || inCircle(zone.bomb, x, y) || inCircle(zone.special, x, y) || inCircle(zone.assets, x, y);
+    // The assets circle only counts while its button is actually on screen.
+    // Reserving the spot for an invisible button would swallow taps for no
+    // visible reason.
+    return inCircle(zone.pause, x, y) || inCircle(zone.bomb, x, y) || inCircle(zone.special, x, y)
+      || (this.diagnostics && inCircle(zone.assets, x, y));
   }
 
   private enemyDef(key: string): EnemyDef {
@@ -4073,6 +4091,16 @@ export function turnToward(from: number, to: number, step: number): number {
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
   return from + clamp(delta, -step, step);
+}
+
+/** True on the ?log / ?debug routes, where the developer panels belong. */
+function hasDiagnosticsFlag(): boolean {
+  try {
+    const params = new URLSearchParams(location.search);
+    return params.has('log') || params.has('debug');
+  } catch {
+    return false;
+  }
 }
 
 function inCircle(circle: { cx: number; cy: number; r: number }, x: number, y: number): boolean {
