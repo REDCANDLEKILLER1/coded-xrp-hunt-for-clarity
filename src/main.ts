@@ -122,10 +122,47 @@ function savedInteriorRoom(): number {
   return missionCheckpointFor(loadCampaignProgress(), 'ledger_prime')?.interiorRoom ?? 0;
 }
 
+/**
+ * Flying into the portal puts you in the captured warship's cockpit.
+ *
+ * It used to hand off to the on-foot interior: XRPMan walking the corridors of
+ * the ship he had just boarded. That section is not in the mission flow any
+ * more -- platforming with a thumb did not work on a phone, and the fiction
+ * settled somewhere better anyway. You take the ship and you fly it.
+ *
+ * The interior code and its art are left in the repository and still reachable
+ * on ?onfoot. Nothing is deleted; it is unhooked.
+ */
 window.addEventListener('coded:boarding-complete', () => {
-  debugLog.log('mission', 'boarding complete -> on foot');
+  debugLog.log('mission', 'portal entered -> transit cockpit');
+  onFoot.hide();
+  game.suspend();
   canvas.style.visibility = 'hidden';
-  onFoot.show(savedInteriorRoom());
+  void space.show();
+});
+
+/** Clearing the transit returns you to the star map with the leg banked. */
+window.addEventListener('coded:space-complete', () => {
+  debugLog.log('mission', 'transit cleared -> star map');
+  space.hide();
+  gameShell.hidden = true;
+  map.show();
+  music.cue('theme');
+});
+
+/**
+ * Losing the transit returns you to the map rather than the boarding fight.
+ *
+ * Sending the player back to re-beat a capital ship they have already beaten,
+ * just to retry the leg after it, is a punishment out of all proportion to the
+ * mistake.
+ */
+window.addEventListener('coded:space-defeat', () => {
+  debugLog.log('mission', 'transit lost -> star map');
+  space.hide();
+  gameShell.hidden = true;
+  map.show();
+  music.cue('theme');
 });
 
 // Clearing a room is a save point of its own. The act checkpoint stays at the
