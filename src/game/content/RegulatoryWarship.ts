@@ -59,12 +59,21 @@ export class RegulatoryWarshipDirector {
     this.refreshExposure();
   }
 
-  /** True while the shield phase is stalled waiting for a Fog Breaker pulse. */
-  get needsFogBreaker(): boolean {
+  /**
+   * True while the shield relay is still covered.
+   *
+   * This used to mean "stalled until the player presses Fog Breaker", and it
+   * stalled hard: nothing on the warship could be hurt and nothing said why in
+   * a way people acted on. The Fog Breaker fires itself now, so this is a
+   * short beat rather than a gate, and the name says what it is instead of
+   * what the player has to do about it.
+   */
+  get shieldCovered(): boolean {
     return this.phase === 'shield' && !this.shieldExposed;
   }
 
-  exposeShieldWithFogBreaker(): boolean {
+  /** Cuts the shield cover. Returns false if there was nothing to cut. */
+  exposeShieldRelay(): boolean {
     if (this.phase !== 'shield' || this.shieldExposed) return false;
     this.shieldExposed = true;
     this.refreshExposure();
@@ -102,7 +111,7 @@ export class RegulatoryWarshipDirector {
   get objective(): string {
     switch (this.phase) {
       case 'batteries': return 'DISABLE PORT + STARBOARD GUN BATTERIES';
-      case 'shield': return this.shieldExposed ? 'DESTROY THE EXPOSED SHIELD RELAY' : 'USE FOG BREAKER TO EXPOSE THE SHIELD RELAY';
+      case 'shield': return this.shieldExposed ? 'DESTROY THE EXPOSED SHIELD RELAY' : 'FOG BREAKER CUTTING THE SHIELD COVER';
       case 'engines': return 'DISABLE BOTH ENGINE NODES';
       case 'hangar': return 'BREAK THE HANGAR / COMMAND DEFENSE';
       case 'disabled': return 'WARSHIP DISABLED // BOARDING WINDOW OPEN';

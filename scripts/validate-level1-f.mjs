@@ -34,8 +34,10 @@ if (director.phase !== 'shield' || director.targetableSystems.length !== 0) {
   console.error('L1-F warship validation FAILED: shield relay should remain protected after batteries fall.');
   process.exit(1);
 }
-if (!director.exposeShieldWithFogBreaker() || director.targetableSystems[0]?.key !== 'shield_relay') {
-  console.error('L1-F warship validation FAILED: Fog Breaker did not expose the shield relay.');
+// Renamed from exposeShieldWithFogBreaker: the cover is cut on a timer now
+// rather than by a button press, but the phase gating it is unchanged.
+if (!director.exposeShieldRelay() || director.targetableSystems[0]?.key !== 'shield_relay') {
+  console.error('L1-F warship validation FAILED: cutting the cover did not expose the shield relay.');
   process.exit(1);
 }
 destroy('shield_relay');
