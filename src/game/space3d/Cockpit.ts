@@ -112,6 +112,8 @@ export interface CockpitState {
   bossLabel: string;
   /** Text for the main screen. */
   status: string;
+  /** Short tilt state, shown so a tester can say which stage is failing. */
+  tiltStatus: string;
   contacts: CockpitContact[];
   /** Radar's outer ring, in world units. */
   radarRange: number;
@@ -479,6 +481,13 @@ export class Cockpit {
       ctx.fillStyle = RED;
       ctx.fillRect(x + (w - barW) / 2, y + h * 0.62, barW * state.bossHealth, Math.max(3, h * 0.07));
     } else {
+      // Tilt state, in words. Without it "tilt isn't working" could mean the
+      // sensor is silent, the grant was refused, or the pose never settled --
+      // three different faults that look identical from the outside.
+      ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
+      ctx.font = `${Math.max(6, w * 0.055)}px "Courier New", monospace`;
+      ctx.fillText(`TILT ${state.tiltStatus}`, x + w / 2, y + h * 0.5);
+
       // A scrolling nav trace, so the screen is alive between fights.
       ctx.strokeStyle = 'rgba(255,45,61,0.5)';
       ctx.lineWidth = 1;

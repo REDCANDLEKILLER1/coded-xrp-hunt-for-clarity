@@ -236,6 +236,24 @@ check(/this\.tilt\.update\(dt\)/.test(game), 'tilt must be advanced with the fra
 check(/this\.tilt\.ready && this\.pointerId === null/.test(game), 'a finger on the glass must override tilt');
 check(/orientationchange/.test(game), 'rotating the handset must recalibrate');
 check(/tilt\.requestPermission\(\)/.test(game), 'the iOS grant must be taken from a gesture');
+// The canvas handler alone is not enough: a player told the game is flown by
+// tilting will pick the phone up and tilt it without ever touching the glass,
+// and then the prompt never appears and tilt silently never starts.
+check(/private armTiltPermission\(/.test(game), 'the grant must be armed from the first gesture anywhere on the page');
+// Defined AND called. A method that exists but is never invoked is the exact
+// shape of the orphaned-renderer bug that shipped once already.
+check(/this\.armTiltPermission\(\);/.test(game), 'armTiltPermission is defined but never called');
+check(
+  /document\.addEventListener\(type, grab/.test(game),
+  'the first-gesture hook must be document-level, not canvas-only',
+);
+// A silent sensor and a sensor still settling are different faults and must
+// not present identically to whoever is testing on a real phone.
+check(/'waiting'/.test(readFileSync('src/game/space3d/Tilt.ts', 'utf8')),
+  'a bound-but-silent sensor needs its own state');
+check(/private tiltReadout\(/.test(game), 'tilt state must be readable in the cockpit');
+check(/TAP TO ALLOW/.test(game) && /SILENT/.test(game) && /DENIED/.test(game),
+  'the readout must distinguish the failure modes it exists to tell apart');
 // The fallback is not optional: without it a denied prompt is an unplayable level.
 check(/const travel = Math\.min\(this\.viewW, this\.viewH\) \* STICK_TRAVEL/.test(game), 'the drag fallback must survive');
 check(/Math\.abs\(dx\) > 6 \|\| Math\.abs\(dy\) > 6/.test(game), 'the drag fallback must keep its gesture-intent guard');

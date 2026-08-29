@@ -247,6 +247,7 @@ export class Space3DGame {
     this.cockpit = new Cockpit(ctx, this.assets);
     this.shell.appendChild(this.canvas);
     this.bindInput();
+    this.armTiltPermission();
     window.addEventListener('resize', () => this.resize());
     // Rotating the handset invalidates the neutral pose entirely.
     window.addEventListener('orientationchange', () => this.tilt.recalibrate('orientation change'));
@@ -474,6 +475,26 @@ export class Space3DGame {
   private get gunsHeld(): boolean {
     for (const id of this.weaponPointers.values()) if (id === 'guns') return true;
     return this.keys.has(' ') === false && (this.keys.has('f') || this.keys.has('control'));
+  }
+
+  /**
+   * Takes the iOS sensor grant from the first gesture ANYWHERE on the page.
+   *
+   * The canvas handler alone was not enough. iOS will not hand over the
+   * accelerometer without a live user gesture, and a player who opens the
+   * level and simply starts tilting -- which is exactly what you would do when
+   * told the game is flown by tilting -- never touches the canvas, so the
+   * prompt never appears and tilt silently never starts. This mirrors how
+   * MusicDirector takes the audio unlock.
+   */
+  private armTiltPermission(): void {
+    const grab = (): void => {
+      if (this.tilt.status !== 'needs_permission') return;
+      void this.tilt.requestPermission();
+    };
+    for (const type of ['pointerdown', 'touchend', 'click', 'keydown']) {
+      document.addEventListener(type, grab, { capture: true, passive: true });
+    }
   }
 
   private startRoll(): void {
@@ -1269,6 +1290,24 @@ export class Space3DGame {
     this.drawBanner(w, h, drawn);
   }
 
+  /**
+   * Tilt state in one word, for the nav screen.
+   *
+   * DENIED, SILENT and CALIBRATING are three different faults that all present
+   * as "tilt isn't working", and a tester cannot tell them apart without being
+   * told which one it is.
+   */
+  private tiltReadout(): string {
+    switch (this.tilt.status) {
+      case 'ready': return 'READY';
+      case 'calibrating': return 'CALIBRATING';
+      case 'waiting': return 'SILENT';
+      case 'needs_permission': return 'TAP TO ALLOW';
+      case 'denied': return 'DENIED';
+      default: return 'NO SENSOR';
+    }
+  }
+
   /** What the instruments are reading. */
   private cockpitState(): CockpitState {
     const contacts: CockpitContact[] = [];
@@ -1305,6 +1344,7 @@ export class Space3DGame {
       bossHealth: this.mode === 'boss' && this.bossHp > 0 ? Math.max(0, this.bossHp / this.leg.boss.hp) : null,
       bossLabel: this.leg.boss.label,
       status: this.mode === 'boss' ? 'INTERCEPT' : `NAV ${this.leg.destination}`,
+      tiltStatus: this.tiltReadout(),
       contacts,
       radarRange: RADAR_RANGE,
       rollReady: this.rollCooldown <= 0,
