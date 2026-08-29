@@ -115,6 +115,17 @@ export interface PickupDef {
   hitbox: Size;
   driftSpeed: number;
   effect: 'weapon_upgrade' | 'bomb' | 'repair' | 'shield';
+  /**
+   * The colour a pickup is READ by, not the colour of its art.
+   *
+   * The four pickup icons were all drawn as a green glyph inside the same blue
+   * ring, so in flight at 22px they are one indistinguishable object and every
+   * effect looks like the wrong one. The renderer paints this aura around the
+   * sprite so the effect is legible before you touch it. Must be unique.
+   */
+  tint: string;
+  /** Two or three characters stamped under the aura. Must be unique. */
+  tag: string;
 }
 
 export interface StageDef {
