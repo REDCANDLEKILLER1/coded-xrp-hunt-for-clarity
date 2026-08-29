@@ -19,6 +19,18 @@
       "title": "Boss Fight 1",
       "loop": true,
       "gain": 0.5
+    },
+    "transit": {
+      "src": "/assets/audio/transit.mp3",
+      "title": "Transit \u2014 Outbound",
+      "loop": true,
+      "gain": 0.45
+    },
+    "guardian_protocol": {
+      "src": "/assets/audio/guardian_protocol.mp3",
+      "title": "Guardian Protocol",
+      "loop": true,
+      "gain": 0.5
     }
   },
   "cues": {
@@ -31,6 +43,8 @@
     "boss_gary_fog": "boss_fight",
     "boss_regulatory_warship": "boss_fight",
     "boss_ledger_defense_core": "boss_fight",
-    "boss_fight": "boss_fight"
+    "boss_fight": "boss_fight",
+    "transit": "transit",
+    "transit_boss": "guardian_protocol"
   }
 }

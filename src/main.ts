@@ -6,6 +6,7 @@ import { CampaignMap } from './game/ui/CampaignMap';
 import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
 import { LandscapeMode } from './game/ui/LandscapeMode';
 import { OnFootGame } from './game/onfoot/OnFootGame';
+import { Space3DGame } from './game/space3d/Space3DGame';
 import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
@@ -87,11 +88,13 @@ new LandscapeMode();
 const game = new Game2A(canvas);
 const boarding = new DirectBoardingRuntime(game, gameShell);
 const onFoot = new OnFootGame(gameShell);
+const space = new Space3DGame(gameShell);
 let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
   (planet, checkpoint?: MissionCheckpointSnapshot) => {
     onFoot.hide();
+    space.hide();
     canvas.style.visibility = 'visible';
     map.hide();
     gameShell.hidden = false;
@@ -106,6 +109,7 @@ map = new CampaignMap(
   },
   () => {
     onFoot.hide();
+    space.hide();
     canvas.style.visibility = 'visible';
     map.hide();
     gameShell.hidden = false;
@@ -154,6 +158,7 @@ window.addEventListener('coded:onfoot-defeat', () => {
 
 returnMap.addEventListener('click', () => {
   onFoot.hide();
+  space.hide();
   canvas.style.visibility = 'visible';
   game.suspend();
   gameShell.hidden = true;
@@ -180,9 +185,25 @@ void game.start().then(() => {
     return;
   }
 
+  // Dedicated playtest route for the space flight segment, the same shape as
+  // ?onfoot. It is deliberately NOT wired into the mission flow yet: the
+  // segment announces coded:space-complete / coded:space-defeat, and hooking
+  // those into the campaign is a separate, reviewable change.
+  if (params.has('space')) {
+    map.hide();
+    game.suspend();
+    onFoot.hide();
+    gameShell.hidden = false;
+    canvas.style.visibility = 'hidden';
+    // ?boss opens on the boss instead of flying the whole lane to reach it.
+    void space.show(undefined, params.has('boss'));
+    return;
+  }
+
   if (!params.has('onfoot')) return;
   map.hide();
   game.suspend();
+  space.hide();
   gameShell.hidden = false;
   canvas.style.visibility = 'hidden';
   // Honours the saved room like every other way in, and ?room= overrides it
