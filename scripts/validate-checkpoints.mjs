@@ -52,9 +52,21 @@ check(/room: this\.roomIndex \+ 1/.test(advance), 'the room event should report 
 
 check(/coded:onfoot-room/.test(main), 'nothing listens for the room event');
 check(/interiorRoom: room/.test(main), 'the room must be written into the stored checkpoint');
+// Boarding no longer opens the interior at all: flying into the portal hands
+// you the captured warship's cockpit and the transit level begins. The room
+// checkpoint machinery is kept and still honoured by the ?onfoot route, which
+// is the only way in now -- so the resume is still pinned, just where it lives.
 check(
-  /onFoot\.show\(savedInteriorRoom\(\)\)/.test(main),
-  'boarding should resume at the saved room, not always the docking bay',
+  /savedInteriorRoom\(\)/.test(main),
+  'the saved interior room must still be honoured wherever the interior is entered',
+);
+check(
+  /void space\.show\(\);/.test(main.slice(main.indexOf("'coded:boarding-complete'"), main.indexOf("'coded:space-complete'"))),
+  'flying into the portal must hand off to the transit cockpit',
+);
+check(
+  !/onFoot\.show\(/.test(main.slice(main.indexOf("'coded:boarding-complete'"), main.indexOf("'coded:space-complete'"))),
+  'boarding must not open the on-foot interior any more',
 );
 
 // Resuming has to be bounded to real rooms even if a save says otherwise.
