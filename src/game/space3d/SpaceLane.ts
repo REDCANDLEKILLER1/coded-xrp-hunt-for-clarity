@@ -107,9 +107,19 @@ export const LEDGER_TRANSIT: SpaceLeg = {
     { enemyKey: 'fog_raider', count: 6, pattern: 'joust', hp: 3, speed: 210, standoff: 420, fireInterval: 1.9, delay: 18, entryRange: 2000, score: 70 },
   ],
   boss: {
-    spriteKey: 'clarity_destroyer_phase3',
-    label: 'ORBITAL INTERDICTOR',
-    hp: 46,
+    spriteKey: 'cyber_battleship',
+    label: 'GUARDIAN PROTOCOL',
+    /**
+     * Health, sized against the guns rather than guessed.
+     *
+     * The first number was 46, and holding the trigger on it killed it in nine
+     * seconds -- the same way the top-down boss died in three. The guns fire
+     * two rounds every 0.17s, so perfect aim is 11.8 hits/s; at the 0.85x the
+     * guard averages, that is 10 points a second. A capital ship has to stand
+     * up to about half a minute of PERFECT shooting, which with manoeuvring
+     * and escorts is a real fight rather than a speed bump.
+     */
+    hp: 300,
     size: 320,
     standoff: 780,
     speed: 95,
@@ -128,7 +138,7 @@ export const LEDGER_TRANSIT: SpaceLeg = {
   },
 };
 
-/** Rough flight time before the interdictor, at the authored delays. */
+/** Rough flight time before the Guardian, at the authored delays. */
 export function legRunSeconds(leg: SpaceLeg): number {
   return leg.squadrons.reduce((total, squadron) => total + squadron.delay, 0);
 }

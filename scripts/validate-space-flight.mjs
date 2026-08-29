@@ -232,14 +232,28 @@ const guardShare = attacks.reduce((t, [w]) => t + w, 0) / cycle;
 const average = guardShare * armoured + (1 - guardShare) * exposed;
 check(average < 1, `the guard is up ${Math.round(guardShare * 100)}% of the cycle but averages ${average.toFixed(2)}x damage — that is not armour`);
 
+// Time to kill, computed rather than felt. The first pass gave the Guardian 46
+// health and it died in nine seconds of holding the trigger -- the same
+// mistake, in the same shape, as the top-down boss dying in three.
+const shotInterval = Number(game.match(/const SHOT_INTERVAL = ([\d.]+);/)?.[1]);
+const bossHp = Number(leg.match(/hp: (\d+),\n\s+\/\*\*[\s\S]*?size:|hp: (\d+),\s*\n\s*size:/)?.[1] ?? 0)
+  || Number(leg.slice(leg.indexOf('boss: {')).match(/hp: (\d+)/)?.[1]);
+check(shotInterval > 0, 'could not read the fire interval');
+check(bossHp > 0, 'could not read the boss health');
+// Two barrels per volley, every hit landing: the best any player can do.
+const perfectDps = (2 / shotInterval) * average;
+const ttk = bossHp / perfectDps;
+check(ttk >= 25, `the boss dies in ${ttk.toFixed(0)}s of PERFECT shooting — a level boss must outlast a held trigger`);
+check(ttk <= 45, `the boss takes ${ttk.toFixed(0)}s of perfect shooting — past this it is a sponge, not a fight`);
+
 // ---- music ----------------------------------------------------------------
 const audio = JSON.parse(readFileSync('public/assets/audio/manifest.json', 'utf8'));
 check(Boolean(audio.tracks?.transit), 'the transit needs its own track');
 check(audio.cues?.transit === 'transit', 'the transit cue must map to the transit track');
-check(Boolean(audio.tracks?.guardian_protocol), 'the interdictor needs its own track');
+check(Boolean(audio.tracks?.guardian_protocol), 'the transit boss needs its own track');
 check(audio.cues?.transit_boss === 'guardian_protocol', 'the boss cue must map to Guardian Protocol');
 check(/cueMusic\('transit'\)/.test(game), 'the transit must cue its music on entry');
-check(/cueMusic\('transit_boss'\)/.test(game), 'the interdictor must cue its own track');
+check(/cueMusic\('transit_boss'\)/.test(game), 'the transit boss must cue its own track');
 // Every cue the segment fires has to exist, or the music silently stops.
 for (const match of game.matchAll(/cueMusic\('([a-z0-9_]+)'\)/g)) {
   check(match[1] in audio.cues, `the segment fires music cue "${match[1]}" but the audio manifest does not map it`);
@@ -257,5 +271,5 @@ if (failures.length > 0) {
 }
 console.log(
   `space-flight: OK — 360 flight verified (behind, turned, rolled, pitched), radar bearings exact, `
-  + `${enemyKeys.length} squadrons + interdictor, guard averages ${average.toFixed(2)}x, canopy over the scene.`,
+  + `${enemyKeys.length} squadrons + Guardian Protocol, guard averages ${average.toFixed(2)}x, canopy over the scene.`,
 );
