@@ -2759,36 +2759,60 @@ export class Game2A {
     this.ctx.restore();
   }
 
+  /**
+   * Draws a pickup, and -- more importantly -- draws WHICH pickup it is.
+   *
+   * The four pickup sprites are all a green glyph inside the same blue ring.
+   * Side by side at full size they are clearly different; in flight at 22px on
+   * a phone they are the same object, so whatever you got felt like the wrong
+   * thing was wired up. The art is unchanged; each drop now carries its own
+   * coloured aura and a stamped tag, which is what actually gets read at speed.
+   */
   private drawPickup(pickup: PickupActor): void {
     const def = this.pickupDef(pickup.pickupKey);
-    if (this.drawCentered(def.sprite, pickup.x, pickup.y, def.draw.w, def.draw.h)) return;
+    if (!def) return;
+    const pulse = 0.72 + 0.28 * Math.sin(this.clock * 6 + pickup.x * 0.05);
+    const radius = Math.max(def.draw.w, def.draw.h) * 0.62;
+
     this.ctx.save();
     this.ctx.translate(pickup.x, pickup.y);
-    this.ctx.rotate(this.clock * 2.4);
-    const pickupColor = def.effect === 'bomb' ? '#ffd24a' : def.effect === 'repair' ? '#36a3ff' : '#00ff00';
-    this.ctx.fillStyle = def.effect === 'bomb' ? 'rgba(255,210,74,0.2)' : def.effect === 'repair' ? 'rgba(54,163,255,0.2)' : 'rgba(0,255,0,0.18)';
-    this.ctx.strokeStyle = pickupColor;
-    this.ctx.lineWidth = 2;
+    this.ctx.globalAlpha = 0.9 * pulse;
+    this.ctx.strokeStyle = def.tint;
+    this.ctx.lineWidth = 2.4;
     this.ctx.beginPath();
-    if (def.effect === 'bomb' || def.effect === 'repair') {
-      this.ctx.arc(0, 0, 13, 0, Math.PI * 2);
-    } else {
-      this.ctx.moveTo(0, -14);
-      this.ctx.lineTo(14, 0);
-      this.ctx.lineTo(0, 14);
-      this.ctx.lineTo(-14, 0);
-    }
-    this.ctx.closePath();
-    this.ctx.fill();
+    this.ctx.arc(0, 0, radius, 0, Math.PI * 2);
     this.ctx.stroke();
-    if (def.effect === 'bomb' || def.effect === 'repair') {
+    this.ctx.globalAlpha = 0.16 * pulse;
+    this.ctx.fillStyle = def.tint;
+    this.ctx.fill();
+    this.ctx.restore();
+
+    const drawn = this.drawCentered(def.sprite, pickup.x, pickup.y, def.draw.w, def.draw.h);
+
+    this.ctx.save();
+    this.ctx.translate(pickup.x, pickup.y);
+    if (!drawn) {
+      // Sprite missing: the aura alone is not a shape, so keep a glyph.
+      this.ctx.rotate(this.clock * 2.4);
+      this.ctx.strokeStyle = def.tint;
+      this.ctx.lineWidth = 2;
       this.ctx.beginPath();
-      this.ctx.moveTo(-6, 0);
-      this.ctx.lineTo(6, 0);
-      this.ctx.moveTo(0, -6);
-      this.ctx.lineTo(0, 6);
+      this.ctx.moveTo(0, -radius * 0.6);
+      this.ctx.lineTo(radius * 0.6, 0);
+      this.ctx.lineTo(0, radius * 0.6);
+      this.ctx.lineTo(-radius * 0.6, 0);
+      this.ctx.closePath();
       this.ctx.stroke();
+      this.ctx.rotate(-this.clock * 2.4);
     }
+    this.ctx.font = '700 7px "Courier New", monospace';
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    this.ctx.strokeText(def.tag, 0, radius + 8);
+    this.ctx.fillStyle = def.tint;
+    this.ctx.fillText(def.tag, 0, radius + 8);
     this.ctx.restore();
   }
 
@@ -3509,7 +3533,9 @@ export class Game2A {
 
     if (this.kills % SHIELD_PICKUP_EVERY_KILLS === 0) this.dropPickup(PICKUPS.shield_cell, drone.x, drone.y);
 
-    if (this.kills % UPGRADE_EVERY_KILLS === 0 && this.barrels < MAX_BARRELS) {
+    // The crate hands out a choice now, so it is worth dropping for as long as
+    // ANY track can still grow -- not only while barrels are unmaxed.
+    if (this.kills % UPGRADE_EVERY_KILLS === 0 && !this.allUpgradesMaxed()) {
       this.dropPickup(PICKUPS.weapon_upgrade, drone.x, drone.y);
     }
 
@@ -3731,23 +3757,52 @@ export class Game2A {
     return offer.map((kind, index) => ({ kind, rect: { x: startX + index * (w + gap), y, w, h } }));
   }
 
+  /**
+   * Collecting a pickup.
+   *
+   * Two rules hold here, and both exist because players reported "the power-up
+   * did the wrong thing":
+   *
+   * 1. NOTHING in the field changes the gun on its own. The upgrade crate used
+   *    to bolt on a barrel where it landed, so a player who had deliberately
+   *    declined barrels at a level-up -- keeping a tight, aimed volley -- had
+   *    the spread forced back on them mid-fight by a crate they grabbed for
+   *    something else. The crate now banks an upgrade CHOICE. Every barrel the
+   *    player carries is one they picked.
+   * 2. Every pickup names itself on the banner. When four drops look alike, a
+   *    silent effect is indistinguishable from a broken one.
+   */
   private applyPickup(key: string): void {
     const def = this.pickupDef(key);
+    if (!def) return;
     sfx.play('pickup');
-    if (def.effect === 'weapon_upgrade') {
-      this.barrels = Math.min(MAX_BARRELS, this.barrels + 1);
-      this.missionBannerText = `+1 BARREL // ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`;
-      this.missionBannerClock = 2.2;
+    let banner = def.label;
+    switch (def.effect) {
+      case 'weapon_upgrade':
+        this.pendingUpgrades += 1;
+        banner = 'UPGRADE CRATE // CHOOSE';
+        break;
+      case 'bomb':
+        this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
+        banner = `CLARITY BOMB // ${this.bombs}/${this.maxBombs()}`;
+        break;
+      case 'repair':
+        this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
+        banner = `HULL REPAIR // ${this.player.hp}/${this.playerDef().hp}`;
+        break;
+      case 'shield':
+        // A cell found in the field refills the bank, and raises the ceiling
+        // when the bank is already full -- so shields can grow from play and
+        // not only from levelling. A hull with no shield gets its first segment.
+        if (this.shield >= this.shieldMax) this.shieldMax = Math.min(SHIELD_CAP, this.shieldMax + 1);
+        this.shield = this.shieldMax;
+        banner = `SHIELD CELL // ${this.shield}/${this.shieldMax}`;
+        break;
     }
-    if (def.effect === 'bomb') this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
-    if (def.effect === 'repair') this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
-    if (def.effect === 'shield') {
-      // A cell found in the field refills the bank, and raises the ceiling when
-      // the bank is already full -- so shields can grow from play and not only
-      // from levelling. A hull with no shield at all gets its first segment.
-      if (this.shield >= this.shieldMax) this.shieldMax = Math.min(SHIELD_CAP, this.shieldMax + 1);
-      this.shield = this.shieldMax;
-    }
+    this.missionBannerText = banner;
+    this.missionBannerClock = 2.2;
+    debugLog.log('combat', 'pickup', { key, effect: def.effect, barrels: this.barrels });
+    if (this.pendingUpgrades > 0 && this.upgradeOffer.length === 0) this.openUpgradeChoice();
   }
 
   private spawnDebris(x: number, y: number): void {
@@ -4079,8 +4134,16 @@ export class Game2A {
     return PROJECTILES[key] ?? PROJECTILES.bb_shot;
   }
 
-  private pickupDef(key: string): PickupDef {
-    return PICKUPS[key] ?? PICKUPS.weapon_upgrade;
+  /**
+   * No fallback. This used to return PICKUPS.weapon_upgrade for any key it did
+   * not recognise, which meant a typo or a stale save turned some other drop
+   * into a free barrel -- the gun changing on a pickup that was never a gun
+   * pickup. An unknown key is now nothing at all, loudly, in the debug log.
+   */
+  private pickupDef(key: string): PickupDef | null {
+    const def = PICKUPS[key];
+    if (!def) debugLog.log('combat', 'unknown pickup key', { key });
+    return def ?? null;
   }
 
   private currentStage(): StageDef {

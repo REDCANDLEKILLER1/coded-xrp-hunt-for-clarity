@@ -130,8 +130,15 @@ for (const ship of hulls) {
   check(previous === ladder.length, `ships.${ship.key}: never reaches the top of the ladder`);
 }
 
-// ---- pickups add barrels, they do not climb the ladder --------------------
-check(/this\.barrels = Math\.min\(MAX_BARRELS, this\.barrels \+ 1\)/.test(game), 'weapon pickups must add a barrel');
+// ---- barrels come from the level-up choice, not from the field -----------
+// This used to assert the opposite: that a weapon pickup adds a barrel. It
+// did, and that was the bug -- a crate grabbed mid-fight forced the spread
+// back onto a player who had deliberately declined it. Barrels are now a card
+// you pick, and validate-pickup-wiring.mjs holds the field side of the line.
+check(
+  /case 'barrel':\s*\n\s*this\.barrels = Math\.min\(MAX_BARRELS, this\.barrels \+ 1\)/.test(game),
+  'the barrel upgrade card must add a barrel',
+);
 check(/private currentVolley\(\)/.test(game), 'barrels must actually widen the volley');
 // The ceiling is now checked for a whole barrel PAIR, not one shot at a time.
 // The old form let a volley end mid-pair, which is how a four-beam gun ended
@@ -243,4 +250,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log(`xp-upgrades: OK — ${hulls.length} distinct hulls, ${ladder.length} guns granted by level, barrels from drops, 3 upgrade cards.`);
+console.log(`xp-upgrades: OK — ${hulls.length} distinct hulls, ${ladder.length} guns granted by level, barrels from the level-up card, 3 upgrade cards.`);

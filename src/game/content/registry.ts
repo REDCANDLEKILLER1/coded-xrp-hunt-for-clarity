@@ -280,15 +280,19 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 17, h: 17 },
     driftSpeed: 88,
     effect: 'shield',
+    tint: '#36a3ff',
+    tag: 'SHLD',
   },
   weapon_upgrade: {
     key: 'weapon_upgrade',
-    label: 'WEAPON UP',
+    label: 'UPGRADE CRATE',
     sprite: { category: 'pickups', id: 'weapon_upgrade' },
     draw: { w: 22, h: 22 },
     hitbox: { w: 17, h: 17 },
     driftSpeed: 92,
     effect: 'weapon_upgrade',
+    tint: '#00ff6a',
+    tag: 'UP',
   },
   bomb: {
     key: 'bomb',
@@ -298,6 +302,8 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 18, h: 18 },
     driftSpeed: 84,
     effect: 'bomb',
+    tint: '#ffb020',
+    tag: 'BOMB',
   },
   repair: {
     key: 'repair',
@@ -307,6 +313,8 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 17, h: 17 },
     driftSpeed: 88,
     effect: 'repair',
+    tint: '#ff4d7a',
+    tag: 'HULL',
   },
 };
 
@@ -635,7 +643,14 @@ export function validateContent(): string[] {
     checkSize(`pickups.${key}.hitbox`, def.hitbox);
     if (!(def.driftSpeed > 0)) errors.push(`pickups.${key}: driftSpeed must be > 0`);
     if (!['weapon_upgrade', 'bomb', 'repair', 'shield'].includes(def.effect)) errors.push(`pickups.${key}: unknown effect "${def.effect}"`);
+    if (!/^#[0-9a-f]{6}$/i.test(def.tint)) errors.push(`pickups.${key}: tint must be a #rrggbb colour`);
+    if (!/^[A-Z]{2,4}$/.test(def.tag)) errors.push(`pickups.${key}: tag must be 2-4 upper-case letters`);
   }
+  // Two pickups that read the same are the bug this data exists to prevent.
+  const pickupTints = Object.values(PICKUPS).map((def) => def.tint.toLowerCase());
+  const pickupTags = Object.values(PICKUPS).map((def) => def.tag);
+  if (new Set(pickupTints).size !== pickupTints.length) errors.push('pickups: every tint must be unique');
+  if (new Set(pickupTags).size !== pickupTags.length) errors.push('pickups: every tag must be unique');
 
   const stageWaves = Object.values(STAGES).map((stage) => stage.minWave).sort((a, b) => a - b);
   for (const [key, def] of Object.entries(STAGES)) {
