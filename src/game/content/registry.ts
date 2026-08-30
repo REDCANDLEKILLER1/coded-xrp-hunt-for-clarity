@@ -203,7 +203,41 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
   },
 };
 
+/**
+ * The player's weapon ladder.
+ *
+ * Eight rungs in two families: four BB guns that add beams, then a visible
+ * switch to four pulse guns that fire the heavier `clarity_beam` round. The
+ * projectile art changes at rung 5, so the family switch is something you SEE
+ * rather than something the label claims.
+ *
+ * THE LADDER MUST CLIMB, AND IT DID NOT.
+ *
+ * Measured on the five-rung ladder this replaces, single-target dps (a boss,
+ * where pierce buys nothing) went 7.1 -> 15.4 -> 18.8 -> 33.3 -> 11.5. The TOP
+ * rung was the third-WEAKEST gun: reaching it with no bolt-on barrels was a
+ * 2.89x loss, handed to the player automatically at XP level 12, with no way
+ * to decline it. At three barrels the order was close to reversed -- plain BB
+ * SHOT (50.0) beat both TWIN BEAM (46.2) and TRI-BEAM (43.8). A playtester
+ * reporting "trying to figure out the guns" was describing the arithmetic.
+ *
+ * So every rung here is checked against the one below it at EVERY barrel count
+ * the player can reach, not just at zero. `scripts/validate-xp-upgrades.mjs`
+ * fails the build if any rung is not a strict improvement on its predecessor.
+ *
+ * NOTHING FANS. An angle becomes width over distance: the old TRI-SPREAD fired
+ * at +/-0.18rad, which on a 411x790 portrait screen put its three shots 302px
+ * apart -- 73% of the whole width -- by the time they reached the top, so two
+ * thirds of the gun's damage went into empty space. Every rung fires parallel
+ * columns, and so does every bolt-on barrel. The volley that leaves the muzzle
+ * is the volley that arrives, at every range.
+ *
+ * Damage climbs through beam count, damage per beam and cadence together
+ * rather than through beam count alone, which is what keeps the curve
+ * monotonic once MAX_VOLLEY starts clamping wide guns.
+ */
 export const WEAPONS: Record<string, WeaponDef> = {
+  // ---- family 1: BB. Light, fast, one damage a beam. ----------------------
   tier_1_bb: {
     key: 'tier_1_bb',
     label: 'BB SHOT',
@@ -212,56 +246,43 @@ export const WEAPONS: Record<string, WeaponDef> = {
     fireRate: 0.14,
     damage: 1,
     shots: [{ offsetX: 0, angle: 0 }],
+    icon: { category: 'weapons', id: 'bb_shot' },
   },
   tier_2_twin: {
     key: 'tier_2_twin',
     label: 'TWIN BEAM',
     tier: 2,
     projectileKey: 'bb_shot',
-    fireRate: 0.13,
+    fireRate: 0.15,
     damage: 1,
     shots: [
       { offsetX: -9, angle: 0 },
       { offsetX: 9, angle: 0 },
     ],
+    icon: { category: 'weapons', id: 'bb_repeater' },
   },
-  // NOTHING IN THE LADDER FANS.
-  //
-  // This rung used to be TRI-SPREAD, firing at +/-0.18rad. An angle becomes
-  // width over distance, and measured across a portrait playfield (411x790)
-  // its three shots were 302px apart by the top of the screen -- 73% of the
-  // whole width. Only the middle beam could ever be on the thing you were
-  // aiming at, so two thirds of the gun's damage went into empty space and
-  // "the enemies at the top don't even get hurt" was a literal description of
-  // the geometry. Worse, the ladder GRANTS this gun automatically at XP level
-  // 3: the player did not choose the spread and cannot decline it.
-  //
-  // Every rung now fires parallel columns. The ladder still hands out
-  // different guns -- it varies beam COUNT, rate, damage and pierce, which is
-  // variety you can aim -- but the volley you fire is always the volley that
-  // arrives, at every range.
   tier_3_tri: {
     key: 'tier_3_tri',
     label: 'TRI-BEAM',
     tier: 3,
     projectileKey: 'bb_shot',
-    fireRate: 0.16,
+    fireRate: 0.165,
     damage: 1,
     shots: [
       { offsetX: -11, angle: 0 },
       { offsetX: 0, angle: 0 },
       { offsetX: 11, angle: 0 },
     ],
+    icon: { category: 'weapons', id: 'tri_beam' },
   },
-  // The ladder is meant to hand out different guns, not the same gun with a
-  // bigger number, so the top two rungs change how you have to aim: four
-  // columns that bracket a target, then one heavy bolt that must be aimed.
+  // The pack ships this rung's art as "wide_spread". The gun is four PARALLEL
+  // columns -- the name is the illustration's, not the geometry's.
   tier_4_quad: {
     key: 'tier_4_quad',
     label: 'QUAD BEAM',
     tier: 4,
     projectileKey: 'bb_shot',
-    fireRate: 0.12,
+    fireRate: 0.175,
     damage: 1,
     shots: [
       { offsetX: -17, angle: 0 },
@@ -269,18 +290,79 @@ export const WEAPONS: Record<string, WeaponDef> = {
       { offsetX: 6, angle: 0 },
       { offsetX: 17, angle: 0 },
     ],
+    icon: { category: 'weapons', id: 'quad_beam' },
   },
-  // One heavy bolt that punches through a whole column. Slow enough that
-  // missing hurts, which keeps it a trade rather than a straight upgrade.
-  tier_5_lance: {
-    key: 'tier_5_lance',
-    label: 'CLARITY LANCE',
+
+  // ---- family 2: pulse. Fewer, heavier rounds on a slower cadence. --------
+  //
+  // The switch is deliberately visible: a different projectile, two damage a
+  // beam, and a cadence you can hear. Every one of these is still a strict dps
+  // improvement on the rung below at every barrel count -- the slower cadence
+  // is paid for by the damage, not charged to the player.
+  tier_5_pulse: {
+    key: 'tier_5_pulse',
+    label: 'PULSE WAVE',
     tier: 5,
     projectileKey: 'clarity_beam',
-    fireRate: 0.26,
+    fireRate: 0.22,
+    damage: 2,
+    shots: [
+      { offsetX: -11, angle: 0 },
+      { offsetX: 0, angle: 0 },
+      { offsetX: 11, angle: 0 },
+    ],
+    icon: { category: 'weapons', id: 'pulse_wave' },
+  },
+  tier_6_surge: {
+    key: 'tier_6_surge',
+    label: 'PULSE SURGE',
+    tier: 6,
+    projectileKey: 'clarity_beam',
+    fireRate: 0.24,
+    damage: 2,
+    shots: [
+      { offsetX: -17, angle: 0 },
+      { offsetX: -6, angle: 0 },
+      { offsetX: 6, angle: 0 },
+      { offsetX: 17, angle: 0 },
+    ],
+    icon: { category: 'weapons', id: 'pulse_wave' },
+  },
+  tier_7_storm: {
+    key: 'tier_7_storm',
+    label: 'LEDGER STORM',
+    tier: 7,
+    projectileKey: 'clarity_beam',
+    fireRate: 0.25,
+    damage: 2,
+    shots: [
+      { offsetX: -22, angle: 0 },
+      { offsetX: -11, angle: 0 },
+      { offsetX: 0, angle: 0 },
+      { offsetX: 11, angle: 0 },
+      { offsetX: 22, angle: 0 },
+    ],
+    icon: { category: 'weapons', id: 'ledger_storm' },
+  },
+  // The capstone keeps its name and keeps the pierce that was its identity --
+  // punching a whole column rather than the first thing it touches. What it
+  // does NOT keep is being weaker than the rung below it.
+  tier_8_lance: {
+    key: 'tier_8_lance',
+    label: 'CLARITY LANCE',
+    tier: 8,
+    projectileKey: 'clarity_beam',
+    fireRate: 0.29,
     damage: 3,
-    pierce: 3,
-    shots: [{ offsetX: 0, angle: 0 }],
+    pierce: 2,
+    shots: [
+      { offsetX: -22, angle: 0 },
+      { offsetX: -11, angle: 0 },
+      { offsetX: 0, angle: 0 },
+      { offsetX: 11, angle: 0 },
+      { offsetX: 22, angle: 0 },
+    ],
+    icon: { category: 'weapons', id: 'hyper_pulse' },
   },
 };
 

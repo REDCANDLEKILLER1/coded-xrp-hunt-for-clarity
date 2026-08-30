@@ -11,7 +11,7 @@
 // canvas pixels.
 
 import { build } from 'esbuild';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const failures = [];
 const check = (ok, message) => { if (!ok) failures.push(message); };
@@ -202,17 +202,129 @@ for (const encounter of Object.values(EARTH_FLIGHT_ENCOUNTERS)) {
 }
 check(levelXp > 0, 'could not price the level in XP — the scraper is broken');
 
+// The capstone is the LAST threshold, found by position in the ladder rather
+// than by a hard-coded index. This assertion used to read `tierLevels[3]`,
+// which was the top rung of a five-rung ladder and is the middle of an
+// eight-rung one: extending the ladder silently pointed the "is the best gun a
+// long-term goal" check at a gun that is not the best gun, and it went on
+// passing. Indexing from the end cannot drift as rungs are added.
 const quadLevel = tierLevels[2];
-const lanceLevel = tierLevels[3];
+const capstoneLevel = tierLevels[tierLevels.length - 1];
+check(tierLevels.length === ladder.length - 1,
+  `${ladder.length} rungs need ${ladder.length - 1} thresholds, found ${tierLevels.length} — some rung is unreachable`);
 const quadAt = cumulative(quadLevel) / levelXp;
-const lanceAt = cumulative(lanceLevel) / levelXp;
+const lanceAt = cumulative(capstoneLevel) / levelXp;
+const capstone = ladder[ladder.length - 1];
 
 // "it's supposed to take longer ... less like a video arcade game and more like
-// a long-term RPG". The fourth gun must be past the halfway mark and the fifth
-// must be a genuine end-of-level goal.
-check(quadAt > 0.45, `QUAD BEAM arrives ${(quadAt * 100).toFixed(0)}% into the level — still arcade pacing`);
-check(lanceAt > 0.8, `CLARITY LANCE arrives ${(lanceAt * 100).toFixed(0)}% into the level — not a long-term goal`);
-check(lanceAt <= 1.2, `CLARITY LANCE needs ${(lanceAt * 100).toFixed(0)}% of the level's XP — unreachable`);
+// a long-term RPG". The fourth gun must be past the halfway mark and the top
+// one must be a genuine end-of-level goal.
+check(quadAt > 0.45, `${ladder[3].label} arrives ${(quadAt * 100).toFixed(0)}% into the level — still arcade pacing`);
+check(lanceAt > 0.8, `${capstone.label} arrives ${(lanceAt * 100).toFixed(0)}% into the level — not a long-term goal`);
+check(lanceAt <= 1.2, `${capstone.label} needs ${(lanceAt * 100).toFixed(0)}% of the level's XP — unreachable`);
+
+// ---- THE LADDER HAS TO CLIMB ---------------------------------------------
+//
+// The check that was missing, and the reason a shipped ladder ran
+// 7.1 -> 15.4 -> 18.8 -> 33.3 -> 11.5: the TOP rung was the third weakest gun.
+// Reaching it with no bolt-on barrels was a 2.89x dps LOSS, granted
+// automatically and impossible to decline.
+//
+// Every rung is compared with the one below it at EVERY barrel count a player
+// can actually reach, not just at zero. Comparing only the bare guns is how
+// the old ladder passed while being close to reversed at three barrels, where
+// plain BB SHOT (50.0) beat both TWIN BEAM (46.2) and TRI-BEAM (43.8).
+//
+// Single-target dps deliberately ignores pierce. Pierce is a bonus against a
+// column; a rung that is only ahead when several enemies line up is not ahead.
+{
+  const maxVolley = num('MAX_VOLLEY');
+  const maxBarrels = num('MAX_BARRELS');
+  check(Number.isFinite(maxVolley) && Number.isFinite(maxBarrels), 'MAX_VOLLEY / MAX_BARRELS are missing');
+
+  // Mirrors Game2A.currentVolley(): barrels go on in PAIRS or not at all.
+  const volley = (w, barrels) => {
+    let n = w.shots.length;
+    for (let pair = 1; pair <= barrels; pair += 1) { if (n + 2 > maxVolley) break; n += 2; }
+    return n;
+  };
+  const dps = (w, barrels) => (volley(w, barrels) * w.damage) / w.fireRate;
+
+  for (let barrels = 0; barrels <= maxBarrels; barrels += 1) {
+    for (let i = 1; i < ladder.length; i += 1) {
+      const prev = dps(ladder[i - 1], barrels);
+      const next = dps(ladder[i], barrels);
+      check(next > prev,
+        `at ${barrels} barrels ${ladder[i].label} does ${next.toFixed(1)} dps against `
+        + `${ladder[i - 1].label}'s ${prev.toFixed(1)} — climbing the ladder must never be a downgrade`);
+    }
+  }
+
+  // A barrel the player earns must do something. MAX_VOLLEY used to be 7, and
+  // because barrels come in pairs an even-base gun stalled one short: QUAD
+  // BEAM went 4 -> 6 -> 6 -> 6, so its 2nd AND 3rd barrels were swallowed
+  // while the HUD went on printing "+3".
+  for (const w of ladder) {
+    for (let barrels = 1; barrels <= maxBarrels; barrels += 1) {
+      check(volley(w, barrels) > volley(w, barrels - 1),
+        `${w.label} gains nothing from barrel ${barrels} (volley stays at ${volley(w, barrels)}) `
+        + `— MAX_VOLLEY ${maxVolley} is too low for a base of ${w.shots.length}`);
+    }
+  }
+
+  const climb = dps(ladder[ladder.length - 1], 0) / dps(ladder[0], 0);
+  check(climb > 3, `the whole ladder is only a ${climb.toFixed(2)}x climb — it has to feel like progress`);
+  check(climb < 12, `the ladder climbs ${climb.toFixed(2)}x — past this the last rungs have nothing left to beat`);
+  console.log(`  ladder climbs ${climb.toFixed(2)}x over ${ladder.length} rungs, monotonic at 0-${maxBarrels} barrels`);
+}
+
+// ---- the NEW WEAPON banner cannot show the wrong gun ----------------------
+//
+// `missionBannerText` is assigned from twenty places. If the banner's weapon
+// were merely stored and cleared, any one of those sites that forgot to clear
+// it would leave a gun's art beside an unrelated message. It is derived
+// instead -- the badge only draws while the text still names that weapon --
+// so this pins the derivation rather than trusting twenty call sites.
+{
+  // Comments are stripped first. Four checks in this repo have matched prose
+  // instead of code, in both directions, and this one greps for a string that
+  // its own explanation contains.
+  const code = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  check(/private bannerWeapon\(\)/.test(code), 'the banner badge must be derived, not stored and cleared');
+  check(
+    /this\.missionBannerText === `NEW WEAPON \/\/ \$\{weapon\.label\}`/.test(code),
+    'bannerWeapon must confirm the banner still names that gun, or a later banner inherits its art',
+  );
+  check(
+    !/this\.missionBannerWeapon = null/.test(code),
+    'clearing missionBannerWeapon by hand reintroduces the twenty-call-site problem the derivation removes',
+  );
+}
+
+// ---- every rung's art exists, and no committed image is an orphan ---------
+//
+// The manifest is the source of truth, so a rung pointing at a missing entry
+// and a file nobody points at are the same class of bug seen from either end.
+{
+  const manifest = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));
+  const group = manifest.weapons ?? {};
+  const referenced = new Set();
+  for (const w of ladder) {
+    check(!!w.icon, `${w.label} has no card art`);
+    check(w.icon?.category === 'weapons', `${w.label} draws its badge from "${w.icon?.category}", not the weapons group`);
+    check(!!group[w.icon?.id], `${w.label} points at weapons."${w.icon?.id}", which the manifest does not define`);
+    referenced.add(w.icon?.id);
+  }
+  for (const id of Object.keys(group)) {
+    check(referenced.has(id), `weapons."${id}" is in the manifest but no rung uses it — orphan`);
+    const src = group[id].src.replace(/^\//, '');
+    check(existsSync(`public/${src}`), `weapons."${id}" points at ${src}, which is not on disk`);
+  }
+  for (const file of readdirSync('public/assets/weapons').filter((f) => !f.startsWith('.'))) {
+    const used = Object.values(group).some((e) => e.src.endsWith(`/${file}`));
+    check(used, `public/assets/weapons/${file} is committed but no manifest entry points at it — orphan`);
+  }
+}
 check(cumulative(2) >= 120, `level 2 costs ${cumulative(2)} XP — too cheap for RPG pacing`);
 console.log(`  level pays ~${Math.round(levelXp)} XP • QUAD at ${(quadAt * 100).toFixed(0)}% • LANCE at ${(lanceAt * 100).toFixed(0)}%`);
 // A choice made under fire is a reflex test, not a choice.

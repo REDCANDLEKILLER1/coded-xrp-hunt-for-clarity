@@ -105,6 +105,15 @@ export interface WeaponDef {
   shots: WeaponShotDef[];
   /** Extra targets a single bolt punches through before it dies. */
   pierce?: number;
+  /**
+   * Card art for this rung, shown in the HUD and on the unlock banner.
+   *
+   * Required, not optional: the manifest is the source of truth and every
+   * runtime asset has to be referenced by something, so a rung without art is
+   * either a missing image or an orphaned file. Making it optional is how a
+   * committed file quietly stops being used.
+   */
+  icon: SpriteRef;
 }
 
 export interface PickupDef {

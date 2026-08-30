@@ -224,8 +224,25 @@ const XP_LEVEL_STEP = 150;
  * you, and the gaps are wide on purpose. QUAD BEAM lands two-thirds of the way
  * through the level and CLARITY LANCE only at the very end, so the ladder is a
  * long-term goal rather than a five-minute climb.
+ *
+ * The first three are UNCHANGED at 3, 6 and 9. Level 1's early pacing has been
+ * played and is not what needs fixing, so extending the ladder from five rungs
+ * to eight adds thresholds above the tested ones rather than redistributing
+ * them. Priced against the ~13770 XP Level 1 pays:
+ *
+ *   TWIN BEAM      level  3     7% of the level
+ *   TRI-BEAM       level  6    26%
+ *   QUAD BEAM      level  9    55%   <- unchanged, still past the halfway mark
+ *   PULSE WAVE     level 10    67%   <- the family switch
+ *   PULSE SURGE    level 11    80%
+ *   LEDGER STORM   level 12    94%
+ *   CLARITY LANCE  level 13   109%   <- reached early in Level 2
+ *
+ * The capstone deliberately costs slightly more than one level pays out. It is
+ * the end of an eight-rung ladder; being able to finish it on the first run
+ * would make it the middle of the ladder wearing the last rung's name.
  */
-const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
+const WEAPON_TIER_LEVELS = [3, 6, 9, 10, 11, 12, 13];
 
 // Boss duel.
 //
@@ -241,10 +258,27 @@ const BOSS_TURN = 2.6;
 /** Extra barrels a hull can bolt on, and the ceiling on a single volley. */
 const MAX_BARRELS = 3;
 /**
- * Barrels come in pairs, so this wants to be odd -- at 6 an odd-base gun like
- * BB SHOT or the Lance could only take two of its three barrels.
+ * The ceiling on a single volley, and why it is 11 rather than 7.
+ *
+ * Barrels come in PAIRS and a pair goes on together or not at all, so this cap
+ * silently voided upgrades the player had already earned. Measured on the old
+ * value of 7:
+ *
+ *   BB SHOT     base 1   volley 1 -> 3 -> 5 -> 7
+ *   TWIN BEAM   base 2   volley 2 -> 4 -> 6 -> 6    3rd barrel does NOTHING
+ *   TRI-BEAM    base 3   volley 3 -> 5 -> 7 -> 7    3rd barrel does NOTHING
+ *   QUAD BEAM   base 4   volley 4 -> 6 -> 6 -> 6    2nd AND 3rd do NOTHING
+ *
+ * The HUD still printed "+3". A player collecting their third barrel on QUAD
+ * BEAM got no extra beam, no extra damage, and no indication that the pickup
+ * had been swallowed -- and the same cap is what made the ladder non-monotonic
+ * at high barrel counts, because a wide gun stalled while a narrow one kept
+ * growing.
+ *
+ * 11 is the smallest value at which every rung takes all three barrels: the
+ * widest base in the ladder is 5, and 5 + 2 + 2 + 2 = 11.
  */
-const MAX_VOLLEY = 7;
+const MAX_VOLLEY = 11;
 /**
  * How long a freshly-opened upgrade overlay ignores taps.
  *
@@ -289,8 +323,12 @@ const ALL_MAXED_SCORE = 250;
  * Measured across the weapon ladder, sustained player damage spans about 11x:
  *
  *   BB SHOT, no barrels        7.1 dps
- *   QUAD BEAM, no barrels     33.3 dps
- *   CLARITY LANCE, 3 barrels  80.8 dps
+ *   QUAD BEAM, no barrels     22.9 dps
+ *   CLARITY LANCE, 3 barrels 113.8 dps
+ *
+ * (Re-measured for the eight-rung ladder. The old five-rung numbers were 7.1 /
+ * 33.3 / 80.8, and the middle one was higher than the top rung's 11.5 -- which
+ * is the defect the new ladder exists to fix, not a change of scale.)
  *
  * Gary Fog's 120 effective health is 17 seconds of the first and 1.5 seconds
  * of the last. No single number is a fight for both, which is why bosses were
@@ -503,6 +541,8 @@ export class Game2A {
   private playerHitClock = 0;
   private missionBannerClock = 0;
   private missionBannerText = '';
+  /** Set only for a NEW WEAPON banner, so the banner can show the gun's art. */
+  private missionBannerWeapon: WeaponDef | null = null;
   private launchClock = 0;
   private launchTotal = 0;
   private fogGateActive = false;
@@ -3466,9 +3506,16 @@ export class Game2A {
     const detail = mission && missionAct
       ? `${missionAct.label} • ${gun} • ${ship.label}`
       : `WAVE ${this.wave} • ${gun} • ${ship.label}`;
+    // The rung's own art, beside its name. Eight guns whose only difference on
+    // screen was a line of 8px text is how "trying to figure out the guns"
+    // happens; the badge makes the rung something you recognise at a glance.
+    // The text starts clear of it whether or not the image has loaded, so a
+    // missing file costs the badge and never the readout.
+    const badge = this.drawWeaponBadge(weapon, 18, barY + 10, 11);
     this.ctx.font = '600 8px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(216,255,232,0.5)';
-    this.ctx.fillText(fitText(this.ctx, detail, leftWidth), 14, barY + 13);
+    this.ctx.fillText(fitText(this.ctx, detail, leftWidth - 12), 26, barY + 13);
+    void badge;
 
     // The one line that tells the player what to do right now.
     let objective = mission && missionAct ? missionAct.objective : '';
@@ -3559,11 +3606,50 @@ export class Game2A {
     this.ctx.fillRect(x, y, width, height);
     this.ctx.strokeRect(x, y, width, height);
 
+    // A weapon banner carries the new gun's art. It is the one moment the
+    // player is told the ladder moved, so it should show WHAT it moved to.
+    const banner = this.bannerWeapon();
+    const inset = banner ? 16 : 0;
+    if (banner) this.drawWeaponBadge(banner, x + 11, y + height / 2, 14);
+
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '800 9px ui-sans-serif, system-ui';
-    this.ctx.fillText(fitText(this.ctx, this.missionBannerText, width - 12), x + width / 2, y + height / 2 + 3);
+    this.ctx.fillText(
+      fitText(this.ctx, this.missionBannerText, width - 12 - inset),
+      x + inset + (width - inset) / 2,
+      y + height / 2 + 3,
+    );
     this.ctx.restore();
+  }
+
+  /**
+   * A weapon rung's card art, centred on (cx, cy) inside a square of `size`.
+   *
+   * Returns whether the image was actually drawn, so callers can lay out around
+   * a badge that is not there yet -- the sprite cache loads asynchronously, and
+   * a HUD that shifts when an image arrives is worse than one that never had
+   * it. WeaponDef.icon is required rather than optional, so every rung has art
+   * and every file under public/assets/weapons is referenced by a rung.
+   */
+  private drawWeaponBadge(weapon: WeaponDef, cx: number, cy: number, size: number): boolean {
+    return this.drawCentered(weapon.icon, cx, cy, size, size);
+  }
+
+  /**
+   * The gun the CURRENT banner is announcing, or null.
+   *
+   * Derived rather than cleared. `missionBannerText` is assigned from twenty
+   * places -- act changes, boss signals, pickups, the warship -- and any one of
+   * them that forgot to null the weapon would leave a gun's art sitting beside
+   * an unrelated message. Checking that the text still names this weapon makes
+   * every one of those sites correct without touching them, and there is no
+   * ordering left to get wrong.
+   */
+  private bannerWeapon(): WeaponDef | null {
+    const weapon = this.missionBannerWeapon;
+    if (!weapon) return null;
+    return this.missionBannerText === `NEW WEAPON // ${weapon.label}` ? weapon : null;
   }
 
   /**
@@ -4038,6 +4124,7 @@ export class Game2A {
         // rather than offered -- there is no version of this the player declines.
         this.missionBannerText = `NEW WEAPON // ${gunNow.label}`;
         this.missionBannerClock = 3.2;
+        this.missionBannerWeapon = gunNow;
         sfx.play('levelUp');
         debugLog.log('combat', 'weapon granted', { level: this.xpLevel, weapon: gunNow.key, label: gunNow.label });
       }
