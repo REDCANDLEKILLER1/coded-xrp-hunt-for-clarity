@@ -21,6 +21,13 @@ const bundle = await build({
 const { DOCTRINES, doctrineFor, volleyRounds, leadAngle, mayFire } =
   await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 
+const groundBundle = await build({
+  entryPoints: ['src/game/content/GroundDoctrine.ts'],
+  bundle: true, format: 'esm', write: false, logLevel: 'silent',
+});
+const { GROUND_DOCTRINES, groundDoctrineFor, groundRounds, steerSeeker, distanceToRay, BEAM_HALF_WIDTH } =
+  await import(`data:text/javascript;base64,${Buffer.from(groundBundle.outputFiles[0].text).toString('base64')}`);
+
 const game = readFileSync('src/game/core/Game2A.ts', 'utf8');
 // Comments stripped: four checks in this repo have now matched prose instead of
 // code, in both directions.
@@ -204,6 +211,103 @@ check(gameCode.length > game.length * 0.4, 'comment stripping ate the source —
   // Player velocity has to exist for crossing fire to lead anything.
   check(/private playerVx/.test(gameCode) && /private playerVy/.test(gameCode), 'crossing fire needs player velocity');
   check(/this\.playerVx \+=/.test(gameCode), 'player velocity must actually be measured');
+}
+
+// ---- ground emplacements are not all the same turret ----------------------
+//
+// Every firing hazard ran the same three lines: normalise toward the player,
+// push one enemy_missile, damage 1. A "laser tower" and a "missile silo" were
+// the same object with different art.
+{
+  const keys = Object.keys(GROUND_DOCTRINES);
+  check(keys.length >= 5, `only ${keys.length} ground doctrines`);
+  const attacks = new Set(Object.values(GROUND_DOCTRINES).map((d) => d.attack));
+  check(
+    attacks.size === keys.length,
+    `${keys.length} emplacements share only ${attacks.size} attack types — that is the old one-turret problem`,
+  );
+  for (const [key, d] of Object.entries(GROUND_DOCTRINES)) {
+    check(d.key === key, `GROUND_DOCTRINES.${key} carries the wrong key`);
+    check(d.interval > 0 && d.damage >= 1, `${key} needs a positive interval and damage`);
+  }
+  // An emplacement with no doctrine must keep its old plain shot rather than
+  // silently becoming something else.
+  check(groundDoctrineFor('not_a_turret') === null, 'an unknown emplacement must fall back to null, not to another doctrine');
+
+  // Bracketing straddles: the gap must be centred on the player, or it is just
+  // two shots that both miss.
+  const bracket = Object.values(GROUND_DOCTRINES).find((d) => d.attack === 'bracket');
+  check(Boolean(bracket), 'no emplacement brackets');
+  if (bracket) {
+    const r = groundRounds(bracket, Math.PI / 2, 0);
+    check(r.length === 2, 'a bracket needs two shells');
+    check(Math.abs((r[0].angle + r[1].angle) / 2 - Math.PI / 2) < 1e-9, 'bracketing fire must straddle the aim, not lean to one side');
+    check(r[0].angle !== r[1].angle, 'both bracket shells went to the same place');
+  }
+
+  // A curtain denies ground: it must NOT aim at the player, or it is just a
+  // spread shot and the area-denial idea is lost.
+  const curtain = Object.values(GROUND_DOCTRINES).find((d) => d.attack === 'curtain');
+  check(Boolean(curtain), 'no emplacement lays a curtain');
+  if (curtain) {
+    const straight = groundRounds(curtain, Math.PI / 2, 200);
+    const skewed = groundRounds(curtain, 0.3, 200);
+    check(
+      straight.every((r, i) => r.angle === skewed[i].angle),
+      'the curtain changes with the aim — it must deny an area regardless of where the player is',
+    );
+    const spread = Math.max(...straight.map((r) => r.offset)) - Math.min(...straight.map((r) => r.offset));
+    check(spread > 0, 'the curtain must actually span a band');
+  }
+
+  // The seeker turn must be bounded, or it cannot be out-flown.
+  const seeker = Object.values(GROUND_DOCTRINES).find((d) => d.attack === 'seeker');
+  check(Boolean(seeker), 'no emplacement fires a seeker');
+  if (seeker) {
+    check(seeker.turnRate > 0, 'a seeker must be able to turn');
+    check(seeker.turnRate < 6, `a seeker turning at ${seeker.turnRate}rad/s cannot be out-flown`);
+    // Exactly bounded, over several frames.
+    let heading = 0;
+    for (let i = 0; i < 4; i += 1) heading = steerSeeker(heading, Math.PI, seeker.turnRate, 0.1);
+    check(
+      Math.abs(heading - seeker.turnRate * 0.4) < 1e-9,
+      `seeker turned ${heading.toFixed(3)}rad in 0.4s at ${seeker.turnRate}rad/s — the bound is not being applied`,
+    );
+    // Wraps the short way rather than spinning the long way round.
+    check(steerSeeker(3.0, -3.0, 10, 1) > 3.0, 'seeker heading must wrap across PI the short way');
+    // Only the seeker homes. If every round homed, the silo would mean nothing.
+    const homing = Object.values(GROUND_DOCTRINES).filter((d) => d.turnRate > 0);
+    check(homing.length === 1, `${homing.length} emplacements fire homing rounds — that should be the silo's alone`);
+  }
+
+  // A beam is hit-tested against a RAY: behind the tower must be safe.
+  const beam = Object.values(GROUND_DOCTRINES).find((d) => d.attack === 'beam');
+  check(Boolean(beam), 'no emplacement fires a beam');
+  if (beam) {
+    check(beam.beamLife > 0, 'a beam needs a lifetime');
+    check(beam.telegraph > beam.beamLife, 'the beam telegraph must outlast the beam, or there is no time to leave the lane');
+    const origin = { x: 100, y: 100 };
+    check(distanceToRay(origin, Math.PI / 2, { x: 100, y: 200 }) < 1e-9, 'a point on the beam must read as hit');
+    check(distanceToRay(origin, Math.PI / 2, { x: 100, y: 0 }) > BEAM_HALF_WIDTH, 'a point BEHIND the tower must be safe');
+    check(distanceToRay(origin, Math.PI / 2, { x: 140, y: 200 }) > BEAM_HALF_WIDTH, 'a point beside the beam must be safe');
+  }
+}
+
+// ---- the ground wiring -----------------------------------------------------
+{
+  check(/groundDoctrineFor\(/.test(gameCode), 'hazards must resolve a ground doctrine');
+  const volley = gameCode.split('private fireGroundVolley(')[1]?.split('\n  }\n')[0] ?? '';
+  check(volley.includes('hostileShots.push') || volley.includes('beams.push'), 'could not find fireGroundVolley — the scraper is broken');
+  check(/this\.beams\.push/.test(volley), 'the laser tower must emit a beam rather than another bullet');
+  check(/seek: doctrine\.turnRate > 0/.test(volley), 'the silo must emit a homing round');
+  check(/leadAngle\(/.test(volley), 'predictive emplacements must lead the player');
+  // Beams have to be updated and drawn, or they are invisible instant damage.
+  check(/private updateBeams\(/.test(gameCode) && /this\.updateBeams\(/.test(gameCode), 'beams must be updated');
+  check(/private drawBeam\(/.test(gameCode) && /this\.drawBeam\(/.test(gameCode), 'beams must be drawn');
+  check(/private drawGroundTelegraph\(/.test(gameCode) && /this\.drawGroundTelegraph\(/.test(gameCode), 'the ground wind-up must be drawn');
+  // Seekers steer in the shot loop.
+  const shots = gameCode.split('private updateHostileShots(')[1]?.split('\n  }\n')[0] ?? '';
+  check(/steerSeeker\(/.test(shots), 'homing rounds must actually steer');
 }
 
 if (failures.length > 0) {

@@ -7,6 +7,9 @@ import {
   doctrineFor, leadAngle, mayFire, volleyRounds,
   type EnemyDoctrine, type Round,
 } from '../content/EnemyDoctrine';
+import {
+  BEAM_HALF_WIDTH, distanceToRay, groundDoctrineFor, groundRounds, steerSeeker,
+} from '../content/GroundDoctrine';
 import { sfx } from '../audio/Sfx';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
@@ -53,8 +56,34 @@ type EnemyActor = Actor & {
   /** Seconds of visible wind-up left before a heavy round leaves. */
   telegraph: number;
 };
-type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
-type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
+type HazardActor = Actor & {
+  hazardKey: string;
+  fireClock: number;
+  side: -1 | 1;
+  /** Seconds of visible wind-up left before this emplacement's attack lands. */
+  telegraph: number;
+};
+type HostileProjectile = Actor & {
+  damage: number;
+  color: string;
+  projectileKey: string;
+  /**
+   * Radians per second this round may turn toward the player. 0 is a dumb
+   * round, which is nearly all of them -- a seeker is a silo's whole identity
+   * and stops meaning anything if every bullet homes.
+   */
+  seek?: number;
+};
+
+/**
+ * A laser tower's beam.
+ *
+ * Not a projectile: it exists along a ray for a moment and anything on that
+ * ray is hit. That is why it is worth having -- there is nothing to dodge once
+ * it is live, so the telegraph is the entire counterplay and the player has to
+ * have left the lane already.
+ */
+type Beam = { x: number; y: number; angle: number; life: number; max: number; damage: number; color: string };
 type BossActor = Actor & {
   bossKey: string;
   state: 'intro' | 'fight';
@@ -410,6 +439,7 @@ export class Game2A {
   private drones: EnemyActor[] = [];
   private hazards: HazardActor[] = [];
   private hostileShots: HostileProjectile[] = [];
+  private beams: Beam[] = [];
   private boss: BossActor | null = null;
   private warship: WarshipActor | null = null;
   private completedBosses = new Set<string>();
@@ -691,6 +721,7 @@ export class Game2A {
     }
 
     this.updateHostileShots(dt);
+    this.updateBeams(dt);
     this.updatePickups(dt);
     this.collisions();
     this.updateRings(dt);
@@ -758,6 +789,7 @@ export class Game2A {
       // was a puzzle nobody knew they were being asked. It is a beat now: the
       // route opens on its own, with the banner still there to say what did it.
       this.hostileShots = [];
+    this.beams = [];
       this.fogCutClock += dt;
       if (this.fogCutClock >= FOG_AUTO_CUT_SECONDS) this.cutFogGate();
       return;
@@ -782,6 +814,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.beams = [];
     this.bolts = [];
     this.dropBossResupply();
     this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
@@ -814,6 +847,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.beams = [];
     this.bolts = [];
     this.dropBossResupply();
     this.warshipDirector.reset();
@@ -1018,6 +1052,7 @@ export class Game2A {
       hazardKey: def.key,
       fireClock: def.fires ? 0.95 : 0,
       side,
+      telegraph: 0,
     });
   }
 
@@ -1051,6 +1086,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.beams = [];
     const entered = this.missionDirector.advance();
     this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
     this.earthEncounterDirector.start(entered?.key ?? '');
@@ -1605,6 +1641,7 @@ export class Game2A {
           hazardKey: def.key,
           fireClock: 0.5 + Math.random() * 0.7,
           side,
+          telegraph: 0,
         });
       }
       const def = HAZARDS[selectHazardKey(this.wave)] ?? DEFAULT_HAZARD;
@@ -1619,32 +1656,133 @@ export class Game2A {
       const hazardDef = this.hazardDef(hazard.hazardKey);
       hazard.y += hazard.vy * dt;
       if (!hazardDef.fires) continue;
+
+      // A wind-up runs down wherever the emplacement is, so a telegraph that
+      // started on screen still resolves as it scrolls.
+      if (hazard.telegraph > 0) {
+        hazard.telegraph -= dt;
+        if (hazard.telegraph <= 0) this.fireGroundVolley(hazard, hazardDef);
+        continue;
+      }
+
       hazard.fireClock -= dt;
       // The firing window used a fixed 96px bottom margin, which on a short
       // landscape screen left almost no band in which a turret could shoot.
       if (hazard.y < 20 || hazard.y > this.h - 28 || hazard.fireClock > 0) continue;
 
-      const dx = this.player.x - hazard.x;
-      const dy = this.player.y - hazard.y;
-      const length = Math.max(1, Math.hypot(dx, dy));
-      this.hostileShots.push({
-        x: hazard.x,
-        y: hazard.y,
-        w: 9,
-        h: 9,
-        vx: (dx / length) * hazardDef.projectileSpeed,
-        vy: (dy / length) * hazardDef.projectileSpeed,
-        damage: 1,
-        color: hazardDef.accent,
-        projectileKey: 'enemy_missile',
-      });
-      hazard.fireClock = hazardDef.fireRate;
+      const doctrine = groundDoctrineFor(hazard.hazardKey);
+      hazard.fireClock = doctrine ? doctrine.interval : hazardDef.fireRate;
+      if (doctrine && doctrine.telegraph > 0) {
+        hazard.telegraph = doctrine.telegraph;
+        continue;
+      }
+      this.fireGroundVolley(hazard, hazardDef);
     }
     this.hazards = this.hazards.filter((hazard) => hazard.y < this.h + 60);
   }
 
+  /**
+   * One emplacement attacks, in the manner of its type.
+   *
+   * Every firing hazard used to run the same three lines -- normalise toward
+   * the player, push one `enemy_missile`, damage 1 -- so a "laser tower" and a
+   * "missile silo" were the same object with different art. The doctrine now
+   * decides whether this leads you, brackets you, denies a band, seeks you, or
+   * draws a line and burns down it.
+   */
+  private fireGroundVolley(hazard: HazardActor, hazardDef: HazardDef): void {
+    const doctrine = groundDoctrineFor(hazard.hazardKey);
+    const origin = { x: hazard.x, y: hazard.y };
+
+    if (!doctrine) {
+      // No doctrine: the original plain aimed shot, unchanged.
+      const dx = this.player.x - hazard.x;
+      const dy = this.player.y - hazard.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      this.hostileShots.push({
+        x: hazard.x, y: hazard.y, w: 9, h: 9,
+        vx: (dx / length) * hazardDef.projectileSpeed,
+        vy: (dy / length) * hazardDef.projectileSpeed,
+        damage: 1, color: hazardDef.accent, projectileKey: 'enemy_missile',
+      });
+      sfx.play('enemyShoot');
+      return;
+    }
+
+    const speed = hazardDef.projectileSpeed * doctrine.speedScale;
+    // Predictive fire and seekers both aim where the player is GOING. A seeker
+    // leads as well as turning, so a straight run is punished twice.
+    const aim = doctrine.attack === 'predictive' || doctrine.attack === 'seeker'
+      ? leadAngle(origin, { x: this.player.x, y: this.player.y, vx: this.playerVx, vy: this.playerVy }, speed)
+      : Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
+
+    if (doctrine.attack === 'beam') {
+      this.beams.push({
+        x: hazard.x, y: hazard.y, angle: aim,
+        life: doctrine.beamLife, max: doctrine.beamLife,
+        damage: doctrine.damage, color: hazardDef.accent,
+      });
+      sfx.play('bigExplode');
+      return;
+    }
+
+    for (const round of groundRounds(doctrine, aim, this.w * doctrine.curtainSpan)) {
+      this.hostileShots.push({
+        x: hazard.x + round.offset,
+        y: hazard.y,
+        w: doctrine.size,
+        h: doctrine.size,
+        vx: Math.cos(round.angle) * speed,
+        vy: Math.sin(round.angle) * speed,
+        damage: doctrine.damage,
+        color: hazardDef.accent,
+        projectileKey: doctrine.projectileKey,
+        seek: doctrine.turnRate > 0 ? doctrine.turnRate : undefined,
+      });
+    }
+    sfx.play('enemyShoot');
+    debugLog.sample('gfire', 3000, 'combat', 'emplacement fired', {
+      hazard: hazard.hazardKey, doctrine: doctrine.label,
+    });
+  }
+
+  /**
+   * Beams live for a moment along a ray and burn whatever is on it.
+   *
+   * Hit-tested against a RAY rather than a line so the tower cannot kill
+   * something standing behind it, and the player is only hit once per beam --
+   * a per-frame test would delete a full hull bar in a fifth of a second.
+   */
+  private updateBeams(dt: number): void {
+    for (const beam of this.beams) {
+      beam.life -= dt;
+      // No invulnerability check here: damagePlayer already refuses inside its
+      // own hit window, so a beam swept across a just-hit player costs nothing.
+      if (beam.life <= 0) continue;
+      if (distanceToRay(beam, beam.angle, this.player) <= BEAM_HALF_WIDTH + this.player.w * 0.3) {
+        this.damagePlayer(beam.damage, this.player.x, this.player.y);
+        beam.life = 0;
+      }
+    }
+    this.beams = this.beams.filter((beam) => beam.life > 0);
+  }
+
   private updateHostileShots(dt: number): void {
     for (const shot of this.hostileShots) {
+      // A seeker turns at a bounded rate toward the player. Bounded is the
+      // whole point: a round that snaps to its target cannot be beaten by
+      // flying, and flying is the only interesting answer to it.
+      if (shot.seek) {
+        const speed = Math.hypot(shot.vx, shot.vy) || 1;
+        const heading = steerSeeker(
+          Math.atan2(shot.vy, shot.vx),
+          Math.atan2(this.player.y - shot.y, this.player.x - shot.x),
+          shot.seek,
+          dt,
+        );
+        shot.vx = Math.cos(heading) * speed;
+        shot.vy = Math.sin(heading) * speed;
+      }
       shot.x += shot.vx * dt;
       shot.y += shot.vy * dt;
     }
@@ -1661,6 +1799,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.beams = [];
     this.dropBossResupply();
     // These used to arrive in silence. The boss track leads the entrance here
     // the same way it does for Gary Fog.
@@ -2077,6 +2216,7 @@ export class Game2A {
           if (hit.destroyedNow) this.special = Math.min(100, this.special + 24);
           if (this.warshipDirector.phase !== before) {
             this.hostileShots = [];
+    this.beams = [];
             this.missionBannerText = this.warshipDirector.objective;
             this.missionBannerClock = 2.8;
           }
@@ -2198,6 +2338,7 @@ export class Game2A {
     warship.state = 'disabled';
     this.score += REGULATORY_WARSHIP.score;
     this.hostileShots = [];
+    this.beams = [];
     this.bolts = [];
     this.special = 100;
 
@@ -2492,6 +2633,7 @@ export class Game2A {
     for (const bolt of this.bolts) this.drawBolt(bolt);
     for (const seeker of this.seekers) this.drawSeeker(seeker);
     for (const shot of this.hostileShots) this.drawHostileShot(shot);
+    for (const beam of this.beams) this.drawBeam(beam);
     for (const pickup of this.pickups) this.drawPickup(pickup);
     for (const item of this.rings) this.drawRing(item);
     this.drawDebris();
@@ -2657,7 +2799,49 @@ export class Game2A {
     line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);
   }
 
+  /**
+   * An emplacement's wind-up, drawn.
+   *
+   * The laser tower shows the LINE it is about to fire down -- that line is the
+   * entire counterplay, since there is nothing to dodge once the beam is live.
+   * Everything else shows a charge ring. A telegraph the player cannot see is
+   * just a delay.
+   */
+  private drawGroundTelegraph(hazard: HazardActor): void {
+    if (hazard.telegraph <= 0) return;
+    const doctrine = groundDoctrineFor(hazard.hazardKey);
+    if (!doctrine || doctrine.telegraph <= 0) return;
+    const def = this.hazardDef(hazard.hazardKey);
+    const progress = 1 - hazard.telegraph / doctrine.telegraph;
+    const { ctx } = this;
+    ctx.save();
+    if (doctrine.attack === 'beam') {
+      // The aiming line, thickening as it charges.
+      const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
+      const reach = Math.hypot(this.w, this.h) * 1.2;
+      ctx.globalAlpha = 0.25 + 0.45 * progress;
+      ctx.strokeStyle = def.accent;
+      ctx.lineWidth = 1 + progress * 3;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.moveTo(hazard.x, hazard.y);
+      ctx.lineTo(hazard.x + Math.cos(aim) * reach, hazard.y + Math.sin(aim) * reach);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.translate(hazard.x, hazard.y);
+      ctx.globalAlpha = 0.3 + 0.55 * progress;
+      ctx.strokeStyle = def.accent;
+      ctx.lineWidth = 1.5 + progress * 2.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(4, hazard.w * (1.4 - progress * 0.7)), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private drawHazard(hazard: HazardActor): void {
+    this.drawGroundTelegraph(hazard);
     const def = this.hazardDef(hazard.hazardKey);
     const drawn = this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h);
 
@@ -2679,6 +2863,32 @@ export class Game2A {
     }
 
     bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+  }
+
+  /**
+   * A beam, drawn as the flash it is.
+   *
+   * Fades over its short life so the moment it stops being lethal is visible.
+   * Drawn from the emplacement to well past the screen edge, because the hit
+   * test is a ray -- if the drawing stopped short of where the ray still kills,
+   * the player would be hit by something that was not on screen.
+   */
+  private drawBeam(beam: Beam): void {
+    const { ctx } = this;
+    const reach = Math.hypot(this.w, this.h) * 1.2;
+    const fade = Math.max(0, beam.life / beam.max);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(beam.x, beam.y);
+    ctx.rotate(beam.angle);
+    // Core plus a wider bloom, so it reads as heat rather than as a drawn line.
+    ctx.globalAlpha = 0.35 * fade;
+    ctx.fillStyle = beam.color;
+    ctx.fillRect(0, -BEAM_HALF_WIDTH * 2.2, reach, BEAM_HALF_WIDTH * 4.4);
+    ctx.globalAlpha = 0.9 * fade;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, -BEAM_HALF_WIDTH * 0.45, reach, BEAM_HALF_WIDTH * 0.9);
+    ctx.restore();
   }
 
   private drawHostileShot(shot: HostileProjectile): void {
@@ -3543,6 +3753,7 @@ export class Game2A {
     // and it sweeps the screen clear of fire. It no longer unlocks anything,
     // because a button that gates progress is a button people get stuck behind.
     if (hasFogBreaker(this.progress)) this.hostileShots = [];
+    this.beams = [];
   }
 
   /** Opens the route to the capital ship. */
@@ -3551,6 +3762,7 @@ export class Game2A {
     this.fogGateActive = false;
     this.fogCutClock = 0;
     this.hostileShots = [];
+    this.beams = [];
     this.ringClock = 0.55;
     this.earthEncounterDirector.start('final_assault');
     this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
@@ -3575,6 +3787,7 @@ export class Game2A {
     }
     this.hazards = [];
     this.hostileShots = [];
+    this.beams = [];
     if (this.boss?.state === 'fight') {
       this.ring(this.boss.x, this.boss.y);
       this.damageBoss(Math.round(6 * this.bombPower));
@@ -3632,6 +3845,7 @@ export class Game2A {
     this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? this.playerDef().hp) + 1);
     this.ring(boss.x, boss.y);
     this.hostileShots = [];
+    this.beams = [];
     this.boss = null;
 
     if (missionGary) {
@@ -4045,6 +4259,7 @@ export class Game2A {
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
+    this.beams = [];
     this.boss = null;
     this.warship = null;
     this.warshipDirector.reset();
