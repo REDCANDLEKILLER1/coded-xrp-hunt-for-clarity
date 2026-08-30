@@ -103,6 +103,26 @@ check(
 check(/this\.upgradeOffer = \[\];/.test(apply), 'the all-maxed path must close the overlay');
 check(/pendingUpgrades = 0/.test(apply), 'the all-maxed path must clear the queued ranks, or it reopens forever');
 
+// ...and it must PAY for every rank it clears.
+//
+// awardXp loops -- one boss kill can cross two thresholds at once -- so
+// pendingUpgrades is regularly greater than 1. The all-maxed path used to add
+// a flat ALL_MAXED_SCORE and then zero the queue, so two ranks banked together
+// paid 250 instead of 500 and the second vanished with no message. Clearing
+// the queue and paying for one of it is the pairing that has to stay wrong
+// together to be a bug, so both halves are asserted here.
+{
+  const code = apply.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  check(
+    /this\.score \+= ALL_MAXED_SCORE \* /.test(code) || /reward = ALL_MAXED_SCORE \* /.test(code),
+    'banking an all-maxed rank must pay per queued rank — a flat award silently loses the rest',
+  );
+  check(
+    !/this\.score \+= ALL_MAXED_SCORE;/.test(code),
+    'a flat ALL_MAXED_SCORE award drops every rank past the first',
+  );
+}
+
 // The card has to say MAX, and say what a tap will do when nothing is left.
 check(/'MAX'/.test(game), 'a finished track should be labelled MAX on its card');
 check(/TAP TO BANK/.test(game), 'an all-maxed overlay should say what tapping does');

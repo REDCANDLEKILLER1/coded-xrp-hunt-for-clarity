@@ -280,9 +280,20 @@ check(/private upgradeAvailable\(/.test(game), 'there must be a rule for what is
 // does, rather than skipping the moment entirely.
 check(/allUpgradesMaxed\(\)/.test(game), 'the all-maxed case must be handled explicitly');
 check(/TAP TO BANK/.test(game), 'an all-maxed overlay must tell the player how to leave it');
+// Worth something, and worth it PER RANK.
+//
+// This assertion used to demand the literal `this.score += ALL_MAXED_SCORE;`,
+// which is not "the rank is worth something" -- it is the flat award that drops
+// every rank past the first, written down as a requirement. Pinning an exact
+// line makes the defect unfixable without editing the test, which is the
+// opposite of what the test is for. It now asserts the property.
 check(
-  /this\.score \+= ALL_MAXED_SCORE;/.test(game),
+  /this\.score \+= (reward|ALL_MAXED_SCORE \* )/.test(game),
   'with everything maxed, the rank must still be worth something',
+);
+check(
+  !/this\.score \+= ALL_MAXED_SCORE;/.test(game),
+  'a flat award pays once however many ranks are queued — awardXp can bank two at a time',
 );
 
 // Shields have to be more than extra hit points, or they are not worth a level.
