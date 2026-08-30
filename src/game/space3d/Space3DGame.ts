@@ -22,6 +22,19 @@ import {
   type Camera,
 } from './Projection';
 import { LEDGER_TRANSIT, type EngagePattern, type SpaceLeg, type SpaceSquadron } from './SpaceLane';
+import {
+  armourMultiplier,
+  blindSidePoint,
+  classForSprite,
+  engagementSlots,
+  isBeingChased,
+  shouldBreakOff,
+  shouldReAttack,
+  type AiState,
+  type Combatant,
+  type ShipClass,
+  type SquadronView,
+} from './Combat';
 
 /**
  * The transit leg: open space, flown from the cockpit of the stolen warship.
@@ -43,8 +56,6 @@ import { LEDGER_TRANSIT, type EngagePattern, type SpaceLeg, type SpaceSquadron }
  * only new art is the canopy itself.
  */
 
-type EnemyState = 'inbound' | 'engaged' | 'breaking';
-
 type Contact = {
   /**
    * Stable identity, so a lock survives the array being filtered.
@@ -64,8 +75,27 @@ type Contact = {
   size: number;
   sprite: string;
   pattern: EngagePattern;
-  state: EnemyState;
+  state: AiState;
   stateClock: number;
+  /** What it is made of and how it behaves. */
+  shipClass: ShipClass;
+  /**
+   * Unit heading, smoothed from its velocity.
+   *
+   * The quantity everything else keys off: the armour model, the attacker's
+   * choice of approach, the mutual-support test, and -- when the angled
+   * sprites land -- which frame is drawn. Smoothed rather than taken raw, so a
+   * hard turn does not flip the armour profile for a single frame.
+   */
+  facing: { x: number; y: number; z: number };
+  hpMax: number;
+  /** Regenerating bank. Comes back on a break-off; hull never does. */
+  shield: number;
+  shieldMax: number;
+  /** Seconds until this ship re-decides. Phase-offset at spawn. */
+  decideClock: number;
+  /** Counts out a joust's overshoot without disturbing the AI state. */
+  pressClock: number;
   standoff: number;
   speed: number;
   fireClock: number;
@@ -212,6 +242,41 @@ const LOCK_DWELL = 0.5;
 const LOCK_RANGE = 7000;
 /** Sentinel identity for the capital ship, which is not in the contact array. */
 const BOSS_ID = -1;
+/**
+ * How many enemies may be shooting at you at once.
+ *
+ * The cheapest change in the combat model and the one that does most for how
+ * a fight feels. Without a budget every contact wants the same thing at the
+ * same moment: a wall arriving together, none of them making a decision,
+ * which is Galaga with a camera. With it some press and the rest reposition,
+ * and the engagement has a shape you can read and exploit.
+ */
+const ENGAGEMENT_SLOTS = 3;
+/**
+ * Seconds between AI decisions, phase-offset per ship at spawn.
+ *
+ * Re-deciding every frame is both wasteful and WORSE: a ship that reconsiders
+ * sixty times a second oscillates on the boundary between two choices instead
+ * of committing to either. On a stagger, twenty contacts cost a handful of dot
+ * products a frame, and each holds its decision long enough to look like it
+ * meant it.
+ */
+const DECIDE_INTERVAL = 0.4;
+/** How far out a broken-off ship runs before turning back in. */
+const EXTEND_MULTIPLIER = 2.7;
+/** Enemy shield regeneration while broken off, per second. Hull never returns. */
+const ENEMY_SHIELD_REGEN = 0.34;
+/** Range within which a wingman notices the player is on someone's tail. */
+const SUPPORT_RANGE = 2600;
+/**
+ * Width of the cone ahead of the player that squadrons scramble into.
+ *
+ * Wide enough that arrivals are not all dead ahead and predictable; narrow
+ * enough that they are all somewhere you can see.
+ */
+const SPAWN_CONE = 1.9;
+/** How fast a contact's facing catches up to its velocity. */
+const FACING_EASE = 3.0;
 
 const RED = '#ff4c66';
 const GREEN = '#00ff6a';
@@ -727,14 +792,32 @@ export class Space3DGame {
    * formation rather than as a sprinkle.
    */
   private scramble(squadron: SpaceSquadron): void {
-    const yaw = Math.random() * Math.PI * 2;
-    const pitch = (Math.random() - 0.5) * 1.1;
+    /**
+     * Squadrons arrive AHEAD of you, not uniformly around you.
+     *
+     * "enemy ships are approaching, you can see I'm coming, they don't
+     * disappear out of nowhere and fly by." A uniform bearing put half of
+     * every squadron behind the player at birth, and since most classes are
+     * slower than cruise they could never come round -- a live capture showed
+     * 70% of approaching contacts permanently in the rear hemisphere. There
+     * was nothing to fly toward, which is the "you can't ever find any
+     * enemies" complaint exactly.
+     *
+     * Spawning in a cone off the nose means an engagement STARTS as something
+     * you watch grow. They still end up behind you once you have flown through
+     * them -- which is what the radar and the edge chevrons are for -- but
+     * that is now a thing you did rather than the state of the world.
+     */
+    const nose = Math.atan2(this.camera.yaw === 0 ? 0 : Math.sin(this.camera.yaw), Math.cos(this.camera.yaw));
+    const yaw = nose + (Math.random() - 0.5) * SPAWN_CONE;
+    const pitch = this.camera.pitch + (Math.random() - 0.5) * 0.8;
     const cos = Math.cos(pitch);
     const base = {
       x: this.camera.x + Math.sin(yaw) * cos * squadron.entryRange,
       y: this.camera.y + Math.sin(pitch) * squadron.entryRange,
       z: this.camera.z + Math.cos(yaw) * cos * squadron.entryRange,
     };
+    const squadronClass = classForSprite(squadron.enemyKey);
     for (let i = 0; i < squadron.count; i += 1) {
       const spread = 130;
       this.contacts.push({
@@ -749,10 +832,23 @@ export class Space3DGame {
         size: 78,
         sprite: squadron.enemyKey,
         pattern: squadron.pattern,
-        state: 'inbound',
+        state: 'approach',
         stateClock: 0,
+        shipClass: squadronClass,
+        // Seeded pointing at the player, so a shot that lands before the ship
+        // has moved still resolves against a real facing rather than against
+        // a zero vector -- which would normalise to (0,0,0) and make every
+        // early hit a flank hit regardless of where it came from.
+        facing: normalise({ x: this.camera.x - base.x, y: this.camera.y - base.y, z: this.camera.z - base.z }),
+        hpMax: squadron.hp,
+        shield: squadron.hp * squadronClass.shieldShare,
+        shieldMax: squadron.hp * squadronClass.shieldShare,
+        decideClock: Math.random() * DECIDE_INTERVAL,
+        pressClock: 0,
         standoff: squadron.standoff,
-        speed: squadron.speed,
+        // Authored pacing, scaled by class. Without this nothing out-runs the
+        // player and no enemy can choose its angle of attack.
+        speed: squadron.speed * squadronClass.speedScale,
         fireClock: squadron.fireInterval > 0 ? squadron.fireInterval * (0.5 + Math.random()) : Number.POSITIVE_INFINITY,
         fireInterval: squadron.fireInterval,
         score: squadron.score,
@@ -766,17 +862,137 @@ export class Space3DGame {
   }
 
   /**
+   * A view of the fight, as the AI sees it.
+   *
+   * Built once per decision tick rather than per ship, because every ship
+   * needs the same three numbers and recomputing the player's basis twenty
+   * times a frame is pure waste.
+   */
+  private squadronView(): SquadronView {
+    const dir = forward(this.camera);
+    return {
+      playerPosition: { x: this.camera.x, y: this.camera.y, z: this.camera.z },
+      playerFacing: dir,
+      slots: ENGAGEMENT_SLOTS,
+    };
+  }
+
+  private asCombatant(contact: Contact): Combatant {
+    return {
+      id: contact.id,
+      position: { x: contact.x, y: contact.y, z: contact.z },
+      facing: contact.facing,
+      state: contact.state,
+      health: contact.hpMax > 0 ? contact.hp / contact.hpMax : 1,
+      shipClass: contact.shipClass,
+    };
+  }
+
+  /**
+   * The AI's decisions, on a stagger.
+   *
+   * Four things happen here and only here, so the per-frame flight loop below
+   * stays cheap: who holds an engagement slot, who has taken enough damage to
+   * break off, who is coming back in, and who has noticed a wingman being
+   * chased.
+   *
+   * Every ship carries its own countdown, phase-offset at spawn, so the cost
+   * is spread across frames rather than spiking on the frames where everyone
+   * happens to re-decide together.
+   */
+  private decide(dt: number): void {
+    let anyDue = false;
+    for (const contact of this.contacts) {
+      contact.decideClock -= dt;
+      if (contact.decideClock <= 0) anyDue = true;
+    }
+    if (!anyDue) return;
+
+    const view = this.squadronView();
+    const combatants = this.contacts.map((contact) => this.asCombatant(contact));
+    const slots = engagementSlots(combatants, view);
+
+    // The budget is applied to EVERY contact, not only the ones whose own
+    // countdown fired.
+    //
+    // A live capture caught this: with per-ship staggering, a ship granted a
+    // slot at t=0 held `engage` until its next decision at t=0.4, while a
+    // different ship deciding at t=0.2 computed a fresh set and took one too.
+    // Four ships were engaged against a budget of three -- the pure function
+    // was correct and the wiring leaked around it. Demoting here makes the
+    // budget authoritative at every tick; the stagger still governs the
+    // expensive per-ship reasoning below.
+    for (const contact of this.contacts) {
+      if (contact.state === 'engage' && !slots.has(contact.id)) contact.state = 'approach';
+    }
+
+    for (const contact of this.contacts) {
+      if (contact.decideClock > 0) continue;
+      contact.decideClock += DECIDE_INTERVAL;
+      const health = contact.hpMax > 0 ? contact.hp / contact.hpMax : 1;
+      const range = Math.hypot(
+        contact.x - this.camera.x, contact.y - this.camera.y, contact.z - this.camera.z,
+      );
+
+      const combatant = this.asCombatant(contact);
+
+      // 1. Bank stripped and hull thin: leave. Shields come back out there;
+      //    hull does not, so a ship that runs and returns is still the ship
+      //    you wounded.
+      if (shouldBreakOff(combatant, contact.shield)) {
+        contact.state = 'extend';
+        contact.stateClock = 0;
+        continue;
+      }
+
+      // 2. Far enough out, and recovered enough, to turn back in.
+      if (contact.state === 'extend') {
+        if (shouldReAttack(combatant, contact.shield, contact.shieldMax, range, contact.standoff * EXTEND_MULTIPLIER)) {
+          contact.state = 'approach';
+          contact.stateClock = 0;
+        } else {
+          // 3. Mutual support. A ship that has broken off but sees the player
+          //    sitting on a wingman's tail comes back for the player's own
+          //    six -- which is the behaviour that makes a squadron read as a
+          //    squadron rather than as a set of individuals.
+          const rescuing = this.contacts.some((other) => (
+            other.id !== contact.id && isBeingChased(this.asCombatant(other), view, SUPPORT_RANGE)
+          ));
+          if (rescuing && health > contact.shipClass.breakOffAt) {
+            contact.state = 'engage';
+            contact.stateClock = 0;
+          }
+        }
+        continue;
+      }
+
+      // 4. Otherwise the slot budget decides: press, or hold off and wait.
+      contact.state = slots.has(contact.id)
+        ? (range < contact.standoff * 2.2 ? 'engage' : 'approach')
+        : 'approach';
+    }
+  }
+
+  /**
    * Enemy flight.
    *
    * They fly TO somewhere and hold there; they do not run at you on rails.
-   * Each pattern picks a different point to want to be at relative to the
-   * player, and the shared steering below flies them to it at their own speed.
-   * That is what makes them read as aircraft manoeuvring rather than as
-   * obstacles arriving.
+   * The AI STATE decides whether a ship is pressing, repositioning or running,
+   * and its PATTERN decides what pressing looks like for that ship. The shared
+   * steering below flies it to the resulting point at its own speed, which is
+   * what makes them read as aircraft manoeuvring rather than as obstacles
+   * arriving.
    */
   private updateContacts(dt: number): void {
+    this.decide(dt);
     for (const contact of this.contacts) {
       contact.stateClock += dt;
+      if (contact.pressClock > 0) contact.pressClock = Math.max(0, contact.pressClock - dt);
+      // Shields only, and only while broken off. This is the line that makes a
+      // wounded enemy worth having wounded.
+      if (contact.state === 'extend' && contact.shieldMax > 0) {
+        contact.shield = Math.min(contact.shieldMax, contact.shield + ENEMY_SHIELD_REGEN * dt);
+      }
       const toPlayerX = this.camera.x - contact.x;
       const toPlayerY = this.camera.y - contact.y;
       const toPlayerZ = this.camera.z - contact.z;
@@ -802,9 +1018,23 @@ export class Space3DGame {
       contact.y += contact.vy * dt;
       contact.z += contact.vz * dt;
 
-      if (contact.state === 'inbound' && range < contact.standoff * 1.5) contact.state = 'engaged';
+      // Facing follows velocity, eased. Everything downstream -- the armour
+      // model, the blind-side solve, the mutual-support test -- reads this.
+      const speed = Math.hypot(contact.vx, contact.vy, contact.vz);
+      if (speed > 1) {
+        const want = { x: contact.vx / speed, y: contact.vy / speed, z: contact.vz / speed };
+        const ease = Math.min(1, dt * FACING_EASE);
+        contact.facing = normalise({
+          x: contact.facing.x + (want.x - contact.facing.x) * ease,
+          y: contact.facing.y + (want.y - contact.facing.y) * ease,
+          z: contact.facing.z + (want.z - contact.facing.z) * ease,
+        });
+      }
 
-      if (contact.fireInterval > 0 && contact.state === 'engaged' && range < contact.standoff * 2.4) {
+      // Only a ship holding an engagement slot shoots. This is what the slot
+      // budget BUYS: without it the budget would only change where ships fly,
+      // and twenty contacts would still all be firing at you.
+      if (contact.fireInterval > 0 && contact.state === 'engage' && range < contact.standoff * 2.4) {
         contact.fireClock -= dt;
         if (contact.fireClock <= 0) {
           contact.fireClock = contact.fireInterval;
@@ -822,17 +1052,121 @@ export class Space3DGame {
     });
   }
 
-  /** Where a contact wants to be, which is what its pattern actually means. */
+  /**
+   * Where a contact wants to be.
+   *
+   * Two layers, and keeping them separate is what makes the AI readable:
+   *
+   * - The STATE decides intent. Approaching, pressing, running, or breaking.
+   * - The PATTERN decides what pressing looks like for that particular ship.
+   *
+   * Only the pressing case consults the pattern, which is why a squadron that
+   * arrives together does not all fly the same line: most of them are in
+   * `approach` or `extend`, and those go to points the pattern never sees.
+   */
   private desiredPosition(contact: Contact, range: number, dt: number): { x: number; y: number; z: number } {
     const dir = forward(this.camera);
+
+    if (contact.state === 'extend') {
+      // Straight out, away from the player, until it has the room to turn
+      // back in. It runs from where the player IS, not from where it was hit,
+      // so turning to chase it does not shorten its escape.
+      const away = normalise({
+        x: contact.x - this.camera.x, y: contact.y - this.camera.y, z: contact.z - this.camera.z,
+      });
+      const out = contact.standoff * EXTEND_MULTIPLIER * 1.15;
+      return {
+        x: this.camera.x + away.x * out,
+        y: this.camera.y + away.y * out,
+        z: this.camera.z + away.z * out,
+      };
+    }
+
+    if (contact.state === 'evade') {
+      // Hard break across its own heading. Not away -- away from a faster
+      // pursuer just means being shot in the back for longer.
+      const across = cross(contact.facing, { x: 0, y: 1, z: 0 });
+      const lateral = normalise(
+        Math.hypot(across.x, across.y, across.z) < 0.1 ? { x: 1, y: 0, z: 0 } : across,
+      );
+      const swing = Math.sin(contact.orbitPhase) >= 0 ? 1 : -1;
+      return {
+        x: contact.x + contact.facing.x * 600 + lateral.x * 900 * swing,
+        y: contact.y + contact.facing.y * 600 + lateral.y * 900 * swing,
+        z: contact.z + contact.facing.z * 600 + lateral.z * 900 * swing,
+      };
+    }
+
+    if (contact.state === 'approach') {
+      // Closing, from wherever it actually is.
+      //
+      // This used to go for the blind side, and a live capture showed why that
+      // was wrong: `approach` is the state MOST ships are in most of the time
+      // (41526 contact-frames against 4885 engaged in a three-minute run), so
+      // sending all of them behind the player put 100% of contacts in the rear
+      // hemisphere. Nothing was ever in front of you, which is a worse level
+      // than everything being in front of you -- you cannot fight what you can
+      // never see, and the approach is the part the whole rescale exists to
+      // show off.
+      //
+      // Closing on its own bearing keeps arrivals visible and varied. The
+      // blind side is where an attack RUN goes (see the re-attack below), not
+      // where a queue waits.
+      const towards = normalise({
+        x: contact.x - this.camera.x, y: contact.y - this.camera.y, z: contact.z - this.camera.z,
+      });
+      // Biased toward where the player can SEE it.
+      //
+      // Holding a ship's own bearing still put 81.5% of contact-frames in the
+      // rear hemisphere in a live capture: the player cruises forward, so
+      // anything holding a fixed distance slides behind and stays there. A
+      // waiting queue you can never see is the "everything's moving too fast,
+      // you can never find any enemies" complaint wearing a different hat.
+      //
+      // Blending toward the nose brings the queue around to where it reads as
+      // a gathering threat. The blind side is still where an ATTACK RUN comes
+      // from -- it is just not where ships loiter.
+      const dir = forward(this.camera);
+      // The weight has to exceed 1, and that is not a taste call.
+      //
+      // At 0.85 a contact sitting DIRECTLY behind blends to
+      // normalise(-dir + 0.85*dir) = -dir: still directly behind. The blend
+      // could only ever help contacts near the beam, and a live capture showed
+      // the rear share going UP to 91%. Above 1 the sum always lands in the
+      // front hemisphere, however far back the ship started, while a contact
+      // on the beam keeps most of its lateral offset -- so the queue forms up
+      // where it can be seen without collapsing onto the nose.
+      const perch = normalise({
+        x: towards.x + dir.x * 1.6,
+        y: towards.y + dir.y * 1.6,
+        z: towards.z + dir.z * 1.6,
+      });
+      const hold = contact.standoff * 1.6;
+      return {
+        x: this.camera.x + perch.x * hold,
+        y: this.camera.y + perch.y * hold,
+        z: this.camera.z + perch.z * hold,
+      };
+    }
+
     switch (contact.pattern) {
       case 'joust': {
         // Runs in, overshoots, then swings out and comes back around.
-        if (contact.state === 'engaged' && range < contact.standoff * 0.55) contact.state = 'breaking';
-        if (contact.state === 'breaking') {
-          if (contact.stateClock > 3.4) {
-            contact.state = 'inbound';
-            contact.stateClock = 0;
+        //
+        // The overshoot rides its own clock rather than the AI state, so a
+        // ship that loses its engagement slot mid-pass still completes the
+        // pass instead of stopping dead in front of the player.
+        if (contact.pressClock <= 0 && range < contact.standoff * 0.55) contact.pressClock = 3.4;
+        if (contact.pressClock > 0) {
+          // Overshoot, then come back around ON THE BLIND SIDE. This is where
+          // the rear-hemisphere rule belongs: an attack RUN, chosen after the
+          // merge, rather than a holding pattern. It is also what makes the
+          // second pass of a jouster different from the first, which is the
+          // difference between an enemy that reads the fight and one that
+          // repeats itself.
+          const half = contact.pressClock / 3.4;
+          if (half < 0.5) {
+            return blindSidePoint(this.squadronView(), contact.standoff * 1.2, contact.orbitPhase);
           }
           return {
             x: contact.x + contact.vx * 3,
@@ -935,6 +1269,7 @@ export class Space3DGame {
   private launchEscorts(): void {
     const boss = this.leg.boss;
     this.banner('ESCORTS AWAY', 2.0);
+    const escortClass = classForSprite(boss.escortKey);
     for (let i = 0; i < boss.escortCount; i += 1) {
       const angle = (i / boss.escortCount) * Math.PI * 2;
       this.contacts.push({
@@ -949,8 +1284,20 @@ export class Space3DGame {
         size: 68,
         sprite: boss.escortKey,
         pattern: 'orbit',
-        state: 'inbound',
+        state: 'approach',
         stateClock: 0,
+        shipClass: escortClass,
+        facing: normalise({
+          x: this.camera.x - this.boss.x, y: this.camera.y - this.boss.y, z: this.camera.z - this.boss.z,
+        }),
+        hpMax: 2,
+        shield: 2 * escortClass.shieldShare,
+        shieldMax: 2 * escortClass.shieldShare,
+        // Deterministic phase across the flight rather than random: escorts
+        // launch together, and staggering them evenly is what stops all four
+        // deciding on the same frame for the rest of the fight.
+        decideClock: (i / boss.escortCount) * DECIDE_INTERVAL,
+        pressClock: 0,
         standoff: 480,
         speed: 215,
         fireClock: 1.6,
@@ -1232,8 +1579,11 @@ export class Space3DGame {
     return {
       x: contact.x, y: contact.y, z: contact.z,
       vx: contact.vx, vy: contact.vy, vz: contact.vz,
-      label: contact.sprite.replace(/_/g, ' ').toUpperCase(),
-      health: null,
+      // The CLASS, not the sprite key. What the player needs from this line is
+      // "which of the four is this and therefore where do I have to hit it",
+      // and a filename cannot answer that.
+      label: contact.shipClass.label,
+      health: contact.hpMax > 0 ? Math.max(0, contact.hp / contact.hpMax) : null,
     };
   }
 
@@ -1327,7 +1677,11 @@ export class Space3DGame {
       for (const contact of this.contacts) {
         if (contact.hp <= 0) continue;
         if (segmentDistance(from, to, contact) > contact.size * 0.5) continue;
-        contact.hp -= 1;
+        // Where the hit LANDS decides what it is worth. Shooting a heavy
+        // fighter head-on is a bad trade; getting on its six kills it in a
+        // third of the time. That is the strategy the whole combat model
+        // exists to create, and it is one dot product.
+        this.damage(contact, armourMultiplier({ x: bolt.vx, y: bolt.vy, z: bolt.vz }, contact.facing, contact.shipClass.armour));
         bolt.life = 0;
         this.burst(contact.x, contact.y, contact.z);
         if (contact.hp <= 0) {
@@ -1358,7 +1712,11 @@ export class Space3DGame {
       for (const contact of this.contacts) {
         if (contact.hp <= 0) continue;
         if (segmentDistance(from, to, contact) > contact.size * 0.7) continue;
-        contact.hp -= MISSILE_DAMAGE;
+        // A warhead does not care which panel it went through. Deliberate:
+        // the missile is the answer to a target you could not get behind, so
+        // making it obey the armour profile would take away the one tool that
+        // beats a nose-armoured fighter you cannot out-turn.
+        this.damage(contact, MISSILE_DAMAGE);
         missile.life = 0;
         this.burst(contact.x, contact.y, contact.z);
         sfx.play('bigExplode');
@@ -1411,6 +1769,31 @@ export class Space3DGame {
       break;
     }
     this.contacts = this.contacts.filter((contact) => contact.hp > 0);
+  }
+
+  /**
+   * Damage into a contact: shield first, then hull.
+   *
+   * The split is what makes breaking off meaningful. Shields regenerate while
+   * a ship is extended; hull never does. So a fighter you hurt and let escape
+   * comes back with its bank refilled but its HULL still carrying every point
+   * you put into it -- which is the difference between a smart enemy and an
+   * irritating one. An enemy that ran away and returned untouched would make
+   * every hit you landed retroactively pointless.
+   *
+   * Overflow carries: a hit bigger than the remaining shield spends the
+   * remainder on hull rather than being absorbed whole, so a heavy shot on a
+   * nearly-down bank is not silently wasted.
+   */
+  private damage(contact: Contact, amount: number): void {
+    if (!(amount > 0)) return;
+    let remaining = amount;
+    if (contact.shield > 0) {
+      const absorbed = Math.min(contact.shield, remaining);
+      contact.shield -= absorbed;
+      remaining -= absorbed;
+    }
+    contact.hp -= remaining;
   }
 
   /** Shields come back once nothing has hit you for a while. */
