@@ -6,6 +6,14 @@ import { debugLog } from '../core/DebugLog';
 import { Cockpit, type CockpitButtonId, type CockpitContact, type CockpitLock, type CockpitState } from './Cockpit';
 import { TiltSource } from './Tilt';
 import {
+  DEFAULT_SETTINGS,
+  TILT_SCALE_BY_SENSITIVITY,
+  loadSettings,
+  nextSensitivity,
+  saveSettings,
+  type TransitSettings,
+} from './Settings';
+import {
   FAR_PLANE,
   NEAR_PLANE,
   bearing,
@@ -129,7 +137,7 @@ type Star = { x: number; y: number; z: number; mag: number };
 /** Dust is near and DOES pass, which is the only cue for how fast you are going. */
 type Mote = { x: number; y: number; z: number };
 
-type Mode = 'flying' | 'boss' | 'won' | 'lost';
+type Mode = 'arrival' | 'flying' | 'boss' | 'won' | 'lost';
 
 const FOCAL = 470;
 /**
@@ -275,6 +283,38 @@ const SUPPORT_RANGE = 2600;
  * enough that they are all somewhere you can see.
  */
 const SPAWN_CONE = 1.9;
+/**
+ * The arrival.
+ *
+ * "the ships view needs to be us coming out of warp or going into warp drive
+ * and flying to a destination and then the battle starts but not just start
+ * the battle."
+ *
+ * Three beats over ARRIVAL_SECONDS: the tunnel collapsing, the stars settling,
+ * and the destination named -- then the first squadron scrambles. The music
+ * cue fires at the top so the track has its intro rather than starting under
+ * gunfire.
+ */
+const ARRIVAL_SECONDS = 6.4;
+/** How much faster than cruise the ship is still travelling as it drops out. */
+const ARRIVAL_SPEED_MULTIPLIER = 7.5;
+/** Fraction of the arrival spent decelerating; the rest is the settled look. */
+const ARRIVAL_DECEL_SHARE = 0.62;
+/**
+ * Where the settings chip sits, in pixels from the top.
+ *
+ * Clear of the shell's fullscreen chip, which is at a fixed position in both
+ * orientations. A fraction of the viewport height collides with it on a short
+ * landscape screen.
+ */
+const SETTINGS_BUTTON_TOP = 98;
+/**
+ * How long to watch for a requested calibration to complete.
+ *
+ * Clear of TiltSource's own 2600ms fallback, so an ordinary calibration always
+ * resolves inside the window and only a genuinely dead sensor times out here.
+ */
+const TILT_WATCH_SECONDS = 4;
 /** How fast a contact's facing catches up to its velocity. */
 const FACING_EASE = 3.0;
 
@@ -361,6 +401,22 @@ export class Space3DGame {
   private shieldFore = 1;
   private shieldAft = 1;
   private shieldQuiet = 0;
+  /** Seconds into the warp arrival. Only meaningful while mode is 'arrival'. */
+  private arrivalClock = 0;
+  private settings = loadSettings();
+  private settingsOpen = false;
+  /** Seconds left on the "TILT RECALIBRATED" acknowledgement. */
+  private settingsToast = 0;
+  private settingsToastText = '';
+  /**
+   * Seconds left watching for a requested calibration to finish.
+   *
+   * Bounded, because completion is not guaranteed: TiltSource only latches
+   * neutral from inside onSample, so a sensor that goes silent leaves the
+   * status on 'calibrating' forever and an unbounded watch would leave a toast
+   * on screen for the rest of the run.
+   */
+  private tiltWatch = 0;
 
   private nextContactId = 1;
   /** The held lock, or null. Survives filtering because it is an id. */
@@ -430,7 +486,9 @@ export class Space3DGame {
   }
 
   private restart(): void {
-    this.mode = 'flying';
+    // The level opens dropping out of warp, not in a firefight.
+    this.mode = 'arrival';
+    this.arrivalClock = 0;
     this.clock = 0;
     this.score = 0;
     this.hp = PLAYER_HP;
@@ -461,12 +519,18 @@ export class Space3DGame {
     this.shieldAft = 1;
     this.shieldQuiet = 0;
     this.squadronIndex = 0;
+    // The first squadron is scheduled from the END of the arrival, so the
+    // opening cannot be interrupted by the fight it is supposed to precede.
     this.squadronClock = 2.0;
     this.fireClock = 0;
     this.bossHp = 0;
     this.escortsLaunched = false;
     this.seedSky();
+    this.tilt.setScale(TILT_SCALE_BY_SENSITIVITY[this.settings.tiltSensitivity]);
     this.tilt.recalibrate('run start');
+    // No music cue here: show() already cues on entry, and restart() also runs
+    // on a retry tap where the track is already playing. Cueing in both places
+    // would restart the transit track under the arrival every time.
     this.banner(`${this.leg.label} // ${this.leg.destination}`, 3.4);
   }
 
@@ -515,6 +579,23 @@ export class Space3DGame {
       // iOS will not hand over the sensor without a live gesture, so take the
       // grant from the first touch rather than making the player find a button.
       if (this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
+      // The settings overlay claims every pointer while it is open, BEFORE the
+      // retry tap and before the weapon buttons -- otherwise a tap meant for a
+      // row would also restart the run or fire a missile through the panel.
+      if (this.settingsOpen) {
+        this.tapSettings(event.clientX, event.clientY);
+        return;
+      }
+      if (this.hitSettingsButton(event.clientX, event.clientY)) {
+        this.settingsOpen = true;
+        // Drop any stick the finger was holding, so the ship does not fly on
+        // in whatever direction it was last steered while the menu is up.
+        this.stickX = 0;
+        this.stickY = 0;
+        this.weaponPointers.clear();
+        this.pointerId = null;
+        return;
+      }
       if (this.mode === 'won' || this.mode === 'lost') return void this.restart();
 
       // Buttons are tested FIRST, and a hit claims the pointer for the weapon
@@ -593,6 +674,92 @@ export class Space3DGame {
    * handler, so the press would be registered by the browser and dropped by
    * us. State is set first and capture is attempted after, best-effort.
    */
+  private hitSettingsButton(clientX: number, clientY: number): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const r = this.settingsButtonRect(this.viewW, this.viewH);
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+
+  /**
+   * A tap inside the settings overlay.
+   *
+   * Rows come from the same function that draws them, so what you can see and
+   * what you can press cannot drift apart after a layout change -- the way the
+   * weapon buttons are handled, and for the same reason.
+   */
+  private tapSettings(clientX: number, clientY: number): void {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    for (const row of this.settingsRows(this.viewW, this.viewH)) {
+      const r = row.rect;
+      if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) continue;
+      if (row.id === 'sensitivity') {
+        this.applySettings({ ...this.settings, tiltSensitivity: nextSensitivity(this.settings.tiltSensitivity) });
+        this.toast(`TILT ${this.settings.tiltSensitivity.toUpperCase()}`);
+      } else if (row.id === 'recalibrate') {
+        this.tilt.recalibrate('player requested');
+        // Report what the sensor is ACTUALLY doing, not what we hope it did.
+        //
+        // recalibrate() only STARTS a calibration: it sets the status to
+        // 'calibrating' and returns. Neutral is latched later, in onSample,
+        // once 4+ readings hold within 2.5 degrees for 550ms -- or at the
+        // 2600ms timeout. Saying "RECALIBRATED" here claimed success at least
+        // half a second before it could be true.
+        //
+        // And recalibrate() is a NO-OP in four states (unavailable, denied,
+        // needs_permission, waiting), so on a desktop or a phone whose sensor
+        // is silent a fixed "CALIBRATING" would be a different lie. The
+        // readout already maps every status to a word, so it tells the truth
+        // in all of them -- and reads CALIBRATING in the case that matters.
+        this.toast(`TILT ${this.tiltReadout()}`);
+        this.tiltWatch = TILT_WATCH_SECONDS;
+        this.settingsOpen = false;
+      } else {
+        this.settingsOpen = false;
+      }
+      sfx.play('pickup');
+      return;
+    }
+    // A tap on the backdrop closes, which is what every overlay does.
+    this.settingsOpen = false;
+  }
+
+  /**
+   * Waits for a requested calibration to actually finish, then says so.
+   *
+   * This is the half that makes the acknowledgement honest: TILT READY appears
+   * only once TiltSource reports 'ready', which is the moment neutral is
+   * genuinely latched. If the watch runs out first -- a sensor that never
+   * delivers another sample -- it reports the real status instead of leaving
+   * the player believing a calibration happened.
+   */
+  private watchCalibration(dt: number): void {
+    if (this.tiltWatch <= 0) return;
+    if (this.tilt.status === 'ready') {
+      this.tiltWatch = 0;
+      this.toast('TILT READY');
+      return;
+    }
+    this.tiltWatch = Math.max(0, this.tiltWatch - dt);
+    if (this.tiltWatch === 0) this.toast(`TILT ${this.tiltReadout()}`);
+  }
+
+  /** Applies a settings change everywhere it matters, and persists it. */
+  private applySettings(settings: TransitSettings): void {
+    this.settings = settings;
+    this.tilt.setScale(TILT_SCALE_BY_SENSITIVITY[settings.tiltSensitivity]);
+    saveSettings(settings);
+    debugLog.log('input', 'transit settings', { ...settings, scale: this.tilt.fullScale });
+  }
+
+  private toast(text: string): void {
+    this.settingsToastText = text;
+    this.settingsToast = 1.8;
+  }
+
   private tryCapture(pointerId: number): void {
     try {
       this.canvas.setPointerCapture(pointerId);
@@ -683,11 +850,27 @@ export class Space3DGame {
     if (!this.visible) return;
     this.clock += dt;
     if (this.bannerClock > 0) this.bannerClock = Math.max(0, this.bannerClock - dt);
-    if (this.mode === 'flying' || this.mode === 'boss') this.update(dt);
+    // Both of these live HERE rather than in update(), which tick() skips in
+    // 'won' and 'lost'. A toast that stops counting down in those modes would
+    // hang on screen, and the calibration watch would never resolve.
+    if (this.settingsToast > 0) this.settingsToast = Math.max(0, this.settingsToast - dt);
+    this.watchCalibration(dt);
+    // 'arrival' belongs here.
+    //
+    // Leaving it out did not throw and did not look broken at a glance: the
+    // arrival clock simply never advanced, so the warp tunnel drew at full
+    // strength forever, the mode never became 'flying', and no squadron ever
+    // scrambled. A level that quietly never starts.
+    if (this.mode === 'arrival' || this.mode === 'flying' || this.mode === 'boss') this.update(dt);
     this.render();
   }
 
   private update(dt: number): void {
+    if (this.settingsOpen) return;
+    if (this.mode === 'arrival') {
+      this.updateArrival(dt);
+      return;
+    }
     this.updateFlight(dt);
     this.updateSquadrons(dt);
     this.updateContacts(dt);
@@ -700,6 +883,48 @@ export class Space3DGame {
     this.collide();
     for (const burst of this.bursts) burst.life -= dt;
     this.bursts = this.bursts.filter((burst) => burst.life > 0);
+  }
+
+  /**
+   * Dropping out of warp toward the destination.
+   *
+   * The ship is still travelling -- fast, and slowing -- so the dust streams
+   * past and the stars settle. That is the whole trick: the arrival uses the
+   * SAME motion the flight model already has, at a decaying multiple of cruise,
+   * rather than a scripted animation played over a frozen world. Nothing here
+   * is faked, which is why control can be handed over mid-motion without a
+   * visible seam.
+   *
+   * Presentation and simulation stay separate, per the plan's architectural
+   * rule: this moves the camera and the stars, and it does not create, place,
+   * damage or spare a single combatant. The first squadron scrambles from the
+   * ordinary squadron timer once the arrival is over.
+   */
+  private updateArrival(dt: number): void {
+    this.arrivalClock += dt;
+    const t = Math.min(1, this.arrivalClock / ARRIVAL_SECONDS);
+
+    // Decelerate over the first stretch, then hold cruise for the settled beat.
+    const decel = Math.min(1, t / ARRIVAL_DECEL_SHARE);
+    // Cubic ease-out: most of the speed is shed early, which is what "dropping
+    // out" looks like. Linear reads as braking, not as arriving.
+    const eased = 1 - (1 - decel) ** 3;
+    const multiplier = ARRIVAL_SPEED_MULTIPLIER + (1 - ARRIVAL_SPEED_MULTIPLIER) * eased;
+    const speed = CRUISE * multiplier;
+    const dir = forward(this.camera);
+    this.camera.x += dir.x * speed * dt;
+    this.camera.y += dir.y * speed * dt;
+    this.camera.z += dir.z * speed * dt;
+    this.throttle = 0.72;
+    this.recycleMotes();
+
+    if (this.arrivalClock >= ARRIVAL_SECONDS) {
+      this.mode = 'flying';
+      // The first scramble is timed from HERE, so the opening is never cut
+      // short by a squadron that was already counting down behind it.
+      this.squadronClock = 2.4;
+      this.banner(`${this.leg.destination} // CONTACTS INBOUND`, 2.6);
+    }
   }
 
   private updateFlight(dt: number): void {
@@ -759,7 +984,17 @@ export class Space3DGame {
     this.camera.y += dir.y * speed * dt;
     this.camera.z += dir.z * speed * dt;
 
-    // Recycle dust through a box that travels with the ship.
+    this.recycleMotes();
+  }
+
+  /**
+   * Recycle dust through a box that travels with the ship.
+   *
+   * Extracted so the arrival can drive it too. The dust IS the sense of speed
+   * -- stars are direction-only and never pass you -- so an opening that moves
+   * the camera without recycling motes would look like a still image sliding.
+   */
+  private recycleMotes(): void {
     const half = MOTE_SPAN / 2;
     for (const mote of this.motes) {
       if (Math.abs(mote.x - this.camera.x) > half) mote.x += Math.sign(this.camera.x - mote.x) * MOTE_SPAN;
@@ -1909,6 +2144,7 @@ export class Space3DGame {
     }
     for (const item of sortByDepth(drawables)) item.paint();
 
+    if (this.mode === 'arrival') this.drawWarpTunnel(w, h);
     this.drawReticle();
     this.drawLockCursor();
     if (this.graceClock > 0) this.drawDamageFlash(w, h);
@@ -1924,6 +2160,9 @@ export class Space3DGame {
     }
     this.drawOffscreenCues(w, h);
     this.drawBanner(w, h, drawn);
+    this.drawSettingsButton(w, h);
+    if (this.settingsOpen) this.drawSettings(w, h);
+    if (this.settingsToast > 0) this.drawToast(w, h);
   }
 
   /**
@@ -2019,6 +2258,176 @@ export class Space3DGame {
     const rvz = target.vz - dir.z * speed;
     const closure = -((rvx * dx + rvy * dy + rvz * dz) / range);
     return { label: target.label, range, closure, health: target.health };
+  }
+
+  /**
+   * The warp tunnel, collapsing.
+   *
+   * Radial streaks from the vanishing point, shortening and fading as the ship
+   * decelerates, plus a bloom that closes in. Drawn ON TOP of the real scene
+   * rather than instead of it, so the stars and dust behind are the actual
+   * ones the flight model is moving -- the tunnel is the effect leaving, not a
+   * picture standing in for the world.
+   *
+   * Nothing here is pooled because nothing here is allocated: the streaks are
+   * computed from an index each frame, so a six-second opening costs no
+   * garbage on a phone.
+   */
+  private drawWarpTunnel(w: number, h: number): void {
+    const t = Math.min(1, this.arrivalClock / ARRIVAL_SECONDS);
+    // Fades out over the deceleration, so the last stretch is clear sky.
+    const strength = Math.max(0, 1 - t / ARRIVAL_DECEL_SHARE);
+    if (strength <= 0.001) return;
+    const { ctx, camera } = this;
+    const reach = Math.hypot(w, h);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // Tuned between two failures, both seen on screen: at 88 streaks with a
+    // broken colour assignment it was invisible; at 150 with alpha 0.68 under
+    // 'lighter' it blew out the whole canvas and made the banner unreadable.
+    const streaks = 104;
+    for (let i = 0; i < streaks; i += 1) {
+      // Deterministic pseudo-random angle and radius per streak: no allocation,
+      // and the tunnel does not shimmer randomly frame to frame.
+      const seed = i * 2.399963;
+      const angle = seed % (Math.PI * 2);
+      const spread = 0.16 + ((i * 37) % 100) / 100 * 0.84;
+      const inner = reach * 0.06 * spread;
+      const outer = inner + reach * 0.72 * strength * (0.4 + spread * 0.6);
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      // Build the colour, THEN assign once.
+      //
+      // Assigning a partial string and appending to it does not work and does
+      // not complain: canvas silently ignores an invalid colour, so
+      // `strokeStyle = 'rgba(90,150,255,'` leaves the previous value in place,
+      // and `strokeStyle += ...` then reads that old value back and appends to
+      // it -- producing another invalid string that is also ignored. The
+      // streaks drew in whatever colour happened to be current.
+      const alpha = (0.08 + 0.30 * strength).toFixed(3);
+      ctx.strokeStyle = i % 5 === 0
+        ? `rgba(150,220,255,${alpha})`
+        : `rgba(90,150,255,${alpha})`;
+      ctx.lineWidth = 1 + strength * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(camera.cx + cos * inner, camera.cy + sin * inner);
+      ctx.lineTo(camera.cx + cos * outer, camera.cy + sin * outer);
+      ctx.stroke();
+    }
+
+    // The tunnel mouth closing.
+    const glow = ctx.createRadialGradient?.(
+      camera.cx, camera.cy, 0,
+      camera.cx, camera.cy, reach * 0.34 * strength + 1,
+    );
+    if (glow) {
+      glow.addColorStop(0, `rgba(190,235,255,${(0.16 * strength).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(150,200,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.restore();
+  }
+
+  /** The settings chip, top-left, clear of the shell's own controls. */
+  private settingsButtonRect(w: number, h: number): { x: number; y: number; w: number; h: number } {
+    const size = Math.max(30, Math.min(w, h) * 0.075);
+    // A FIXED offset, not a fraction of height. At h*0.12 the chip landed on
+    // top of the shell's own fullscreen button in landscape (420px tall puts
+    // 0.12 at y=50, and the chip sits at 52-80) -- two controls in the same
+    // place, one of them invisible. The shell's chip is at a fixed pixel
+    // position, so this has to be too.
+    return { x: 12, y: SETTINGS_BUTTON_TOP, w: size, h: size };
+  }
+
+  private drawSettingsButton(w: number, h: number): void {
+    const { ctx } = this;
+    const r = this.settingsButtonRect(w, h);
+    ctx.save();
+    ctx.globalAlpha = this.settingsOpen ? 1 : 0.62;
+    ctx.fillStyle = 'rgba(8,4,8,0.72)';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = 'rgba(255,80,90,0.75)';
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = '#ffd0d4';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i += 1) {
+      const y = r.y + r.h * (0.32 + i * 0.18);
+      ctx.beginPath();
+      ctx.moveTo(r.x + r.w * 0.24, y);
+      ctx.lineTo(r.x + r.w * 0.76, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** The settings rows, in screen pixels. One definition for paint and touch. */
+  private settingsRows(w: number, h: number): Array<{ id: 'sensitivity' | 'recalibrate' | 'close'; rect: { x: number; y: number; w: number; h: number } }> {
+    const panelW = Math.min(w * 0.82, 340);
+    const rowH = Math.max(44, h * 0.075);
+    const x = (w - panelW) / 2;
+    const top = h * 0.5 - rowH * 1.9;
+    return (['sensitivity', 'recalibrate', 'close'] as const).map((id, index) => ({
+      id,
+      rect: { x, y: top + index * (rowH + 10), w: panelW, h: rowH },
+    }));
+  }
+
+  private drawSettings(w: number, h: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.fillStyle = 'rgba(2,1,4,0.82)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffd0d4';
+    ctx.font = `700 ${Math.max(13, w * 0.04)}px "Courier New", monospace`;
+    const rows = this.settingsRows(w, h);
+    ctx.fillText('SETTINGS', w / 2, rows[0].rect.y - 30);
+
+    for (const row of rows) {
+      const { rect } = row;
+      ctx.fillStyle = 'rgba(20,6,10,0.9)';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = row.id === 'close' ? 'rgba(120,140,160,0.7)' : 'rgba(255,80,90,0.8)';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.fillStyle = '#ffe6e8';
+      ctx.font = `600 ${Math.max(11, rect.h * 0.3)}px "Courier New", monospace`;
+      const label = row.id === 'sensitivity'
+        ? `TILT SENSITIVITY   ${this.settings.tiltSensitivity.toUpperCase()}`
+        : row.id === 'recalibrate' ? 'RECALIBRATE TILT' : 'CLOSE';
+      ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
+    }
+
+    ctx.fillStyle = 'rgba(200,210,230,0.7)';
+    ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
+    const rows2 = rows[rows.length - 1].rect;
+    ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, rows2.y + rows2.h + 26);
+    ctx.restore();
+  }
+
+  private drawToast(w: number, h: number): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, this.settingsToast * 1.6);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(2,10,6,0.85)';
+    const text = this.settingsToastText;
+    ctx.font = `700 ${Math.max(12, w * 0.034)}px "Courier New", monospace`;
+    const width = ctx.measureText(text).width + 28;
+    // Above the panel, not on it. At 0.3 the toast landed across the SETTINGS
+    // heading and both were unreadable -- and the toast fires precisely when
+    // the panel is open, so that overlap was the common case rather than an
+    // edge one.
+    const y = h * 0.17;
+    ctx.fillRect((w - width) / 2, y - 18, width, 36);
+    ctx.fillStyle = '#00ff6a';
+    ctx.fillText(text, w / 2, y);
+    ctx.restore();
   }
 
   private drawDeepField(w: number, h: number): void {
