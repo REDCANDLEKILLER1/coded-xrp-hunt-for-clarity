@@ -197,3 +197,54 @@ export function forward(camera: Camera): { x: number; y: number; z: number } {
     z: Math.cos(camera.yaw) * cosPitch,
   };
 }
+
+/**
+ * When a projectile fired NOW meets a target moving at a constant velocity.
+ *
+ * `delta` is target minus muzzle; `velocity` is the target's velocity relative
+ * to the muzzle. Solve for the time t at which both arrive at the same point:
+ *
+ *   |delta + velocity*t| = speed * t
+ *
+ * Squaring gives an ordinary quadratic in t:
+ *
+ *   (|v|^2 - speed^2) t^2 + 2(delta . v) t + |delta|^2 = 0
+ *
+ * Returns the soonest strictly-positive root, or null when there is none --
+ * which is the honest answer when the target is outrunning the projectile.
+ * A null here means the lead marker is correctly ABSENT rather than drawn
+ * somewhere arbitrary.
+ *
+ * Pure, and separated from the renderer so the maths can be checked without a
+ * canvas. The inverted-yaw bug in `toView` shipped precisely because the
+ * arithmetic was only reachable through a draw call.
+ */
+export function interceptTime(
+  delta: { x: number; y: number; z: number },
+  velocity: { x: number; y: number; z: number },
+  speed: number,
+): number | null {
+  const a = velocity.x * velocity.x + velocity.y * velocity.y + velocity.z * velocity.z - speed * speed;
+  const b = 2 * (delta.x * velocity.x + delta.y * velocity.y + delta.z * velocity.z);
+  const c = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+
+  // |v| == speed collapses the quadratic to a line. Not pedantry: dividing by
+  // 2a here is a division by zero, and the Infinity that follows would place
+  // the marker at no position at all rather than at none.
+  if (Math.abs(a) < 1e-9) {
+    if (Math.abs(b) < 1e-9) return null;
+    const t = -c / b;
+    return t > 0 && Number.isFinite(t) ? t : null;
+  }
+
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const root = Math.sqrt(disc);
+  const t1 = (-b + root) / (2 * a);
+  const t2 = (-b - root) / (2 * a);
+  const soonest = Math.min(
+    t1 > 0 ? t1 : Number.POSITIVE_INFINITY,
+    t2 > 0 ? t2 : Number.POSITIVE_INFINITY,
+  );
+  return Number.isFinite(soonest) ? soonest : null;
+}
