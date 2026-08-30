@@ -70,6 +70,13 @@ const DEG = Math.PI / 180;
  * deadzone exists because no one holds a phone perfectly still.
  */
 const TILT_DEADZONE_DEG = 1.6;
+/**
+ * The shipped defaults, and the NORMAL setting.
+ *
+ * Kept here as the module's own baseline so a TiltSource constructed without a
+ * sensitivity still flies exactly what was tested -- and so the mobile-landscape
+ * gate keeps seeing the identifiers it was written to watch for.
+ */
 const TILT_FULL_SCALE_X = 12;
 const TILT_FULL_SCALE_Y = 14;
 /** Smoothing on the stick, per frame. Lower is calmer and laggier. */
@@ -157,6 +164,14 @@ export class TiltSource {
   private sampleCount = 0;
   private calibrationStart = 0;
   private unsubscribe: (() => void) | null = null;
+  /**
+   * Degrees of physical tilt for full deflection.
+   *
+   * Held as state rather than read from a constant so the setting can change
+   * mid-flight without a restart -- a player adjusting sensitivity wants to
+   * feel the difference on the next turn, not after reloading the level.
+   */
+  private scale = { x: TILT_FULL_SCALE_X, y: TILT_FULL_SCALE_Y };
 
   constructor(private readonly env: TiltEnvironment = browserEnvironment()) {
     if (!this.env.subscribe) {
@@ -221,8 +236,8 @@ export class TiltSource {
     // all four screen orientations. Deriving the sense from beta/gamma instead
     // gives the opposite answer, because which way those Euler axes point
     // depends on the orientation you happen to be holding.
-    const targetX = normalizeTilt(lean.right, TILT_FULL_SCALE_X);
-    const targetY = normalizeTilt(lean.down, TILT_FULL_SCALE_Y);
+    const targetX = normalizeTilt(lean.right, this.scale.x);
+    const targetY = normalizeTilt(lean.down, this.scale.y);
     const ease = Math.min(1, dt * 60 * TILT_SMOOTHING);
     this.stick.x += (targetX - this.stick.x) * ease;
     this.stick.y += (targetY - this.stick.y) * ease;
@@ -232,6 +247,24 @@ export class TiltSource {
   /** Readings seen since the listener was attached. Zero means the sensor is silent. */
   get samplesSeen(): number {
     return this.sampleCount;
+  }
+
+  /**
+   * Sets the response curve.
+   *
+   * Guarded: a non-finite or non-positive scale would make normalizeTilt
+   * divide by zero or by a negative, which does not throw -- it silently
+   * produces NaN or an inverted stick, and the ship becomes unflyable in a way
+   * no error message explains.
+   */
+  setScale(scale: { x: number; y: number }): void {
+    if (!(scale.x > 0) || !(scale.y > 0) || !Number.isFinite(scale.x) || !Number.isFinite(scale.y)) return;
+    this.scale = { x: scale.x, y: scale.y };
+  }
+
+  /** The curve currently in use, for the settings readout. */
+  get fullScale(): { x: number; y: number } {
+    return { ...this.scale };
   }
 
   recalibrate(reason: string): void {
