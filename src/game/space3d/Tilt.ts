@@ -135,7 +135,21 @@ export function projectToScreen(gravity: Vec3, neutral: Vec3, screenAngle: numbe
 
   // Rotation about the screen's vertical axis leans the ship left and right;
   // rotation about its horizontal axis leans it forward and back.
-  return { right: dot(r, screenDown), down: -dot(r, screenRight) };
+  //
+  // Both components are read off the rotation vector with NO negation, and the
+  // symmetry is not a coincidence: `r` is the axis-angle of how gravity moved
+  // in the device's own frame, so its component along one screen axis is
+  // exactly the rotation about the other one.
+  //
+  // The sign of `down` was wrong here until it was measured. `beta` is 0 with
+  // the phone flat and screen up, and 90 with it upright facing the player, so
+  // dipping the top of the phone AWAY makes beta DECREASE -- the opposite of
+  // the intuition that "away" is a bigger angle. Anchored against that, tipping
+  // the top away is gravity rotated by +theta about screenRight, and this
+  // returned -15 degrees for it: the field was reporting nose-UP for the motion
+  // that should give nose-DOWN. The validator's direction test had the same
+  // inverted label, which is why it passed all the way to a phone.
+  return { right: dot(r, screenDown), down: dot(r, screenRight) };
 }
 
 /** Degrees of tilt to a -1..1 stick, with the deadzone removed rather than clipped. */
@@ -230,12 +244,11 @@ export class TiltSource {
     // Dip the screen's right edge -> turn right. Tip the top away from you ->
     // nose down, the same sense as dragging down on the drag fallback.
     //
-    // Both signs pass straight through, and that was worth measuring rather
-    // than reasoning about: projectToScreen already reports positive `right`
-    // for a dipped right edge and positive `down` for a tipped-away top, in
-    // all four screen orientations. Deriving the sense from beta/gamma instead
-    // gives the opposite answer, because which way those Euler axes point
-    // depends on the orientation you happen to be holding.
+    // Both signs pass straight through, because projectToScreen now reports
+    // positive `right` for a dipped right edge and positive `down` for a
+    // tipped-away top in all four screen orientations. Downstream,
+    // `pitchRate = -stickY * TURN_RATE` and positive camera pitch is nose-up,
+    // so a positive `down` lowers the nose.
     const targetX = normalizeTilt(lean.right, this.scale.x);
     const targetY = normalizeTilt(lean.down, this.scale.y);
     const ease = Math.min(1, dt * 60 * TILT_SMOOTHING);
