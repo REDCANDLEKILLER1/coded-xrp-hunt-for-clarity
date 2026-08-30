@@ -225,21 +225,37 @@ export const WEAPONS: Record<string, WeaponDef> = {
       { offsetX: 9, angle: 0 },
     ],
   },
-  tier_3_spread: {
-    key: 'tier_3_spread',
-    label: 'TRI-SPREAD',
+  // NOTHING IN THE LADDER FANS.
+  //
+  // This rung used to be TRI-SPREAD, firing at +/-0.18rad. An angle becomes
+  // width over distance, and measured across a portrait playfield (411x790)
+  // its three shots were 302px apart by the top of the screen -- 73% of the
+  // whole width. Only the middle beam could ever be on the thing you were
+  // aiming at, so two thirds of the gun's damage went into empty space and
+  // "the enemies at the top don't even get hurt" was a literal description of
+  // the geometry. Worse, the ladder GRANTS this gun automatically at XP level
+  // 3: the player did not choose the spread and cannot decline it.
+  //
+  // Every rung now fires parallel columns. The ladder still hands out
+  // different guns -- it varies beam COUNT, rate, damage and pierce, which is
+  // variety you can aim -- but the volley you fire is always the volley that
+  // arrives, at every range.
+  tier_3_tri: {
+    key: 'tier_3_tri',
+    label: 'TRI-BEAM',
     tier: 3,
     projectileKey: 'bb_shot',
     fireRate: 0.16,
     damage: 1,
     shots: [
-      { offsetX: -7, angle: -0.18 },
+      { offsetX: -11, angle: 0 },
       { offsetX: 0, angle: 0 },
-      { offsetX: 7, angle: 0.18 },
+      { offsetX: 11, angle: 0 },
     ],
   },
   // The ladder is meant to hand out different guns, not the same gun with a
-  // bigger number, so the top two rungs change how you have to aim.
+  // bigger number, so the top two rungs change how you have to aim: four
+  // columns that bracket a target, then one heavy bolt that must be aimed.
   tier_4_quad: {
     key: 'tier_4_quad',
     label: 'QUAD BEAM',
@@ -248,10 +264,10 @@ export const WEAPONS: Record<string, WeaponDef> = {
     fireRate: 0.12,
     damage: 1,
     shots: [
-      { offsetX: -13, angle: -0.06 },
-      { offsetX: -5, angle: 0 },
-      { offsetX: 5, angle: 0 },
-      { offsetX: 13, angle: 0.06 },
+      { offsetX: -17, angle: 0 },
+      { offsetX: -6, angle: 0 },
+      { offsetX: 6, angle: 0 },
+      { offsetX: 17, angle: 0 },
     ],
   },
   // One heavy bolt that punches through a whole column. Slow enough that

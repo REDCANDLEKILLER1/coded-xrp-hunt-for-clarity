@@ -46,7 +46,35 @@ const volley = game.split('private currentVolley(')[1]?.split('\n  }\n')[0] ?? '
 check(/offsetX: -offset, angle: 0/.test(volley), 'barrel shots must be parallel');
 check(!/angle: -angle/.test(volley), 'the fanned barrel angle is back');
 
-const widest = 13; // QUAD BEAM's outermost muzzle
+// ---- and so is every gun on the ladder ---------------------------------
+//
+// Fixing the barrels was only half of it. TRI-SPREAD, which the ladder GRANTS
+// at XP level 3 whether or not the player wants it, still fired at +/-0.18rad:
+// measured across a 411x790 portrait playfield its three shots landed 302px
+// apart at the top of the screen -- 73% of the whole width -- so only the
+// middle beam could be on target and the other two were thrown away. "They're
+// not very powerful, at the top of the screen the enemies don't even get
+// hurt."
+//
+// The rule is now absolute and cheap to hold: no equippable gun fans. Variety
+// on the ladder comes from beam count, fire rate, damage and pierce.
+const PORTRAIT_W = 411;
+const PORTRAIT_H = 790;
+for (const [key, weapon] of Object.entries(WEAPONS)) {
+  for (const shot of weapon.shots) {
+    check(shot.angle === 0, `weapons.${key} fires at ${shot.angle}rad — the ladder must not fan`);
+  }
+  // Belt and braces: assert the CONSEQUENCE, not just the field. A future
+  // angle expressed some other way would still be caught here.
+  const atTop = weapon.shots.map((shot) => shot.offsetX + PORTRAIT_H * Math.tan(shot.angle));
+  const span = Math.max(...atTop) - Math.min(...atTop);
+  check(
+    span / PORTRAIT_W < 0.25,
+    `${weapon.label} covers ${((span / PORTRAIT_W) * 100).toFixed(0)}% of a portrait screen at range`,
+  );
+}
+
+const widest = Math.max(...Object.values(WEAPONS).flatMap((w) => w.shots.map((s) => Math.abs(s.offsetX))));
 const curtain = widest + 9 * MAX_BARRELS;
 for (const height of [274, 780]) {
   // With angle 0 the curtain is the same at any range, which is the point.

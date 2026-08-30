@@ -206,6 +206,16 @@ const MAX_BARRELS = 3;
  * BB SHOT or the Lance could only take two of its three barrels.
  */
 const MAX_VOLLEY = 7;
+/**
+ * How long a freshly-opened upgrade overlay ignores taps.
+ *
+ * Sized against the double-tap window rather than picked by feel: Input.ts
+ * pairs two taps up to DOUBLE_TAP_MS = 280ms apart, so the second tap of a
+ * bomb gesture can land at most 280ms after the first. 0.36s covers that with
+ * room for a slow thumb, and is still short enough that a player who WANTS to
+ * pick a card is never left prodding a dead overlay.
+ */
+const UPGRADE_ARM_SECONDS = 0.36;
 
 // Seeker missile. Unlocked deep in the ladder, then fires itself on a timer --
 // the reward for getting far enough is a weapon you do not have to aim.
@@ -404,6 +414,21 @@ export class Game2A {
   /** Levels earned but not yet spent. The overlay stays up until it hits 0. */
   private pendingUpgrades = 0;
   private upgradeOffer: UpgradeKind[] = [];
+  /**
+   * Seconds the freshly-opened upgrade overlay refuses taps.
+   *
+   * A card can open UNDER A FINGER THAT IS ALREADY MOVING. Dropping a bomb is
+   * a double-tap: if the first tap's frame collects a pickup that banks a
+   * pending level, the overlay pops between the two taps and the second tap --
+   * aimed at empty play space, in the middle of the screen, exactly where the
+   * cards are drawn -- spends the level on whatever card it landed on. Draw
+   * BARREL and the gun changes. That is why "I picked up a bomb and my gun
+   * spread out" was a true report about a bomb that never touches the gun.
+   *
+   * A choice you did not read is not a choice, so the overlay ignores taps
+   * until it has been on screen long enough to have been seen.
+   */
+  private upgradeArmClock = 0;
   private bombPower = 1;
   private pulsePower = 1;
   private bombClock = 0;
@@ -545,6 +570,10 @@ export class Game2A {
   private frame(dt: number): void {
     this.clock += dt;
     this.actions();
+    // Ticked here, after actions() has read it and outside update(), which
+    // returns early while the overlay is up -- an arm timer that only runs
+    // when the overlay is closed would never expire.
+    if (this.upgradeArmClock > 0) this.upgradeArmClock = Math.max(0, this.upgradeArmClock - dt);
     this.update(dt);
     this.render();
   }
@@ -584,6 +613,8 @@ export class Game2A {
     }
     if (this.mode === 'victory') return this.reset();
     if (this.upgradeOffer.length > 0) {
+      // Still arming: this tap was in flight before the cards existed.
+      if (this.upgradeArmClock > 0) return;
       const picked = this.upgradeCards().find((card) => inside(card.rect, tap.x, tap.y));
       if (picked) this.applyUpgrade(picked.kind);
       return;
@@ -3670,6 +3701,7 @@ export class Game2A {
     if (open.length === 0) {
       // Genuinely everything maxed. Still shown, still a card, still a beat.
       this.upgradeOffer = all.slice(0, UPGRADE_CHOICES);
+      this.upgradeArmClock = UPGRADE_ARM_SECONDS;
       sfx.play('levelUp');
       return;
     }
@@ -3684,6 +3716,7 @@ export class Game2A {
     }
 
     this.upgradeOffer = offer;
+    this.upgradeArmClock = UPGRADE_ARM_SECONDS;
     sfx.play('levelUp');
     debugLog.log('combat', 'upgrade offer', { level: this.xpLevel, offer, pending: this.pendingUpgrades });
   }
@@ -3782,10 +3815,17 @@ export class Game2A {
         this.pendingUpgrades += 1;
         banner = 'UPGRADE CRATE // CHOOSE';
         break;
-      case 'bomb':
+      case 'bomb': {
+        // Say so when the rack was already full. A pickup that silently does
+        // nothing is the moment a player starts attributing whatever else
+        // happened that second -- a level-up, a new gun -- to the pickup.
+        const full = this.bombs >= this.maxBombs();
         this.bombs = Math.min(this.maxBombs(), this.bombs + 1);
-        banner = `CLARITY BOMB // ${this.bombs}/${this.maxBombs()}`;
+        banner = full
+          ? `RACK FULL // ${this.bombs}/${this.maxBombs()} BOMBS`
+          : `CLARITY BOMB // ${this.bombs}/${this.maxBombs()}`;
         break;
+      }
       case 'repair':
         this.player.hp = Math.min(this.playerDef().hp, (this.player.hp ?? 0) + 1);
         banner = `HULL REPAIR // ${this.player.hp}/${this.playerDef().hp}`;
@@ -4121,8 +4161,10 @@ export class Game2A {
       // slide side to side. The same gun covered 40% on the short landscape
       // screen, which is why this only showed up in portrait.
       //
-      // A barrel adds a BEAM. The weapon decides the spread -- TRI-SPREAD still
-      // fans, because fanning is what TRI-SPREAD is.
+      // A barrel adds a BEAM, and now so does every rung of the ladder: the
+      // last fanning gun (TRI-SPREAD, +/-0.18rad) is gone. Nothing the player
+      // can equip sprays any more -- the volley that leaves the muzzle is the
+      // volley that reaches the target.
       const offset = widest + 9 * pair;
       shots.push({ offsetX: -offset, angle: 0 });
       shots.push({ offsetX: offset, angle: 0 });
