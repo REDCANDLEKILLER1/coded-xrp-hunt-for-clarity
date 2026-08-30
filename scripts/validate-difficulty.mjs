@@ -132,7 +132,19 @@ check(/private enemyHp\(def: EnemyDef\): number \{/.test(game), 'enemyHp is miss
 check(!/hp: def\.hp,\n\s+enemyKey/.test(game), 'a drone spawn still uses unscaled health');
 const toughest = Math.max(...Object.values(ENEMIES).map((enemy) => enemy.hp));
 const worst = Math.round(toughest * (1 - share + share * CAP));
-check(worst <= 14, `the toughest drone reaches ${worst} health at full scale, which is a sponge`);
+// Tightened from 14. The old bound permitted a 4.6x health multiplier, which
+// is exactly the sponge XRPMan ruled out: "the game gets harder because the
+// enemies become more dangerous and tactically varied, not because their HP
+// scales upward to cancel the player's upgrades."
+//
+// Danger now has to come from the doctrines, so this caps how much of it may
+// come from hit points instead.
+const inflation = 1 - share + share * CAP;
+check(
+  inflation <= 3,
+  `a maxed loadout inflates trash health ${inflation.toFixed(1)}x — that is HP-sponge compensation, not difficulty`,
+);
+check(worst <= 8, `the toughest drone reaches ${worst} health at full scale, which is a sponge`);
 check(/private enemySpeed\(def: EnemyDef\): number \{/.test(game), 'enemySpeed is missing');
 check(/firepowerScale\(\)/.test(game.split('private arenaEnemyCap(')[1]?.split('\n  }\n')[0] ?? ''),
   'a bigger gun should face more enemies, not just tougher ones');
