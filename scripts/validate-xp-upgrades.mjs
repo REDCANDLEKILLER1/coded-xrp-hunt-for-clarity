@@ -217,6 +217,60 @@ check(cumulative(2) >= 120, `level 2 costs ${cumulative(2)} XP — too cheap for
 console.log(`  level pays ~${Math.round(levelXp)} XP • QUAD at ${(quadAt * 100).toFixed(0)}% • LANCE at ${(lanceAt * 100).toFixed(0)}%`);
 // A choice made under fire is a reflex test, not a choice.
 check(/if \(this\.upgradeOffer\.length > 0\) return;/.test(game), 'the fight must freeze while an upgrade is being chosen');
+
+// ---- and a choice made by a finger already moving is not one either -----
+//
+// Dropping a bomb is a double-tap. If the first tap's frame collects a pickup
+// that banks a pending level, the overlay opens BETWEEN the two taps, and the
+// second tap -- aimed at empty play space in the middle of the screen, which
+// is exactly where the cards are drawn -- spends the level. Draw BARREL and
+// the gun changes, which is why "I picked up a bomb and my gun spread out"
+// was a true report about a pickup that never touches the gun.
+//
+// Three separate things have to hold, and each is asserted on its own: the
+// overlay arms, the tap path checks the arm, and the arm actually expires.
+const ARM = Number(/const UPGRADE_ARM_SECONDS = ([\d.]+);/.exec(game)?.[1]);
+check(Number.isFinite(ARM), 'UPGRADE_ARM_SECONDS is missing');
+// Sized against the gesture it exists to survive, not by feel.
+const doubleTapMs = Number(/const DOUBLE_TAP_MS = (\d+);/.exec(readFileSync('src/game/core/Input.ts', 'utf8'))?.[1]);
+check(Number.isFinite(doubleTapMs), 'could not read DOUBLE_TAP_MS from Input.ts');
+check(
+  ARM >= doubleTapMs / 1000,
+  `the overlay arms for ${ARM}s but a double-tap spans up to ${doubleTapMs / 1000}s — the second tap still lands`,
+);
+check(ARM <= 0.8, `an overlay that ignores taps for ${ARM}s reads as broken`);
+
+// Every path that opens the overlay must arm it, or the gap is still there.
+const opener = game.split('private openUpgradeChoice(): void {')[1]?.split('\n  }\n')[0] ?? '';
+const offerAssignments = (opener.match(/this\.upgradeOffer = /g) ?? []).length;
+const armAssignments = (opener.match(/this\.upgradeArmClock = UPGRADE_ARM_SECONDS;/g) ?? []).length;
+check(offerAssignments > 0, 'openUpgradeChoice no longer sets an offer — the scraper is broken');
+check(
+  armAssignments === offerAssignments,
+  `openUpgradeChoice opens the overlay ${offerAssignments} ways but arms it ${armAssignments} — an unarmed path is a spent level`,
+);
+
+// The tap path must refuse while arming, and refuse BEFORE resolving a card.
+const tapBranch = game.split('if (this.upgradeOffer.length > 0) {')[1]?.split('\n    }')[0] ?? '';
+check(tapBranch.includes('upgradeCards()'), 'could not find the upgrade tap branch — the scraper is broken');
+check(
+  /if \(this\.upgradeArmClock > 0\) return;/.test(tapBranch),
+  'a tap already in flight can still spend the level: the arm is not checked',
+);
+check(
+  tapBranch.indexOf('upgradeArmClock') < tapBranch.indexOf('upgradeCards()'),
+  'the arm is checked after the card is resolved, which is too late',
+);
+
+// ...and the arm has to expire, from a place that still runs while the
+// overlay is up. update() returns early during the overlay, so a timer ticked
+// there would never reach zero and the cards would be permanently dead.
+const frameBody = game.split('private frame(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
+check(frameBody.includes('this.update(dt)'), 'could not find frame() — the scraper is broken');
+check(
+  /this\.upgradeArmClock = Math\.max\(0, this\.upgradeArmClock - dt\)/.test(frameBody),
+  'the arm timer is not ticked in frame() — the overlay would never accept a tap',
+);
 // Never offer something that cannot do anything.
 check(/private upgradeAvailable\(/.test(game), 'there must be a rule for what is still upgradable');
 // This used to require the all-maxed case to bank score and show nothing.
