@@ -308,6 +308,13 @@ const ARRIVAL_DECEL_SHARE = 0.62;
  * landscape screen.
  */
 const SETTINGS_BUTTON_TOP = 98;
+/**
+ * How long to watch for a requested calibration to complete.
+ *
+ * Clear of TiltSource's own 2600ms fallback, so an ordinary calibration always
+ * resolves inside the window and only a genuinely dead sensor times out here.
+ */
+const TILT_WATCH_SECONDS = 4;
 /** How fast a contact's facing catches up to its velocity. */
 const FACING_EASE = 3.0;
 
@@ -401,6 +408,15 @@ export class Space3DGame {
   /** Seconds left on the "TILT RECALIBRATED" acknowledgement. */
   private settingsToast = 0;
   private settingsToastText = '';
+  /**
+   * Seconds left watching for a requested calibration to finish.
+   *
+   * Bounded, because completion is not guaranteed: TiltSource only latches
+   * neutral from inside onSample, so a sensor that goes silent leaves the
+   * status on 'calibrating' forever and an unbounded watch would leave a toast
+   * on screen for the rest of the run.
+   */
+  private tiltWatch = 0;
 
   private nextContactId = 1;
   /** The held lock, or null. Survives filtering because it is an id. */
@@ -685,10 +701,21 @@ export class Space3DGame {
         this.toast(`TILT ${this.settings.tiltSensitivity.toUpperCase()}`);
       } else if (row.id === 'recalibrate') {
         this.tilt.recalibrate('player requested');
-        // Said out loud. A recalibration with no acknowledgement is
-        // indistinguishable from a button that does nothing, and the player
-        // has no other way to tell.
-        this.toast('TILT RECALIBRATED');
+        // Report what the sensor is ACTUALLY doing, not what we hope it did.
+        //
+        // recalibrate() only STARTS a calibration: it sets the status to
+        // 'calibrating' and returns. Neutral is latched later, in onSample,
+        // once 4+ readings hold within 2.5 degrees for 550ms -- or at the
+        // 2600ms timeout. Saying "RECALIBRATED" here claimed success at least
+        // half a second before it could be true.
+        //
+        // And recalibrate() is a NO-OP in four states (unavailable, denied,
+        // needs_permission, waiting), so on a desktop or a phone whose sensor
+        // is silent a fixed "CALIBRATING" would be a different lie. The
+        // readout already maps every status to a word, so it tells the truth
+        // in all of them -- and reads CALIBRATING in the case that matters.
+        this.toast(`TILT ${this.tiltReadout()}`);
+        this.tiltWatch = TILT_WATCH_SECONDS;
         this.settingsOpen = false;
       } else {
         this.settingsOpen = false;
@@ -698,6 +725,26 @@ export class Space3DGame {
     }
     // A tap on the backdrop closes, which is what every overlay does.
     this.settingsOpen = false;
+  }
+
+  /**
+   * Waits for a requested calibration to actually finish, then says so.
+   *
+   * This is the half that makes the acknowledgement honest: TILT READY appears
+   * only once TiltSource reports 'ready', which is the moment neutral is
+   * genuinely latched. If the watch runs out first -- a sensor that never
+   * delivers another sample -- it reports the real status instead of leaving
+   * the player believing a calibration happened.
+   */
+  private watchCalibration(dt: number): void {
+    if (this.tiltWatch <= 0) return;
+    if (this.tilt.status === 'ready') {
+      this.tiltWatch = 0;
+      this.toast('TILT READY');
+      return;
+    }
+    this.tiltWatch = Math.max(0, this.tiltWatch - dt);
+    if (this.tiltWatch === 0) this.toast(`TILT ${this.tiltReadout()}`);
   }
 
   /** Applies a settings change everywhere it matters, and persists it. */
@@ -803,6 +850,11 @@ export class Space3DGame {
     if (!this.visible) return;
     this.clock += dt;
     if (this.bannerClock > 0) this.bannerClock = Math.max(0, this.bannerClock - dt);
+    // Both of these live HERE rather than in update(), which tick() skips in
+    // 'won' and 'lost'. A toast that stops counting down in those modes would
+    // hang on screen, and the calibration watch would never resolve.
+    if (this.settingsToast > 0) this.settingsToast = Math.max(0, this.settingsToast - dt);
+    this.watchCalibration(dt);
     // 'arrival' belongs here.
     //
     // Leaving it out did not throw and did not look broken at a glance: the
@@ -814,7 +866,6 @@ export class Space3DGame {
   }
 
   private update(dt: number): void {
-    if (this.settingsToast > 0) this.settingsToast = Math.max(0, this.settingsToast - dt);
     if (this.settingsOpen) return;
     if (this.mode === 'arrival') {
       this.updateArrival(dt);

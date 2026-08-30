@@ -184,9 +184,66 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
   check(/RECALIBRATE TILT/.test(draw), 'the panel needs a recalibrate control');
   check(/TILT SENSITIVITY/.test(draw), 'the panel needs the sensitivity control');
   check(/recalibrate\('player requested'\)/.test(tap), 'the recalibrate row must actually recalibrate');
-  // Said out loud: a recalibration with no acknowledgement is indistinguishable
-  // from a button that does nothing.
-  check(/TILT RECALIBRATED/.test(tap), 'recalibrating must be acknowledged on screen');
+
+  // ---- and it must not claim success before success exists ----------------
+  //
+  // The assertion that used to live here was `/TILT RECALIBRATED/.test(tap)`,
+  // and it is what let the bug through: it pinned an acknowledgement without
+  // asking whether the acknowledgement was TRUE.
+  //
+  // TiltSource.recalibrate only STARTS a calibration -- it sets the status to
+  // 'calibrating' and returns. Neutral is latched later, inside onSample, once
+  // 4+ readings hold within STABLE_SPREAD_DEG for SETTLE_MS, or at the
+  // CALIBRATION_TIMEOUT_MS fallback. So the old toast fired at least 550ms
+  // before it could be true, and in the four states where recalibrate() is a
+  // no-op it was never true at all.
+  // COMMENTS STRIPPED. The comment explaining why we no longer say
+  // RECALIBRATED contains the word RECALIBRATED, so a raw grep fails on
+  // correct code -- the third time in this repo that a check has read the
+  // documentation of its own intent instead of the code.
+  const tapCode = tap.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  check(tapCode.includes('this.tilt.recalibrate'), 'comment stripping ate the tap handler — the scraper is broken');
+  check(
+    !/RECALIBRATED/.test(tapCode),
+    'the press must not claim the calibration finished: recalibrate() only starts one',
+  );
+  check(
+    /this\.toast\(`TILT \$\{this\.tiltReadout\(\)\}`\)/.test(tapCode),
+    "the press must report the sensor's actual status, not a fixed string",
+  );
+
+  // A watcher must exist, must gate READY on the real status, and must be
+  // bounded -- TiltSource latches neutral only from inside onSample, so a
+  // sensor that goes silent stays 'calibrating' forever.
+  const watch = game.split('private watchCalibration(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
+  check(watch.length > 0, 'a calibration watcher must exist');
+  check(
+    /this\.tilt\.status === 'ready'/.test(watch),
+    'READY must be gated on the sensor actually reporting ready',
+  );
+  check(/TILT READY/.test(watch), 'the watcher must announce READY when the calibration lands');
+  check(
+    watch.indexOf("=== 'ready'") < watch.indexOf('TILT READY'),
+    'READY is announced before the status is checked',
+  );
+  check(
+    /this\.tiltWatch = Math\.max\(0, this\.tiltWatch - dt\)/.test(watch),
+    'the watch must be bounded, or a silent sensor leaves the toast up forever',
+  );
+  const watchSeconds = Number(/const TILT_WATCH_SECONDS = ([\d.]+);/.exec(game)?.[1]);
+  const timeoutMs = Number(/const CALIBRATION_TIMEOUT_MS = (\d+);/.exec(tilt)?.[1]);
+  check(Number.isFinite(watchSeconds) && Number.isFinite(timeoutMs), 'could not read the watch and calibration timeouts');
+  check(
+    watchSeconds > timeoutMs / 1000,
+    `the watch (${watchSeconds}s) expires before TiltSource's own fallback (${timeoutMs / 1000}s) — a normal calibration would report a failure`,
+  );
+
+  // Both clocks must run in EVERY mode. tick() skips update() in 'won' and
+  // 'lost', so a countdown living in update() would hang the toast there and
+  // leave the watch unresolved.
+  const tickBody = game.split('private tick(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
+  check(/this\.settingsToast = Math\.max\(0, this\.settingsToast - dt\)/.test(tickBody), 'the toast countdown must run in tick(), not update()');
+  check(/this\.watchCalibration\(dt\)/.test(tickBody), 'the calibration watch must run in tick(), not update()');
   check(/saveSettings\(/.test(game), 'a changed setting must persist');
 
   // The overlay must claim pointers BEFORE the retry tap and the weapon
