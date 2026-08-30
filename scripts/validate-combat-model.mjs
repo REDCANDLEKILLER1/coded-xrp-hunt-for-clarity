@@ -29,6 +29,23 @@ const {
 const game = readFileSync('src/game/space3d/Space3DGame.ts', 'utf8');
 const lane = readFileSync('src/game/space3d/SpaceLane.ts', 'utf8');
 
+/**
+ * The source with comments removed, for assertions about CODE.
+ *
+ * Three separate checks in this repo have now matched prose instead of code:
+ * a roll/lock grep that fired on a comment saying the rule deliberately does
+ * not exist, a tick-gate check that matched 'arrival' inside the comment
+ * explaining why arrival belongs in the gate, and a success-string check that
+ * matched the comment explaining why the success string was removed.
+ *
+ * Both directions bite. A POSITIVE check can pass on a comment while the code
+ * does nothing; a NEGATIVE check can fail on correct code because someone
+ * documented the thing being forbidden. Anything asserting about behaviour
+ * reads this instead of the raw file.
+ */
+const gameCode = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+if (gameCode.length < game.length * 0.4) failures.push('comment stripping ate the source — the scraper is broken');
+
 // ---- armour depends on where the hit lands --------------------------------
 //
 // A ship flying along +z. A bolt travelling -z flies into its nose; +z flies
@@ -370,12 +387,12 @@ const lane = readFileSync('src/game/space3d/SpaceLane.ts', 'utf8');
     'shields must regenerate only while a ship is broken off',
   );
   check(
-    !/contact\.hp = Math\.min|contact\.hp \+=/.test(game),
+    !/contact\.hp = Math\.min|contact\.hp \+=/.test(gameCode),
     'nothing may restore enemy hull: hull damage is permanent for the encounter',
   );
 
   // Damage has to go through the armour model, or the profiles are decoration.
-  check(/armourMultiplier\(/.test(game), 'bolt damage must be resolved through the armour model');
+  check(/armourMultiplier\(/.test(gameCode), 'bolt damage must be resolved through the armour model');
   const damage = game.split('private damage(contact: Contact, amount: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(damage.includes('contact.hp'), 'could not find the damage router — the scraper is broken');
   check(/contact\.shield/.test(damage), 'damage must spend the shield before the hull');
@@ -383,7 +400,7 @@ const lane = readFileSync('src/game/space3d/SpaceLane.ts', 'utf8');
   // Decisions are staggered. Re-deciding every frame is both wasteful and
   // worse: a ship that reconsiders sixty times a second oscillates instead of
   // committing.
-  check(/const DECIDE_INTERVAL = /.test(game), 'AI decisions must run on an interval, not every frame');
+  check(/const DECIDE_INTERVAL = /.test(gameCode), 'AI decisions must run on an interval, not every frame');
   const decide = game.split('private decide(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(decide.includes('engagementSlots'), 'could not find the decision layer — the scraper is broken');
   check(/decideClock/.test(decide), 'each ship must carry its own decision countdown');
