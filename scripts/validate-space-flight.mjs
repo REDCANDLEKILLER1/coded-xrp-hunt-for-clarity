@@ -26,7 +26,7 @@ const bundle = await build({
 });
 const {
   project, toView, screenSize, depthAlpha, sortByDepth, onScreen,
-  bearing, rangeTo, wrapAngle, forward, NEAR_PLANE, FAR_PLANE,
+  bearing, rangeTo, wrapAngle, forward, interceptTime, NEAR_PLANE, FAR_PLANE,
 } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
 
 const base = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, cx: 390, cy: 190, focal: 430 };
@@ -297,7 +297,20 @@ check(/frame\.overscanned/.test(cockpit.slice(cockpit.indexOf('buttons(frame: Co
 check(/MISSILE_CHARGE_SECONDS/.test(game), 'the missile must charge');
 check(/if \(this\.missileCharge < 1\)/.test(game), 'an uncharged missile must refuse to fire');
 check(/MISSILE_TURN_RATE/.test(game), 'the seeker must have a bounded turn rate so it can be out-flown');
-check(!/barrel roll.{0,40}lock/i.test(game), 'a roll must not defeat a seeker by animation');
+// Scoped to CODE, not prose. This grepped the whole file, which meant a
+// comment explaining that the rule deliberately does not exist read as the
+// rule existing -- the assertion fired on documentation of its own intent.
+// Stripping comments first makes it test the behaviour it is actually about:
+// a seeker beaten by geometry, never by an animation having played.
+const codeOnly = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+check(codeOnly.length > game.length * 0.5, 'comment stripping ate the file — the scraper is broken');
+check(!/barrel roll.{0,40}lock/i.test(codeOnly), 'a roll must not defeat a seeker by animation');
+// Precise, because a substring search cannot work here: "rollClock" itself
+// contains the letters "lock", so any proximity grep around it matches itself.
+// Assert the actual thing instead -- the roll gesture never writes the lock.
+const rollBody = game.split('private startRoll(): void {')[1]?.split('\n  }\n')[0] ?? '';
+check(rollBody.includes('rollClock'), 'could not find startRoll — the scraper is broken');
+check(!/lockId|lockProgress/.test(rollBody), 'starting a roll must not clear or grant the lock');
 
 // ---- the rescale: space has to be big enough to see something coming -----
 {
@@ -382,6 +395,134 @@ check(slowdown > 1 && slowdown <= 2.5, `heat slowdown of ${slowdown}x is either 
 const ttk = bossHp / perfectDps;
 check(ttk >= 25, `the boss dies in ${ttk.toFixed(0)}s of PERFECT shooting — a level boss must outlast a held trigger`);
 check(ttk <= 45, `the boss takes ${ttk.toFixed(0)}s of perfect shooting — past this it is a sponge, not a fight`);
+
+
+// ---- the gun lead pipper --------------------------------------------------
+//
+// A crossing target at 1750 units/s of bolt speed is guesswork without a lead
+// marker, and crossing shots are most of a dogfight. The solve is a quadratic,
+// so it has the failure modes quadratics have -- no root, a negative root, a
+// division by zero -- and each one has to produce "no marker" rather than a
+// marker somewhere arbitrary.
+{
+  const SPEED = 1750;
+
+  // A stationary target: the lead is the target itself, at range/speed.
+  const still = interceptTime({ x: 0, y: 0, z: 3500 }, { x: 0, y: 0, z: 0 }, SPEED);
+  near(still, 2, 1e-9, 'a stationary target intercepts at range/speed');
+
+  // A crossing target: the lead must be AHEAD of it along its own travel, and
+  // the intercept has to actually be an intercept -- both sides of
+  // |d + v*t| = speed*t must agree.
+  const delta = { x: 0, y: 0, z: 3500 };
+  const vel = { x: 600, y: 0, z: 0 };
+  const t = interceptTime(delta, vel, SPEED);
+  check(t !== null && t > 0, 'a crossing target must have an intercept');
+  const meet = { x: delta.x + vel.x * t, y: delta.y + vel.y * t, z: delta.z + vel.z * t };
+  near(Math.hypot(meet.x, meet.y, meet.z), SPEED * t, 1e-6, 'the intercept point must satisfy |d+vt| = speed*t');
+  check(meet.x > delta.x, 'the lead must be ahead of a right-crossing target, not behind it');
+
+  // Faster than the bolt and running away: there is no intercept, and the
+  // honest answer is no marker. A solver that returned the negative root here
+  // would draw a pipper BEHIND the player.
+  check(
+    interceptTime({ x: 0, y: 0, z: 2000 }, { x: 0, y: 0, z: SPEED * 1.4 }, SPEED) === null,
+    'a target outrunning the bolt must have no intercept',
+  );
+
+  // |v| exactly equal to bolt speed collapses the quadratic to a line, because
+  // the t^2 coefficient is |v|^2 - speed^2 = 0 and 2a is a division by zero.
+  //
+  // The vector matters. A first version used v PERPENDICULAR to d, which also
+  // makes b = 0 -- and with both coefficients zero the unguarded quadratic
+  // happens to produce NaN, get filtered, and return null, which is the same
+  // answer the guard gives. The test passed with the guard deleted: it could
+  // not fail. A CLOSING target at exactly bolt speed separates them, because
+  // there the correct answer is a real intercept and the unguarded path
+  // returns none -- the pipper would silently vanish.
+  const closingAtBoltSpeed = interceptTime({ x: 0, y: 0, z: 2000 }, { x: 0, y: 0, z: -SPEED }, SPEED);
+  check(
+    closingAtBoltSpeed !== null && Number.isFinite(closingAtBoltSpeed) && closingAtBoltSpeed > 0,
+    `a target closing at exactly bolt speed must still have an intercept (got ${closingAtBoltSpeed})`,
+  );
+  near(closingAtBoltSpeed, 2000 / (2 * SPEED), 1e-9, 'the closing-at-bolt-speed intercept is range/(2*speed)');
+
+  // ...and the doubly-degenerate case (a and b both zero) must answer null
+  // rather than NaN.
+  const bothZero = interceptTime({ x: 0, y: 0, z: 2000 }, { x: SPEED, y: 0, z: 0 }, SPEED);
+  check(bothZero === null || Number.isFinite(bothZero), 'the |v| == speed case must never return NaN or Infinity');
+
+  // Every root handed back is finite and strictly future, across a sweep.
+  for (const vx of [-2400, -900, -300, 0, 300, 900, 2400]) {
+    for (const range of [400, 1500, 6000]) {
+      const value = interceptTime({ x: 0, y: 0, z: range }, { x: vx, y: 0, z: 0 }, SPEED);
+      check(
+        value === null || (Number.isFinite(value) && value > 0),
+        `interceptTime returned ${value} for vx=${vx} range=${range} — must be null or a positive finite time`,
+      );
+    }
+  }
+}
+
+// ---- ...and it is instrumentation, not auto-aim ---------------------------
+//
+// The pipper says where to put the nose. It must never move the nose. If the
+// firing path ever read the lead, the gun would stop going where it points and
+// the skill the pipper exists to reward would evaporate.
+{
+  const fire = game.split('private fireGuns(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
+  check(fire.includes('forward(this.camera)'), 'could not find fireGuns — the scraper is broken');
+  check(!/leadPoint|lockTarget|lockId/.test(fire), 'fireGuns reads the lock or the lead: the guns must fire where the nose points');
+  const bolt = game.split('private fireGuns(dt: number): void {')[1]?.split('sfx.play')[0] ?? '';
+  check(/vx: dir\.x \* BOLT_SPEED/.test(bolt), 'bolts must leave along the camera forward vector');
+}
+
+// ---- the lock, and the missile that needs it ------------------------------
+//
+// The lock is what makes the missile a decision rather than a cooldown.
+{
+  check(/const LOCK_CONE = /.test(game), 'the lock needs an acquisition cone');
+  const cone = Number(/const LOCK_CONE = ([\d.]+);/.exec(game)?.[1]);
+  const hold = Number(/const LOCK_HOLD_CONE = ([\d.]+);/.exec(game)?.[1]);
+  check(Number.isFinite(cone) && Number.isFinite(hold), 'both lock cones must exist');
+  // Hysteresis. One cone for both would either strobe through a turn or make
+  // it impossible to choose which of two contacts you meant.
+  check(hold > cone, `the hold cone (${hold}) must be wider than the acquire cone (${cone}), or the lock strobes`);
+
+  const missile = game.split('private fireMissile(): void {')[1]?.split('\n  }\n')[0] ?? '';
+  check(missile.includes('missiles.push'), 'could not find fireMissile — the scraper is broken');
+  check(
+    /if \(this\.lockId === null\) \{[\s\S]*?return;/.test(missile),
+    'the missile must refuse to fire without a lock',
+  );
+  check(
+    missile.indexOf('lockId === null') < missile.indexOf('missiles.push'),
+    'the lock is checked after the missile is already away',
+  );
+  check(/targetId: this\.lockId/.test(missile), 'a missile must carry the lock it was fired with');
+
+  // ...and it must track THAT, not whatever drifts in front of it.
+  const seek = game.split('private seekTarget(')[1]?.split('\n  }\n')[0] ?? '';
+  check(seek.length > 0, 'could not find seekTarget — the scraper is broken');
+  check(/missile\.targetId/.test(seek), 'a seeker must track the target it was locked onto');
+  check(
+    /cone < Math\.cos\(MISSILE_SEEK_CONE\)/.test(seek),
+    'a seeker must still be losable by geometry, or it cannot be beaten by flying',
+  );
+
+  // The lock has to be able to go away, or it is not a lock.
+  const lock = game.split('private updateLock(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
+  check(lock.length > 0, 'could not find updateLock — the scraper is broken');
+  check(/this\.lockId = null/.test(lock), 'the lock must drop when the target leaves the hold cone');
+  check(/clamp\(cos, -1, 1\)/.test(lock), 'acos must be clamped: drift past 1 is NaN and the lock would silently die');
+}
+
+// ---- the radar says which one is locked -----------------------------------
+{
+  const radar = cockpit.split('private drawRadar(')[1]?.split('\n  }\n')[0] ?? '';
+  check(radar.includes('state.contacts'), 'could not find drawRadar — the scraper is broken');
+  check(/contact\.locked/.test(radar), 'the radar must mark the locked contact');
+}
 
 // ---- music ----------------------------------------------------------------
 const audio = JSON.parse(readFileSync('public/assets/audio/manifest.json', 'utf8'));

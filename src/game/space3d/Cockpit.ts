@@ -122,6 +122,25 @@ export interface CockpitContact {
   hostile: boolean;
   /** Draws larger and brighter. */
   capital?: boolean;
+  /** The held lock. Marked distinctly, because it is the one the missile goes to. */
+  locked?: boolean;
+}
+
+/** What the right screen says about the thing you are locked onto. */
+export interface CockpitLock {
+  label: string;
+  /** World units. */
+  range: number;
+  /**
+   * Closure, world units per second. POSITIVE means closing.
+   *
+   * Sign matters more than magnitude here: it is the difference between a
+   * target you are catching and one that is leaving, which decides whether to
+   * keep chasing at all.
+   */
+  closure: number;
+  /** 0..1 for a capital ship; null for anything without a health readout. */
+  health: number | null;
 }
 
 export type CockpitButtonId = 'guns' | 'missile' | 'warp';
@@ -160,6 +179,10 @@ export interface CockpitState {
   /** Short tilt state, shown so a tester can say which stage is failing. */
   tiltStatus: string;
   contacts: CockpitContact[];
+  /** The held lock, or null. */
+  lock: CockpitLock | null;
+  /** 0..1 dwell toward a lock that has not been acquired yet. */
+  lockProgress: number;
   /** Radar's outer ring, in world units. */
   radarRange: number;
   rollReady: boolean;
@@ -347,7 +370,8 @@ export class Cockpit {
       const isGuns = button.id === 'guns';
       const isWarp = button.id === 'warp';
       const down = held.has(button.id);
-      const ready = isGuns ? true : isWarp ? state.warpReady : state.missileCharge >= 1;
+      // The missile needs BOTH charge and a lock, so the button says both.
+      const ready = isGuns ? true : isWarp ? state.warpReady : (state.missileCharge >= 1 && state.lock !== null);
       const fill = isGuns ? state.gunHeat : isWarp ? state.warpHeat : state.missileCharge;
 
       ctx.save();
@@ -490,6 +514,16 @@ export class Cockpit {
       ctx.arc(px, py, size, 0, Math.PI * 2);
       ctx.fill();
 
+      // The lock gets a ring, not a colour. Colour already carries capital vs
+      // fighter here, and stacking a second meaning on it would lose one.
+      if (contact.locked) {
+        ctx.strokeStyle = CYAN;
+        ctx.lineWidth = Math.max(1, size * 0.5);
+        ctx.beginPath();
+        ctx.arc(px, py, size * 2.4, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       // Above or below gets an arrow, because a plan radar alone cannot say so
       // and out here a contact really can be directly over your head.
       if (Math.abs(contact.elevation) > 0.25) {
@@ -592,7 +626,26 @@ export class Cockpit {
     ctx.textBaseline = 'alphabetic';
     const label = Math.max(5, w * 0.085);
 
-    if (state.bossHealth !== null) {
+    // Priority: the lock, then the boss, then tilt. A player with a target
+    // held wants to know about THAT; tilt state is a setup readout and only
+    // earns the screen when nothing is happening.
+    if (state.lock) {
+      ctx.fillStyle = CYAN;
+      ctx.font = `700 ${label}px "Courier New", monospace`;
+      ctx.fillText(state.lock.label.slice(0, 16), x + w * 0.07, y + h * 0.2);
+      ctx.font = `${label}px "Courier New", monospace`;
+      ctx.fillStyle = 'rgba(79,216,255,0.8)';
+      const km = (state.lock.range / 1000).toFixed(1);
+      // Closing or opening, said in a word. The sign is the decision.
+      const closing = state.lock.closure >= 0;
+      ctx.fillText(`${km}k ${closing ? 'CLOSING' : 'OPENING'}`, x + w * 0.07, y + h * 0.36);
+      if (state.lock.health !== null) {
+        ctx.fillStyle = 'rgba(120,30,40,0.32)';
+        ctx.fillRect(x + w * 0.07, y + h * 0.41, w * 0.86, Math.max(3, h * 0.1));
+        ctx.fillStyle = RED;
+        ctx.fillRect(x + w * 0.07, y + h * 0.41, w * 0.86 * state.lock.health, Math.max(3, h * 0.1));
+      }
+    } else if (state.bossHealth !== null) {
       ctx.fillStyle = RED;
       ctx.font = `700 ${label}px "Courier New", monospace`;
       ctx.fillText(state.bossLabel.slice(0, 16), x + w * 0.07, y + h * 0.2);
@@ -600,6 +653,16 @@ export class Cockpit {
       ctx.fillRect(x + w * 0.07, y + h * 0.27, w * 0.86, Math.max(3, h * 0.12));
       ctx.fillStyle = RED;
       ctx.fillRect(x + w * 0.07, y + h * 0.27, w * 0.86 * state.bossHealth, Math.max(3, h * 0.12));
+    } else if (state.lockProgress > 0.02) {
+      // Dwelling. Showing the acquisition as it happens is what tells you the
+      // lock is a thing you DO rather than something that occasionally occurs.
+      ctx.fillStyle = 'rgba(79,216,255,0.75)';
+      ctx.font = `${label}px "Courier New", monospace`;
+      ctx.fillText('ACQUIRING', x + w * 0.07, y + h * 0.2);
+      ctx.fillStyle = 'rgba(20,60,80,0.5)';
+      ctx.fillRect(x + w * 0.07, y + h * 0.27, w * 0.86, Math.max(3, h * 0.1));
+      ctx.fillStyle = CYAN;
+      ctx.fillRect(x + w * 0.07, y + h * 0.27, w * 0.86 * state.lockProgress, Math.max(3, h * 0.1));
     } else {
       ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
       ctx.font = `${label}px "Courier New", monospace`;

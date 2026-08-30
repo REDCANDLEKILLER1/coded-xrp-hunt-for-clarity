@@ -3,7 +3,7 @@ import { Loop } from '../core/Loop';
 import { SpriteRenderer } from '../core/Sprite';
 import { sfx } from '../audio/Sfx';
 import { debugLog } from '../core/DebugLog';
-import { Cockpit, type CockpitButtonId, type CockpitContact, type CockpitState } from './Cockpit';
+import { Cockpit, type CockpitButtonId, type CockpitContact, type CockpitLock, type CockpitState } from './Cockpit';
 import { TiltSource } from './Tilt';
 import {
   FAR_PLANE,
@@ -11,6 +11,7 @@ import {
   bearing,
   depthAlpha,
   forward,
+  interceptTime,
   onScreen,
   project,
   rangeTo,
@@ -45,6 +46,14 @@ import { LEDGER_TRANSIT, type EngagePattern, type SpaceLeg, type SpaceSquadron }
 type EnemyState = 'inbound' | 'engaged' | 'breaking';
 
 type Contact = {
+  /**
+   * Stable identity, so a lock survives the array being filtered.
+   *
+   * Locking an INDEX would silently re-point at whatever slid down into that
+   * slot when a nearer contact died -- the missile you fired at a gunboat
+   * would chase a drone, and nothing on screen would say why.
+   */
+  id: number;
   x: number;
   y: number;
   z: number;
@@ -79,7 +88,11 @@ type Bolt = {
   life: number;
 };
 
-type Missile = { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
+type Missile = {
+  x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number;
+  /** The lock it was fired with. It tracks THIS and nothing else. */
+  targetId: number;
+};
 type Burst = { x: number; y: number; z: number; life: number; max: number };
 /** Stars sit on a unit sphere: infinitely far, so they turn but never pass. */
 type Star = { x: number; y: number; z: number; mag: number };
@@ -181,10 +194,30 @@ const DESPAWN_RANGE = 11000;
 
 /** No target bracket shrinks below this, however far away its contact is. */
 const BRACKET_MIN_PIXELS = 22;
+/**
+ * Target lock.
+ *
+ * You lock what you point at: the contact nearest the nose inside a cone,
+ * held for a dwell. No extra gesture -- there is no spare thumb for one, and
+ * "get the enemy ship in your sight" is already the gesture.
+ *
+ * The cone to ACQUIRE is tight and the cone to KEEP is wide. One value for
+ * both would either be too tight to hold through a turn (the lock strobing on
+ * and off, which is worse than none) or so loose that you cannot choose which
+ * of two contacts you meant. Hysteresis, the same shape as the quality tiers.
+ */
+const LOCK_CONE = 0.16;
+const LOCK_HOLD_CONE = 0.46;
+const LOCK_DWELL = 0.5;
+const LOCK_RANGE = 7000;
+/** Sentinel identity for the capital ship, which is not in the contact array. */
+const BOSS_ID = -1;
 
 const RED = '#ff4c66';
 const GREEN = '#00ff6a';
 const AMBER = '#ffb020';
+/** The lock's colour, matching the cockpit's own shield/lock cyan. */
+const CYAN = '#4fd8ff';
 
 export class Space3DGame {
   private readonly canvas: HTMLCanvasElement;
@@ -263,6 +296,13 @@ export class Space3DGame {
   private shieldFore = 1;
   private shieldAft = 1;
   private shieldQuiet = 0;
+
+  private nextContactId = 1;
+  /** The held lock, or null. Survives filtering because it is an id. */
+  private lockId: number | null = null;
+  /** What the nose is currently dwelling on, and how far through the dwell. */
+  private lockCandidateId: number | null = null;
+  private lockProgress = 0;
 
   constructor(private readonly shell: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -587,6 +627,7 @@ export class Space3DGame {
     this.updateSquadrons(dt);
     this.updateContacts(dt);
     if (this.mode === 'boss') this.updateBoss(dt);
+    this.updateLock(dt);
     this.updateBolts(dt);
     this.updateMissiles(dt);
     this.fireGuns(dt);
@@ -697,6 +738,7 @@ export class Space3DGame {
     for (let i = 0; i < squadron.count; i += 1) {
       const spread = 130;
       this.contacts.push({
+        id: this.nextContactId,
         x: base.x + (Math.random() - 0.5) * spread * 2,
         y: base.y + (Math.random() - 0.5) * spread,
         z: base.z + (Math.random() - 0.5) * spread * 2,
@@ -717,6 +759,7 @@ export class Space3DGame {
         orbitPhase: Math.random() * Math.PI * 2,
         orbitTilt: (Math.random() - 0.5) * 1.4,
       });
+      this.nextContactId += 1;
     }
     this.banner(`SCRAMBLE // ${squadron.count} ${squadron.pattern.replace('_', ' ').toUpperCase()}`, 1.8);
     sfx.play('enemyShoot');
@@ -895,6 +938,7 @@ export class Space3DGame {
     for (let i = 0; i < boss.escortCount; i += 1) {
       const angle = (i / boss.escortCount) * Math.PI * 2;
       this.contacts.push({
+        id: this.nextContactId,
         x: this.boss.x + Math.cos(angle) * 200,
         y: this.boss.y + Math.sin(angle) * 140,
         z: this.boss.z + Math.sin(angle) * 200,
@@ -915,6 +959,7 @@ export class Space3DGame {
         orbitPhase: angle,
         orbitTilt: (Math.random() - 0.5) * 1.2,
       });
+      this.nextContactId += 1;
     }
   }
 
@@ -1033,17 +1078,23 @@ export class Space3DGame {
   }
 
   /**
-   * The special: a heavy seeker that has to be charged for.
+   * The special: a heavy seeker that has to be charged for AND locked.
    *
-   * It picks the nearest contact inside a cone off the nose. PR 3 replaces
-   * that with the formal target lock -- the seeker steering below is written
-   * against "a mark" rather than "the nearest thing" so that swap is a
-   * one-line change rather than a rewrite.
+   * Requiring the lock is what makes the lock matter rather than being an
+   * ornament on the glass. Two different refusals, said differently, because
+   * "nothing happened when I pressed it" is the same experience for both and
+   * the fix for each is the opposite of the other: wait, or aim.
    */
   private fireMissile(): void {
     if (this.mode !== 'flying' && this.mode !== 'boss') return;
     if (this.missileCharge < 1) {
       sfx.play('deny');
+      this.banner('MISSILE CHARGING', 0.9);
+      return;
+    }
+    if (this.lockId === null) {
+      sfx.play('deny');
+      this.banner('NO LOCK', 0.9);
       return;
     }
     this.missileCharge = 0;
@@ -1056,6 +1107,7 @@ export class Space3DGame {
       vy: dir.y * MISSILE_SPEED,
       vz: dir.z * MISSILE_SPEED,
       life: 5.5,
+      targetId: this.lockId,
     });
     sfx.play('bomb');
     this.banner('MISSILE AWAY', 1.1);
@@ -1089,24 +1141,163 @@ export class Space3DGame {
     this.missiles = this.missiles.filter((missile) => missile.life > 0);
   }
 
-  /** Nearest contact inside the seeker cone, or null when it has lost the plot. */
-  private seekTarget(missile: { x: number; y: number; z: number; vx: number; vy: number; vz: number }):
-  { x: number; y: number; z: number } | null {
-    const heading = normalise({ x: missile.vx, y: missile.vy, z: missile.vz });
-    let best: { x: number; y: number; z: number } | null = null;
-    let bestRange = Infinity;
-    const consider = (x: number, y: number, z: number): void => {
-      const dx = x - missile.x;
-      const dy = y - missile.y;
-      const dz = z - missile.z;
-      const range = Math.hypot(dx, dy, dz) || 1;
-      const cone = (dx * heading.x + dy * heading.y + dz * heading.z) / range;
-      if (cone < Math.cos(MISSILE_SEEK_CONE)) return;
-      if (range < bestRange) { bestRange = range; best = { x, y, z }; }
+  /**
+   * The target lock.
+   *
+   * Two cones, not one. ACQUIRING needs the contact inside a tight cone off
+   * the nose for a dwell, so you choose what you lock; KEEPING it allows a
+   * much wider one, so a lock does not strobe on and off through a turn --
+   * which is the failure mode that makes a lock indicator worse than none.
+   *
+   * Nothing here steers anything. The lock only decides what the instruments
+   * describe and what the missile is allowed to be fired at.
+   */
+  private updateLock(dt: number): void {
+    if (this.mode !== 'flying' && this.mode !== 'boss') {
+      this.lockId = null;
+      this.lockCandidateId = null;
+      this.lockProgress = 0;
+      return;
+    }
+    const dir = forward(this.camera);
+    // Angle off the nose. Returns null when it is out of range or behind you.
+    const offNose = (x: number, y: number, z: number): number | null => {
+      const dx = x - this.camera.x;
+      const dy = y - this.camera.y;
+      const dz = z - this.camera.z;
+      const range = Math.hypot(dx, dy, dz);
+      if (range < 1 || range > LOCK_RANGE) return null;
+      const cos = (dx * dir.x + dy * dir.y + dz * dir.z) / range;
+      // clamp before acos: floating drift past 1 is NaN, and a NaN angle
+      // compares false against every threshold, so the lock would just stop.
+      return Math.acos(clamp(cos, -1, 1));
     };
-    for (const contact of this.contacts) consider(contact.x, contact.y, contact.z);
-    if (this.mode === 'boss' && this.bossHp > 0) consider(this.boss.x, this.boss.y, this.boss.z);
-    return best;
+
+    // Hold an existing lock while it stays in the wide cone.
+    if (this.lockId !== null) {
+      const held = this.lockTarget();
+      const angle = held ? offNose(held.x, held.y, held.z) : null;
+      if (angle !== null && angle <= LOCK_HOLD_CONE) {
+        this.lockProgress = 1;
+        this.lockCandidateId = this.lockId;
+        return;
+      }
+      this.lockId = null;
+      this.lockProgress = 0;
+    }
+
+    // Acquire: whatever is CLOSEST TO THE NOSE, not whatever is nearest. You
+    // lock what you point at; range decides nothing here.
+    let bestId: number | null = null;
+    let bestAngle = LOCK_CONE;
+    for (const contact of this.contacts) {
+      const angle = offNose(contact.x, contact.y, contact.z);
+      if (angle !== null && angle < bestAngle) { bestAngle = angle; bestId = contact.id; }
+    }
+    if (this.mode === 'boss' && this.bossHp > 0) {
+      const angle = offNose(this.boss.x, this.boss.y, this.boss.z);
+      if (angle !== null && angle < bestAngle) { bestAngle = angle; bestId = BOSS_ID; }
+    }
+
+    if (bestId === null) {
+      this.lockCandidateId = null;
+      this.lockProgress = 0;
+      return;
+    }
+    if (bestId !== this.lockCandidateId) {
+      this.lockCandidateId = bestId;
+      this.lockProgress = 0;
+    }
+    this.lockProgress = Math.min(1, this.lockProgress + dt / LOCK_DWELL);
+    if (this.lockProgress >= 1) {
+      this.lockId = bestId;
+      sfx.play('pickup');
+    }
+  }
+
+  /** Where the locked thing is right now, or null if it is gone. */
+  private lockTarget(): { x: number; y: number; z: number; vx: number; vy: number; vz: number; label: string; health: number | null } | null {
+    if (this.lockId === null) return null;
+    if (this.lockId === BOSS_ID) {
+      if (this.mode !== 'boss' || this.bossHp <= 0) return null;
+      return {
+        ...this.boss,
+        vx: 0, vy: 0, vz: 0,
+        label: this.leg.boss.label,
+        health: Math.max(0, this.bossHp / this.leg.boss.hp),
+      };
+    }
+    const contact = this.contacts.find((item) => item.id === this.lockId);
+    if (!contact) return null;
+    return {
+      x: contact.x, y: contact.y, z: contact.z,
+      vx: contact.vx, vy: contact.vy, vz: contact.vz,
+      label: contact.sprite.replace(/_/g, ' ').toUpperCase(),
+      health: null,
+    };
+  }
+
+  /**
+   * Where to put the nose so a bolt fired NOW meets the target.
+   *
+   * INSTRUMENTATION, NOT AUTO-AIM. Nothing is steered and nothing snaps: the
+   * shot still leaves along forward(camera) exactly as before, and fireGuns
+   * never reads this. The pipper only says where to put the nose yourself.
+   * Without it a crossing target at 1750 units/s of bolt speed is guesswork,
+   * and crossing shots are most of a dogfight.
+   *
+   * The solve itself is Projection.interceptTime, kept out here so the
+   * arithmetic can be checked without a canvas -- the inverted-yaw bug in
+   * toView shipped precisely because its maths was only reachable through a
+   * draw call.
+   */
+  private leadPoint(target: { x: number; y: number; z: number; vx: number; vy: number; vz: number }):
+  { x: number; y: number; z: number } | null {
+    const dir = forward(this.camera);
+    const speed = this.throttle * CRUISE * (this.warpHeld && this.warpReady ? WARP_MULTIPLIER : 1);
+    // Relative to the MUZZLE, which is moving. The bolt inherits no ship
+    // velocity, but the firing point runs forward while the round is in
+    // flight, so what the solve needs is the target's velocity relative to us.
+    const t = interceptTime(
+      { x: target.x - this.camera.x, y: target.y - this.camera.y, z: target.z - this.camera.z },
+      { x: target.vx - dir.x * speed, y: target.vy - dir.y * speed, z: target.vz - dir.z * speed },
+      BOLT_SPEED,
+    );
+    // Past a few seconds the prediction is fiction -- nothing holds a constant
+    // velocity that long in a dogfight -- and a pipper drawn from it would
+    // send you somewhere the target was never going.
+    if (t === null || t > 4) return null;
+    return { x: target.x + target.vx * t, y: target.y + target.vy * t, z: target.z + target.vz * t };
+  }
+
+  /**
+   * The mark a missile is steering at, or null when it has lost it.
+   *
+   * A missile tracks THE THING IT WAS LOCKED ONTO, not whatever happens to be
+   * nearest -- otherwise a seeker fired at a gunboat quietly adopts the drone
+   * that wanders in front of it, and the lock you spent time earning buys you
+   * nothing.
+   *
+   * It still loses the mark by geometry: leave the seeker cone and it goes
+   * ballistic. There is deliberately no rule saying a barrel roll breaks lock.
+   * A defensive move that works because it played an animation teaches you
+   * nothing about where to fly; this one is beaten by actually flying out of
+   * the cone or out-turning the seeker, which is a thing you can get better at.
+   */
+  private seekTarget(missile: { x: number; y: number; z: number; vx: number; vy: number; vz: number; targetId: number }):
+  { x: number; y: number; z: number } | null {
+    const mark = missile.targetId === BOSS_ID
+      ? (this.mode === 'boss' && this.bossHp > 0 ? this.boss : null)
+      : this.contacts.find((contact) => contact.id === missile.targetId) ?? null;
+    if (!mark) return null;
+    const heading = normalise({ x: missile.vx, y: missile.vy, z: missile.vz });
+    const dx = mark.x - missile.x;
+    const dy = mark.y - missile.y;
+    const dz = mark.z - missile.z;
+    const range = Math.hypot(dx, dy, dz) || 1;
+    const cone = (dx * heading.x + dy * heading.y + dz * heading.z) / range;
+    if (cone < Math.cos(MISSILE_SEEK_CONE)) return null;
+    return { x: mark.x, y: mark.y, z: mark.z };
   }
 
   private updateBolts(dt: number): void {
@@ -1336,6 +1527,7 @@ export class Space3DGame {
     for (const item of sortByDepth(drawables)) item.paint();
 
     this.drawReticle();
+    this.drawLockCursor();
     if (this.graceClock > 0) this.drawDamageFlash(w, h);
 
     // The canopy goes on LAST, over everything: it is a frame you look through,
@@ -1380,6 +1572,7 @@ export class Space3DGame {
         range,
         elevation: clamp(-view.y / Math.max(1, range), -1, 1),
         hostile: true,
+        locked: contact.id === this.lockId,
       });
     }
     if (this.mode === 'boss' && this.bossHp > 0) {
@@ -1391,6 +1584,7 @@ export class Space3DGame {
         elevation: clamp(-view.y / Math.max(1, range), -1, 1),
         hostile: true,
         capital: true,
+        locked: this.lockId === BOSS_ID,
       });
     }
     return {
@@ -1410,10 +1604,38 @@ export class Space3DGame {
       status: this.mode === 'boss' ? 'INTERCEPT' : `NAV ${this.leg.destination}`,
       tiltStatus: this.tiltReadout(),
       contacts,
+      lock: this.lockReadout(),
+      lockProgress: this.lockId === null ? this.lockProgress : 1,
       radarRange: RADAR_RANGE,
       rollReady: this.rollCooldown <= 0,
       clock: this.clock,
     };
+  }
+
+  /**
+   * The locked target, as the right screen wants it.
+   *
+   * Closure is the component of relative velocity ALONG the line to the
+   * target, not the change in range between frames: a per-frame difference is
+   * noise at 60fps and would flicker between CLOSING and OPENING while you
+   * held a steady chase. Your own velocity counts, which is the point --
+   * whether you are catching something depends on how fast you are going.
+   */
+  private lockReadout(): CockpitLock | null {
+    const target = this.lockTarget();
+    if (!target) return null;
+    const dx = target.x - this.camera.x;
+    const dy = target.y - this.camera.y;
+    const dz = target.z - this.camera.z;
+    const range = Math.hypot(dx, dy, dz) || 1;
+    const dir = forward(this.camera);
+    const speed = this.throttle * CRUISE * (this.warpHeld && this.warpReady ? WARP_MULTIPLIER : 1);
+    // Relative velocity: theirs minus ours, projected onto the line of sight.
+    const rvx = target.vx - dir.x * speed;
+    const rvy = target.vy - dir.y * speed;
+    const rvz = target.vz - dir.z * speed;
+    const closure = -((rvx * dx + rvy * dy + rvz * dz) / range);
+    return { label: target.label, range, closure, health: target.health };
   }
 
   private drawDeepField(w: number, h: number): void {
@@ -1502,7 +1724,7 @@ export class Space3DGame {
     }
     ctx.restore();
 
-    this.drawTargetBracket(p.sx, p.sy, size, false);
+    this.drawTargetBracket(p.sx, p.sy, size, contact.id === this.lockId);
   }
 
   /**
@@ -1635,6 +1857,100 @@ export class Space3DGame {
     ctx.lineTo(camera.cx + 34, camera.cy);
     ctx.moveTo(camera.cx, camera.cy - 34);
     ctx.lineTo(camera.cx, camera.cy - 12);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * The circular cursor on the locked target, plus the gun's lead pipper.
+   *
+   * Two separate marks that must not be confused for one another:
+   *
+   * - The RING sits on the target itself and says "this is what the missile
+   *   goes to". While acquiring it is a wide arc that closes as the dwell
+   *   fills, so you can see the lock being earned.
+   * - The PIPPER sits where the target WILL BE when a bolt gets there, and
+   *   says "put the nose here". It is drawn as a cross, never a ring, and it
+   *   is what you actually fly onto.
+   *
+   * Nothing here aims anything. Both marks are drawn at positions computed
+   * from the world; the guns still fire along forward(camera) and the shot
+   * goes exactly where the nose points, whatever this draws.
+   */
+  private drawLockCursor(): void {
+    const { ctx, camera } = this;
+    const target = this.lockTarget();
+
+    // Acquiring: an arc closing on the candidate, before there is a lock.
+    if (!target && this.lockProgress > 0.02 && this.lockCandidateId !== null) {
+      const candidate = this.lockCandidateId === BOSS_ID
+        ? (this.mode === 'boss' && this.bossHp > 0 ? this.boss : null)
+        : this.contacts.find((contact) => contact.id === this.lockCandidateId) ?? null;
+      if (candidate) {
+        const p = project(camera, candidate.x, candidate.y, candidate.z);
+        if (p.visible) {
+          const r = 34 - 12 * this.lockProgress;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(79,216,255,0.85)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(p.sx, p.sy, r, -Math.PI / 2, -Math.PI / 2 + this.lockProgress * Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      return;
+    }
+    if (!target) return;
+
+    const p = project(camera, target.x, target.y, target.z);
+    if (p.visible) {
+      const r = Math.max(20, screenSize(camera, 120, p.depth));
+      ctx.save();
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Ticks at the cardinals, so it reads as an instrument rather than a
+      // circle somebody drew round a ship.
+      ctx.lineWidth = 1.6;
+      for (const angle of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        ctx.beginPath();
+        ctx.moveTo(p.sx + Math.cos(angle) * r * 1.14, p.sy + Math.sin(angle) * r * 1.14);
+        ctx.lineTo(p.sx + Math.cos(angle) * r * 1.42, p.sy + Math.sin(angle) * r * 1.42);
+        ctx.stroke();
+      }
+      // Range on the bracket, so you do not have to look down to read it.
+      const range = Math.hypot(target.x - camera.x, target.y - camera.y, target.z - camera.z);
+      ctx.fillStyle = 'rgba(79,216,255,0.9)';
+      ctx.font = '600 11px "Courier New", monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`${(range / 1000).toFixed(1)}k`, p.sx + r * 1.5, p.sy);
+      ctx.restore();
+    }
+
+    // The pipper. Drawn only when the intercept is in front of you: a solution
+    // behind the camera projects to a mirrored ghost, and a cross floating on
+    // the wrong side of the sky is worse than no cross at all.
+    const lead = this.leadPoint(target);
+    if (!lead) return;
+    const lp = project(camera, lead.x, lead.y, lead.z);
+    if (!lp.visible || !onScreen(camera, lp, 0)) return;
+    ctx.save();
+    ctx.strokeStyle = GREEN;
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = 1.8;
+    const a = 9;
+    ctx.beginPath();
+    ctx.moveTo(lp.sx - a, lp.sy); ctx.lineTo(lp.sx - 3, lp.sy);
+    ctx.moveTo(lp.sx + 3, lp.sy); ctx.lineTo(lp.sx + a, lp.sy);
+    ctx.moveTo(lp.sx, lp.sy - a); ctx.lineTo(lp.sx, lp.sy - 3);
+    ctx.moveTo(lp.sx, lp.sy + 3); ctx.lineTo(lp.sx, lp.sy + a);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(lp.sx, lp.sy, 3, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
