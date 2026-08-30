@@ -26,6 +26,23 @@ const {
 const game = readFileSync('src/game/space3d/Space3DGame.ts', 'utf8');
 const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
 
+/**
+ * Strip comments, for any assertion about CODE.
+ *
+ * Three checks in this repo have now matched prose instead of code, and this
+ * file produced two of them. Both directions bite: a POSITIVE check can pass
+ * on a comment while the code does nothing, and a NEGATIVE check can fail on
+ * correct code because someone documented the thing being forbidden.
+ *
+ * The positive case is the dangerous one here -- the checks that the arrival
+ * travels and recycles dust are what stand between us and shipping a level
+ * that quietly never starts, which is exactly the bug this validator was
+ * written after.
+ */
+const codeOf = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const gameCode = codeOf(game);
+if (gameCode.length < game.length * 0.4) failures.push('comment stripping ate the source — the scraper is broken');
+
 // ---- settings survive anything that can be in storage ---------------------
 //
 // Storage can be absent, it can throw, and it can hold literally anything --
@@ -109,7 +126,7 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
 
 // ---- the level opens with an arrival, not a firefight ---------------------
 {
-  check(/'arrival'/.test(game), 'the transit needs an arrival mode');
+  check(/'arrival'/.test(gameCode), 'the transit needs an arrival mode');
   const seconds = Number(/const ARRIVAL_SECONDS = ([\d.]+);/.exec(game)?.[1]);
   check(Number.isFinite(seconds), 'ARRIVAL_SECONDS is missing');
   check(seconds >= 3, `a ${seconds}s arrival is a flicker, not an opening`);
@@ -117,13 +134,13 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
 
   const restart = game.split('private restart(): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(restart.includes('this.seedSky()'), 'could not find restart — the scraper is broken');
-  check(/this\.mode = 'arrival'/.test(restart), 'a run must begin in the arrival, not already flying');
+  check(/this\.mode = 'arrival'/.test(codeOf(restart)), 'a run must begin in the arrival, not already flying');
 
   // Squadrons must not scramble during the opening, or the battle starts under
   // the cinematic and the whole point is lost.
   const squadrons = game.split('private updateSquadrons(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(squadrons.length > 0, 'could not find updateSquadrons — the scraper is broken');
-  check(/mode !== 'flying'/.test(squadrons), 'squadrons must only scramble once the arrival is over');
+  check(/mode !== 'flying'/.test(codeOf(squadrons)), 'squadrons must only scramble once the arrival is over');
 
   // ...and the arrival must actually be TICKED.
   //
@@ -139,7 +156,7 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
   // so deleting it from the actual condition still passed -- the check was
   // reading the documentation of its own intent, exactly as the roll/lock
   // check in validate-space-flight once did.
-  const tickCode = tick.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const tickCode = codeOf(tick);
   const gate = tickCode.split('this.update(dt)')[0];
   check(gate.length > 0, 'could not isolate the tick mode gate — the scraper is broken');
   for (const mode of ['arrival', 'flying', 'boss']) {
@@ -152,22 +169,22 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
   // The arrival must MOVE. An opening that does not travel is a still image.
   const arrival = game.split('private updateArrival(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(arrival.length > 0, 'could not find updateArrival — the scraper is broken');
-  check(/this\.camera\.[xyz] \+=/.test(arrival), 'the arrival must actually travel');
-  check(/recycleMotes/.test(arrival), 'the arrival must recycle dust, or there is no sense of speed');
+  check(/this\.camera\.[xyz] \+=/.test(codeOf(arrival)), 'the arrival must actually travel');
+  check(/recycleMotes/.test(codeOf(arrival)), 'the arrival must recycle dust, or there is no sense of speed');
   const multiplier = Number(/const ARRIVAL_SPEED_MULTIPLIER = ([\d.]+);/.exec(game)?.[1]);
   check(multiplier > 1, `an arrival at ${multiplier}x cruise is not dropping out of anything`);
 
   // THE ARCHITECTURAL RULE. Presentation may move the camera and the stars; it
   // may never invent, place, damage or spare a combatant.
   for (const forbidden of ['this.contacts.push', 'this.scramble', 'this.bolts.push', 'contact.hp', 'this.bossHp']) {
-    check(!arrival.includes(forbidden), `the arrival touches simulation state (${forbidden}) — presentation must stay separate`);
+    check(!codeOf(arrival).includes(forbidden), `the arrival touches simulation state (${forbidden}) — presentation must stay separate`);
   }
 
   // ...and the same for the tunnel it draws.
   const tunnel = game.split('private drawWarpTunnel(w: number, h: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(tunnel.length > 0, 'could not find drawWarpTunnel — the scraper is broken');
-  check(!/this\.camera\.(x|y|z|yaw|pitch) =/.test(tunnel), 'the tunnel must draw, not steer');
-  check(/createRadialGradient\?\./.test(tunnel), 'the gradient must be optional-called: a stub context has none and a throw is worse than no glow');
+  check(!/this\.camera\.(x|y|z|yaw|pitch) =/.test(codeOf(tunnel)), 'the tunnel must draw, not steer');
+  check(/createRadialGradient\?\./.test(codeOf(tunnel)), 'the gradient must be optional-called: a stub context has none and a throw is worse than no glow');
 }
 
 // ---- the settings panel ----------------------------------------------------
@@ -178,12 +195,12 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
   check(rows.includes('sensitivity'), 'could not find settingsRows — the scraper is broken');
   const draw = game.split('private drawSettings(w: number, h: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   const tap = game.split('private tapSettings(clientX: number, clientY: number): void {')[1]?.split('\n  }\n')[0] ?? '';
-  check(/this\.settingsRows\(/.test(draw), 'the settings panel must draw from settingsRows');
-  check(/this\.settingsRows\(/.test(tap), 'the settings hit test must come from settingsRows');
+  check(/this\.settingsRows\(/.test(codeOf(draw)), 'the settings panel must draw from settingsRows');
+  check(/this\.settingsRows\(/.test(codeOf(tap)), 'the settings hit test must come from settingsRows');
 
   check(/RECALIBRATE TILT/.test(draw), 'the panel needs a recalibrate control');
   check(/TILT SENSITIVITY/.test(draw), 'the panel needs the sensitivity control');
-  check(/recalibrate\('player requested'\)/.test(tap), 'the recalibrate row must actually recalibrate');
+  check(/recalibrate\('player requested'\)/.test(codeOf(tap)), 'the recalibrate row must actually recalibrate');
 
   // ---- and it must not claim success before success exists ----------------
   //
@@ -201,7 +218,7 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
   // RECALIBRATED contains the word RECALIBRATED, so a raw grep fails on
   // correct code -- the third time in this repo that a check has read the
   // documentation of its own intent instead of the code.
-  const tapCode = tap.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const tapCode = codeOf(tap);
   check(tapCode.includes('this.tilt.recalibrate'), 'comment stripping ate the tap handler — the scraper is broken');
   check(
     !/RECALIBRATED/.test(tapCode),
@@ -244,7 +261,7 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
   const tickBody = game.split('private tick(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
   check(/this\.settingsToast = Math\.max\(0, this\.settingsToast - dt\)/.test(tickBody), 'the toast countdown must run in tick(), not update()');
   check(/this\.watchCalibration\(dt\)/.test(tickBody), 'the calibration watch must run in tick(), not update()');
-  check(/saveSettings\(/.test(game), 'a changed setting must persist');
+  check(/saveSettings\(/.test(gameCode), 'a changed setting must persist');
 
   // The overlay must claim pointers BEFORE the retry tap and the weapon
   // buttons, or a tap meant for a row also restarts the run or fires a missile.
@@ -266,7 +283,7 @@ const tilt = readFileSync('src/game/space3d/Tilt.ts', 'utf8');
 
   // ...and the world must not run underneath it.
   const update = game.split('private update(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
-  check(/if \(this\.settingsOpen\) return;/.test(update), 'the fight must not continue while the settings are open');
+  check(/if \(this\.settingsOpen\) return;/.test(codeOf(update)), 'the fight must not continue while the settings are open');
 }
 
 if (failures.length > 0) {
