@@ -76,7 +76,11 @@ near(rangeTo(toView(cam({ yaw: 1.1 }), 300, -120, 640)), rangeTo(toView(cam(), 3
 
 // forward() has to agree with the projection, or thrust flies you somewhere
 // other than where you are pointing -- which is unplayable and silent.
-for (const [yaw, pitch] of [[0, 0], [1.2, 0], [-2.4, 0.5], [0.7, -0.9]]) {
+// The past-vertical cases matter now that elevation wraps: 1.6 and 2.1 rad are
+// beyond the old 1.32 clamp, and 3.0 is nearly inverted. They pass because
+// toView/forward/project are general trigonometry -- the clamp was policy, not
+// arithmetic -- and this is what keeps that true.
+for (const [yaw, pitch] of [[0, 0], [1.2, 0], [-2.4, 0.5], [0.7, -0.9], [0, 1.6], [1.1, 2.1], [-0.6, 3.0], [2.0, -2.4]]) {
   const f = forward(cam({ yaw, pitch }));
   near(Math.hypot(f.x, f.y, f.z), 1, 1e-9, `forward(${yaw},${pitch}) must be a unit vector`);
   const ahead = project(cam({ yaw, pitch }), f.x * 900, f.y * 900, f.z * 900);
@@ -239,7 +243,64 @@ check(/private desiredPosition\(/.test(game), 'enemies must fly to a position, n
 check(/Math\.random\(\) \* Math\.PI \* 2/.test(game.slice(game.indexOf('private scramble('))),
   'squadrons must be scrambled on a random bearing all the way around');
 check(!/lane grid|drawLaneGrid/.test(game), 'there is no floor in open space: the lane grid must be gone');
-check(/PITCH_LIMIT/.test(game), 'elevation must be clamped, or pitching past vertical silently inverts the world');
+// ---- the nose is free, and the world says which way is up -----------------
+//
+// This used to be `check(/PITCH_LIMIT/.test(game), 'elevation must be
+// clamped, ...')`. Two things were wrong with it.
+//
+// It asserted the REMEDY instead of the rule. The rule is "never invert the
+// world with nothing to tell you it happened"; clamping to 76 degrees was one
+// way to obey it, and the way a phone test found by flying into the wall. An
+// instrument obeys it too, and lets the ship loop.
+//
+// And it was satisfied by a COMMENT. Deleting the constant while leaving a
+// sentence explaining the deletion kept the gate green, because the grep only
+// ever wanted the letters. That is the fifth check in this repository to match
+// prose instead of code, so everything below reads comment-stripped source.
+{
+  const code = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const cockpitCode = cockpit.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  check(
+    /this\.camera\.pitch = wrapAngle\(this\.camera\.pitch \+ this\.pitchRate \* dt\)/.test(code),
+    'elevation must WRAP, so the ship can complete a loop instead of stopping at a wall',
+  );
+  check(
+    !/PITCH_LIMIT/.test(code),
+    'a pitch clamp is back in the code -- the nose has to come all the way round',
+  );
+
+  // The freedom is only allowed BECAUSE the instrument exists. If the horizon
+  // ever goes, the clamp has to come back, and this is what says so.
+  check(/private drawAttitude\(/.test(cockpitCode), 'unclamped pitch requires an attitude indicator');
+  check(/this\.drawAttitude\(frame, state\)/.test(cockpitCode), 'the attitude indicator must actually be drawn');
+  // Pinned to the ROTATION, not to the identifier. `/state\.roll/` matched
+  // `state.rollReady` -- an unrelated field two functions away -- so removing
+  // the bank from the horizon left the gate green. Same shape as the
+  // `rollClock` / `lock` collision this repo has already been bitten by once.
+  check(
+    /ctx\.rotate\(-state\.roll\)/.test(cockpitCode),
+    'the horizon must counter-rotate by the ship\'s roll, or it does not stay level with the world',
+  );
+  check(
+    /Math\.sin\(state\.pitch\)/.test(cockpitCode),
+    'the horizon must slide with the ship\'s live pitch, or it is decoration',
+  );
+  check(
+    /pitch: this\.camera\.pitch/.test(code) && /roll: this\.camera\.roll/.test(code),
+    'cockpitState must feed the horizon the real camera attitude',
+  );
+  // Drawn from the aperture, which both layouts supply. Keying it to the
+  // artwork rect would put it on the panel in canopy and nowhere in console.
+  check(
+    /drawAttitude\(frame: CockpitFrame/.test(cockpitCode) && /const \{ aperture \} = frame/.test(cockpitCode),
+    'the horizon must be placed from frame.aperture, so it exists in BOTH cockpit layouts',
+  );
+  check(
+    /Math\.cos\(state\.pitch\) < 0/.test(cockpitCode),
+    'the horizon must show inversion as a distinct state -- that is the whole reason the clamp could go',
+  );
+}
 check(/private drawOffscreenCues\(/.test(game) && /this\.drawOffscreenCues\(/.test(game),
   'threats off the glass need a direction cue, or a tail is invisible until the hull runs out');
 
@@ -247,6 +308,46 @@ check(/private drawOffscreenCues\(/.test(game) && /this\.drawOffscreenCues\(/.te
 // screen and can never bring you all the way around.
 check(/TURN_RATE/.test(game) && /yawRate/.test(game) && /pitchRate/.test(game), 'steering must set a turn rate');
 check(/this\.camera\.yaw = wrapAngle\(/.test(game), 'heading must wrap rather than grow without bound');
+
+// ---- which way the stick points the nose --------------------------------
+//
+// An inverted pitch axis shipped to a phone because this half of the chain was
+// never pinned. `scripts/validate-tilt.mjs` proves the sensor produces a
+// positive `y` when the top of the phone dips away; nothing proved that a
+// positive `y` then lowers the nose, so a correct sensor and a correct flight
+// model could still add up to a ship that climbed when the player pushed.
+//
+// Both halves are asserted here, because the conclusion needs both and each is
+// individually plausible when wrong.
+{
+  const gameCode = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  // 1. Sign convention of the camera itself, measured rather than assumed:
+  //    world +y draws BELOW the centre, so a nose that is up has a forward
+  //    vector with a negative y.
+  check(project(cam({}), 0, 400, 900).sy > base.cy, 'world +y must draw below the centre of the glass');
+  check(forward(cam({ pitch: 0.4 })).y < -0.01, 'a POSITIVE camera pitch must point the nose UP');
+  check(forward(cam({ pitch: -0.4 })).y > 0.01, 'a NEGATIVE camera pitch must point the nose DOWN');
+  check(forward(cam({ yaw: 0.4 })).x > 0.01, 'a POSITIVE camera yaw must turn RIGHT');
+
+  // 2. The integrator must therefore NEGATE the stick on pitch and pass it
+  //    through on yaw, which is what makes stick y+ = nose down and x+ = right.
+  check(
+    /this\.pitchRate \+= \(-stickY \* TURN_RATE - this\.pitchRate\)/.test(gameCode),
+    'pitch must negate the stick: stick y+ (top of the phone dipped away, or a drag downward) is NOSE DOWN',
+  );
+  check(
+    /this\.yawRate \+= \(stickX \* TURN_RATE - this\.yawRate\)/.test(gameCode),
+    'yaw must pass the stick straight through: stick x+ (right edge dipped, or a drag right) is TURN RIGHT',
+  );
+
+  // 3. And the drag fallback has to agree with the tilt, or the level flies
+  //    one way on a phone and the other way on a desktop.
+  check(
+    /this\.stickY = clamp\(dy \/ travel, -1, 1\)/.test(gameCode),
+    'the drag fallback must not invert either: dragging DOWN the glass is nose down, same as the tilt',
+  );
+}
 // Firing used to have to be AUTOMATIC, on the reasoning that a fire button
 // costs the thumb flying the ship. That was right until tilt started flying
 // it. The thumb is free now, so the trigger is the point -- and the rule that

@@ -106,8 +106,28 @@ const CALIBRATION_TIMEOUT_MS = 2600;
 export function gravityFromOrientation(beta: number, gamma: number): Vec3 {
   const b = beta * DEG;
   const g = gamma * DEG;
+  // The x term is NOT negated, and getting that wrong mirrored the world.
+  //
+  // Derived from the spec rather than guessed: DeviceOrientation defines the
+  // device-to-earth rotation as the intrinsic Z-X'-Y'' sequence
+  // R = Rz(alpha) . Rx(beta) . Ry(gamma), so gravity in device coordinates is
+  // R-transpose applied to earth-down (0, 0, -1), which works out to
+  // (cos b sin g, -sin b, -cos b cos g). This used to negate the x term, which
+  // mirrored the device frame left-to-right.
+  //
+  // A mirrored frame is almost invisible in testing. It reads correct for any
+  // motion in the y-z plane, so PITCH looked right in portrait, and the sign
+  // error only showed up as roll -- until you rotate the phone, at which point
+  // the screen's axes swap and the mirror lands on pitch instead. On a handset
+  // that is "left and right are backwards in portrait, up and down are
+  // backwards in landscape", from one wrong character.
+  //
+  // It survived every synthetic test because the tests generated their inputs
+  // with THIS function. Test and code shared the mistake and agreed with each
+  // other; only a real phone could break the tie. `scripts/validate-tilt.mjs`
+  // now builds its ground truth from the rotation matrix instead.
   return normalize({
-    x: -Math.cos(b) * Math.sin(g),
+    x: Math.cos(b) * Math.sin(g),
     y: -Math.sin(b),
     z: -Math.cos(b) * Math.cos(g),
   });
@@ -135,7 +155,21 @@ export function projectToScreen(gravity: Vec3, neutral: Vec3, screenAngle: numbe
 
   // Rotation about the screen's vertical axis leans the ship left and right;
   // rotation about its horizontal axis leans it forward and back.
-  return { right: dot(r, screenDown), down: -dot(r, screenRight) };
+  //
+  // Both components are read off the rotation vector with NO negation, and the
+  // symmetry is not a coincidence: `r` is the axis-angle of how gravity moved
+  // in the device's own frame, so its component along one screen axis is
+  // exactly the rotation about the other one.
+  //
+  // The sign of `down` was wrong here until it was measured. `beta` is 0 with
+  // the phone flat and screen up, and 90 with it upright facing the player, so
+  // dipping the top of the phone AWAY makes beta DECREASE -- the opposite of
+  // the intuition that "away" is a bigger angle. Anchored against that, tipping
+  // the top away is gravity rotated by +theta about screenRight, and this
+  // returned -15 degrees for it: the field was reporting nose-UP for the motion
+  // that should give nose-DOWN. The validator's direction test had the same
+  // inverted label, which is why it passed all the way to a phone.
+  return { right: dot(r, screenDown), down: dot(r, screenRight) };
 }
 
 /** Degrees of tilt to a -1..1 stick, with the deadzone removed rather than clipped. */
@@ -162,6 +196,8 @@ export class TiltSource {
   private stick = { x: 0, y: 0 };
   private samples: Vec3[] = [];
   private sampleCount = 0;
+  /** Kept only so the diagnostic readout can show the raw reading. */
+  private lastSample: TiltSample = { beta: 0, gamma: 0 };
   private calibrationStart = 0;
   private unsubscribe: (() => void) | null = null;
   /**
@@ -221,6 +257,40 @@ export class TiltSource {
   }
 
   /**
+   * Everything the steering is derived from, for an on-device readout.
+   *
+   * This exists because a handset disagreed with the maths twice and there was
+   * no way to see which link in the chain was wrong. The chain is: a raw
+   * beta/gamma sample, the gravity vector built from it, the screen angle the
+   * browser reports, the lean projected onto the screen's axes, and finally the
+   * stick. Any one of those can be the fault, and a readout naming all five
+   * turns a guess into a reading.
+   *
+   * Diagnostic only -- nothing steers from this.
+   */
+  diagnostics(): {
+    status: TiltStatus; beta: number; gamma: number; screenAngle: number;
+    gravity: Vec3 | null; neutral: Vec3 | null; lean: { right: number; down: number } | null;
+    stick: { x: number; y: number }; samples: number;
+  } {
+    const screenAngle = normalizeScreenAngle(this.env.screenAngle());
+    const lean = this.latest && this.neutral
+      ? projectToScreen(this.latest, this.neutral, screenAngle)
+      : null;
+    return {
+      status: this.statusValue,
+      beta: this.lastSample.beta,
+      gamma: this.lastSample.gamma,
+      screenAngle,
+      gravity: this.latest,
+      neutral: this.neutral,
+      lean,
+      stick: { x: this.stick.x, y: this.stick.y },
+      samples: this.sampleCount,
+    };
+  }
+
+  /**
    * Advances smoothing. Called once per frame with the frame delta so the
    * response is frame-rate independent rather than faster on a fast phone.
    */
@@ -230,12 +300,11 @@ export class TiltSource {
     // Dip the screen's right edge -> turn right. Tip the top away from you ->
     // nose down, the same sense as dragging down on the drag fallback.
     //
-    // Both signs pass straight through, and that was worth measuring rather
-    // than reasoning about: projectToScreen already reports positive `right`
-    // for a dipped right edge and positive `down` for a tipped-away top, in
-    // all four screen orientations. Deriving the sense from beta/gamma instead
-    // gives the opposite answer, because which way those Euler axes point
-    // depends on the orientation you happen to be holding.
+    // Both signs pass straight through, because projectToScreen now reports
+    // positive `right` for a dipped right edge and positive `down` for a
+    // tipped-away top in all four screen orientations. Downstream,
+    // `pitchRate = -stickY * TURN_RATE` and positive camera pitch is nose-up,
+    // so a positive `down` lowers the nose.
     const targetX = normalizeTilt(lean.right, this.scale.x);
     const targetY = normalizeTilt(lean.down, this.scale.y);
     const ease = Math.min(1, dt * 60 * TILT_SMOOTHING);
@@ -295,6 +364,7 @@ export class TiltSource {
   private onSample(sample: TiltSample): void {
     if (!Number.isFinite(sample.beta) || !Number.isFinite(sample.gamma)) return;
     this.sampleCount += 1;
+    this.lastSample = sample;
     if (this.statusValue === 'waiting') this.statusValue = 'calibrating';
     const gravity = gravityFromOrientation(sample.beta, sample.gamma);
     this.latest = gravity;

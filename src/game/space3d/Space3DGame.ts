@@ -159,7 +159,6 @@ const TURN_RATE = 1.35;
 /** How quickly the turn rate reaches the stick. Lower is a heavier ship. */
 const TURN_EASE = 3.4;
 /** The warship is a capital hull, not a fighter: it does not pitch past this. */
-const PITCH_LIMIT = 1.32;
 /** Stick travel, in screen fractions, for a full-rate turn. */
 const STICK_TRAVEL = 0.26;
 
@@ -956,10 +955,48 @@ export class Space3DGame {
     this.yawRate += (stickX * TURN_RATE - this.yawRate) * ease;
     this.pitchRate += (-stickY * TURN_RATE - this.pitchRate) * ease;
 
+    // The whole chain, into the DOWNLOADABLE log, not just the settings panel.
+    //
+    // The on-screen readout can only be read while standing still with the
+    // menu open, which is exactly when the ship is not being flown -- so it
+    // cannot capture what happens DURING a turn. This samples the same
+    // numbers twice a second while flying, so a report can be a file rather
+    // than a description, and so the last link is visible too: whether the
+    // stick is reaching the flight model at all.
+    if (this.tilt.ready) {
+      const d = this.tilt.diagnostics();
+      debugLog.sample('tilt.flight', 500, 'tilt', 'tilt', {
+        angle: d.screenAngle,
+        beta: Math.round(d.beta * 10) / 10,
+        gamma: Math.round(d.gamma * 10) / 10,
+        leanRight: d.lean ? Math.round(d.lean.right * 10) / 10 : null,
+        leanDown: d.lean ? Math.round(d.lean.down * 10) / 10 : null,
+        stickX: Math.round(stickX * 100) / 100,
+        stickY: Math.round(stickY * 100) / 100,
+        yawRate: Math.round(this.yawRate * 100) / 100,
+        pitchRate: Math.round(this.pitchRate * 100) / 100,
+        pitch: Math.round(this.camera.pitch * 100) / 100,
+      });
+    }
+
     this.camera.yaw = wrapAngle(this.camera.yaw + this.yawRate * dt);
-    // Elevation is clamped rather than wrapped: pitching past vertical would
-    // invert the world with no horizon to tell you it had happened.
-    this.camera.pitch = clamp(this.camera.pitch + this.pitchRate * dt, -PITCH_LIMIT, PITCH_LIMIT);
+    // Elevation WRAPS, so the ship can loop.
+    //
+    // It used to clamp at PITCH_LIMIT (1.32 rad, 76 degrees), on the reasoning
+    // that "pitching past vertical would invert the world with no horizon to
+    // tell you it had happened". The reasoning was sound; the remedy was aimed
+    // at the wrong thing. A phone test found the wall directly -- "you hit a
+    // place where it won't let you go any further" -- and the objection was
+    // never to being inverted, it was to being inverted with no way to know.
+    // So the horizon got built (Cockpit.drawAttitude) and the wall came down.
+    //
+    // Nothing in the projection needed changing for this. `toView`, `forward`
+    // and `project` are general trigonometry: measured before touching them,
+    // the point the ship is flying at still lands exactly on the reticle at 91,
+    // 120, 181 and 270 degrees, and at 270 the world draws upside down, which
+    // is what a ship that has looped is supposed to look like. The clamp was
+    // policy, not arithmetic.
+    this.camera.pitch = wrapAngle(this.camera.pitch + this.pitchRate * dt);
 
     // Bank into the turn, plus the barrel roll on top.
     const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * 0.28;
@@ -2230,6 +2267,11 @@ export class Space3DGame {
       lockProgress: this.lockId === null ? this.lockProgress : 1,
       radarRange: RADAR_RANGE,
       rollReady: this.rollCooldown <= 0,
+      // The horizon reads these live. Passing anything derived or smoothed
+      // here would make the instrument agree with itself rather than with the
+      // ship, which is the one thing it must not do.
+      pitch: this.camera.pitch,
+      roll: this.camera.roll,
       clock: this.clock,
     };
   }
@@ -2402,11 +2444,68 @@ export class Space3DGame {
       ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
     }
 
-    ctx.fillStyle = 'rgba(200,210,230,0.7)';
-    ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
     const rows2 = rows[rows.length - 1].rect;
-    ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, rows2.y + rows2.h + 26);
+    const hintY = rows2.y + rows2.h + 26;
+    const boxTop = this.drawTiltDiagnostics(w, h, rows2.y + rows2.h + 46);
+    // The readout clamps upward to stay on the glass, and in landscape that
+    // lands it on top of this line. Drop the hint rather than overlap it: the
+    // panel is short exactly in the orientation the readout exists to
+    // diagnose, so the numbers win the space.
+    if (hintY + 14 < boxTop) {
+      ctx.fillStyle = 'rgba(200,210,230,0.7)';
+      ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
+      ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, hintY);
+    }
     ctx.restore();
+  }
+
+  /**
+   * The whole steering chain, on the glass, live.
+   *
+   * Added because the maths and the handset disagreed twice and there was no
+   * way to tell which link was at fault. Every stage is shown in order --
+   * raw sample, gravity, screen angle, lean, stick -- so a wrong axis can be
+   * READ off the device rather than inferred from a model that has already
+   * been wrong. ANGLE is the one to check first when a rotation misbehaves:
+   * if the phone is in landscape and this still says 0, the browser is not
+   * reporting the rotation and nothing downstream can be right.
+   */
+  private drawTiltDiagnostics(w: number, h: number, top: number): number {
+    const { ctx } = this;
+    const d = this.tilt.diagnostics();
+    const n = (v: number, p = 2): string => (Number.isFinite(v) ? v.toFixed(p) : '--');
+    const vec = (v: { x: number; y: number; z: number } | null): string => (
+      v ? `${n(v.x)} ${n(v.y)} ${n(v.z)}` : '--'
+    );
+    const lines = [
+      `STATUS  ${d.status.toUpperCase()}   SAMPLES ${d.samples}`,
+      `ANGLE   ${d.screenAngle}   (0/180 portrait, 90/270 landscape)`,
+      `RAW     beta ${n(d.beta, 1)}   gamma ${n(d.gamma, 1)}`,
+      `GRAVITY ${vec(d.gravity)}`,
+      `NEUTRAL ${vec(d.neutral)}`,
+      `LEAN    right ${d.lean ? n(d.lean.right, 1) : '--'}   down ${d.lean ? n(d.lean.down, 1) : '--'}`,
+      `STICK   x ${n(d.stick.x)}   y ${n(d.stick.y)}`,
+    ];
+    const size = Math.max(8, Math.min(11, w * 0.022));
+    ctx.font = `${size}px "Courier New", monospace`;
+    ctx.textAlign = 'left';
+    const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
+    const x = Math.max(8, (w - width) / 2);
+    const lineH = size * 1.45;
+    const boxH = lines.length * lineH + 12;
+    // Never draw off the bottom: in landscape the panel is short and this
+    // would otherwise be the first thing to fall off the glass -- which is
+    // precisely the orientation it exists to diagnose.
+    const y = Math.min(top, h - boxH - 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.66)';
+    ctx.fillRect(x - 8, y - 8, width, boxH);
+    ctx.strokeStyle = 'rgba(120,200,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 8, y - 8, width, boxH);
+    ctx.fillStyle = 'rgba(150,220,255,0.92)';
+    lines.forEach((line, i) => ctx.fillText(line, x, y + 6 + i * lineH));
+    ctx.textAlign = 'center';
+    return y - 8;
   }
 
   private drawToast(w: number, h: number): void {
@@ -2437,7 +2536,14 @@ export class Space3DGame {
     // The backdrop is the sky at infinity: it slides with the camera's heading
     // so turning changes what is out there, rather than dragging a wallpaper.
     const shiftX = -wrapAngle(this.camera.yaw) / Math.PI * w * 0.5;
-    const shiftY = this.camera.pitch / Math.PI * h * 0.7;
+    // Driven by sin(pitch), not by pitch itself, because pitch WRAPS now.
+    //
+    // A linear pitch/PI term was continuous while pitch was clamped to +/-1.32,
+    // but the moment it can reach +/-PI the sky snaps the full height of the
+    // screen as the angle wraps -- a visible tear at exactly the top of a loop.
+    // sin() carries the same sense through the useful range and comes back
+    // smoothly, so a loop slides the far field through and out the other side.
+    const shiftY = Math.sin(this.camera.pitch) * h * 0.7;
     // Faint. At half opacity this read as a wall hanging in front of the ship
     // instead of as the far field, and it drowned the stars that are the only
     // thing telling you which way you are pointing.

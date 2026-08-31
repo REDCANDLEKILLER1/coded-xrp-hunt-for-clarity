@@ -108,35 +108,111 @@ for (const pivot of [90, -90]) {
 
 // ---- direction, in screen space, for every orientation -----------------
 //
-// Tested by constructing the gravity change a physical movement produces,
-// rather than by picking beta/gamma values: which way those Euler axes point
-// depends on the orientation being held, so reasoning from them gives the
-// wrong sense in half the cases. Screen space is the frame the player is
-// actually in.
-{
-  const norm = (v) => { const l = Math.hypot(v.x, v.y, v.z) || 1; return { x: v.x / l, y: v.y / l, z: v.z / l }; };
-  const D = Math.PI / 180;
-  for (const angle of [0, 90, 180, 270]) {
-    const a = angle * D;
-    const sRight = { x: Math.cos(a), y: Math.sin(a), z: 0 };
-    const sDown = { x: Math.sin(a), y: -Math.cos(a), z: 0 };
-    const n = norm({ x: 0, y: -0.5, z: -0.866 });        // leaned back 30 degrees
-    const lean = (basis, amount) => projectToScreen(
-      norm({ x: n.x + amount * basis.x, y: n.y + amount * basis.y, z: n.z + amount * basis.z }), n, angle,
-    );
-    const dipRight = lean(sRight, 0.26);
-    const dipLeft = lean(sRight, -0.26);
-    const topAway = lean(sDown, 0.26);
-    const topBack = lean(sDown, -0.26);
+// This block previously named its own motions backwards, and that is what put
+// an inverted pitch axis on a phone: it added a vector along the screen's DOWN
+// axis to gravity and called the result "tipping the top away", when gravity
+// leaning toward the bottom of the screen means the bottom edge is the lower
+// one -- the top pulled BACK. The assertion and the code agreed with each
+// other and both disagreed with the handset.
+//
+// So the physical motions are no longer asserted by eye. Each is a real
+// rotation of the device about one of the screen's own axes, and the sign
+// convention is ANCHORED below against beta, where the meaning is not a matter
+// of opinion: beta is 0 with the phone flat and screen up and 90 with it
+// upright facing the player, so dipping the top away DECREASES beta. Anchoring
+// first and generalising second is the whole point -- reasoning directly from
+// beta/gamma at an arbitrary screen angle is what gives the wrong sense in half
+// the cases.
 
-    check(dipRight.right > 5, `angle ${angle}: dipping the right edge must read as a right lean`);
-    check(dipLeft.right < -5, `angle ${angle}: dipping the left edge must read as a left lean`);
-    check(topAway.down > 5, `angle ${angle}: tipping the top away must read as nose-down`);
-    check(topBack.down < -5, `angle ${angle}: pulling the top back must read as nose-up`);
-    // The axes must stay separate, or rolling would also pitch.
-    check(Math.abs(dipRight.down) < 1, `angle ${angle}: a pure roll must not pitch`);
-    check(Math.abs(topAway.right) < 1, `angle ${angle}: a pure pitch must not roll`);
+/** Rodrigues: rotate `v` about unit axis `a` by `t` radians. */
+const rotateAbout = (v, a, t) => {
+  const c = Math.cos(t);
+  const s = Math.sin(t);
+  const d = a.x * v.x + a.y * v.y + a.z * v.z;
+  return {
+    x: v.x * c + (a.y * v.z - a.z * v.y) * s + a.x * d * (1 - c),
+    y: v.y * c + (a.z * v.x - a.x * v.z) * s + a.y * d * (1 - c),
+    z: v.z * c + (a.x * v.y - a.y * v.x) * s + a.z * d * (1 - c),
+  };
+};
+const screenBasis = (angle) => ({
+  right: { x: Math.cos(angle * Math.PI / 180), y: Math.sin(angle * Math.PI / 180), z: 0 },
+  down: { x: Math.sin(angle * Math.PI / 180), y: -Math.cos(angle * Math.PI / 180), z: 0 },
+});
+
+// ---- THE ANCHOR MUST NOT COME FROM THE FUNCTION UNDER TEST ---------------
+//
+// This block used to build its ground truth by calling gravityFromOrientation
+// and comparing it against itself. That is not an anchor, it is a tautology,
+// and it is exactly how a mirrored device frame shipped to a phone: the module
+// negated the x term, every test generated its inputs with the same negation,
+// and test and code agreed with each other while disagreeing with the handset.
+// The report that broke the tie was "left and right are backwards".
+//
+// Ground truth is now built from the specification itself. DeviceOrientation
+// defines the device-to-earth rotation as the intrinsic Z-X'-Y'' sequence
+// R = Rz(alpha) . Rx(beta) . Ry(gamma); gravity in device coordinates is
+// R-transpose applied to earth-down, (0, 0, -1). Nothing below calls the module
+// to decide what the right answer is.
+const matmul = (A, B) => A.map((row, i) => B[0].map((_, j) => row.reduce((sum, _v, k) => sum + A[i][k] * B[k][j], 0)));
+const rotX = (b) => [[1, 0, 0], [0, Math.cos(b), -Math.sin(b)], [0, Math.sin(b), Math.cos(b)]];
+const rotY = (g) => [[Math.cos(g), 0, Math.sin(g)], [0, 1, 0], [-Math.sin(g), 0, Math.cos(g)]];
+/** Gravity in device coordinates, straight from the spec's rotation sequence. */
+const gravityFromSpec = (betaDeg, gammaDeg) => {
+  const R = matmul(rotX(betaDeg * Math.PI / 180), rotY(gammaDeg * Math.PI / 180));
+  return { x: -R[2][0], y: -R[2][1], z: -R[2][2] };
+};
+
+{
+  const same = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 1e-6;
+  const D = Math.PI / 180;
+
+  // THE CHECK THAT WOULD HAVE CAUGHT IT. The module has to agree with the
+  // spec across the whole range, not merely at the poses where a mirrored
+  // frame happens to look identical (anything with gamma = 0).
+  for (const [beta, gamma] of [[0, 0], [30, 0], [0, 45], [0, -45], [30, 20], [30, -20], [45, 60], [10, 88], [-25, -70]]) {
+    check(
+      same(gravityFromOrientation(beta, gamma), gravityFromSpec(beta, gamma)),
+      `gravityFromOrientation(${beta}, ${gamma}) disagrees with the Z-X'-Y'' spec rotation`,
+    );
   }
+  // Stated as a physical fact as well, because a sign is easier to argue with
+  // than a matrix: MDN gives gamma positive values "when the device is tilted
+  // to the right", and device x is screen-right, so a flat phone at +gamma
+  // must have gravity pulling toward its right edge.
+  check(gravityFromSpec(0, 30).x > 0, 'spec: a POSITIVE gamma dips the screen right edge');
+  check(gravityFromOrientation(0, 30).x > 0, 'the module must agree: +gamma dips the RIGHT edge, not the left');
+
+  const { right: sRight, down: sDown } = screenBasis(0);
+  const neutral = gravityFromSpec(30, 0);
+  check(
+    same(rotateAbout(neutral, sRight, 15 * D), gravityFromSpec(15, 0)),
+    'anchor: +theta about screenRight must be the top tipping AWAY (beta 30 -> 15, toward flat)',
+  );
+  check(
+    same(rotateAbout(neutral, sDown, 15 * D), gravityFromSpec(30, 15)),
+    'anchor: +theta about screenDown must be the RIGHT edge dipping (gamma 0 -> +15)',
+  );
+}
+
+for (const angle of [0, 90, 180, 270]) {
+  const D = Math.PI / 180;
+  const { right: sRight, down: sDown } = screenBasis(angle);
+  const n = gravityFromOrientation(30, 0);
+  const move = (axis, degrees) => projectToScreen(rotateAbout(n, axis, degrees * D), n, angle);
+
+  const dipRight = move(sDown, 15);
+  const dipLeft = move(sDown, -15);
+  const topAway = move(sRight, 15);
+  const topBack = move(sRight, -15);
+
+  check(dipRight.right > 5, `angle ${angle}: dipping the right edge must read as a right lean`);
+  check(dipLeft.right < -5, `angle ${angle}: dipping the left edge must read as a left lean`);
+  check(topAway.down > 5, `angle ${angle}: tipping the top away must read as nose-down`);
+  check(topBack.down < -5, `angle ${angle}: pulling the top back must read as nose-up`);
+  // The axes must stay separate, or rolling would also pitch.
+  check(Math.abs(dipRight.down) < 1, `angle ${angle}: a pure roll must not pitch`);
+  check(Math.abs(topAway.right) < 1, `angle ${angle}: a pure pitch must not roll`);
 }
 
 // And end to end through the source, at a pose someone would actually hold.
@@ -144,19 +220,24 @@ for (const pivot of [90, -90]) {
 // cannot see rotation about gravity, so that pose genuinely has one live axis.
 {
   const { dev, src } = await calibrated(30, 0, { angle: 0 });
-  // At screen angle 0 a NEGATIVE gamma dips the screen's right edge: gravity
-  // gains +x, which is screen-right. Asserting the direction and not merely
-  // that the two are opposite is the point -- a flipped sign passes an
-  // opposite-signs check while sending every turn the wrong way.
-  const dipRight = settle(dev, src, 30, -15);
-  const dipLeft = settle(dev, src, 30, 15);
+  // At screen angle 0 a POSITIVE gamma dips the screen's right edge: gravity
+  // gains +x, which is screen-right. This block asserted the opposite for as
+  // long as the module mirrored its own x axis, and passed the whole time.
+  // Asserting the direction and not merely that the two are opposite is the
+  // point -- a flipped sign passes an opposite-signs check while sending every
+  // turn the wrong way.
+  const dipRight = settle(dev, src, 30, 15);
+  const dipLeft = settle(dev, src, 30, -15);
   check(dipRight.x > 0.2, `dipping the right edge must turn RIGHT (got ${dipRight.x.toFixed(2)})`);
   check(dipLeft.x < -0.2, `dipping the left edge must turn LEFT (got ${dipLeft.x.toFixed(2)})`);
 
-  const away = settle(dev, src, 45, 0);
-  const back = settle(dev, src, 15, 0);
-  check(away.y > 0.2, `tipping the top away must pitch the nose DOWN (got ${away.y.toFixed(2)})`);
-  check(back.y < -0.2, `pulling the top back must pitch the nose UP (got ${back.y.toFixed(2)})`);
+  // Beta DECREASES as the top of the phone dips away, because beta 0 is flat
+  // with the screen up and beta 90 is upright. Reading it the other way round
+  // is exactly the mistake that shipped an inverted pitch axis.
+  const away = settle(dev, src, 15, 0);
+  const back = settle(dev, src, 45, 0);
+  check(away.y > 0.2, `tipping the top away (beta 30 -> 15) must pitch the nose DOWN (got ${away.y.toFixed(2)})`);
+  check(back.y < -0.2, `pulling the top back (beta 30 -> 45) must pitch the nose UP (got ${back.y.toFixed(2)})`);
 }
 
 // Rotating about gravity itself is invisible to an accelerometer. That is
