@@ -19,6 +19,22 @@ export interface GuardianEncounterPlan {
    */
   rewardTechKey: string | null;
   checkpointKey: string;
+  /**
+   * The stage this fight is presented in.
+   *
+   * A guardian act has no authored encounter, so `currentStage()` finds no
+   * stageKey and falls through to the wave ladder -- which put both bosses
+   * added in this PR into `data_canyon`, a location that appears nowhere in
+   * Level 1. The wrong sky, accent, props and HUD label for the length of the
+   * fight, then a flip back. It survived every capture because a boss forces
+   * the `boss_arena` backdrop image, which hides the largest part of it.
+   *
+   * The value is always the stage of the act this guardian FOLLOWS -- a
+   * guardian interrupts a place, it does not travel to a new one -- and
+   * validate-content asserts exactly that against the mission spine, so the
+   * explicit field cannot drift as acts move.
+   */
+  stageKey: string;
   musicCueKey: string;
   musicLeadSeconds: number;
   creepSeconds: number;
@@ -32,6 +48,7 @@ export interface GuardianEncounterPlan {
 export const GARY_FOG_GUARDIAN_PLAN: GuardianEncounterPlan = {
   actKey: 'gary_fog',
   bossKey: 'gary_fog',
+  stageKey: 'ledger_city',
   rewardTechKey: FOG_BREAKER_TECH_KEY,
   checkpointKey: 'earth.defense_grid',
   musicCueKey: 'boss_gary_fog',
@@ -61,6 +78,7 @@ export const GARY_FOG_GUARDIAN_PLAN: GuardianEncounterPlan = {
 export const REGULATORY_BEHEMOTH_GUARDIAN_PLAN: GuardianEncounterPlan = {
   actKey: 'regulatory_behemoth',
   bossKey: 'regulatory_behemoth',
+  stageKey: 'deep_space_lane',
   rewardTechKey: null,
   checkpointKey: 'earth.behemoth',
   musicCueKey: 'boss_fight',
@@ -74,6 +92,7 @@ export const REGULATORY_BEHEMOTH_GUARDIAN_PLAN: GuardianEncounterPlan = {
 export const CLARITY_DESTROYER_GUARDIAN_PLAN: GuardianEncounterPlan = {
   actKey: 'clarity_destroyer',
   bossKey: 'clarity_destroyer',
+  stageKey: 'ledger_city',
   rewardTechKey: null,
   checkpointKey: 'earth.destroyer',
   musicCueKey: 'boss_fight',
