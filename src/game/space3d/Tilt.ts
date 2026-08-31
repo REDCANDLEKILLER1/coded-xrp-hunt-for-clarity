@@ -196,6 +196,8 @@ export class TiltSource {
   private stick = { x: 0, y: 0 };
   private samples: Vec3[] = [];
   private sampleCount = 0;
+  /** Kept only so the diagnostic readout can show the raw reading. */
+  private lastSample: TiltSample = { beta: 0, gamma: 0 };
   private calibrationStart = 0;
   private unsubscribe: (() => void) | null = null;
   /**
@@ -252,6 +254,40 @@ export class TiltSource {
   /** The current stick, -1..1 on each axis. Zero until calibrated. */
   read(): { x: number; y: number } {
     return { x: this.stick.x, y: this.stick.y };
+  }
+
+  /**
+   * Everything the steering is derived from, for an on-device readout.
+   *
+   * This exists because a handset disagreed with the maths twice and there was
+   * no way to see which link in the chain was wrong. The chain is: a raw
+   * beta/gamma sample, the gravity vector built from it, the screen angle the
+   * browser reports, the lean projected onto the screen's axes, and finally the
+   * stick. Any one of those can be the fault, and a readout naming all five
+   * turns a guess into a reading.
+   *
+   * Diagnostic only -- nothing steers from this.
+   */
+  diagnostics(): {
+    status: TiltStatus; beta: number; gamma: number; screenAngle: number;
+    gravity: Vec3 | null; neutral: Vec3 | null; lean: { right: number; down: number } | null;
+    stick: { x: number; y: number }; samples: number;
+  } {
+    const screenAngle = normalizeScreenAngle(this.env.screenAngle());
+    const lean = this.latest && this.neutral
+      ? projectToScreen(this.latest, this.neutral, screenAngle)
+      : null;
+    return {
+      status: this.statusValue,
+      beta: this.lastSample.beta,
+      gamma: this.lastSample.gamma,
+      screenAngle,
+      gravity: this.latest,
+      neutral: this.neutral,
+      lean,
+      stick: { x: this.stick.x, y: this.stick.y },
+      samples: this.sampleCount,
+    };
   }
 
   /**
@@ -328,6 +364,7 @@ export class TiltSource {
   private onSample(sample: TiltSample): void {
     if (!Number.isFinite(sample.beta) || !Number.isFinite(sample.gamma)) return;
     this.sampleCount += 1;
+    this.lastSample = sample;
     if (this.statusValue === 'waiting') this.statusValue = 'calibrating';
     const gravity = gravityFromOrientation(sample.beta, sample.gamma);
     this.latest = gravity;

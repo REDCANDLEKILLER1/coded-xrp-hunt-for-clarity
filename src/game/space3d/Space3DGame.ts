@@ -2402,11 +2402,68 @@ export class Space3DGame {
       ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
     }
 
-    ctx.fillStyle = 'rgba(200,210,230,0.7)';
-    ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
     const rows2 = rows[rows.length - 1].rect;
-    ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, rows2.y + rows2.h + 26);
+    const hintY = rows2.y + rows2.h + 26;
+    const boxTop = this.drawTiltDiagnostics(w, h, rows2.y + rows2.h + 46);
+    // The readout clamps upward to stay on the glass, and in landscape that
+    // lands it on top of this line. Drop the hint rather than overlap it: the
+    // panel is short exactly in the orientation the readout exists to
+    // diagnose, so the numbers win the space.
+    if (hintY + 14 < boxTop) {
+      ctx.fillStyle = 'rgba(200,210,230,0.7)';
+      ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
+      ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, hintY);
+    }
     ctx.restore();
+  }
+
+  /**
+   * The whole steering chain, on the glass, live.
+   *
+   * Added because the maths and the handset disagreed twice and there was no
+   * way to tell which link was at fault. Every stage is shown in order --
+   * raw sample, gravity, screen angle, lean, stick -- so a wrong axis can be
+   * READ off the device rather than inferred from a model that has already
+   * been wrong. ANGLE is the one to check first when a rotation misbehaves:
+   * if the phone is in landscape and this still says 0, the browser is not
+   * reporting the rotation and nothing downstream can be right.
+   */
+  private drawTiltDiagnostics(w: number, h: number, top: number): number {
+    const { ctx } = this;
+    const d = this.tilt.diagnostics();
+    const n = (v: number, p = 2): string => (Number.isFinite(v) ? v.toFixed(p) : '--');
+    const vec = (v: { x: number; y: number; z: number } | null): string => (
+      v ? `${n(v.x)} ${n(v.y)} ${n(v.z)}` : '--'
+    );
+    const lines = [
+      `STATUS  ${d.status.toUpperCase()}   SAMPLES ${d.samples}`,
+      `ANGLE   ${d.screenAngle}   (0/180 portrait, 90/270 landscape)`,
+      `RAW     beta ${n(d.beta, 1)}   gamma ${n(d.gamma, 1)}`,
+      `GRAVITY ${vec(d.gravity)}`,
+      `NEUTRAL ${vec(d.neutral)}`,
+      `LEAN    right ${d.lean ? n(d.lean.right, 1) : '--'}   down ${d.lean ? n(d.lean.down, 1) : '--'}`,
+      `STICK   x ${n(d.stick.x)}   y ${n(d.stick.y)}`,
+    ];
+    const size = Math.max(8, Math.min(11, w * 0.022));
+    ctx.font = `${size}px "Courier New", monospace`;
+    ctx.textAlign = 'left';
+    const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
+    const x = Math.max(8, (w - width) / 2);
+    const lineH = size * 1.45;
+    const boxH = lines.length * lineH + 12;
+    // Never draw off the bottom: in landscape the panel is short and this
+    // would otherwise be the first thing to fall off the glass -- which is
+    // precisely the orientation it exists to diagnose.
+    const y = Math.min(top, h - boxH - 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.66)';
+    ctx.fillRect(x - 8, y - 8, width, boxH);
+    ctx.strokeStyle = 'rgba(120,200,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 8, y - 8, width, boxH);
+    ctx.fillStyle = 'rgba(150,220,255,0.92)';
+    lines.forEach((line, i) => ctx.fillText(line, x, y + 6 + i * lineH));
+    ctx.textAlign = 'center';
+    return y - 8;
   }
 
   private drawToast(w: number, h: number): void {
