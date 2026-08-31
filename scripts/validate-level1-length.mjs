@@ -1,4 +1,4 @@
-// How long Level 1 actually is.
+// How long Level 1 MODELS at. Nobody has played it with a stopwatch.
 //
 // "Use all of the assets you got to make the first level really long we want it
 // to be a game in itself I mean like an hour."
@@ -8,6 +8,18 @@
 // its authored rest, plus the time to actually kill what it spawns, plus the
 // arena's own dwell before an enemy commits. The estimate is deliberately
 // conservative (perfect play, nothing fled, no deaths, no boss phases).
+//
+// IT IS STILL A MODEL, AND THE TITLE SAYS SO ON PURPOSE. The number this
+// prints is derived from authored encounter data and boss health, not from a
+// human finishing the level once and reading a clock. The distinction earned
+// its own line because this file previously carried a flat nine-minute
+// constant under a comment claiming "Measured floors, not guesses" — a figure
+// that was neither measured nor a floor, and that went unquestioned for as
+// long as it sounded like it had been. A modelled number that says it is
+// modelled can be argued with; one wearing the word "measured" cannot.
+//
+// An end-to-end human playthrough is the thing that would settle it, and this
+// is not that.
 
 import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
@@ -178,7 +190,7 @@ for (const row of bossRows) {
 // ---- the pacing complaint, as an assertion --------------------------------
 //
 // "In the first level, might need a couple more big bosses, or shorten the
-// length to get to Gary Fog." Measured, that was 16.7 minutes of formations
+// length to get to Gary Fog." Modelled, that was 16.7 minutes of formations
 // before anything that was not another formation. The fix was to place two
 // bosses that were already fully authored and had never been put in a level.
 // This pins the gap so it cannot silently reopen.
@@ -251,4 +263,7 @@ if (failures.length) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log(`level1-length: OK — ~${totalMinutes.toFixed(0)} min at perfect play across ${rows.reduce((n, r) => n + r.groups, 0)} authored groups.`);
+console.log(
+  `level1-length: OK — modelled at ~${totalMinutes.toFixed(0)} min of perfect play across `
+  + `${rows.reduce((n, r) => n + r.groups, 0)} authored groups (estimate, not a stopwatch playthrough).`,
+);
