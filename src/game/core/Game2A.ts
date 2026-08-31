@@ -4262,7 +4262,19 @@ export class Game2A {
   private currentStage(): StageDef {
     const missionStageKey = this.earthEncounterDirector.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
-    if (this.missionDirector.activeMission && this.missionDirector.currentAct?.key === 'gary_fog') return STAGES.ledger_city;
+    // A guardian act has no authored encounter, so it reaches here with no
+    // stageKey. Falling on through lands it on the WAVE ladder, which put the
+    // Behemoth and the Destroyer in `data_canyon` -- a location Level 1 never
+    // visits -- for the length of each fight.
+    //
+    // This replaces a hand-written `gary_fog` branch rather than adding two
+    // more beside it. Every guardian carries the stage of the act it follows,
+    // Gary's included, so his behaviour is unchanged and the next act inserted
+    // without a stage is a gate failure instead of a silent wrong background.
+    if (this.missionDirector.activeMission) {
+      const guardianStage = guardianPlanFor(this.missionDirector.currentAct?.key)?.stageKey;
+      if (guardianStage && STAGES[guardianStage]) return STAGES[guardianStage];
+    }
     if (this.missionDirector.activeMission && ['regulatory_warship', 'boarding'].includes(this.missionDirector.currentAct?.key ?? '')) return STAGES.regulatory_outpost;
     for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
       if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];
