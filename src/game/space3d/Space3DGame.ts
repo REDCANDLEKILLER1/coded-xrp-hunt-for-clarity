@@ -159,7 +159,6 @@ const TURN_RATE = 1.35;
 /** How quickly the turn rate reaches the stick. Lower is a heavier ship. */
 const TURN_EASE = 3.4;
 /** The warship is a capital hull, not a fighter: it does not pitch past this. */
-const PITCH_LIMIT = 1.32;
 /** Stick travel, in screen fractions, for a full-rate turn. */
 const STICK_TRAVEL = 0.26;
 
@@ -977,14 +976,27 @@ export class Space3DGame {
         yawRate: Math.round(this.yawRate * 100) / 100,
         pitchRate: Math.round(this.pitchRate * 100) / 100,
         pitch: Math.round(this.camera.pitch * 100) / 100,
-        pitchPinned: Math.abs(this.camera.pitch) >= PITCH_LIMIT - 1e-3,
       });
     }
 
     this.camera.yaw = wrapAngle(this.camera.yaw + this.yawRate * dt);
-    // Elevation is clamped rather than wrapped: pitching past vertical would
-    // invert the world with no horizon to tell you it had happened.
-    this.camera.pitch = clamp(this.camera.pitch + this.pitchRate * dt, -PITCH_LIMIT, PITCH_LIMIT);
+    // Elevation WRAPS, so the ship can loop.
+    //
+    // It used to clamp at PITCH_LIMIT (1.32 rad, 76 degrees), on the reasoning
+    // that "pitching past vertical would invert the world with no horizon to
+    // tell you it had happened". The reasoning was sound; the remedy was aimed
+    // at the wrong thing. A phone test found the wall directly -- "you hit a
+    // place where it won't let you go any further" -- and the objection was
+    // never to being inverted, it was to being inverted with no way to know.
+    // So the horizon got built (Cockpit.drawAttitude) and the wall came down.
+    //
+    // Nothing in the projection needed changing for this. `toView`, `forward`
+    // and `project` are general trigonometry: measured before touching them,
+    // the point the ship is flying at still lands exactly on the reticle at 91,
+    // 120, 181 and 270 degrees, and at 270 the world draws upside down, which
+    // is what a ship that has looped is supposed to look like. The clamp was
+    // policy, not arithmetic.
+    this.camera.pitch = wrapAngle(this.camera.pitch + this.pitchRate * dt);
 
     // Bank into the turn, plus the barrel roll on top.
     const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * 0.28;
@@ -2255,6 +2267,11 @@ export class Space3DGame {
       lockProgress: this.lockId === null ? this.lockProgress : 1,
       radarRange: RADAR_RANGE,
       rollReady: this.rollCooldown <= 0,
+      // The horizon reads these live. Passing anything derived or smoothed
+      // here would make the instrument agree with itself rather than with the
+      // ship, which is the one thing it must not do.
+      pitch: this.camera.pitch,
+      roll: this.camera.roll,
       clock: this.clock,
     };
   }
@@ -2519,7 +2536,14 @@ export class Space3DGame {
     // The backdrop is the sky at infinity: it slides with the camera's heading
     // so turning changes what is out there, rather than dragging a wallpaper.
     const shiftX = -wrapAngle(this.camera.yaw) / Math.PI * w * 0.5;
-    const shiftY = this.camera.pitch / Math.PI * h * 0.7;
+    // Driven by sin(pitch), not by pitch itself, because pitch WRAPS now.
+    //
+    // A linear pitch/PI term was continuous while pitch was clamped to +/-1.32,
+    // but the moment it can reach +/-PI the sky snaps the full height of the
+    // screen as the angle wraps -- a visible tear at exactly the top of a loop.
+    // sin() carries the same sense through the useful range and comes back
+    // smoothly, so a loop slides the far field through and out the other side.
+    const shiftY = Math.sin(this.camera.pitch) * h * 0.7;
     // Faint. At half opacity this read as a wall hanging in front of the ship
     // instead of as the far field, and it drowned the stars that are the only
     // thing telling you which way you are pointing.
