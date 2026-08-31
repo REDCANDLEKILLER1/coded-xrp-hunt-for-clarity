@@ -956,6 +956,31 @@ export class Space3DGame {
     this.yawRate += (stickX * TURN_RATE - this.yawRate) * ease;
     this.pitchRate += (-stickY * TURN_RATE - this.pitchRate) * ease;
 
+    // The whole chain, into the DOWNLOADABLE log, not just the settings panel.
+    //
+    // The on-screen readout can only be read while standing still with the
+    // menu open, which is exactly when the ship is not being flown -- so it
+    // cannot capture what happens DURING a turn. This samples the same
+    // numbers twice a second while flying, so a report can be a file rather
+    // than a description, and so the last link is visible too: whether the
+    // stick is reaching the flight model at all.
+    if (this.tilt.ready) {
+      const d = this.tilt.diagnostics();
+      debugLog.sample('tilt.flight', 500, 'tilt', 'tilt', {
+        angle: d.screenAngle,
+        beta: Math.round(d.beta * 10) / 10,
+        gamma: Math.round(d.gamma * 10) / 10,
+        leanRight: d.lean ? Math.round(d.lean.right * 10) / 10 : null,
+        leanDown: d.lean ? Math.round(d.lean.down * 10) / 10 : null,
+        stickX: Math.round(stickX * 100) / 100,
+        stickY: Math.round(stickY * 100) / 100,
+        yawRate: Math.round(this.yawRate * 100) / 100,
+        pitchRate: Math.round(this.pitchRate * 100) / 100,
+        pitch: Math.round(this.camera.pitch * 100) / 100,
+        pitchPinned: Math.abs(this.camera.pitch) >= PITCH_LIMIT - 1e-3,
+      });
+    }
+
     this.camera.yaw = wrapAngle(this.camera.yaw + this.yawRate * dt);
     // Elevation is clamped rather than wrapped: pitching past vertical would
     // invert the world with no horizon to tell you it had happened.
