@@ -186,6 +186,15 @@ export interface CockpitState {
   /** Radar's outer ring, in world units. */
   radarRange: number;
   rollReady: boolean;
+  /**
+   * The ship's own attitude, for the horizon.
+   *
+   * Elevation wraps a full turn now, so these are what tells the player they
+   * are inverted. Before the loop existed, pitch was clamped to 76 degrees and
+   * the panel had no reason to know either number.
+   */
+  pitch: number;
+  roll: number;
   clock: number;
 }
 
@@ -440,6 +449,100 @@ export class Cockpit {
     this.drawRadar(px(ART.mainScreen.x), py(ART.mainScreen.y), pr(ART.mainScreen.w), ART.mainScreen.h * art.h, state);
     this.drawHullScreen(px(ART.leftScreen.x), py(ART.leftScreen.y), pr(ART.leftScreen.w), ART.leftScreen.h * art.h, state);
     this.drawTargetScreen(px(ART.rightScreen.x), py(ART.rightScreen.y), pr(ART.rightScreen.w), ART.rightScreen.h * art.h, state);
+    // Drawn from `frame.aperture`, which BOTH layouts supply -- the canopy's
+    // is measured off the artwork's alpha hole, the console's is the whole
+    // area above the band. Keying it off `art` instead would put it on the
+    // panel in one orientation and nowhere in the other.
+    this.drawAttitude(frame, state);
+  }
+
+  /**
+   * The artificial horizon: the instrument the pitch clamp existed instead of.
+   *
+   * Elevation used to stop at 76 degrees, reasoned as "pitching past vertical
+   * would invert the world with no horizon to tell you it had happened". That
+   * is an argument for a horizon, not for a wall, and a phone test found the
+   * wall the way players find walls -- by flying into it. So the nose is free
+   * and this says which way is up.
+   *
+   * A real ADI: a ladder that slides DOWN as the nose comes up, rotated
+   * opposite the bank so it stays level with the world while the ship banks
+   * around it, against a fixed nose marker that never moves. Sky and ground
+   * are tinted differently, which is what makes inverted readable at a glance
+   * rather than something to work out from a number.
+   */
+  private drawAttitude(frame: CockpitFrame, state: CockpitState): void {
+    const { ctx } = this;
+    const { aperture } = frame;
+    // Sits low in the view so it never fights the reticle or a target bracket.
+    const size = Math.min(aperture.w * 0.19, aperture.h * 0.34);
+    if (size < 26) return;
+    const cx = aperture.x + aperture.w * 0.5;
+    const cy = aperture.y + aperture.h - size * 0.72;
+    const r = size * 0.5;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    // Opposite the camera roll: the world stays level, the ship banks past it.
+    ctx.rotate(-state.roll);
+    // sin() rather than the raw angle, so the ladder eases to a stop at the
+    // vertical and comes back the other way through a loop instead of running
+    // off and snapping when the angle wraps.
+    const slide = Math.sin(state.pitch) * r * 1.15;
+    // Past vertical the ground is overhead. This is the whole point of the
+    // instrument, so it is a real state and not a special case.
+    const inverted = Math.cos(state.pitch) < 0;
+    ctx.fillStyle = inverted ? 'rgba(90,40,20,0.55)' : 'rgba(20,50,90,0.55)';
+    ctx.fillRect(-r * 2, -r * 2, r * 4, r * 2 + slide);
+    ctx.fillStyle = inverted ? 'rgba(20,50,90,0.55)' : 'rgba(90,40,20,0.55)';
+    ctx.fillRect(-r * 2, slide, r * 4, r * 2);
+
+    ctx.strokeStyle = inverted ? 'rgba(255,150,90,0.95)' : 'rgba(120,220,255,0.95)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.6, slide);
+    ctx.lineTo(r * 1.6, slide);
+    ctx.stroke();
+
+    // Ladder rungs, so rate of change is visible and not just position.
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(190,225,245,0.5)';
+    for (const step of [-2, -1, 1, 2]) {
+      const y = slide + step * r * 0.42;
+      const half = step % 2 === 0 ? r * 0.5 : r * 0.28;
+      ctx.beginPath();
+      ctx.moveTo(-half, y);
+      ctx.lineTo(half, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
+
+    // Bezel and the fixed nose marker, OUTSIDE the clip and the rotation:
+    // the ship's own reference does not move, which is what everything else is
+    // read against.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150,190,215,0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd24a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.42, cy);
+    ctx.lineTo(cx - r * 0.14, cy);
+    ctx.moveTo(cx + r * 0.14, cy);
+    ctx.lineTo(cx + r * 0.42, cy);
+    ctx.moveTo(cx, cy - r * 0.1);
+    ctx.lineTo(cx, cy + r * 0.1);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
