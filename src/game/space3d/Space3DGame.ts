@@ -307,6 +307,16 @@ const ARRIVAL_DECEL_SHARE = 0.62;
  * orientations. A fraction of the viewport height collides with it on a short
  * landscape screen.
  */
+/**
+ * Development flag for the on-screen tilt readout, off unless `?tiltdebug`.
+ *
+ * Read once: it cannot change without a reload, and re-parsing the query
+ * string every frame to answer the same question would be waste in the draw
+ * path.
+ */
+const TILT_DEBUG = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).has('tiltdebug');
+
 const SETTINGS_BUTTON_TOP = 98;
 /**
  * How long to watch for a requested calibration to complete.
@@ -2429,7 +2439,7 @@ export class Space3DGame {
 
     const rows2 = rows[rows.length - 1].rect;
     const hintY = rows2.y + rows2.h + 26;
-    const boxTop = this.drawTiltDiagnostics(w, h, rows2.y + rows2.h + 46);
+    const boxTop = TILT_DEBUG ? this.drawTiltDiagnostics(w, h, rows2.y + rows2.h + 46) : Infinity;
     // The readout clamps upward to stay on the glass, and in landscape that
     // lands it on top of this line. Drop the hint rather than overlap it: the
     // panel is short exactly in the orientation the readout exists to
@@ -2443,7 +2453,19 @@ export class Space3DGame {
   }
 
   /**
-   * The whole steering chain, on the glass, live.
+   * The whole steering chain, on the glass, live. `?tiltdebug` only.
+
+   * Kept behind the flag because it is an instrument for diagnosing a fault,
+   * not a thing a player has any use for: seven lines of beta, gamma and a
+   * gravity vector is exactly the permanent diagnostic clutter a settings
+   * panel should not accumulate. The flag follows the same convention as the
+   * other development routes in `src/main.ts` -- `?flight`, `?space`,
+   * `?onfoot` -- so a tester turns it on deliberately and nobody else meets it.
+   *
+   * The `tilt` samples in the DOWNLOADABLE log are not gated, and deliberately
+   * so: that log already ships behind the LOG button, costs nothing when
+   * nobody opens it, and is the only way a fault on someone else's handset
+   * ever reaches me.
    *
    * Added because the maths and the handset disagreed twice and there was no
    * way to tell which link was at fault. Every stage is shown in order --

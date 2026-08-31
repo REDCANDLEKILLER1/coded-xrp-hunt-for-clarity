@@ -286,6 +286,32 @@ if (gameCode.length < game.length * 0.4) failures.push('comment stripping ate th
   check(/if \(this\.settingsOpen\) return;/.test(codeOf(update)), 'the fight must not continue while the settings are open');
 }
 
+// ---- the tilt readout is a tool, not furniture ---------------------------
+//
+// It was added to diagnose a fault on a handset the synthetic tests could not
+// reach, and it earned its keep -- but seven lines of beta, gamma and a gravity
+// vector are no use to a player, and a settings panel is exactly where that
+// sort of thing accumulates permanently if nobody stops it. Gated behind
+// `?tiltdebug`, the same convention as the `?flight` / `?space` / `?onfoot`
+// development routes.
+{
+  const code = gameCode;
+  check(/const TILT_DEBUG =/.test(code), 'the tilt readout must sit behind a development flag');
+  check(/has\('tiltdebug'\)/.test(code), 'the flag must be the ?tiltdebug query parameter');
+  check(
+    /TILT_DEBUG \? this\.drawTiltDiagnostics\(/.test(code),
+    'drawTiltDiagnostics must be called only when the flag is set — an ungated readout ships diagnostic clutter to players',
+  );
+  // The downloadable log is deliberately NOT gated: it already ships behind
+  // the LOG button, costs nothing unopened, and is the only way a fault on
+  // someone else's phone ever reaches us. Pinned so it is not "tidied" away
+  // along with the on-screen panel.
+  check(
+    /debugLog\.sample\('tilt\.flight'/.test(code),
+    'the tilt samples must keep going into the downloadable log, flag or no flag',
+  );
+}
+
 if (failures.length > 0) {
   console.error('transit intro FAILED');
   for (const failure of failures) console.error(`  - ${failure}`);
