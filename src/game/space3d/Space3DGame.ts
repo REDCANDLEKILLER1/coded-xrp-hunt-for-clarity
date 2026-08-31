@@ -307,6 +307,16 @@ const ARRIVAL_DECEL_SHARE = 0.62;
  * orientations. A fraction of the viewport height collides with it on a short
  * landscape screen.
  */
+/**
+ * Development flag for the on-screen tilt readout, off unless `?tiltdebug`.
+ *
+ * Read once: it cannot change without a reload, and re-parsing the query
+ * string every frame to answer the same question would be waste in the draw
+ * path.
+ */
+const TILT_DEBUG = typeof location !== 'undefined'
+  && new URLSearchParams(location.search).has('tiltdebug');
+
 const SETTINGS_BUTTON_TOP = 98;
 /**
  * How long to watch for a requested calibration to complete.
@@ -955,6 +965,31 @@ export class Space3DGame {
     const ease = Math.min(1, dt * TURN_EASE);
     this.yawRate += (stickX * TURN_RATE - this.yawRate) * ease;
     this.pitchRate += (-stickY * TURN_RATE - this.pitchRate) * ease;
+
+    // The whole chain, into the DOWNLOADABLE log, not just the settings panel.
+    //
+    // The on-screen readout can only be read while standing still with the
+    // menu open, which is exactly when the ship is not being flown -- so it
+    // cannot capture what happens DURING a turn. This samples the same
+    // numbers twice a second while flying, so a report can be a file rather
+    // than a description, and so the last link is visible too: whether the
+    // stick is reaching the flight model at all.
+    if (this.tilt.ready) {
+      const d = this.tilt.diagnostics();
+      debugLog.sample('tilt.flight', 500, 'tilt', 'tilt', {
+        angle: d.screenAngle,
+        beta: Math.round(d.beta * 10) / 10,
+        gamma: Math.round(d.gamma * 10) / 10,
+        leanRight: d.lean ? Math.round(d.lean.right * 10) / 10 : null,
+        leanDown: d.lean ? Math.round(d.lean.down * 10) / 10 : null,
+        stickX: Math.round(stickX * 100) / 100,
+        stickY: Math.round(stickY * 100) / 100,
+        yawRate: Math.round(this.yawRate * 100) / 100,
+        pitchRate: Math.round(this.pitchRate * 100) / 100,
+        pitch: Math.round(this.camera.pitch * 100) / 100,
+        pitchPinned: Math.abs(this.camera.pitch) >= PITCH_LIMIT - 1e-3,
+      });
+    }
 
     this.camera.yaw = wrapAngle(this.camera.yaw + this.yawRate * dt);
     // Elevation is clamped rather than wrapped: pitching past vertical would
@@ -2402,11 +2437,80 @@ export class Space3DGame {
       ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2);
     }
 
-    ctx.fillStyle = 'rgba(200,210,230,0.7)';
-    ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
     const rows2 = rows[rows.length - 1].rect;
-    ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, rows2.y + rows2.h + 26);
+    const hintY = rows2.y + rows2.h + 26;
+    const boxTop = TILT_DEBUG ? this.drawTiltDiagnostics(w, h, rows2.y + rows2.h + 46) : Infinity;
+    // The readout clamps upward to stay on the glass, and in landscape that
+    // lands it on top of this line. Drop the hint rather than overlap it: the
+    // panel is short exactly in the orientation the readout exists to
+    // diagnose, so the numbers win the space.
+    if (hintY + 14 < boxTop) {
+      ctx.fillStyle = 'rgba(200,210,230,0.7)';
+      ctx.font = `${Math.max(9, w * 0.026)}px "Courier New", monospace`;
+      ctx.fillText('Hold the phone how you want to fly, then recalibrate.', w / 2, hintY);
+    }
     ctx.restore();
+  }
+
+  /**
+   * The whole steering chain, on the glass, live. `?tiltdebug` only.
+
+   * Kept behind the flag because it is an instrument for diagnosing a fault,
+   * not a thing a player has any use for: seven lines of beta, gamma and a
+   * gravity vector is exactly the permanent diagnostic clutter a settings
+   * panel should not accumulate. The flag follows the same convention as the
+   * other development routes in `src/main.ts` -- `?flight`, `?space`,
+   * `?onfoot` -- so a tester turns it on deliberately and nobody else meets it.
+   *
+   * The `tilt` samples in the DOWNLOADABLE log are not gated, and deliberately
+   * so: that log already ships behind the LOG button, costs nothing when
+   * nobody opens it, and is the only way a fault on someone else's handset
+   * ever reaches me.
+   *
+   * Added because the maths and the handset disagreed twice and there was no
+   * way to tell which link was at fault. Every stage is shown in order --
+   * raw sample, gravity, screen angle, lean, stick -- so a wrong axis can be
+   * READ off the device rather than inferred from a model that has already
+   * been wrong. ANGLE is the one to check first when a rotation misbehaves:
+   * if the phone is in landscape and this still says 0, the browser is not
+   * reporting the rotation and nothing downstream can be right.
+   */
+  private drawTiltDiagnostics(w: number, h: number, top: number): number {
+    const { ctx } = this;
+    const d = this.tilt.diagnostics();
+    const n = (v: number, p = 2): string => (Number.isFinite(v) ? v.toFixed(p) : '--');
+    const vec = (v: { x: number; y: number; z: number } | null): string => (
+      v ? `${n(v.x)} ${n(v.y)} ${n(v.z)}` : '--'
+    );
+    const lines = [
+      `STATUS  ${d.status.toUpperCase()}   SAMPLES ${d.samples}`,
+      `ANGLE   ${d.screenAngle}   (0/180 portrait, 90/270 landscape)`,
+      `RAW     beta ${n(d.beta, 1)}   gamma ${n(d.gamma, 1)}`,
+      `GRAVITY ${vec(d.gravity)}`,
+      `NEUTRAL ${vec(d.neutral)}`,
+      `LEAN    right ${d.lean ? n(d.lean.right, 1) : '--'}   down ${d.lean ? n(d.lean.down, 1) : '--'}`,
+      `STICK   x ${n(d.stick.x)}   y ${n(d.stick.y)}`,
+    ];
+    const size = Math.max(8, Math.min(11, w * 0.022));
+    ctx.font = `${size}px "Courier New", monospace`;
+    ctx.textAlign = 'left';
+    const width = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
+    const x = Math.max(8, (w - width) / 2);
+    const lineH = size * 1.45;
+    const boxH = lines.length * lineH + 12;
+    // Never draw off the bottom: in landscape the panel is short and this
+    // would otherwise be the first thing to fall off the glass -- which is
+    // precisely the orientation it exists to diagnose.
+    const y = Math.min(top, h - boxH - 6);
+    ctx.fillStyle = 'rgba(0,0,0,0.66)';
+    ctx.fillRect(x - 8, y - 8, width, boxH);
+    ctx.strokeStyle = 'rgba(120,200,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 8, y - 8, width, boxH);
+    ctx.fillStyle = 'rgba(150,220,255,0.92)';
+    lines.forEach((line, i) => ctx.fillText(line, x, y + 6 + i * lineH));
+    ctx.textAlign = 'center';
+    return y - 8;
   }
 
   private drawToast(w: number, h: number): void {

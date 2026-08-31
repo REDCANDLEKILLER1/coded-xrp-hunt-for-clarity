@@ -247,6 +247,46 @@ check(/private drawOffscreenCues\(/.test(game) && /this\.drawOffscreenCues\(/.te
 // screen and can never bring you all the way around.
 check(/TURN_RATE/.test(game) && /yawRate/.test(game) && /pitchRate/.test(game), 'steering must set a turn rate');
 check(/this\.camera\.yaw = wrapAngle\(/.test(game), 'heading must wrap rather than grow without bound');
+
+// ---- which way the stick points the nose --------------------------------
+//
+// An inverted pitch axis shipped to a phone because this half of the chain was
+// never pinned. `scripts/validate-tilt.mjs` proves the sensor produces a
+// positive `y` when the top of the phone dips away; nothing proved that a
+// positive `y` then lowers the nose, so a correct sensor and a correct flight
+// model could still add up to a ship that climbed when the player pushed.
+//
+// Both halves are asserted here, because the conclusion needs both and each is
+// individually plausible when wrong.
+{
+  const gameCode = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  // 1. Sign convention of the camera itself, measured rather than assumed:
+  //    world +y draws BELOW the centre, so a nose that is up has a forward
+  //    vector with a negative y.
+  check(project(cam({}), 0, 400, 900).sy > base.cy, 'world +y must draw below the centre of the glass');
+  check(forward(cam({ pitch: 0.4 })).y < -0.01, 'a POSITIVE camera pitch must point the nose UP');
+  check(forward(cam({ pitch: -0.4 })).y > 0.01, 'a NEGATIVE camera pitch must point the nose DOWN');
+  check(forward(cam({ yaw: 0.4 })).x > 0.01, 'a POSITIVE camera yaw must turn RIGHT');
+
+  // 2. The integrator must therefore NEGATE the stick on pitch and pass it
+  //    through on yaw, which is what makes stick y+ = nose down and x+ = right.
+  check(
+    /this\.pitchRate \+= \(-stickY \* TURN_RATE - this\.pitchRate\)/.test(gameCode),
+    'pitch must negate the stick: stick y+ (top of the phone dipped away, or a drag downward) is NOSE DOWN',
+  );
+  check(
+    /this\.yawRate \+= \(stickX \* TURN_RATE - this\.yawRate\)/.test(gameCode),
+    'yaw must pass the stick straight through: stick x+ (right edge dipped, or a drag right) is TURN RIGHT',
+  );
+
+  // 3. And the drag fallback has to agree with the tilt, or the level flies
+  //    one way on a phone and the other way on a desktop.
+  check(
+    /this\.stickY = clamp\(dy \/ travel, -1, 1\)/.test(gameCode),
+    'the drag fallback must not invert either: dragging DOWN the glass is nose down, same as the tilt',
+  );
+}
 // Firing used to have to be AUTOMATIC, on the reasoning that a fire button
 // costs the thumb flying the ship. That was right until tilt started flying
 // it. The thumb is free now, so the trigger is the point -- and the rule that
