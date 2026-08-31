@@ -8,6 +8,7 @@
 // Run with: npm test
 
 import { build } from 'esbuild';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const result = await build({
   entryPoints: ['src/game/content/registry.ts'],
@@ -204,6 +205,85 @@ for (const checkpoint of earthMission.checkpoints) {
     process.exit(1);
   }
 }
+// ---- checkpoint keys named as STRINGS in code must actually exist ---------
+//
+// `DirectBoardingRuntime` dispatches `checkpointKey: 'earth.boarding_lock'` as
+// a bare string, and the three guardian plans in EarthBossFlow name theirs the
+// same way. TypeScript cannot see any of it, so the mission spine and the code
+// that references it can drift apart in silence -- and they nearly did: the
+// commit that removed the superseded interior deleted two sibling checkpoints
+// with nothing in the build objecting. Deleting one more would have severed
+// the capture handoff into the 3D transit and still shipped green.
+//
+// Scoped to real checkpoint-reference sites -- string literals assigned to a
+// `checkpointKey` field -- rather than to every `earth.*` string under src/.
+// The broad version is a wider net than the invariant, and would eventually
+// fire on a label, an asset id or a telemetry key that merely shares the
+// prefix. This is the semantic reference, so it stays true as unrelated
+// identifiers come and go.
+{
+  const declared = new Set(earthMission.checkpoints.map((checkpoint) => checkpoint.key));
+  const roots = ['src'];
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(full);
+      else if (full.endsWith('.ts')) files.push(full);
+    }
+  };
+  for (const root of roots) walk(root);
+
+  let referenced = 0;
+  for (const file of files) {
+    // Comments stripped: a checkpoint key quoted in an explanation is not a
+    // reference, and this repo has been bitten five times by greps that could
+    // not tell the difference.
+    const code = readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    for (const match of code.matchAll(/checkpointKey:\s*'([^']+)'/g)) {
+      referenced += 1;
+      if (!declared.has(match[1])) {
+        console.error(`Mission validation FAILED: ${file} references checkpoint "${match[1]}", which the mission does not declare.`);
+        process.exit(1);
+      }
+    }
+  }
+  // A scraper that finds nothing passes everything. The boarding dispatch and
+  // the three guardian plans are four references; fewer means this stopped
+  // reading the code rather than that the code stopped referencing.
+  if (referenced < 4) {
+    console.error(`Mission validation FAILED: only ${referenced} checkpoint reference(s) found in src/ — the scraper is broken.`);
+    process.exit(1);
+  }
+}
+
+// ---- the capture handoff into the 3D transit is still connected -----------
+//
+// The other half of a contract #108 only tested one side of. Every assertion
+// there proved the two new bosses do NOT enter 3D early; none proved the real
+// capture still does. A spine cleanup that severed it would have passed them
+// all.
+{
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const boarding = strip(readFileSync('src/game/ui/DirectBoardingRuntime.ts', 'utf8'));
+  const main = strip(readFileSync('src/main.ts', 'utf8'));
+  const fail = (message) => { console.error(`Mission validation FAILED: ${message}`); process.exit(1); };
+
+  if (!/coded:boarding-complete/.test(boarding)) fail('the boarding runtime no longer announces completion — nothing would enter the 3D transit');
+  if (!/warship\.state !== 'disabled'/.test(boarding)) fail('boarding must gate on the warship actually being disabled');
+  if (!/coded:boarding-complete/.test(main)) fail('main.ts no longer listens for boarding completion');
+  if (!/space\.show\(\)/.test(main)) fail('boarding completion must hand off to the 3D transit');
+  for (const act of ['regulatory_warship', 'boarding']) {
+    if (!earthMission.acts.some((a) => a.key === act)) fail(`the "${act}" act is gone — the capture route into 3D is broken`);
+  }
+  const order = earthMission.acts.map((a) => a.key);
+  if (order.indexOf('boarding') < order.indexOf('regulatory_warship')) {
+    fail('boarding must follow the warship fight, not precede it');
+  }
+}
+
 const duplicates = earthMission.checkpoints.length - resumable.size;
 if (duplicates > 0) {
   console.error(`Mission validation FAILED: ${duplicates} checkpoint(s) resume into an act another already covers.`);
