@@ -140,26 +140,59 @@ const screenBasis = (angle) => ({
   down: { x: Math.sin(angle * Math.PI / 180), y: -Math.cos(angle * Math.PI / 180), z: 0 },
 });
 
-// ANCHOR. Rotating the gravity vector about a screen axis has to reproduce the
-// beta/gamma poses it claims to describe, or every assertion built on it is
-// describing an imaginary movement. If these two fail, the convention used
-// below is wrong and the direction checks mean nothing.
+// ---- THE ANCHOR MUST NOT COME FROM THE FUNCTION UNDER TEST ---------------
+//
+// This block used to build its ground truth by calling gravityFromOrientation
+// and comparing it against itself. That is not an anchor, it is a tautology,
+// and it is exactly how a mirrored device frame shipped to a phone: the module
+// negated the x term, every test generated its inputs with the same negation,
+// and test and code agreed with each other while disagreeing with the handset.
+// The report that broke the tie was "left and right are backwards".
+//
+// Ground truth is now built from the specification itself. DeviceOrientation
+// defines the device-to-earth rotation as the intrinsic Z-X'-Y'' sequence
+// R = Rz(alpha) . Rx(beta) . Ry(gamma); gravity in device coordinates is
+// R-transpose applied to earth-down, (0, 0, -1). Nothing below calls the module
+// to decide what the right answer is.
+const matmul = (A, B) => A.map((row, i) => B[0].map((_, j) => row.reduce((sum, _v, k) => sum + A[i][k] * B[k][j], 0)));
+const rotX = (b) => [[1, 0, 0], [0, Math.cos(b), -Math.sin(b)], [0, Math.sin(b), Math.cos(b)]];
+const rotY = (g) => [[Math.cos(g), 0, Math.sin(g)], [0, 1, 0], [-Math.sin(g), 0, Math.cos(g)]];
+/** Gravity in device coordinates, straight from the spec's rotation sequence. */
+const gravityFromSpec = (betaDeg, gammaDeg) => {
+  const R = matmul(rotX(betaDeg * Math.PI / 180), rotY(gammaDeg * Math.PI / 180));
+  return { x: -R[2][0], y: -R[2][1], z: -R[2][2] };
+};
+
 {
   const same = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 1e-6;
   const D = Math.PI / 180;
+
+  // THE CHECK THAT WOULD HAVE CAUGHT IT. The module has to agree with the
+  // spec across the whole range, not merely at the poses where a mirrored
+  // frame happens to look identical (anything with gamma = 0).
+  for (const [beta, gamma] of [[0, 0], [30, 0], [0, 45], [0, -45], [30, 20], [30, -20], [45, 60], [10, 88], [-25, -70]]) {
+    check(
+      same(gravityFromOrientation(beta, gamma), gravityFromSpec(beta, gamma)),
+      `gravityFromOrientation(${beta}, ${gamma}) disagrees with the Z-X'-Y'' spec rotation`,
+    );
+  }
+  // Stated as a physical fact as well, because a sign is easier to argue with
+  // than a matrix: MDN gives gamma positive values "when the device is tilted
+  // to the right", and device x is screen-right, so a flat phone at +gamma
+  // must have gravity pulling toward its right edge.
+  check(gravityFromSpec(0, 30).x > 0, 'spec: a POSITIVE gamma dips the screen right edge');
+  check(gravityFromOrientation(0, 30).x > 0, 'the module must agree: +gamma dips the RIGHT edge, not the left');
+
   const { right: sRight, down: sDown } = screenBasis(0);
-  const neutral = gravityFromOrientation(30, 0);
+  const neutral = gravityFromSpec(30, 0);
   check(
-    same(rotateAbout(neutral, sRight, 15 * D), gravityFromOrientation(15, 0)),
+    same(rotateAbout(neutral, sRight, 15 * D), gravityFromSpec(15, 0)),
     'anchor: +theta about screenRight must be the top tipping AWAY (beta 30 -> 15, toward flat)',
   );
   check(
-    same(rotateAbout(neutral, sDown, 15 * D), gravityFromOrientation(30, -15)),
-    'anchor: +theta about screenDown must be the RIGHT edge dipping (gamma 0 -> -15)',
+    same(rotateAbout(neutral, sDown, 15 * D), gravityFromSpec(30, 15)),
+    'anchor: +theta about screenDown must be the RIGHT edge dipping (gamma 0 -> +15)',
   );
-  // And that the second of those really is the right edge going down: gravity
-  // gaining a +x (device-right) component means the right side is downhill.
-  check(gravityFromOrientation(30, -15).x > 0, 'anchor: a negative gamma must dip the screen right edge');
 }
 
 for (const angle of [0, 90, 180, 270]) {
@@ -187,12 +220,14 @@ for (const angle of [0, 90, 180, 270]) {
 // cannot see rotation about gravity, so that pose genuinely has one live axis.
 {
   const { dev, src } = await calibrated(30, 0, { angle: 0 });
-  // At screen angle 0 a NEGATIVE gamma dips the screen's right edge: gravity
-  // gains +x, which is screen-right. Asserting the direction and not merely
-  // that the two are opposite is the point -- a flipped sign passes an
-  // opposite-signs check while sending every turn the wrong way.
-  const dipRight = settle(dev, src, 30, -15);
-  const dipLeft = settle(dev, src, 30, 15);
+  // At screen angle 0 a POSITIVE gamma dips the screen's right edge: gravity
+  // gains +x, which is screen-right. This block asserted the opposite for as
+  // long as the module mirrored its own x axis, and passed the whole time.
+  // Asserting the direction and not merely that the two are opposite is the
+  // point -- a flipped sign passes an opposite-signs check while sending every
+  // turn the wrong way.
+  const dipRight = settle(dev, src, 30, 15);
+  const dipLeft = settle(dev, src, 30, -15);
   check(dipRight.x > 0.2, `dipping the right edge must turn RIGHT (got ${dipRight.x.toFixed(2)})`);
   check(dipLeft.x < -0.2, `dipping the left edge must turn LEFT (got ${dipLeft.x.toFixed(2)})`);
 

@@ -106,8 +106,28 @@ const CALIBRATION_TIMEOUT_MS = 2600;
 export function gravityFromOrientation(beta: number, gamma: number): Vec3 {
   const b = beta * DEG;
   const g = gamma * DEG;
+  // The x term is NOT negated, and getting that wrong mirrored the world.
+  //
+  // Derived from the spec rather than guessed: DeviceOrientation defines the
+  // device-to-earth rotation as the intrinsic Z-X'-Y'' sequence
+  // R = Rz(alpha) . Rx(beta) . Ry(gamma), so gravity in device coordinates is
+  // R-transpose applied to earth-down (0, 0, -1), which works out to
+  // (cos b sin g, -sin b, -cos b cos g). This used to negate the x term, which
+  // mirrored the device frame left-to-right.
+  //
+  // A mirrored frame is almost invisible in testing. It reads correct for any
+  // motion in the y-z plane, so PITCH looked right in portrait, and the sign
+  // error only showed up as roll -- until you rotate the phone, at which point
+  // the screen's axes swap and the mirror lands on pitch instead. On a handset
+  // that is "left and right are backwards in portrait, up and down are
+  // backwards in landscape", from one wrong character.
+  //
+  // It survived every synthetic test because the tests generated their inputs
+  // with THIS function. Test and code shared the mistake and agreed with each
+  // other; only a real phone could break the tie. `scripts/validate-tilt.mjs`
+  // now builds its ground truth from the rotation matrix instead.
   return normalize({
-    x: -Math.cos(b) * Math.sin(g),
+    x: Math.cos(b) * Math.sin(g),
     y: -Math.sin(b),
     z: -Math.cos(b) * Math.cos(g),
   });
