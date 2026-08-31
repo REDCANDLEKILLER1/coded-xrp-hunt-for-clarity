@@ -293,6 +293,37 @@ export class EarthFlightEncounterDirector {
     this.done = false;
   }
 
+  /**
+   * Sequencing position, for a save that resumes mid-act.
+   *
+   * `start(actKey)` alone would rewind the player to the first group of the
+   * act they were eleven groups into, which is not the moment they saved.
+   */
+  snapshot(): { actKey: string; groupIndex: number; wait: number; groupSpawned: boolean; done: boolean } | null {
+    if (!this.encounter) return null;
+    return {
+      actKey: this.encounter.actKey,
+      groupIndex: this.groupIndex,
+      wait: this.wait,
+      groupSpawned: this.groupSpawned,
+      done: this.done,
+    };
+  }
+
+  /** Returns false when the act no longer exists, so the caller can fall back. */
+  restore(state: { actKey: string; groupIndex: number; wait: number; groupSpawned: boolean; done: boolean }): boolean {
+    const encounter = earthFlightEncounterFor(state.actKey);
+    if (!encounter) return false;
+    this.encounter = encounter;
+    // Clamped rather than trusted: an act that lost groups since the save was
+    // written would otherwise index past its own sequence forever.
+    this.groupIndex = Math.max(0, Math.min(Math.floor(state.groupIndex), encounter.groups.length - 1));
+    this.wait = Math.max(0, state.wait);
+    this.groupSpawned = state.groupSpawned;
+    this.done = state.done;
+    return true;
+  }
+
   update(dt: number, activeThreatCount: number): { spawns: EncounterSpawnDef[]; completed: boolean } {
     if (!this.encounter || this.done) return { spawns: [], completed: this.done };
 

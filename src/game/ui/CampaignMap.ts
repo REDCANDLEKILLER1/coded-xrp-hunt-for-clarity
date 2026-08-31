@@ -8,12 +8,20 @@ import {
   type CampaignProgress,
   type MissionCheckpointSnapshot,
 } from '../content/CampaignProgress';
+import { clearRunSave, currentRunKeys, loadRunSave } from '../content/RunSave';
 
 type PlanetState = 'locked' | 'available' | 'cleared';
 
 export class CampaignMap {
   private progress: CampaignProgress = loadCampaignProgress();
   private selectedKey = this.progress.currentPlanet;
+  /**
+   * The pause-menu save, if there is one.
+   *
+   * Re-read on every `show()` alongside progress, because it is written from
+   * inside a run that has since ended.
+   */
+  private runSave = loadRunSave(currentRunKeys());
 
   constructor(
     private readonly root: HTMLElement,
@@ -26,6 +34,7 @@ export class CampaignMap {
 
   show(): void {
     this.progress = loadCampaignProgress();
+    this.runSave = loadRunSave(currentRunKeys());
     if (!this.isAvailable(this.selectedKey)) this.selectedKey = PLANETS[0].key;
     this.render();
     this.root.hidden = false;
@@ -41,7 +50,13 @@ export class CampaignMap {
     const guardianDown = this.progress.defeatedGuardians.includes(selected.key);
     const surfaceDown = this.progress.defeatedSurfaceBosses.includes(selected.key);
     const checkpoint = selectedState === 'cleared' ? undefined : missionCheckpointFor(this.progress, selected.key);
-    const checkpointLabel = checkpoint?.checkpointLabel ?? this.progress.checkpoints[selected.key]?.toUpperCase() ?? 'NONE';
+    // A save written in the very first act has no checkpoint banked behind it
+    // yet, so the resume half of the map cannot be gated on one.
+    const runSave = selectedState === 'cleared' || this.runSave?.planetKey !== selected.key ? undefined : this.runSave;
+    const resumable = runSave ?? checkpoint;
+    const checkpointLabel = runSave
+      ? `${runSave.actLabel} // EXACT MOMENT`
+      : checkpoint?.checkpointLabel ?? this.progress.checkpoints[selected.key]?.toUpperCase() ?? 'NONE';
     const routeLines = CAMPAIGN_ROUTES.map((route) => {
       const from = PLANET_BY_KEY[route.from];
       const to = PLANET_BY_KEY[route.to];
@@ -51,8 +66,8 @@ export class CampaignMap {
 
     const launchButtons = selectedState === 'locked'
       ? '<button class="deploy-button" type="button" data-action="deploy" disabled>ROUTE LOCKED</button>'
-      : checkpoint
-        ? `<button class="deploy-button" type="button" data-action="resume">RESUME FROM ${checkpoint.checkpointLabel}</button>
+      : resumable
+        ? `<button class="deploy-button" type="button" data-action="resume">${runSave ? `RESUME // ${runSave.actLabel}` : `RESUME FROM ${checkpoint?.checkpointLabel ?? ''}`}</button>
            <button class="test-button" type="button" data-action="restart">RESTART MISSION</button>`
         : `<button class="deploy-button" type="button" data-action="deploy">${selectedState === 'cleared' ? 'REPLAY PLANET' : 'BEGIN DEFENSE'}</button>`;
 
@@ -113,7 +128,8 @@ export class CampaignMap {
     this.root.querySelector<HTMLButtonElement>('[data-action="resume"]')?.addEventListener('click', () => {
       const planet = PLANET_BY_KEY[this.selectedKey];
       const snapshot = missionCheckpointFor(this.progress, this.selectedKey);
-      if (!planet || !snapshot || !this.isAvailable(planet.key)) return;
+      const live = this.runSave?.planetKey === this.selectedKey;
+      if (!planet || (!snapshot && !live) || !this.isAvailable(planet.key)) return;
       this.progress = recordPlanetSelection(this.progress, planet.key);
       saveCampaignProgress(this.progress);
       this.onLaunch(planet, snapshot);
@@ -121,6 +137,12 @@ export class CampaignMap {
     this.root.querySelector<HTMLButtonElement>('[data-action="restart"]')?.addEventListener('click', () => {
       const planet = PLANET_BY_KEY[this.selectedKey];
       if (!planet || !this.isAvailable(planet.key)) return;
+      // Restarting has to drop the live save as well as the checkpoint, or the
+      // deploy that follows resumes the exact moment the player just discarded.
+      if (this.runSave?.planetKey === planet.key) {
+        clearRunSave();
+        this.runSave = null;
+      }
       this.progress = clearMissionCheckpoint(this.progress, planet.key);
       this.progress = recordPlanetSelection(this.progress, planet.key);
       saveCampaignProgress(this.progress);

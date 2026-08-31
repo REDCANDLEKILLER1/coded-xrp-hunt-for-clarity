@@ -16,6 +16,16 @@ import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../co
 import { REGULATORY_WARSHIP, RegulatoryWarshipDirector } from '../content/RegulatoryWarship';
 import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
+import {
+  RUN_SAVE_CHECKPOINT_KEY,
+  RUN_SAVE_VERSION,
+  clearRunSave,
+  currentRunKeys,
+  loadRunSave,
+  rescaleRunSave,
+  writeRunSave,
+} from '../content/RunSave';
+import type { RunSave } from '../content/RunSave';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
@@ -338,6 +348,13 @@ const ESCORT_PATIENCE = 16;
  * steady trickle of drones means the screen has to be managed as well as the
  * boss read.
  */
+/**
+ * How long a restored save sits frozen before the fight starts moving.
+ *
+ * Long enough to read the screen and put a thumb down; short enough that it is
+ * not a loading screen. The world is untouched underneath it.
+ */
+const RESUME_HOLD_SECONDS = 1.6;
 const BOSS_PRESSURE_INTERVAL = 3.4;
 const BOSS_PRESSURE_CAP = 5;
 /** Warship hangar launches: engine phase, then faster once the hangar is up. */
@@ -444,6 +461,19 @@ export class Game2A {
   /** Counts up while a fog gate or shield cover is being cut automatically. */
   private fogCutClock = 0;
   private shieldCutClock = 0;
+  /**
+   * Seconds the freshly-restored world stays frozen before it starts moving.
+   *
+   * A save keeps every bullet exactly where it was, which is the point -- and
+   * it means loading can drop you into a frame with a shot twenty pixels from
+   * the hull, a death you were never awake for. Nothing is moved or deleted to
+   * soften that; the world simply does not tick until the player has had a
+   * moment to look at it. The moment restored is the moment saved.
+   */
+  private resumeHoldClock = 0;
+  /** Seconds the pause menu keeps showing that a save was written. */
+  private saveNoticeClock = 0;
+  private saveNoticeText = '';
   private progress: CampaignProgress = this.loadProgress();
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
@@ -492,6 +522,13 @@ export class Game2A {
       this.mode = 'select';
       return;
     }
+
+    // A live save is a later moment than any checkpoint that could exist for
+    // it, so it is tried first. Every failure path below -- no save, wrong
+    // planet, a save that no longer parses -- falls through to the checkpoint
+    // resume that has always been here.
+    const live = loadRunSave(currentRunKeys());
+    if (live && live.planetKey === planetKey && this.restoreRunSave(live)) return;
 
     const resumable = checkpoint
       && checkpoint.missionKey === mission.key
@@ -574,6 +611,7 @@ export class Game2A {
     // returns early while the overlay is up -- an arm timer that only runs
     // when the overlay is closed would never expire.
     if (this.upgradeArmClock > 0) this.upgradeArmClock = Math.max(0, this.upgradeArmClock - dt);
+    if (this.saveNoticeClock > 0) this.saveNoticeClock = Math.max(0, this.saveNoticeClock - dt);
     this.update(dt);
     this.render();
   }
@@ -606,12 +644,20 @@ export class Game2A {
     if (this.mode === 'title') return void (this.mode = 'select');
     if (this.mode === 'select') return this.selectShipAt(tap.x, tap.y);
     if (this.mode === 'results') {
+      const live = this.liveResume();
       const save = this.resumeCheckpoint();
       const buttons = this.resultsButtons();
-      if (save && inside(buttons.secondary, tap.x, tap.y)) return this.reset(undefined, { fresh: true });
+      if ((save || live) && inside(buttons.secondary, tap.x, tap.y)) {
+        // Restarting the mission has to drop the live save too, or the very
+        // next frame resumes the moment the player just asked to leave.
+        clearRunSave();
+        return this.reset(undefined, { fresh: true });
+      }
+      if (live && this.restoreRunSave(live)) return;
       return this.reset();
     }
     if (this.mode === 'victory') return this.reset();
+    if (this.paused) return this.tapPauseMenu(tap.x, tap.y);
     if (this.upgradeOffer.length > 0) {
       // Still arming: this tap was in flight before the cards existed.
       if (this.upgradeArmClock > 0) return;
@@ -634,6 +680,15 @@ export class Game2A {
 
     if (this.launchClock > 0) {
       this.updateLaunchReveal(dt);
+      if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
+      return;
+    }
+
+    // A restored save is on screen but frozen until the player has looked at
+    // it. Same shape as the launch reveal above: tick one clock, tick the
+    // banner, return before anything moves.
+    if (this.resumeHoldClock > 0) {
+      this.resumeHoldClock = Math.max(0, this.resumeHoldClock - dt);
       if (this.missionBannerClock > 0) this.missionBannerClock = Math.max(0, this.missionBannerClock - dt);
       return;
     }
@@ -2255,9 +2310,13 @@ export class Game2A {
     this.ctx.fillText(`SCORE ${this.score}`, this.w / 2, this.h * 0.42);
     this.ctx.fillText(`BEST ${this.progress.highScore} • HIGHEST WAVE ${this.progress.highestWave}`, this.w / 2, this.h * 0.5);
 
+    const live = this.liveResume();
     const save = this.resumeCheckpoint();
     const buttons = this.resultsButtons();
-    if (save) {
+    if (live) {
+      this.button(buttons.primary, `CONTINUE // ${live.actLabel}`, '#00ff88');
+      this.button(buttons.secondary, 'RESTART MISSION', 'rgba(216,255,232,0.5)');
+    } else if (save) {
       this.button(buttons.primary, `CONTINUE // ${save.checkpointLabel}`, '#00ff88');
       this.button(buttons.secondary, 'RESTART MISSION', 'rgba(216,255,232,0.5)');
     } else {
@@ -3352,13 +3411,379 @@ export class Game2A {
     missing.forEach((item, i) => this.ctx.fillText(`${item.status.toUpperCase()} ${item.category}:${item.id}`, x + 10, y + 84 + i * 14));
   }
 
+  private pauseButtons(): { resume: Rect; save: Rect; saveQuit: Rect } {
+    const w = Math.min(this.w - 64, 260);
+    const h = 34;
+    const x = (this.w - w) / 2;
+    // Anchored on the stack's own height rather than a fraction of the screen,
+    // because landscape on a phone is about 410px tall and a fraction that
+    // centres in portrait pushes the last button off the bottom there.
+    const top = this.h / 2 - (h * 3 + 16) / 2 + 12;
+    return {
+      resume: { x, y: top, w, h },
+      save: { x, y: top + h + 8, w, h },
+      saveQuit: { x, y: top + (h + 8) * 2, w, h },
+    };
+  }
+
   private pause(): void {
-    this.ctx.fillStyle = 'rgba(2,6,11,0.72)';
+    this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
     this.ctx.fillRect(0, 0, this.w, this.h);
     this.ctx.textAlign = 'center';
     this.ctx.fillStyle = '#36a3ff';
-    this.ctx.font = '700 28px ui-sans-serif, system-ui';
-    this.ctx.fillText('PAUSED', this.w / 2, this.h / 2);
+    this.ctx.font = '700 24px ui-sans-serif, system-ui';
+    const buttons = this.pauseButtons();
+    this.ctx.fillText('PAUSED', this.w / 2, buttons.resume.y - 30);
+
+    const savable = this.canSaveRun();
+    this.button(buttons.resume, 'RESUME', '#00ff88');
+    this.button(buttons.save, 'SAVE', savable ? '#36a3ff' : 'rgba(216,255,232,0.25)');
+    this.button(buttons.saveQuit, 'SAVE & QUIT', savable ? '#36a3ff' : 'rgba(216,255,232,0.25)');
+
+    this.ctx.font = '600 11px ui-sans-serif, system-ui';
+    this.ctx.fillStyle = 'rgba(216,255,232,0.62)';
+    const footer = buttons.saveQuit.y + buttons.saveQuit.h + 18;
+    if (this.saveNoticeClock > 0) {
+      this.ctx.fillStyle = '#00ff88';
+      this.ctx.fillText(this.saveNoticeText, this.w / 2, footer);
+    } else if (savable) {
+      this.ctx.fillText('A SAVE KEEPS THIS EXACT MOMENT', this.w / 2, footer);
+    } else {
+      this.ctx.fillText('SAVING NEEDS A RUN IN PROGRESS', this.w / 2, footer);
+    }
+  }
+
+  private tapPauseMenu(x: number, y: number): void {
+    const buttons = this.pauseButtons();
+    // The menu owns every tap while it is up, the corner pause circle included:
+    // leaving both live would put RESUME and the button that opened the menu on
+    // screen at once, half a thumb apart.
+    if (inside(buttons.resume, x, y) || inCircle(this.zone.pause, x, y)) return void this.setPaused(false);
+    if (!this.canSaveRun()) return;
+    if (inside(buttons.save, x, y)) return void this.saveRun();
+    if (inside(buttons.saveQuit, x, y) && this.saveRun()) this.quitToMap();
+  }
+
+  /**
+   * Only an authored mission has somewhere to be resumed into -- and only once
+   * the launch cinematic is over.
+   *
+   * During the reveal the player is parked off the bottom of the screen while
+   * the hull flies in. A save taken there records that position, and the launch
+   * clock that would have moved it is deliberately not saved, so resuming would
+   * drop the fighter below the screen with nothing to bring it back.
+   */
+  private canSaveRun(): boolean {
+    return Boolean(
+      this.missionDirector.activeMission && this.activePlanetKey && this.mode === 'play' && this.launchClock <= 0,
+    );
+  }
+
+  private saveRun(): boolean {
+    // The menu already greys the button out; this is the same rule stated where
+    // the write actually happens, so a future caller cannot route around it.
+    if (!this.canSaveRun()) return false;
+    const save = this.captureRunSave();
+    if (!save || !writeRunSave(save)) {
+      this.saveNoticeText = 'COULD NOT SAVE ON THIS DEVICE';
+      this.saveNoticeClock = 3;
+      sfx.play('deny');
+      return false;
+    }
+    this.saveNoticeText = `SAVED // ${save.actLabel}`;
+    this.saveNoticeClock = 3;
+    sfx.play('pickup');
+    debugLog.log('mission', 'run saved', {
+      act: save.actKey,
+      drones: save.drones.length,
+      shots: save.hostileShots.length,
+      boss: save.boss?.bossKey ?? null,
+    });
+    return true;
+  }
+
+  private quitToMap(): void {
+    this.paused = true;
+    this.cueMusic('silence');
+    window.dispatchEvent(new CustomEvent('coded:quit-to-map'));
+  }
+
+  /**
+   * The whole moment: position, every enemy, every bullet in the air.
+   *
+   * Cosmetics are left out on purpose and listed in UNSAVED_GAME_FIELDS with
+   * their reasons. Everything else on this class is in SAVED_GAME_FIELDS, and
+   * validate-run-save fails the build if a new live field joins neither list --
+   * the only thing standing between this feature and a save that silently
+   * restores a slightly wrong world a year from now.
+   */
+  private captureRunSave(): RunSave | null {
+    const mission = this.missionDirector.activeMission;
+    const act = this.missionDirector.currentAct;
+    if (!mission || !act || !this.activePlanetKey) return null;
+
+    // `hp` is copied only when the actor actually has one. Bullets and pickups
+    // do not, and inventing a zero for them restores an actor that reads as
+    // already destroyed. `life` is deliberately absent from every actor: it is
+    // a within-frame "consumed" flag that collisions() sets and then filters
+    // out in the same pass, so a survivor never carries a meaningful one.
+    const base = (item: Actor) => {
+      const copy: { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number } = {
+        x: item.x, y: item.y, w: item.w, h: item.h, vx: item.vx, vy: item.vy,
+      };
+      if (item.hp !== undefined) copy.hp = item.hp;
+      return copy;
+    };
+    const warshipState = this.warshipDirector.snapshot();
+
+    return {
+      version: RUN_SAVE_VERSION,
+      savedAt: Date.now(),
+      viewport: { w: this.w, h: this.h },
+      planetKey: this.activePlanetKey,
+      planetLabel: this.activePlanetLabel ?? mission.label,
+      missionKey: mission.key,
+      actKey: act.key,
+      actLabel: act.label,
+      shipKey: this.selectedShipKey,
+      scalars: {
+        score: this.score,
+        wave: this.wave,
+        kills: this.kills,
+        xp: this.xp,
+        xpLevel: this.xpLevel,
+        bombs: this.bombs,
+        shield: this.shield,
+        shieldMax: this.shieldMax,
+        special: this.special,
+        barrels: this.barrels,
+        baseWeaponTier: this.baseWeaponTier,
+        bombPower: this.bombPower,
+        pulsePower: this.pulsePower,
+        pendingUpgrades: this.pendingUpgrades,
+        playerFacing: this.playerFacing,
+        bossFacing: this.bossFacing,
+      },
+      clocks: {
+        boltClock: this.boltClock,
+        droneClock: this.droneClock,
+        hazardClock: this.hazardClock,
+        ringClock: this.ringClock,
+        seekerClock: this.seekerClock,
+        bossSpawnClock: this.bossSpawnClock,
+        warshipLaunchClock: this.warshipLaunchClock,
+        bombClock: this.bombClock,
+        bossClearClock: this.bossClearClock,
+        victoryPendingClock: this.victoryPendingClock,
+        playerHitClock: this.playerHitClock,
+        shieldQuietClock: this.shieldQuietClock,
+        shieldRegenClock: this.shieldRegenClock,
+        fogCutClock: this.fogCutClock,
+        shieldCutClock: this.shieldCutClock,
+        upgradeArmClock: this.upgradeArmClock,
+      },
+      fogGateActive: this.fogGateActive,
+      bombHintShown: this.bombHintShown,
+      player: base(this.player),
+      drones: this.drones.map((drone) => ({
+        ...base(drone),
+        enemyKey: drone.enemyKey,
+        age: drone.age,
+        anchorX: drone.anchorX,
+        phase: drone.phase,
+        direction: drone.direction,
+        fireClock: drone.fireClock,
+        stance: drone.stance,
+        stationX: drone.stationX,
+        stationY: drone.stationY,
+        stanceClock: drone.stanceClock,
+        patience: drone.patience,
+        dodgeCooldown: drone.dodgeCooldown,
+        atRest: drone.atRest,
+        escort: drone.escort,
+      })),
+      hazards: this.hazards.map((hazard) => ({
+        ...base(hazard),
+        hazardKey: hazard.hazardKey,
+        fireClock: hazard.fireClock,
+        side: hazard.side,
+      })),
+      hostileShots: this.hostileShots.map((shot) => ({
+        ...base(shot),
+        damage: shot.damage,
+        color: shot.color,
+        projectileKey: shot.projectileKey,
+      })),
+      bolts: this.bolts.map((bolt) => ({
+        ...base(bolt),
+        damage: bolt.damage,
+        projectileKey: bolt.projectileKey,
+        pierce: bolt.pierce,
+      })),
+      seekers: this.seekers.map((seeker) => ({
+        ...base(seeker),
+        damage: seeker.damage,
+        angle: seeker.angle,
+        age: seeker.age,
+      })),
+      pickups: this.pickups.map((pickup) => ({ ...base(pickup), pickupKey: pickup.pickupKey })),
+      boss: this.boss
+        ? {
+            ...base(this.boss),
+            bossKey: this.boss.bossKey,
+            state: this.boss.state,
+            age: this.boss.age,
+            fireClock: this.boss.fireClock,
+            contactClock: this.boss.contactClock,
+            phaseIndex: this.boss.phaseIndex,
+            targetX: this.boss.targetX,
+            attackIndex: this.boss.attackIndex,
+            attackState: this.boss.attackState,
+            attackClock: this.boss.attackClock,
+            attackAim: this.boss.attackAim,
+            maxHp: this.boss.maxHp,
+          }
+        : null,
+      warship: this.warship
+        ? { ...base(this.warship), state: this.warship.state, age: this.warship.age, fireClock: this.warship.fireClock }
+        : null,
+      completedBosses: [...this.completedBosses],
+      upgradeOffer: [...this.upgradeOffer],
+      encounter: this.earthEncounterDirector.snapshot(),
+      warshipSystems: warshipState.systems,
+      warshipShieldExposed: warshipState.shieldExposed,
+    };
+  }
+
+  /**
+   * Puts a parsed save back on the board. False means nothing was touched.
+   *
+   * The world is rebuilt through the same `reset()` path a checkpoint uses --
+   * so a field the save does not carry lands on a checkpoint's value rather
+   * than on whatever the previous run left behind -- and the snapshot is laid
+   * over the top of that.
+   */
+  private restoreRunSave(save: RunSave): boolean {
+    const mission = missionForPlanet(save.planetKey);
+    if (!mission || mission.key !== save.missionKey) return false;
+    if (!mission.acts.some((act) => act.key === save.actKey)) return false;
+    if (!SHIPS[save.shipKey]) return false;
+
+    const scaled = rescaleRunSave(save, this.w, this.h);
+    this.activePlanetKey = save.planetKey;
+    this.activePlanetLabel = save.planetLabel;
+    this.selectedShipKey = save.shipKey;
+    // The mission has to be running before reset() is called: reset reads
+    // `missionDirector.activeMission` to decide whether it is rebuilding a
+    // campaign run at all, and a fresh page has none.
+    this.missionDirector.startAtAct(mission, save.actKey);
+    this.reset({
+      planetKey: save.planetKey,
+      missionKey: mission.key,
+      checkpointKey: RUN_SAVE_CHECKPOINT_KEY,
+      checkpointLabel: save.actLabel,
+      resumeActKey: save.actKey,
+      shipKey: save.shipKey,
+      weaponTier: scaled.scalars.baseWeaponTier,
+      bombs: scaled.scalars.bombs,
+      score: scaled.scalars.score,
+      savedAt: scaled.savedAt,
+      xpLevel: scaled.scalars.xpLevel,
+      barrels: scaled.scalars.barrels,
+      shieldMax: scaled.scalars.shieldMax,
+      bombPower: scaled.scalars.bombPower,
+      pulsePower: scaled.scalars.pulsePower,
+    });
+
+    this.score = scaled.scalars.score;
+    this.wave = scaled.scalars.wave;
+    this.kills = scaled.scalars.kills;
+    this.xp = scaled.scalars.xp;
+    this.xpLevel = scaled.scalars.xpLevel;
+    this.bombs = scaled.scalars.bombs;
+    this.shieldMax = scaled.scalars.shieldMax;
+    this.shield = scaled.scalars.shield;
+    this.special = scaled.scalars.special;
+    this.barrels = scaled.scalars.barrels;
+    this.baseWeaponTier = scaled.scalars.baseWeaponTier;
+    this.bombPower = scaled.scalars.bombPower;
+    this.pulsePower = scaled.scalars.pulsePower;
+    this.pendingUpgrades = scaled.scalars.pendingUpgrades;
+    this.playerFacing = scaled.scalars.playerFacing;
+    this.bossFacing = scaled.scalars.bossFacing;
+    this.upgradeOffer = scaled.upgradeOffer as UpgradeKind[];
+
+    this.boltClock = scaled.clocks.boltClock;
+    this.droneClock = scaled.clocks.droneClock;
+    this.hazardClock = scaled.clocks.hazardClock;
+    this.ringClock = scaled.clocks.ringClock;
+    this.seekerClock = scaled.clocks.seekerClock;
+    this.bossSpawnClock = scaled.clocks.bossSpawnClock;
+    this.warshipLaunchClock = scaled.clocks.warshipLaunchClock;
+    this.bombClock = scaled.clocks.bombClock;
+    this.bossClearClock = scaled.clocks.bossClearClock;
+    this.victoryPendingClock = scaled.clocks.victoryPendingClock;
+    this.playerHitClock = scaled.clocks.playerHitClock;
+    this.shieldQuietClock = scaled.clocks.shieldQuietClock;
+    this.shieldRegenClock = scaled.clocks.shieldRegenClock;
+    this.fogCutClock = scaled.clocks.fogCutClock;
+    this.shieldCutClock = scaled.clocks.shieldCutClock;
+    this.upgradeArmClock = scaled.clocks.upgradeArmClock;
+    this.fogGateActive = scaled.fogGateActive;
+    this.bombHintShown = scaled.bombHintShown;
+
+    this.player = { ...scaled.player };
+    this.drones = scaled.drones.map((drone) => ({ ...drone }));
+    this.hazards = scaled.hazards.map((hazard) => ({ ...hazard }));
+    this.hostileShots = scaled.hostileShots.map((shot) => ({ ...shot }));
+    this.bolts = scaled.bolts.map((bolt) => ({ ...bolt }));
+    this.seekers = scaled.seekers.map((seeker) => ({ ...seeker }));
+    this.pickups = scaled.pickups.map((pickup) => ({ ...pickup }));
+    this.boss = scaled.boss ? { ...scaled.boss } : null;
+    this.warship = scaled.warship ? { ...scaled.warship } : null;
+    this.completedBosses = new Set(scaled.completedBosses);
+    this.rings = [];
+    this.debris = [];
+
+    if (scaled.encounter) {
+      if (!this.earthEncounterDirector.restore(scaled.encounter)) this.earthEncounterDirector.clear();
+    } else {
+      this.earthEncounterDirector.clear();
+    }
+    this.warshipDirector.restore({ systems: scaled.warshipSystems, shieldExposed: scaled.warshipShieldExposed });
+
+    this.mode = 'play';
+    this.paused = false;
+    this.launchClock = 0;
+    this.launchTotal = 0;
+    this.resumeHoldClock = RESUME_HOLD_SECONDS;
+    this.missionBannerText = `RESUMING // ${save.actLabel}`;
+    this.missionBannerClock = RESUME_HOLD_SECONDS;
+    this.cueMusic('level1');
+    debugLog.log('mission', 'live save restored', {
+      act: save.actKey,
+      drones: scaled.drones.length,
+      shots: scaled.hostileShots.length,
+      rescaled: save.viewport.w !== this.w || save.viewport.h !== this.h,
+    });
+    return true;
+  }
+
+  /**
+   * The live save this planet can continue from, if it beats the checkpoint.
+   *
+   * A save survives death on purpose -- reloading one after dying is what a
+   * save is for -- so the GAME OVER screen has two candidates and takes the
+   * later of the two. Offering only the older act checkpoint on the one screen
+   * where continuing is the entire question would be the obvious bug.
+   */
+  private liveResume(): RunSave | undefined {
+    if (!this.activePlanetKey) return undefined;
+    const live = loadRunSave(currentRunKeys());
+    if (!live || live.planetKey !== this.activePlanetKey) return undefined;
+    const checkpoint = this.resumeCheckpoint();
+    if (checkpoint && checkpoint.savedAt > live.savedAt) return undefined;
+    return live;
   }
 
   private useSpecial(): void {
@@ -3520,6 +3945,9 @@ export class Game2A {
   private finishRun(victory: boolean): void {
     this.progress = recordCampaignRun(this.progress, this.score, this.wave, victory);
     this.saveProgress();
+    // A won mission has nothing left to resume into. A lost one keeps its save:
+    // loading one after dying is the whole reason to have written it.
+    if (victory) clearRunSave();
     this.mode = victory ? 'victory' : 'results';
     this.paused = false;
   }
