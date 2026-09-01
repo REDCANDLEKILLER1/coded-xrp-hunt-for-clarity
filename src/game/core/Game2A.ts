@@ -194,6 +194,13 @@ const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
 // keep their nose on each other, and the player's guns fire along that heading
 // instead of straight up. Flanking a boss should mean shooting sideways at it,
 // not shooting past it.
+/**
+ * Top of the fighter's band in ordinary flight, as a fraction of screen height.
+ *
+ * Shallow enough to reach ENEMY_STATION_TOP, so every enemy that holds station
+ * can be flown up to and flanked rather than only shot at from below.
+ */
+const FLIGHT_LANE_TOP = 0.12;
 const DUEL_LANE_TOP = 0.06;
 /** How fast a nose swings onto its target, in radians per second. */
 const DUEL_TURN = 7.5;
@@ -1033,7 +1040,13 @@ export class Game2A {
     // Ask where the gesture STARTED, not where the finger is now. Testing the
     // live position turned every button into a wall the fighter could not be
     // dragged across -- you cannot lift a thumb over an obstacle mid-drag.
-    const usingPointer = Boolean(pointer && origin && !this.inControls(origin.x, origin.y));
+    // ...unless the finger has actually travelled, in which case it is a drag
+    // and steers whatever it started on. The bottom-right pad is where a thumb
+    // rests on a phone; without this, planting it there and pulling down moved
+    // the fighter not at all.
+    const usingPointer = Boolean(
+      pointer && origin && (!this.inControls(origin.x, origin.y) || this.input.dragged),
+    );
     if (usingPointer && pointer) {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
@@ -1061,17 +1074,22 @@ export class Game2A {
   /**
    * Vertical band the fighter may occupy.
    *
-   * The portrait margin of 34% of the screen leaves almost nothing on a
-   * landscape phone: at 274px tall it allowed 85px of travel for a 48px ship,
-   * so the fighter sat pinned against the bottom clamp and forward/back tilt
-   * felt dead. Landscape gets a much shallower top margin; the bottom keeps
-   * clearance for the on-canvas pause/bomb/pulse controls.
+   * Portrait used to reserve the top 34%. On a 393x793 phone that is a hard,
+   * invisible wall at y=270: drag a thumb to the top of the screen and the ship
+   * stops dead underneath it with no feedback of any kind, which is what
+   * "I can't move my ship up" turned out to mean. Landscape had long since been
+   * cut to 12% for its own reasons, so the same game rotated obeyed a different
+   * rule -- and 34% put more than half the enemy station band (14% to 52%) in a
+   * place the player could never fly.
+   *
+   * Both orientations now use the same shallow margin, which reaches the top of
+   * the formation. The bottom keeps clearance for nothing: the fighter must be
+   * able to sit at the very bottom edge.
    */
   private playerLane(): { top: number; bottom: number } {
-    const landscape = this.w > this.h;
-    // A duel opens the arena: you have to be able to get above a boss to flank
-    // it, which the normal flight lane forbids.
-    const top = this.h * (this.duelling() ? DUEL_LANE_TOP : landscape ? 0.12 : 0.34);
+    // A duel opens the arena further still: you have to be able to get above a
+    // boss to flank it.
+    const top = this.h * (this.duelling() ? DUEL_LANE_TOP : FLIGHT_LANE_TOP);
     // The fighter must be able to sit at the very bottom edge. Reserving room
     // for the on-canvas controls left it stranded a ship-height up.
     const bottom = this.h - 22;
