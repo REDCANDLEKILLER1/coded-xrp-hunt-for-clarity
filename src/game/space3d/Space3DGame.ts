@@ -187,6 +187,15 @@ const MISSILE_SEEK_CONE = 0.42;
 /** Seconds without damage before a shield bank starts coming back. */
 const SHIELD_REGEN_DELAY = 4.5;
 const SHIELD_REGEN_PER_SECOND = 0.22;
+/**
+ * How far the view leans into a turn, in radians.
+ *
+ * A deliberate barrel roll (ROLL_TIME below) is a full 360 and stays that way;
+ * this is only the lean, and it has to stay small enough that a turn still
+ * reads as a turn on a screen the size of a hand.
+ */
+const TURN_BANK = 0.1;
+
 /** Two taps on empty glass inside this window is a barrel roll. */
 const DOUBLE_TAP_SECONDS = 0.32;
 /**
@@ -997,7 +1006,13 @@ export class Space3DGame {
     this.camera.pitch = clamp(this.camera.pitch + this.pitchRate * dt, -PITCH_LIMIT, PITCH_LIMIT);
 
     // Bank into the turn, plus the barrel roll on top.
-    const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * 0.28;
+    //
+    // The bank used to reach 16 degrees, and on a phone that was the loudest
+    // thing on screen: "when you try to go left and right it rolls the ship
+    // instead of turning." The yaw was real and correct the whole time, it just
+    // could not be seen underneath a scene rotating that far. Six degrees still
+    // leans the ship into a turn without the lean becoming the turn.
+    const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * TURN_BANK;
     const spin = this.rollClock > 0 ? (1 - this.rollClock / ROLL_TIME) * Math.PI * 2 : 0;
     this.camera.roll = -bank + spin;
 

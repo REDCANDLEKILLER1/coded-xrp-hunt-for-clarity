@@ -135,9 +135,30 @@ const rotateAbout = (v, a, t) => {
     z: v.z * c + (a.x * v.y - a.y * v.x) * s + a.z * d * (1 - c),
   };
 };
+/**
+ * The screen's axes in device coordinates, derived WITHOUT the code under test.
+ *
+ * This file used to keep a copy of `projectToScreen`'s own basis expression and
+ * build its "physical" gestures from it -- rotating gravity about the code's
+ * assumed screen-right, then asserting the code reported rotation about
+ * screen-right. It agreed with itself for ANY basis, right or wrong, and passed
+ * all the way to a handset with landscape steering inverted. That is the fourth
+ * time in this repository a test has generated its inputs with the function
+ * under test, and the third time in this file.
+ *
+ * Ground truth is two things stated separately from any of our source:
+ *   1. In natural portrait, device +x is screen-right and device +y is
+ *      screen-up. Anchored below against the spec (+gamma dips the RIGHT edge).
+ *   2. `screen.orientation.angle` is how far the CONTENT was rotated to stay
+ *      upright, so the DEVICE turned the other way: the screen axes in device
+ *      coordinates are the portrait axes rotated by -angle about +z.
+ */
+const PORTRAIT_RIGHT = { x: 1, y: 0, z: 0 };
+const PORTRAIT_DOWN = { x: 0, y: -1, z: 0 };
+const SCREEN_NORMAL = { x: 0, y: 0, z: 1 };
 const screenBasis = (angle) => ({
-  right: { x: Math.cos(angle * Math.PI / 180), y: Math.sin(angle * Math.PI / 180), z: 0 },
-  down: { x: Math.sin(angle * Math.PI / 180), y: -Math.cos(angle * Math.PI / 180), z: 0 },
+  right: rotateAbout(PORTRAIT_RIGHT, SCREEN_NORMAL, -angle * Math.PI / 180),
+  down: rotateAbout(PORTRAIT_DOWN, SCREEN_NORMAL, -angle * Math.PI / 180),
 });
 
 // ---- THE ANCHOR MUST NOT COME FROM THE FUNCTION UNDER TEST ---------------
@@ -198,18 +219,46 @@ const gravityFromSpec = (betaDeg, gammaDeg) => {
 for (const angle of [0, 90, 180, 270]) {
   const D = Math.PI / 180;
   const { right: sRight, down: sDown } = screenBasis(angle);
-  const n = gravityFromOrientation(30, 0);
-  const move = (axis, degrees) => projectToScreen(rotateAbout(n, axis, degrees * D), n, angle);
+  // Two neutrals, because they prove different things.
+  //
+  // FLAT (beta 0, gamma 0) puts gravity down the screen normal, so both screen
+  // axes are perpendicular to it and a rotation of 15 degrees about either one
+  // moves gravity by exactly 15 degrees of minimal rotation. That makes the
+  // magnitude an exact number and pins the axes down completely.
+  //
+  // HELD (beta 30) is how a phone is actually carried. There gravity already
+  // leans along one screen axis, so a 15-degree roll sweeps a narrower cone and
+  // legitimately reads as less than 15 -- which is why the magnitude is only
+  // asserted on the flat pose, and the held pose carries sign and cross-talk.
+  const flat = gravityFromOrientation(0, 0);
+  const held = gravityFromOrientation(30, 0);
+  const from = (n) => (axis, degrees) => projectToScreen(rotateAbout(n, axis, degrees * D), n, angle);
+  const moveFlat = from(flat);
+  const move = from(held);
 
-  const dipRight = move(sDown, 15);
-  const dipLeft = move(sDown, -15);
-  const topAway = move(sRight, 15);
-  const topBack = move(sRight, -15);
+  const dipRight = moveFlat(sDown, 15);
+  const dipLeft = moveFlat(sDown, -15);
+  const topAway = moveFlat(sRight, 15);
+  const topBack = moveFlat(sRight, -15);
+  for (const [label, lean] of [
+    ['dipping the right edge', [move(sDown, 15).right, +1]],
+    ['dipping the left edge', [move(sDown, -15).right, -1]],
+    ['tipping the top away', [move(sRight, 15).down, +1]],
+    ['pulling the top back', [move(sRight, -15).down, -1]],
+  ]) {
+    check(lean[0] * lean[1] > 5, `angle ${angle}: held upright, ${label} must lean the right way (got ${lean[0].toFixed(1)})`);
+  }
 
-  check(dipRight.right > 5, `angle ${angle}: dipping the right edge must read as a right lean`);
-  check(dipLeft.right < -5, `angle ${angle}: dipping the left edge must read as a left lean`);
-  check(topAway.down > 5, `angle ${angle}: tipping the top away must read as nose-down`);
-  check(topBack.down < -5, `angle ${angle}: pulling the top back must read as nose-up`);
+  // Sign AND magnitude. A 15-degree roll about the screen's true down axis has
+  // to come back as ~15 degrees of right lean: sign alone would still pass a
+  // basis rotated 90 degrees, and "> 5" would still pass one badly skewed.
+  // The shipped basis was 180 degrees out at 90 and 270, which sign catches --
+  // but the magnitude is what pins the axis down for every future change.
+  const near15 = (value) => Math.abs(value - 15) < 0.5;
+  check(near15(dipRight.right), `angle ${angle}: dipping the right edge 15deg must read as ~15deg of right lean, got ${dipRight.right.toFixed(1)}`);
+  check(near15(-dipLeft.right), `angle ${angle}: dipping the left edge 15deg must read as ~15deg of left lean, got ${dipLeft.right.toFixed(1)}`);
+  check(near15(topAway.down), `angle ${angle}: tipping the top away 15deg must read as ~15deg of nose-down, got ${topAway.down.toFixed(1)}`);
+  check(near15(-topBack.down), `angle ${angle}: pulling the top back 15deg must read as ~15deg of nose-up, got ${topBack.down.toFixed(1)}`);
   // The axes must stay separate, or rolling would also pitch.
   check(Math.abs(dipRight.down) < 1, `angle ${angle}: a pure roll must not pitch`);
   check(Math.abs(topAway.right) < 1, `angle ${angle}: a pure pitch must not roll`);

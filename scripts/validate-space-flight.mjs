@@ -132,6 +132,7 @@ check(onScreen(cam(), project(cam(), -30000, 0, 500), 40) === false, 'a contact 
 check(onScreen(cam(), centre, 40) === true, 'a contact dead ahead is on screen');
 
 // ---- the segment's rules --------------------------------------------------
+const codeOfSource = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const game = readFileSync('src/game/space3d/Space3DGame.ts', 'utf8');
 const leg = readFileSync('src/game/space3d/SpaceLane.ts', 'utf8');
 const cockpit = readFileSync('src/game/space3d/Cockpit.ts', 'utf8');
@@ -581,6 +582,30 @@ for (const match of game.matchAll(/cueMusic\('([a-z0-9_]+)'\)/g)) {
 check(/coded:space-complete/.test(game) && /coded:space-defeat/.test(game), 'the segment must announce its outcome');
 check(!/CampaignProgress|MissionDirector/.test(game), 'the segment must not wire itself into the campaign');
 check(/params\.has\('space'\)/.test(main), 'the playtest route must be reachable');
+
+// ---- the lean into a turn must stay a lean ---------------------------------
+// Reported from a handset: "when you try to go left and right it rolls the ship
+// instead of turning." The yaw was correct the whole time; a 16-degree scene
+// rotation was simply louder than it on a phone-sized screen. The bank is a
+// named constant now so it cannot drift back up unnoticed, and it must stay far
+// enough below the deliberate barrel roll that the two never read as the same
+// move.
+const bankCode = codeOfSource(game);
+const bankMatch = bankCode.match(/const TURN_BANK = ([\d.]+);/);
+check(Boolean(bankMatch), 'the lean into a turn must be a named constant, not a literal buried in the update');
+if (bankMatch) {
+  const bank = Number(bankMatch[1]);
+  check(bank > 0, 'a turn should still lean the ship; zero would be a flat turn');
+  check(bank <= 0.12, `the lean must stay small enough that a turn reads as a turn, got ${bank} rad (${(bank * 180 / Math.PI).toFixed(0)} deg)`);
+}
+check(
+  /const bank = clamp\(this\.yawRate \/ TURN_RATE, -1, 1\) \* TURN_BANK;/.test(bankCode),
+  'the lean must be driven by the actual yaw rate through TURN_BANK',
+);
+check(
+  /Math\.PI \* 2/.test(bankCode.split('const spin =')[1]?.split('\n')[0] ?? ''),
+  'the deliberate barrel roll must stay a full turn, so it is never confused with the lean',
+);
 
 if (failures.length > 0) {
   console.error('space flight FAILED');
