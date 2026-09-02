@@ -407,12 +407,12 @@ check(/MISSILE_TURN_RATE/.test(game), 'the seeker must have a bounded turn rate 
 const codeOnly = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 check(codeOnly.length > game.length * 0.5, 'comment stripping ate the file — the scraper is broken');
 check(!/barrel roll.{0,40}lock/i.test(codeOnly), 'a roll must not defeat a seeker by animation');
-// Precise, because a substring search cannot work here: "rollClock" itself
-// contains the letters "lock", so any proximity grep around it matches itself.
-// Assert the actual thing instead -- the roll gesture never writes the lock.
-const rollBody = game.split('private startRoll(): void {')[1]?.split('\n  }\n')[0] ?? '';
-check(rollBody.includes('rollClock'), 'could not find startRoll — the scraper is broken');
-check(!/lockId|lockProgress/.test(rollBody), 'starting a roll must not clear or grant the lock');
+// The gesture that must not touch the lock is the double-tap, which used to
+// start a barrel roll and now pulls the trigger. Same rule, current mechanic:
+// shooting must not hand you a lock or take one away.
+const downBody = game.split("this.canvas.addEventListener('pointerdown', (event) => {")[1]?.split('\n    });\n')[0] ?? '';
+check(downBody.includes('tapFiring'), 'could not find the pointer-down handler — the scraper is broken');
+check(!/lockId|lockProgress/.test(downBody), 'pulling the trigger must not clear or grant the lock');
 
 // ---- the rescale: space has to be big enough to see something coming -----
 {
@@ -663,10 +663,57 @@ check(
   /const bank = clamp\(this\.yawRate \/ TURN_RATE, -1, 1\) \* TURN_BANK;/.test(bankCode),
   'the lean must be driven by the actual yaw rate through TURN_BANK',
 );
+// The barrel roll is gone: it was bound to the double-tap that is now the
+// trigger, and it carried a deflect that made it the dodge as well as a move.
+// Nothing may quietly bring either half back.
+check(!/startRoll/.test(bankCode), 'the barrel roll must stay removed; its gesture is the trigger now');
+check(!/rollClock|rollCooldown/.test(bankCode), 'no roll timers may linger once the roll is gone');
 check(
-  /Math\.PI \* 2/.test(bankCode.split('const spin =')[1]?.split('\n')[0] ?? ''),
-  'the deliberate barrel roll must stay a full turn, so it is never confused with the lean',
+  /this\.camera\.roll = -bank;/.test(bankCode),
+  'the only rotation left on the view is the lean into a turn',
 );
+
+// ---- the finger flies the ship --------------------------------------------
+// "I just played it with my finger and I like it better instead of using tilt
+// ... let's pause that." Tilt is unhooked, not deleted, so these pin the pause
+// rather than the removal: the module, its validator and the sensitivity
+// setting all stay, and one word turns it back on.
+check(/const TILT_STEERING = false;/.test(bankCode), 'tilt steering must stay paused until it is asked for again');
+check(
+  /if \(TILT_STEERING && this\.tilt\.ready && this\.pointerId === null\)/.test(bankCode),
+  'the sensor must not override the drag stick while tilt is paused',
+);
+check(
+  /if \(TILT_STEERING && this\.tilt\.status === 'needs_permission'\)/.test(bankCode),
+  'a paused sensor must not still ask for permission',
+);
+check(/from '\.\/Tilt'/.test(bankCode), 'Tilt.ts is paused, not deleted — the import stays');
+
+// ---- the double tap is the trigger ----------------------------------------
+// It used to start a barrel roll. Holding the second tap keeps the guns firing,
+// so one thumb steers and shoots without leaving the glass; a quick double-tap
+// still gets TAP_FIRE_MIN_SECONDS of burst rather than a few milliseconds of
+// nothing.
+check(
+  /if \(this\.tapFiring \|\| this\.tapFireFloor > 0\) return true;/.test(bankCode),
+  'a held double-tap must pull the trigger',
+);
+check(
+  /this\.lastTapAt >= 0 && this\.clock - this\.lastTapAt < DOUBLE_TAP_SECONDS/.test(bankCode),
+  'the second tap of a pair is what fires; a single tap must not',
+);
+check(
+  /if \(!this\.tapFiring && !this\.pointerMoved && this\.clock - this\.pointerDownAt < 0\.35\)/.test(bankCode),
+  'a DRAG must not count as half a double-tap, or steering then tapping would fire',
+);
+const tapFloor = Number(bankCode.match(/const TAP_FIRE_MIN_SECONDS = ([\d.]+);/)?.[1]);
+check(tapFloor > 0.1 && tapFloor < 0.6, `a quick double-tap needs a real burst, got ${tapFloor}s`);
+check(
+  /this\.tapFireFloor = Math\.max\(0, this\.tapFireFloor - dt\)/.test(bankCode),
+  'the burst floor must tick down, or the guns latch on forever',
+);
+check(!/state\.rollReady/.test(codeOfSource(cockpit)), 'the cockpit must not report a roll the ship cannot do');
+check(/2x TAP = GUNS/.test(cockpit), 'the console has to teach the gesture that replaced the roll');
 
 if (failures.length > 0) {
   console.error('space flight FAILED');

@@ -185,7 +185,7 @@ export interface CockpitState {
   lockProgress: number;
   /** Radar's outer ring, in world units. */
   radarRange: number;
-  rollReady: boolean;
+
   /**
    * The ship's own attitude, for the horizon.
    *
@@ -703,9 +703,13 @@ export class Cockpit {
       ctx.fillRect(x + w * 0.30 + i * segW, y + h * 0.63, segW * 0.74, h * 0.11);
     }
 
-    ctx.fillStyle = state.rollReady ? 'rgba(79,216,255,0.7)' : 'rgba(120,140,160,0.55)';
+    // This corner used to read ROLL RDY. The roll is gone and the double-tap it
+    // was bound to is the trigger now, so the space says what the gesture does
+    // -- a control that changed under the player needs telling, once, where
+    // they are already looking.
+    ctx.fillStyle = state.gunsFiring ? 'rgba(79,216,255,0.9)' : 'rgba(120,140,160,0.55)';
     ctx.font = `${Math.max(5, w * 0.075)}px "Courier New", monospace`;
-    ctx.fillText(state.rollReady ? 'ROLL RDY' : 'ROLL ...', x + w * 0.07, y + h * 0.93);
+    ctx.fillText(state.gunsFiring ? 'FIRING' : '2x TAP = GUNS', x + w * 0.07, y + h * 0.93);
     ctx.restore();
   }
 

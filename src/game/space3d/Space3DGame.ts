@@ -189,14 +189,40 @@ const SHIELD_REGEN_PER_SECOND = 0.22;
 /**
  * How far the view leans into a turn, in radians.
  *
- * A deliberate barrel roll (ROLL_TIME below) is a full 360 and stays that way;
- * this is only the lean, and it has to stay small enough that a turn still
- * reads as a turn on a screen the size of a hand.
+ * This is the only rotation the view has left now that the barrel roll is gone,
+ * and it has to stay small enough that a turn still reads as a turn on a screen
+ * the size of a hand.
  */
 const TURN_BANK = 0.1;
 
 /** Two taps on empty glass inside this window is a barrel roll. */
+/**
+ * Tilt steering is PAUSED, not removed.
+ *
+ * "I just played it with my finger and I like it better instead of using tilt
+ * ... it's so hard to control, let's get rid of the tilt for now, let's pause
+ * that." The drag stick was already built as the fallback for desktop and for a
+ * denied permission; this makes it the control scheme and stops the sensor
+ * overriding it.
+ *
+ * Nothing is deleted. Tilt.ts, its validator, the sensitivity setting and the
+ * whole calibration path stay exactly where they are, the way the on-foot
+ * interior was unhooked rather than thrown away. Flipping this back on is one
+ * word.
+ */
+const TILT_STEERING = false;
+
 const DOUBLE_TAP_SECONDS = 0.32;
+
+/**
+ * Shortest burst a double-tap can produce.
+ *
+ * Firing runs while the second tap is HELD, so one thumb steers and shoots
+ * without leaving the glass. A quick double-tap would otherwise hold the
+ * trigger for a few milliseconds and produce nothing; this makes the fast
+ * gesture a real burst.
+ */
+const TAP_FIRE_MIN_SECONDS = 0.22;
 /**
  * The warp drive: hold it and cross real distance, but the coil heats.
  *
@@ -219,8 +245,6 @@ const MUZZLE_AHEAD = 210;
 /** Nothing that is merely a bolt may take over the screen. */
 const MAX_BOLT_PIXELS = 30;
 const HIT_GRACE = 1.2;
-const ROLL_TIME = 0.7;
-const ROLL_COOLDOWN = 1.1;
 
 const STAR_COUNT = 260;
 const MOTE_COUNT = 90;
@@ -367,8 +391,15 @@ export class Space3DGame {
   private yawRate = 0;
   private pitchRate = 0;
   private throttle = 0.72;
-  private rollClock = 0;
-  private rollCooldown = 0;
+  /**
+   * The steering pointer is also the trigger, once it arrives as a double-tap.
+   *
+   * Held: guns fire until the finger lifts. `tapFireFloor` keeps a quick
+   * double-tap firing for TAP_FIRE_MIN_SECONDS after release, so the fast
+   * gesture is a burst rather than nothing.
+   */
+  private tapFiring = false;
+  private tapFireFloor = 0;
 
   private contacts: Contact[] = [];
   private bolts: Bolt[] = [];
@@ -522,8 +553,8 @@ export class Space3DGame {
     this.yawRate = 0;
     this.pitchRate = 0;
     this.throttle = 0.72;
-    this.rollClock = 0;
-    this.rollCooldown = 0;
+    this.tapFiring = false;
+    this.tapFireFloor = 0;
     this.contacts = [];
     this.bolts = [];
     this.missiles = [];
@@ -596,7 +627,9 @@ export class Space3DGame {
       event.preventDefault();
       // iOS will not hand over the sensor without a live gesture, so take the
       // grant from the first touch rather than making the player find a button.
-      if (this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
+      // Skipped while tilt is paused: asking for a sensor nothing reads is a
+      // permission dialog in exchange for nothing.
+      if (TILT_STEERING && this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
       // The settings overlay claims every pointer while it is open, BEFORE the
       // retry tap and before the weapon buttons -- otherwise a tap meant for a
       // row would also restart the run or fire a missile through the panel.
@@ -634,6 +667,16 @@ export class Space3DGame {
       this.pointerStart = { x: event.clientX, y: event.clientY };
       this.pointerMoved = false;
       this.pointerDownAt = this.clock;
+
+      // The second tap of a pair pulls the trigger, and KEEPS it pulled while
+      // the finger stays down -- so the same thumb shoots and then drags the
+      // ship onto the target without ever coming off the glass. This is what
+      // the double tap used to spend on a barrel roll.
+      if (this.lastTapAt >= 0 && this.clock - this.lastTapAt < DOUBLE_TAP_SECONDS) {
+        this.tapFiring = true;
+        this.tapFireFloor = TAP_FIRE_MIN_SECONDS;
+        this.lastTapAt = -1;
+      }
       this.tryCapture(event.pointerId);
     });
 
@@ -654,16 +697,12 @@ export class Space3DGame {
     const release = (event: PointerEvent): void => {
       if (this.weaponPointers.delete(event.pointerId)) return;
       if (event.pointerId !== this.pointerId) return;
-      // The roll moved to a DOUBLE tap. A single tap used to do it, which is
-      // ambiguous now that there are buttons to press and a glass to miss.
-      if (!this.pointerMoved && this.clock - this.pointerDownAt < 0.35) {
-        if (this.clock - this.lastTapAt < DOUBLE_TAP_SECONDS) {
-          this.startRoll();
-          this.lastTapAt = -1;
-        } else {
-          this.lastTapAt = this.clock;
-        }
+      // A tap that did not travel is half of a double-tap. A drag never is:
+      // steering across the screen and then tapping must not fire the guns.
+      if (!this.tapFiring && !this.pointerMoved && this.clock - this.pointerDownAt < 0.35) {
+        this.lastTapAt = this.clock;
       }
+      this.tapFiring = false;
       this.pointerId = null;
       this.stickX = 0;
       this.stickY = 0;
@@ -677,7 +716,6 @@ export class Space3DGame {
       if (event.key === ' ') {
         event.preventDefault();
         if (this.mode === 'won' || this.mode === 'lost') this.restart();
-        else this.startRoll();
       }
       if (event.key.toLowerCase() === 'm') this.fireMissile();
     });
@@ -799,10 +837,17 @@ export class Space3DGame {
     return null;
   }
 
-  /** True while a finger is holding the trigger, or the keyboard is. */
+  /**
+   * True while the trigger is pulled: the GUNS button, the keyboard, or a
+   * double-tap being held on the glass.
+   *
+   * Space used to be the barrel roll and was excluded here for that reason.
+   * With the roll gone it is a trigger like the rest.
+   */
   private get gunsHeld(): boolean {
+    if (this.tapFiring || this.tapFireFloor > 0) return true;
     for (const id of this.weaponPointers.values()) if (id === 'guns') return true;
-    return this.keys.has(' ') === false && (this.keys.has('f') || this.keys.has('control'));
+    return this.keys.has(' ') || this.keys.has('f') || this.keys.has('control');
   }
 
   /** True while warp is demanded AND the coil will accept it. */
@@ -836,12 +881,7 @@ export class Space3DGame {
     }
   }
 
-  private startRoll(): void {
-    if (this.rollCooldown > 0 || this.rollClock > 0) return;
-    this.rollClock = ROLL_TIME;
-    this.rollCooldown = ROLL_TIME + ROLL_COOLDOWN;
-    sfx.play('pulse');
-  }
+
 
   private resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -947,16 +987,17 @@ export class Space3DGame {
 
   private updateFlight(dt: number): void {
     if (this.graceClock > 0) this.graceClock = Math.max(0, this.graceClock - dt);
-    if (this.rollClock > 0) this.rollClock = Math.max(0, this.rollClock - dt);
-    if (this.rollCooldown > 0) this.rollCooldown = Math.max(0, this.rollCooldown - dt);
+    // A quick double-tap keeps firing for a moment after the finger lifts, so
+    // the fast gesture is a burst rather than a few milliseconds of nothing.
+    if (this.tapFireFloor > 0) this.tapFireFloor = Math.max(0, this.tapFireFloor - dt);
 
-    // Tilt flies the ship when the sensor is live. Drag stays as the fallback
-    // for desktop, for a denied permission, and for headless verification --
-    // a denied prompt must not leave an unplayable level with no way out.
-    this.tilt.update(dt);
+    // The finger flies the ship. Displacement from where it went down is a
+    // turn RATE, so a thumb can come all the way around -- which a
+    // position-mapped drag can never do, because it runs out of screen.
+    if (TILT_STEERING) this.tilt.update(dt);
     let stickX = this.stickX;
     let stickY = this.stickY;
-    if (this.tilt.ready && this.pointerId === null) {
+    if (TILT_STEERING && this.tilt.ready && this.pointerId === null) {
       const lean = this.tilt.read();
       stickX = lean.x;
       stickY = lean.y;
@@ -1025,8 +1066,7 @@ export class Space3DGame {
     // could not be seen underneath a scene rotating that far. Six degrees still
     // leans the ship into a turn without the lean becoming the turn.
     const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * TURN_BANK;
-    const spin = this.rollClock > 0 ? (1 - this.rollClock / ROLL_TIME) * Math.PI * 2 : 0;
-    this.camera.roll = -bank + spin;
+    this.camera.roll = -bank;
 
     // Warp: heat while engaged, cool while not. Maxing the coil latches it out
     // until it has cooled well down, so you cannot feather the limit -- you
@@ -2035,16 +2075,10 @@ export class Space3DGame {
     this.bolts = this.bolts.filter((bolt) => bolt.life > 0);
     this.contacts = this.contacts.filter((contact) => contact.hp > 0);
 
-    // A roll deflects rather than phases: shots that would have hit are spent.
-    if (this.rollClock > 0) {
-      for (const bolt of this.bolts) {
-        if (!bolt.hostile) continue;
-        const range = Math.hypot(bolt.x - this.camera.x, bolt.y - this.camera.y, bolt.z - this.camera.z);
-        if (range < 160) bolt.life = 0;
-      }
-      this.bolts = this.bolts.filter((bolt) => bolt.life > 0);
-      return;
-    }
+    // The barrel roll used to spend any hostile bolt within 160 units, which
+    // made it the dodge as well as the move. Both are gone together: a roll
+    // that deflected without being rollable would be a rule with no gesture.
+    // Flying out of the line of fire is the dodge now.
     if (this.graceClock > 0) return;
 
     for (const bolt of this.bolts) {
@@ -2291,7 +2325,6 @@ export class Space3DGame {
       lock: this.lockReadout(),
       lockProgress: this.lockId === null ? this.lockProgress : 1,
       radarRange: RADAR_RANGE,
-      rollReady: this.rollCooldown <= 0,
       // The horizon reads these live. Passing anything derived or smoothed
       // here would make the instrument agree with itself rather than with the
       // ship, which is the one thing it must not do.
