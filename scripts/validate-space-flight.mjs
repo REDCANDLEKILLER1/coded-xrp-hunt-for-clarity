@@ -715,6 +715,79 @@ check(
 check(!/state\.rollReady/.test(codeOfSource(cockpit)), 'the cockpit must not report a roll the ship cannot do');
 check(/2x TAP = GUNS/.test(cockpit), 'the console has to teach the gesture that replaced the roll');
 
+// ---- homing missiles, and the two answers to them -------------------------
+// "AutoFlare and you get to try to shoot down the missiles -- make the missiles
+// where they have targeting so you can possibly shoot them before they get to
+// you." Three things must hold together or a seeker is a tax rather than a
+// fight: slow enough to see coming, fragile enough to shoot, and stubborn
+// enough that ignoring it costs you.
+const seekerNum = (name) => Number(bankCode.match(new RegExp(`const ${name} = ([\\d.]+);`))?.[1]);
+const seekerSpeed = seekerNum('SEEKER_SPEED');
+const yourSpeed = seekerNum('MISSILE_SPEED');
+const seekerTurn = seekerNum('SEEKER_TURN_RATE');
+const yourTurn = seekerNum('MISSILE_TURN_RATE');
+check(Number.isFinite(seekerSpeed) && Number.isFinite(seekerTurn), 'enemy seekers need named speed and agility');
+// Relationships, not numbers: retuning either side keeps this honest.
+check(seekerSpeed < yourSpeed, `a seeker must be slower than yours so it can be outrun (${seekerSpeed} vs ${yourSpeed})`);
+check(seekerTurn < yourTurn, `a seeker must be less agile than yours so flying still matters (${seekerTurn} vs ${yourTurn})`);
+check(seekerNum('SEEKER_HP') <= 2, 'a seeker has to die to a burst, or shooting it down is not an option');
+check(seekerNum('SEEKER_HIT_RADIUS') > seekerNum('SEEKER_ARM_RANGE'),
+  'the window to shoot a seeker must be wider than the window in which it kills you');
+
+// It has to be shootable, and killing it has to be worth something.
+check(
+  /if \(!missile\.hostile \|\| missile\.hp <= 0\) continue;[\s\S]{0,200}?SEEKER_HIT_RADIUS/.test(bankCode),
+  'player bolts must be able to destroy an incoming seeker',
+);
+check(/this\.score \+= SEEKER_SCORE;/.test(bankCode), 'shooting a seeker down must be worth something');
+// And it must not blow up its own side on the way in.
+check(
+  /if \(missile\.hostile \|\| missile\.life <= 0\) continue;/.test(bankCode),
+  'a seeker must not damage the squadron that launched it',
+);
+
+// The flares: automatic, on a cooldown, and only against something CLOSING.
+check(/private updateFlares\(dt: number\): void \{/.test(bankCode), 'the flare dispenser must exist');
+check(seekerNum('FLARE_COOLDOWN') >= 3, 'flares on no cooldown would make seekers free');
+check(
+  /missile\.vx \* dx \+ missile\.vy \* dy \+ missile\.vz \* dz <= 0\) continue;/.test(bankCode),
+  'the dispenser must only trip on a seeker that is closing, not one already past',
+);
+// Pinned to the ASSIGNMENT, not to the two constants near it. The loose
+// version matched the trigger loop above and survived deleting the line that
+// actually hands the seeker its decoy.
+check(
+  /missile\.decoy = this\.decoys\[[^\]]+\]/.test(bankCode),
+  'a flare must actually take the seekers off you',
+);
+check(
+  /if \(!missile\.hostile \|\| missile\.life <= 0 \|\| missile\.decoy\) continue;/.test(bankCode),
+  'a decoyed seeker must not still detonate on the ship it just lost',
+);
+check(/missile\.life = Math\.min\(missile\.life, SEEKER_DECOYED_LIFE\);/.test(bankCode),
+  'a decoyed seeker must burn out rather than fly blind forever');
+
+// Authored, not hardcoded: which ships carry ordnance is a level-design call.
+check(/missileInterval\?: number;/.test(leg), 'seeker ordnance must be authored on the squadron table');
+const armed = [...leg.matchAll(/missileInterval: ([\d.]+)/g)].map((m) => Number(m[1]));
+check(armed.length >= 1, 'at least one squadron must actually carry seekers, or none are ever launched');
+check(armed.every((v) => v >= 4), `a squadron launching every ${Math.min(...armed)}s is a seeker stream, not a threat`);
+check(/key: 'seekers'/.test(leg), 'the boss needs an ordnance attack');
+check(/'spread' \| 'lance' \| 'swarm' \| 'wall' \| 'seekers'/.test(leg), "the boss attack key must include 'seekers'");
+
+// The warning, because a seeker is the one threat you cannot see by looking.
+check(/private drawInbound\(/.test(cockpit), 'an incoming seeker must warn the player');
+// Defining it is not drawing it: deleting the call left the method in place and
+// the whole warning off the screen.
+check(
+  /this\.drawInbound\(frame, state\);/.test(codeOfSource(cockpit)),
+  'the warning must actually be drawn, not merely defined',
+);
+check(/MISSILE INBOUND/.test(cockpit), 'the warning has to say what it is');
+check(/FLARES READY/.test(cockpit) && /FLARES RELOADING/.test(cockpit), 'the dispenser state must be readable');
+check(/if \(state\.inbound <= 0\) return;/.test(codeOfSource(cockpit)), 'a warning light that is always lit is furniture');
+check(/seeker\?: boolean;/.test(cockpit), 'seekers must plot on the radar');
+
 if (failures.length > 0) {
   console.error('space flight FAILED');
   for (const failure of failures) console.error(`  - ${failure}`);

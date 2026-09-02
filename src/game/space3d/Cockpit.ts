@@ -124,6 +124,8 @@ export interface CockpitContact {
   capital?: boolean;
   /** The held lock. Marked distinctly, because it is the one the missile goes to. */
   locked?: boolean;
+  /** An incoming seeker. Plotted small and red, and it flashes. */
+  seeker?: boolean;
 }
 
 /** What the right screen says about the thing you are locked onto. */
@@ -171,6 +173,10 @@ export interface CockpitState {
   /** False while the coil is too hot to re-engage. */
   warpReady: boolean;
   throttle: number;
+  /** Seekers still carrying your scent. Drives the inbound warning. */
+  inbound: number;
+  /** False while the flare dispenser is reloading. */
+  flareReady: boolean;
   /** 0..1, or null when nothing is engaged. */
   bossHealth: number | null;
   bossLabel: string;
@@ -454,6 +460,7 @@ export class Cockpit {
     // area above the band. Keying it off `art` instead would put it on the
     // panel in one orientation and nowhere in the other.
     this.drawAttitude(frame, state);
+    this.drawInbound(frame, state);
   }
 
   /**
@@ -471,6 +478,37 @@ export class Cockpit {
    * are tinted differently, which is what makes inverted readable at a glance
    * rather than something to work out from a number.
    */
+  /**
+   * The missile warning, and the state of the thing that answers it.
+   *
+   * Only on screen when something is actually inbound. A warning light that is
+   * always lit is furniture; one that appears is information -- and this is the
+   * only threat in the level a player cannot see coming by looking around,
+   * because a seeker approaches from wherever it was launched.
+   */
+  private drawInbound(frame: CockpitFrame, state: CockpitState): void {
+    if (state.inbound <= 0) return;
+    const { ctx } = this;
+    const { aperture } = frame;
+    const size = Math.max(9, Math.min(aperture.w * 0.032, 17));
+    const cx = aperture.x + aperture.w * 0.5;
+    const cy = aperture.y + aperture.h * 0.17;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${size}px "Courier New", monospace`;
+    // Flashing, because it is a warning. Steady red at the top of the view
+    // reads as decoration inside about two seconds.
+    ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(state.clock * 7));
+    ctx.fillStyle = RED;
+    ctx.fillText(state.inbound > 1 ? `MISSILE INBOUND x${state.inbound}` : 'MISSILE INBOUND', cx, cy);
+    ctx.globalAlpha = 1;
+    ctx.font = `${size * 0.8}px "Courier New", monospace`;
+    ctx.fillStyle = state.flareReady ? 'rgba(79,216,255,0.85)' : 'rgba(150,160,175,0.7)';
+    ctx.fillText(state.flareReady ? 'FLARES READY' : 'FLARES RELOADING', cx, cy + size * 1.3);
+    ctx.restore();
+  }
+
   private drawAttitude(frame: CockpitFrame, state: CockpitState): void {
     const { ctx } = this;
     const { aperture } = frame;
@@ -612,10 +650,16 @@ export class Cockpit {
       const px = cx + Math.sin(contact.bearing) * t * r;
       const py = cy - Math.cos(contact.bearing) * t * r;
       const size = contact.capital ? Math.max(3.4, r * 0.09) : Math.max(2.2, r * 0.045);
+      ctx.save();
+      // A seeker flashes. It is smaller than a fighter and it is the one blip
+      // on here that is going to hit you if you do nothing about it, so it has
+      // to be the one that catches the eye rather than the one that hides.
+      if (contact.seeker) ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(state.clock * 9));
       ctx.fillStyle = contact.capital ? AMBER : RED;
       ctx.beginPath();
-      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.arc(px, py, contact.seeker ? size * 0.8 : size, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
 
       // The lock gets a ring, not a colour. Colour already carries capital vs
       // fighter here, and stacking a second meaning on it would lose one.
