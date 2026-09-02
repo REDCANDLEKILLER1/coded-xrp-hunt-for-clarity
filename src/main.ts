@@ -86,6 +86,13 @@ document.body.appendChild(logButton);
 
 new LandscapeMode();
 const game = new Game2A(canvas);
+// A handle for driving the game from a browser test, on the debug routes only.
+// The save point is the first feature whose whole promise -- that the moment
+// you left is the moment you get back -- can only be checked by reading live
+// state after a real page reload, and pixels cannot answer that.
+if (new URLSearchParams(location.search).has('log') || new URLSearchParams(location.search).has('debug')) {
+  (globalThis as unknown as { __codedGame: unknown }).__codedGame = game;
+}
 const boarding = new DirectBoardingRuntime(game, gameShell);
 const onFoot = new OnFootGame(gameShell);
 const space = new Space3DGame(gameShell);
@@ -193,7 +200,7 @@ window.addEventListener('coded:onfoot-defeat', () => {
   music.cue('theme');
 });
 
-returnMap.addEventListener('click', () => {
+const returnToMap = (): void => {
   onFoot.hide();
   space.hide();
   canvas.style.visibility = 'visible';
@@ -201,6 +208,18 @@ returnMap.addEventListener('click', () => {
   gameShell.hidden = true;
   map.show();
   music.cue('theme');
+};
+
+returnMap.addEventListener('click', returnToMap);
+
+/**
+ * SAVE & QUIT in the pause menu. The game has already written the save by the
+ * time this fires -- it only asks to be put back on the star map, which is the
+ * shell's job and not the canvas's.
+ */
+window.addEventListener('coded:quit-to-map', () => {
+  debugLog.log('mission', 'saved and quit -> star map');
+  returnToMap();
 });
 
 // A deploy used to reach nobody already playing. This restarts them into it.

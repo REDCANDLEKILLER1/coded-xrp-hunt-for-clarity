@@ -80,6 +80,36 @@ export class RegulatoryWarshipDirector {
     return true;
   }
 
+  /**
+   * Subsystem damage, for a save that resumes mid-boarding-run.
+   *
+   * `exposed` is deliberately absent: it is derived from the phase by
+   * `refreshExposure`, and a stored copy is a second source of truth that can
+   * disagree with the first.
+   */
+  snapshot(): { systems: { key: string; remainingHp: number; destroyed: boolean }[]; shieldExposed: boolean } {
+    return {
+      systems: [...this.systems.values()].map((system) => ({
+        key: system.key,
+        remainingHp: system.remainingHp,
+        destroyed: system.destroyed,
+      })),
+      shieldExposed: this.shieldExposed,
+    };
+  }
+
+  restore(state: { systems: { key: string; remainingHp: number; destroyed: boolean }[]; shieldExposed: boolean }): void {
+    this.reset();
+    for (const saved of state.systems) {
+      const system = this.systems.get(saved.key as WarshipSystemKey);
+      if (!system) continue;
+      system.remainingHp = Math.max(0, Math.min(system.hp, saved.remainingHp));
+      system.destroyed = saved.destroyed || system.remainingHp === 0;
+    }
+    this.shieldExposed = state.shieldExposed;
+    this.refreshExposure();
+  }
+
   hit(key: WarshipSystemKey, damage: number): { accepted: boolean; destroyedNow: boolean; phase: WarshipPhase } {
     const target = this.systems.get(key);
     if (!target || target.destroyed || !target.exposed || !(damage > 0)) {
