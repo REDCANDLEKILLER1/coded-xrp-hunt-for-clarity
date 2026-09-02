@@ -10,6 +10,24 @@ const DOUBLE_TAP_MS = 280;
 const DOUBLE_TAP_SLOP = 48;
 
 /**
+ * How far a finger must travel before the press it began with stops being a
+ * button and becomes steering.
+ *
+ * Reported from a phone: "I can't move my ship up or down." Half the cause was
+ * here. A gesture's meaning was fixed at pointer-down from where it started, so
+ * a drag that BEGAN on the action pad steered nothing for its whole life --
+ * and the pad sits in the bottom-right corner, which is exactly where a thumb
+ * rests and exactly where you put it to pull the fighter down. Measured on a
+ * 393x793 portrait screen: thumb down at (345,745), dragged right across the
+ * playfield, and the ship never moved a pixel.
+ *
+ * 16px is comfortably above the wobble of a stationary thumb and well under
+ * DOUBLE_TAP_SLOP, so a press, a double-tap and a drag stay three distinct
+ * things.
+ */
+const DRAG_SLOP = 16;
+
+/**
  * Pointer and keyboard input.
  *
  * Tilt steering was removed after playtesting: it was harder to aim than a
@@ -31,6 +49,7 @@ export class Input {
    * on open canvas keeps steering all the way across the button cluster.
    */
   pointerOrigin: Vec2 | null = null;
+  private dragging = false;
   private tap: Vec2 | null = null;
   private doubleTap: Vec2 | null = null;
   private lastTapAt = 0;
@@ -46,7 +65,18 @@ export class Input {
     canvas.addEventListener('pointerdown', this.onPointerDown, { passive: false });
     canvas.addEventListener('pointermove', this.onPointerMove, { passive: false });
     canvas.addEventListener('pointerup', this.onPointerUp);
-    canvas.addEventListener('pointercancel', this.onPointerUp);
+    canvas.addEventListener('pointercancel', this.onPointerCancel);
+  }
+
+  /**
+   * True once the live gesture has travelled far enough to be a drag.
+   *
+   * Steering consults this so a press that starts on a button still steers the
+   * moment the finger actually moves. The button itself is not fired in that
+   * case: a tap is only emitted on release, and only if this never latched.
+   */
+  get dragged(): boolean {
+    return this.dragging;
   }
 
   consumeTap(): Vec2 | null {
@@ -119,7 +149,7 @@ export class Input {
     const point = this.toCanvasPoint(event);
     this.pointer = point;
     this.pointerOrigin = point;
-    this.tap = point;
+    this.dragging = false;
 
     const now = performance.now();
     const previous = this.lastTapPoint;
@@ -141,13 +171,42 @@ export class Input {
   private readonly onPointerMove = (event: PointerEvent): void => {
     event.preventDefault();
     if (!this.pointer) return;
-    this.pointer = this.toCanvasPoint(event);
+    const point = this.toCanvasPoint(event);
+    this.pointer = point;
+    const origin = this.pointerOrigin;
+    if (!this.dragging && origin && Math.hypot(point.x - origin.x, point.y - origin.y) > DRAG_SLOP) {
+      this.dragging = true;
+      // A drag is not the first half of a double-tap. Without this, steering
+      // across the screen and then tapping would throw a bomb nobody asked for
+      // -- the same complaint the distance test above already answers for two
+      // separate taps.
+      this.lastTapPoint = null;
+      this.lastTapAt = 0;
+    }
   };
 
+  /**
+   * A press becomes a tap on RELEASE, and only if it never became a drag.
+   *
+   * It used to fire on pointer-down, which is why a thumb planted on the pulse
+   * button both spent the pulse and refused to steer. Firing on release costs
+   * nothing a player can feel and lets the same touch mean either thing.
+   */
   private readonly onPointerUp = (): void => {
+    if (!this.dragging && this.pointerOrigin) this.tap = this.pointerOrigin;
+    this.endGesture();
+  };
+
+  /** A cancelled gesture is not a tap: the browser took the finger away. */
+  private readonly onPointerCancel = (): void => {
+    this.endGesture();
+  };
+
+  private endGesture(): void {
     this.pointer = null;
     this.pointerOrigin = null;
-  };
+    this.dragging = false;
+  }
 
   private toCanvasPoint(event: PointerEvent): Vec2 {
     const rect = this.canvas.getBoundingClientRect();
