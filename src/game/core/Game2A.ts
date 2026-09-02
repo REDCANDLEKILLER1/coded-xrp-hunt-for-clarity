@@ -3,6 +3,10 @@ import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
 import { debugLog } from './DebugLog';
+import {
+  doctrineFor, leadAngle, mayFire, volleyRounds,
+  type EnemyDoctrine, type Round,
+} from '../content/EnemyDoctrine';
 import { sfx } from '../audio/Sfx';
 import type { Rect } from './Types';
 import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
@@ -42,6 +46,12 @@ type EnemyActor = Actor & {
   atRest: boolean;
   /** Launched by a boss to screen it. The boss is immune while any survive. */
   escort: boolean;
+  /** Volleys fired, so an alternating doctrine can swap barrels between them. */
+  volleySeq: number;
+  /** Rounds waiting out their in-volley delay, for burst doctrines. */
+  pending: Array<Round & { clock: number }>;
+  /** Seconds of visible wind-up left before a heavy round leaves. */
+  telegraph: number;
 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
 type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
@@ -272,7 +282,22 @@ const FIREPOWER_CAP = 9;
  * a maxed gun should still delete a drone; there should just be more of them,
  * arriving faster.
  */
-const ENEMY_SCALE_SHARE = 0.45;
+/**
+ * How much of the firepower curve trash health absorbs.
+ *
+ * Cut from 0.45. At 0.45 a maxed loadout multiplied every drone's health by
+ * 4.6x, which is the sponge: the player's upgrades were being handed straight
+ * back as hit points, so progression felt like standing still. XRPMan's rule is
+ * explicit -- "the game gets harder because the enemies become more dangerous
+ * and tactically varied, not because their HP scales upward to cancel the
+ * player's upgrades. No HP-sponge compensation."
+ *
+ * At 0.18 the same loadout sees 2.4x instead, so enemies still do not evaporate
+ * against a maxed gun, but the danger now comes from what they SHOOT -- the
+ * per-class doctrines, the shorter time to first shot, and the heavy telegraphed
+ * rounds -- rather than from how long they take to die.
+ */
+const ENEMY_SCALE_SHARE = 0.18;
 const ENEMY_SPEED_PER_SCALE = 7;
 /** Free upgrade picks granted for putting a boss down. */
 const BOSS_UPGRADE_REWARD = 1;
@@ -372,6 +397,16 @@ export class Game2A {
   private paused = false;
   private selectedShipKey = DEFAULT_SHIP.key;
   private player: Actor = this.newPlayer();
+  /**
+   * The player's velocity, derived because nothing stores it.
+   *
+   * The fighter is positioned directly rather than integrated, so crossing fire
+   * has nothing to lead. Measured from the actual per-frame movement and eased:
+   * a raw delta is noisy at 60fps, and an enemy leading off noise would swing
+   * its aim around in a way that reads as broken rather than as skilled.
+   */
+  private playerVx = 0;
+  private playerVy = 0;
   private drones: EnemyActor[] = [];
   private hazards: HazardActor[] = [];
   private hostileShots: HostileProjectile[] = [];
@@ -876,8 +911,11 @@ export class Game2A {
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: i === 0 ? -1 : 1,
-        fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
+        fireClock: doctrineFor(def.key).firstShotDelay,
         stance: 'entering',
+      volleySeq: 0,
+      pending: [],
+      telegraph: 0,
         stationX: x,
         stationY: this.pickStationY(),
         stanceClock: 0,
@@ -950,8 +988,11 @@ export class Game2A {
       anchorX: x,
       phase: xRatio * Math.PI * 2,
       direction: xRatio < 0.5 ? 1 : -1,
-      fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+      fireClock: doctrineFor(def.key).firstShotDelay,
       stance: 'entering',
+      volleySeq: 0,
+      pending: [],
+      telegraph: 0,
       stationX: x,
       stationY: this.pickStationY(),
       stanceClock: 0,
@@ -1027,6 +1068,8 @@ export class Game2A {
   }
 
   private movePlayer(dt: number): void {
+    const wasX = this.player.x;
+    const wasY = this.player.y;
     const pointer = this.input.pointer;
     const origin = this.input.pointerOrigin;
     const axis = this.input.axis();
@@ -1045,6 +1088,15 @@ export class Game2A {
     const lane = this.playerLane();
     this.player.x = clamp(this.player.x, 28, this.w - 28);
     this.player.y = clamp(this.player.y, lane.top, lane.bottom);
+
+    // Velocity from the movement that actually happened, AFTER clamping -- so a
+    // player pinned against the edge reads as stationary and crossing fire
+    // stops leading them off the screen.
+    if (dt > 0) {
+      const ease = Math.min(1, dt * 8);
+      this.playerVx += ((this.player.x - wasX) / dt - this.playerVx) * ease;
+      this.playerVy += ((this.player.y - wasY) / dt - this.playerVy) * ease;
+    }
 
     // Records what is actually steering the ship each second. If the fighter
     // drifts on its own, this shows whether the input is non-zero while the
@@ -1239,8 +1291,11 @@ export class Game2A {
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: Math.random() < 0.5 ? -1 : 1,
-        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+        fireClock: doctrineFor(def.key).firstShotDelay,
         stance: 'entering',
+      volleySeq: 0,
+      pending: [],
+      telegraph: 0,
         stationX: x,
         stationY: this.pickStationY(),
         stanceClock: 0,
@@ -1297,9 +1352,11 @@ export class Game2A {
         drone.y -= speed * 0.65 * dt;
       }
 
-      if (drone.stance === 'holding' || drone.stance === 'diving') {
-        this.enemyFire(drone, def, dt);
-      }
+      // No stance gate here any more: the doctrine decides. A scout that is
+      // meant to shoot as it crosses could not do so while this said
+      // "holding or diving" -- which, with the old initial timer, guaranteed
+      // every arrival 0.68-3.0s of safety.
+      this.enemyFire(drone, def, dt);
 
       if (drone.stance !== 'fleeing') {
         this.dodgeIncomingFire(drone, speed, dt);
@@ -1342,44 +1399,117 @@ export class Game2A {
     }
   }
 
-  /** An armed enemy shoots at the player while it is holding or diving. */
+  /**
+   * An armed enemy attacks, in the manner of its class.
+   *
+   * This used to be one routine for every enemy in the game: aim at the player,
+   * emit `burst` rounds separated by `spread`, all drawn as `enemy_missile`. A
+   * drone and a heavy fighter differed by two numbers, so the roster looked
+   * varied and played identically.
+   *
+   * Now the class decides the SHAPE of what appears on screen -- parallel chip
+   * fire, a snap burst, rounds led ahead of your track, one telegraphed heavy
+   * shell, or alternating guns -- and you can name the threat without reading
+   * the sprite. The geometry lives in EnemyDoctrine so it can be checked
+   * without a canvas.
+   */
   private enemyFire(drone: EnemyActor, def: EnemyDef, dt: number): void {
-    if (!def.fireRate || !def.projectileSpeed) return;
-    drone.fireClock -= dt;
-    if (drone.fireClock > 0) return;
-    const tactics = ENEMY_TACTICS[def.behavior];
-    // A rhythm shooter holds fire until it stops moving. Missing that beat
-    // costs it the shot rather than delaying it, so the tempo stays readable.
-    if (tactics.firesAtRest && drone.stance === 'holding' && !drone.atRest) {
-      drone.fireClock = 0.12;
+    const doctrine = doctrineFor(def.key);
+    if (!def.projectileSpeed) return;
+
+    // Rounds still waiting out their in-volley delay leave first, and they
+    // leave even if the ship has since changed stance: a burst that stopped
+    // halfway because its shooter started diving would read as a glitch.
+    if (drone.pending.length > 0) {
+      for (const round of drone.pending) round.clock -= dt;
+      const ready = drone.pending.filter((r) => r.clock <= 0);
+      drone.pending = drone.pending.filter((r) => r.clock > 0);
+      for (const round of ready) this.launchHostileRound(drone, def, doctrine, round);
+      if (ready.length > 0) sfx.play('enemyShoot');
+    }
+
+    if (!mayFire(doctrine, drone.stance, drone.atRest)) return;
+
+    // A heavy round announces itself first. The wind-up is the whole point of
+    // the class: it is the shot you are meant to see coming and move out of.
+    if (drone.telegraph > 0) {
+      drone.telegraph -= dt;
+      if (drone.telegraph > 0) return;
+      this.releaseVolley(drone, def, doctrine);
       return;
     }
-    drone.fireClock = def.fireRate + Math.random() * ENEMY_FIRE_JITTER;
 
+    drone.fireClock -= dt;
+    if (drone.fireClock > 0) return;
+    drone.fireClock = doctrine.interval + Math.random() * ENEMY_FIRE_JITTER;
+
+    // No blind shots upward or across: the player still has to be roughly
+    // below. Kept from the original, because an enemy shooting backwards over
+    // its own shoulder reads as a bug rather than as pressure.
     const dx = this.player.x - drone.x;
     const dy = this.player.y - drone.y;
     const length = Math.max(1, Math.hypot(dx, dy));
-    // Only shoot when the player is roughly below: no blind shots upward.
     if (dy / length < ENEMY_FIRE_ARC) return;
 
-    const aim = Math.atan2(dy, dx);
-    const middle = (tactics.burst - 1) / 2;
-    for (let i = 0; i < tactics.burst; i += 1) {
-      const angle = aim + (i - middle) * tactics.spread;
-      this.hostileShots.push({
-        x: drone.x,
-        y: drone.y + drone.h * 0.4,
-        w: 8,
-        h: 8,
-        vx: Math.cos(angle) * def.projectileSpeed,
-        vy: Math.sin(angle) * def.projectileSpeed,
-        damage: 1,
-        color: def.accent,
-        projectileKey: 'enemy_missile',
-      });
+    if (doctrine.telegraph > 0) {
+      drone.telegraph = doctrine.telegraph;
+      sfx.play('deny');
+      return;
     }
-    sfx.play('enemyShoot');
-    debugLog.sample('efire', 3000, 'combat', 'enemy fired', { enemy: drone.enemyKey });
+    this.releaseVolley(drone, def, doctrine);
+  }
+
+  /** Puts one volley on the screen, queuing any rounds that are delayed. */
+  private releaseVolley(drone: EnemyActor, def: EnemyDef, doctrine: EnemyDoctrine): void {
+    const speed = (def.projectileSpeed ?? 200) * doctrine.speedScale;
+    // Crossing fire aims where the player is GOING. Everything else aims at
+    // where they are, which is what makes holding a straight line survivable
+    // against most of the roster and fatal against a raider.
+    const aim = doctrine.shape === 'crossing'
+      ? leadAngle(
+        { x: drone.x, y: drone.y },
+        { x: this.player.x, y: this.player.y, vx: this.playerVx, vy: this.playerVy },
+        speed,
+      )
+      : Math.atan2(this.player.y - drone.y, this.player.x - drone.x);
+
+    const rounds = volleyRounds(doctrine, aim, drone.volleySeq);
+    drone.volleySeq += 1;
+    let fired = false;
+    for (const round of rounds) {
+      if (round.delay > 0) {
+        drone.pending.push({ ...round, clock: round.delay });
+        continue;
+      }
+      this.launchHostileRound(drone, def, doctrine, round);
+      fired = true;
+    }
+    if (fired) sfx.play('enemyShoot');
+    debugLog.sample('efire', 3000, 'combat', 'enemy fired', {
+      enemy: drone.enemyKey, doctrine: doctrine.label, rounds: rounds.length,
+    });
+  }
+
+  /** One hostile round, offset across the aim line by its barrel. */
+  private launchHostileRound(
+    drone: EnemyActor, def: EnemyDef, doctrine: EnemyDoctrine, round: Round,
+  ): void {
+    const speed = (def.projectileSpeed ?? 200) * doctrine.speedScale;
+    // The barrel offset is perpendicular to the shot, so a parallel pair stays
+    // parallel whatever direction the ship is shooting in.
+    const nx = Math.cos(round.angle + Math.PI / 2);
+    const ny = Math.sin(round.angle + Math.PI / 2);
+    this.hostileShots.push({
+      x: drone.x + nx * round.offset,
+      y: drone.y + drone.h * 0.4 + ny * round.offset,
+      w: doctrine.size,
+      h: doctrine.size,
+      vx: Math.cos(round.angle) * speed,
+      vy: Math.sin(round.angle) * speed,
+      damage: doctrine.damage,
+      color: def.accent,
+      projectileKey: doctrine.projectileKey,
+    });
   }
 
   /** How many enemies may share the arena at once, by wave. */
@@ -1675,8 +1805,11 @@ export class Game2A {
       anchorX: x,
       phase: Math.random() * Math.PI * 2,
       direction: Math.random() < 0.5 ? -1 : 1,
-      fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+      fireClock: doctrineFor(def.key).firstShotDelay,
       stance: 'entering',
+      volleySeq: 0,
+      pending: [],
+      telegraph: 0,
       stationX: x,
       stationY: this.pickStationY(),
       stanceClock: 0,
@@ -1834,8 +1967,11 @@ export class Game2A {
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: i < ESCORT_COUNT / 2 ? -1 : 1,
-        fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
+        fireClock: doctrineFor(def.key).firstShotDelay,
         stance: 'entering',
+      volleySeq: 0,
+      pending: [],
+      telegraph: 0,
         stationX: x,
         stationY: this.pickStationY(),
         stanceClock: 0,
@@ -2447,8 +2583,42 @@ export class Game2A {
     this.ctx.stroke();
   }
 
+  /**
+   * The wind-up on a heavy round, drawn so it can be reacted to.
+   *
+   * A telegraph the player cannot see is not a telegraph, it is a delay. The
+   * charge ring closes toward the muzzle over the wind-up, and the flash rate
+   * climbs as it completes, so "about to fire" and "firing now" are different
+   * at a glance -- which is the only thing that makes a 2-damage shell fair.
+   */
+  private drawTelegraph(drone: EnemyActor): void {
+    if (drone.telegraph <= 0) return;
+    const doctrine = doctrineFor(drone.enemyKey);
+    if (doctrine.telegraph <= 0) return;
+    const progress = 1 - drone.telegraph / doctrine.telegraph;
+    const { ctx } = this;
+    ctx.save();
+    ctx.translate(drone.x, drone.y);
+    // Ring closing in.
+    const r = drone.w * (1.5 - progress * 0.8);
+    ctx.globalAlpha = 0.35 + 0.5 * progress;
+    ctx.strokeStyle = '#ff5a3c';
+    ctx.lineWidth = 1.5 + progress * 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, Math.max(4, r), 0, Math.PI * 2);
+    ctx.stroke();
+    // Muzzle glow, blinking faster as it completes.
+    ctx.globalAlpha = 0.5 + 0.5 * Math.abs(Math.sin(this.clock * (8 + progress * 22)));
+    ctx.fillStyle = '#ffd24a';
+    ctx.beginPath();
+    ctx.arc(0, drone.h * 0.4, 2 + progress * 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
+    this.drawTelegraph(drone);
     const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
     if (!drawn) {
       this.ctx.save();
