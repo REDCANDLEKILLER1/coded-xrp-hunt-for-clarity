@@ -37,16 +37,27 @@ check(drift > 0 && drift < 1, `BOSS_RESUPPLY_DRIFT should slow the drop (0 < x <
 const lanes = [...body.matchAll(/0\.18 \+ i \* 0\.24/g)];
 check(lanes.length === 1, 'resupply lanes should be laid out left of the right-hand button cluster');
 
-for (const entry of ['startBossIfReady', 'startGaryFogGuardian', 'startRegulatoryWarship']) {
+// startGaryFogGuardian became startGuardian when Level 1 gained two more
+// guardian acts: one function now spawns all three from their plan, so there is
+// one place a resupply could go missing instead of three.
+for (const entry of ['startBossIfReady', 'startGuardian', 'startRegulatoryWarship']) {
   const method = game.split(`private ${entry}(`)[1]?.split('\n  }\n')[0] ?? '';
+  check(method.length > 0, `${entry}() is missing — the scraper is broken`);
   check(/this\.dropBossResupply\(\);/.test(method), `${entry}() must drop the resupply before the fight starts`);
 }
 
 // It has to land before the boss can shoot, not after.
-const gary = game.split('private startGaryFogGuardian(')[1]?.split('\n  }\n')[0] ?? '';
+const guardian = game.split('private startGuardian(')[1]?.split('\n  }\n')[0] ?? '';
 check(
-  gary.indexOf('this.dropBossResupply();') < gary.indexOf('state: \'intro\''),
+  guardian.indexOf('this.dropBossResupply();') < guardian.indexOf('state: \'intro\''),
   'the resupply must be dropped before the boss actor is created',
+);
+
+// And it must be spawned from the PLAN rather than from a hard-coded boss, or
+// adding a guardian act silently gets Gary Fog's hull under a different name.
+check(
+  /this\.bossDef\(plan\.bossKey\)/.test(guardian),
+  'startGuardian must take its boss from the plan it was handed',
 );
 
 // ---- the seeker rocket is a rocket, not a second ship ---------------------

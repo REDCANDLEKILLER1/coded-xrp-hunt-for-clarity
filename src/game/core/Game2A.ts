@@ -11,12 +11,14 @@ import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMi
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
-import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, hasFogBreaker } from '../content/EarthBossFlow';
+import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
+import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
 import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
 import { REGULATORY_WARSHIP, RegulatoryWarshipDirector } from '../content/RegulatoryWarship';
 import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
+import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
@@ -708,8 +710,14 @@ export class Game2A {
     const act = this.missionDirector.currentAct;
     if (!act) return;
 
-    if (act.key === GARY_FOG_GUARDIAN_PLAN.actKey) {
-      if (!this.boss) this.startGaryFogGuardian();
+    // Three guardian acts now, not one. This used to compare against
+    // GARY_FOG_GUARDIAN_PLAN.actKey directly, which is fine with a single boss
+    // and silently fatal with three: an act that no branch recognises spawns
+    // nothing, and a boss act that spawns nothing never completes, so the level
+    // stops dead on it with an empty sky.
+    const guardian = guardianPlanFor(act.key);
+    if (guardian) {
+      if (!this.boss) this.startGuardian(guardian);
       this.updateBoss(dt);
       return;
     }
@@ -742,15 +750,15 @@ export class Game2A {
     if (this.boss) this.updateBoss(dt);
   }
 
-  private startGaryFogGuardian(): void {
-    const def = this.bossDef(GARY_FOG_GUARDIAN_PLAN.bossKey);
+  private startGuardian(plan: GuardianEncounterPlan): void {
+    const def = this.bossDef(plan.bossKey);
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
     this.bolts = [];
     this.dropBossResupply();
-    this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
-    this.missionBannerText = 'GUARDIAN SIGNAL // GARY FOG APPROACHING';
+    this.cueMusic(plan.musicCueKey);
+    this.missionBannerText = plan.approachBanner;
     this.missionBannerClock = 2.8;
     this.boss = {
       x: this.w / 2,
@@ -763,7 +771,7 @@ export class Game2A {
       maxHp: Math.round(def.hp * this.firepowerScale()),
       bossKey: def.key,
       state: 'intro',
-      age: -GARY_FOG_REVEAL.musicLead,
+      age: -plan.musicLeadSeconds,
       fireClock: def.phases[0].fireRate,
       contactClock: 0,
       phaseIndex: 0,
@@ -978,6 +986,41 @@ export class Game2A {
       fireClock: def.fires ? 0.95 : 0,
       side,
     });
+  }
+
+  /**
+   * Banks the checkpoint that resumes into whichever act is current.
+   *
+   * Shared by the two paths that finish an act, rather than written twice:
+   * a flight act records the act it is about to enter, and a guardian act
+   * records the one it has just entered. Both mean "if you die now, come back
+   * here", and duplicating that would be one snapshot field away from a resume
+   * that silently loses a rank or a barrel.
+   *
+   * Returns the checkpoint banked, or null when the act has none -- the
+   * opening cinematic and the closing beat deliberately do not.
+   */
+  private recordCheckpointForCurrentAct(): MissionCheckpointDef | null {
+    const mission = this.missionDirector.activeMission;
+    const act = this.missionDirector.currentAct;
+    if (!mission || !act || !this.activePlanetKey) return null;
+    const checkpoint = mission.checkpoints.find((item) => item.resumeActKey === act.key);
+    if (!checkpoint) return null;
+    this.progress = recordMissionCheckpoint(this.progress, {
+      planetKey: this.activePlanetKey,
+      missionKey: mission.key,
+      checkpointKey: checkpoint.key,
+      checkpointLabel: checkpoint.label,
+      resumeActKey: checkpoint.resumeActKey,
+      shipKey: this.selectedShipKey,
+      weaponTier: this.weaponTier(),
+      bombs: this.bombs,
+      score: this.score,
+      savedAt: Date.now(),
+      ...this.upgradeSnapshot(),
+    });
+    this.saveProgress();
+    return checkpoint;
   }
 
   private completeMissionFlightAct(): void {
@@ -1583,17 +1626,25 @@ export class Game2A {
     boss.contactClock = Math.max(0, boss.contactClock - dt);
 
     if (boss.state === 'intro') {
-      const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
-      if (missionGary) {
+      // The creeping entrance belongs to every guardian, not only to Gary.
+      //
+      // This was the third place keyed to 'gary_fog' by hand. Leaving it would
+      // have been the subtlest of the three failures: the new bosses would
+      // still spawn and still fight, but they would snap into frame on the
+      // 1.45s wave-boss path below instead of creeping in under their own
+      // music -- landing as ordinary spawns, which is precisely the thing the
+      // placement exists to avoid.
+      const guardian = guardianPlanFor(this.missionDirector.currentAct?.key);
+      if (guardian && guardian.bossKey === boss.bossKey) {
         if (boss.age < 0) return;
-        const t = clamp(boss.age / GARY_FOG_REVEAL.entranceDuration, 0, 1);
+        const t = clamp(boss.age / guardian.creepSeconds, 0, 1);
         const eased = 1 - Math.pow(1 - t, 3);
         boss.y = -def.draw.h + (this.bossRestY() + def.draw.h) * eased;
-        if (boss.age >= GARY_FOG_REVEAL.entranceDuration + GARY_FOG_REVEAL.combatDelay) {
+        if (boss.age >= guardian.creepSeconds + guardian.postEntranceHoldSeconds) {
           boss.state = 'fight';
           boss.y = this.bossRestY();
           boss.age = 0;
-          this.missionBannerText = 'GARY FOG // ENGAGE';
+          this.missionBannerText = `${def.label} // ENGAGE`;
           this.missionBannerClock = 2.2;
         }
         return;
@@ -3451,7 +3502,8 @@ export class Game2A {
     sfx.play('bigExplode');
 
     const def = this.bossDef(boss.bossKey);
-    const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
+    const guardian = guardianPlanFor(this.missionDirector.currentAct?.key);
+    const missionGuardian = guardian && guardian.bossKey === boss.bossKey ? guardian : null;
     this.completedBosses.add(boss.bossKey);
     this.score += def.score;
     this.special = 100;
@@ -3464,19 +3516,38 @@ export class Game2A {
     this.hostileShots = [];
     this.boss = null;
 
-    if (missionGary) {
-      const alreadyOwned = hasFogBreaker(this.progress);
-      this.progress = awardGaryFogVictory(this.progress);
-      this.saveProgress();
+    // A GUARDIAN ACT MUST ADVANCE THE MISSION, or the level stops on it.
+    //
+    // Only Gary did. Every other boss fell through to `bossClearClock` below,
+    // which is right for the wave ladder -- there is no act to finish out there
+    // -- and fatal for a boss that IS an act: the Behemoth would die, the sky
+    // would empty, and the mission would sit on a completed act forever with
+    // nothing left to kill.
+    if (missionGuardian) {
+      const isGary = missionGuardian.rewardTechKey !== null;
+      let banner = missionGuardian.defeatBanner;
+      if (isGary) {
+        // Guarded against checkpoint-reload farming inside recordGuardianDefeated.
+        const alreadyOwned = hasFogBreaker(this.progress);
+        this.progress = awardGaryFogVictory(this.progress);
+        this.saveProgress();
+        this.fogGateActive = true;
+        banner = alreadyOwned
+          ? 'GARY FOG DEFEATED // FOG BREAKER READY'
+          : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
+      }
+
       const entered = this.missionDirector.advance();
       this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
       this.earthEncounterDirector.clear();
-      this.fogGateActive = true;
       this.cueMusic('level1');
-      this.missionBannerText = alreadyOwned
-        ? 'GARY FOG DEFEATED // FOG BREAKER READY'
-        : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
+      this.missionBannerText = banner;
       this.missionBannerClock = 2.8;
+      // Bank the act we just moved into, so dying to what follows a guardian
+      // does not replay the guardian. Flight acts get this from
+      // completeMissionFlightAct; a boss act never reaches that path.
+      this.recordCheckpointForCurrentAct();
+      // final_assault runs on the fog gate rather than on authored spawns.
       if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
       return;
     }
@@ -4191,7 +4262,19 @@ export class Game2A {
   private currentStage(): StageDef {
     const missionStageKey = this.earthEncounterDirector.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
-    if (this.missionDirector.activeMission && this.missionDirector.currentAct?.key === 'gary_fog') return STAGES.ledger_city;
+    // A guardian act has no authored encounter, so it reaches here with no
+    // stageKey. Falling on through lands it on the WAVE ladder, which put the
+    // Behemoth and the Destroyer in `data_canyon` -- a location Level 1 never
+    // visits -- for the length of each fight.
+    //
+    // This replaces a hand-written `gary_fog` branch rather than adding two
+    // more beside it. Every guardian carries the stage of the act it follows,
+    // Gary's included, so his behaviour is unchanged and the next act inserted
+    // without a stage is a gate failure instead of a silent wrong background.
+    if (this.missionDirector.activeMission) {
+      const guardianStage = guardianPlanFor(this.missionDirector.currentAct?.key)?.stageKey;
+      if (guardianStage && STAGES[guardianStage]) return STAGES[guardianStage];
+    }
     if (this.missionDirector.activeMission && ['regulatory_warship', 'boarding'].includes(this.missionDirector.currentAct?.key ?? '')) return STAGES.regulatory_outpost;
     for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
       if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];

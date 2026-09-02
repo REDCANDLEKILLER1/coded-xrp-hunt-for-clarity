@@ -8,6 +8,7 @@
 // Run with: npm test
 
 import { build } from 'esbuild';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const result = await build({
   entryPoints: ['src/game/content/registry.ts'],
@@ -204,6 +205,85 @@ for (const checkpoint of earthMission.checkpoints) {
     process.exit(1);
   }
 }
+// ---- checkpoint keys named as STRINGS in code must actually exist ---------
+//
+// `DirectBoardingRuntime` dispatches `checkpointKey: 'earth.boarding_lock'` as
+// a bare string, and the three guardian plans in EarthBossFlow name theirs the
+// same way. TypeScript cannot see any of it, so the mission spine and the code
+// that references it can drift apart in silence -- and they nearly did: the
+// commit that removed the superseded interior deleted two sibling checkpoints
+// with nothing in the build objecting. Deleting one more would have severed
+// the capture handoff into the 3D transit and still shipped green.
+//
+// Scoped to real checkpoint-reference sites -- string literals assigned to a
+// `checkpointKey` field -- rather than to every `earth.*` string under src/.
+// The broad version is a wider net than the invariant, and would eventually
+// fire on a label, an asset id or a telemetry key that merely shares the
+// prefix. This is the semantic reference, so it stays true as unrelated
+// identifiers come and go.
+{
+  const declared = new Set(earthMission.checkpoints.map((checkpoint) => checkpoint.key));
+  const roots = ['src'];
+  const files = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(full);
+      else if (full.endsWith('.ts')) files.push(full);
+    }
+  };
+  for (const root of roots) walk(root);
+
+  let referenced = 0;
+  for (const file of files) {
+    // Comments stripped: a checkpoint key quoted in an explanation is not a
+    // reference, and this repo has been bitten five times by greps that could
+    // not tell the difference.
+    const code = readFileSync(file, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    for (const match of code.matchAll(/checkpointKey:\s*'([^']+)'/g)) {
+      referenced += 1;
+      if (!declared.has(match[1])) {
+        console.error(`Mission validation FAILED: ${file} references checkpoint "${match[1]}", which the mission does not declare.`);
+        process.exit(1);
+      }
+    }
+  }
+  // A scraper that finds nothing passes everything. The boarding dispatch and
+  // the three guardian plans are four references; fewer means this stopped
+  // reading the code rather than that the code stopped referencing.
+  if (referenced < 4) {
+    console.error(`Mission validation FAILED: only ${referenced} checkpoint reference(s) found in src/ — the scraper is broken.`);
+    process.exit(1);
+  }
+}
+
+// ---- the capture handoff into the 3D transit is still connected -----------
+//
+// The other half of a contract #108 only tested one side of. Every assertion
+// there proved the two new bosses do NOT enter 3D early; none proved the real
+// capture still does. A spine cleanup that severed it would have passed them
+// all.
+{
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const boarding = strip(readFileSync('src/game/ui/DirectBoardingRuntime.ts', 'utf8'));
+  const main = strip(readFileSync('src/main.ts', 'utf8'));
+  const fail = (message) => { console.error(`Mission validation FAILED: ${message}`); process.exit(1); };
+
+  if (!/coded:boarding-complete/.test(boarding)) fail('the boarding runtime no longer announces completion — nothing would enter the 3D transit');
+  if (!/warship\.state !== 'disabled'/.test(boarding)) fail('boarding must gate on the warship actually being disabled');
+  if (!/coded:boarding-complete/.test(main)) fail('main.ts no longer listens for boarding completion');
+  if (!/space\.show\(\)/.test(main)) fail('boarding completion must hand off to the 3D transit');
+  for (const act of ['regulatory_warship', 'boarding']) {
+    if (!earthMission.acts.some((a) => a.key === act)) fail(`the "${act}" act is gone — the capture route into 3D is broken`);
+  }
+  const order = earthMission.acts.map((a) => a.key);
+  if (order.indexOf('boarding') < order.indexOf('regulatory_warship')) {
+    fail('boarding must follow the warship fight, not precede it');
+  }
+}
+
 const duplicates = earthMission.checkpoints.length - resumable.size;
 if (duplicates > 0) {
   console.error(`Mission validation FAILED: ${duplicates} checkpoint(s) resume into an act another already covers.`);
@@ -282,6 +362,103 @@ const encounterResult = await build({
 const encounters = await import(
   'data:text/javascript,' + encodeURIComponent(encounterResult.outputFiles[0].text)
 );
+
+// ---- a guardian fight happens WHERE the act it interrupts happens ---------
+//
+// The two boss acts have no authored encounter, so currentStage() finds no
+// stageKey for them and, before this, fell through to the WAVE ladder. Both
+// landed in `data_canyon` -- a stage Level 1 never visits -- taking its sky,
+// accent, props and HUD label for the length of each fight and flipping back
+// afterwards. It survived every capture in this PR because a boss forces the
+// `boss_arena` backdrop image, which hides the largest part of the symptom.
+{
+  const bossFlowBuild = await build({
+    entryPoints: ['src/game/content/EarthBossFlow.ts'],
+    bundle: true, format: 'esm', write: false, logLevel: 'silent',
+  });
+  const bossFlow = await import(
+    'data:text/javascript,' + encodeURIComponent(bossFlowBuild.outputFiles[0].text)
+  );
+  const { GUARDIAN_PLANS } = bossFlow;
+  const acts = earthMission.acts.map((act) => act.key);
+  const stageOf = (actKey) => encounters.EARTH_FLIGHT_ENCOUNTERS[actKey]?.stageKey;
+
+  // Named outcomes, not merely "not data_canyon": a wrong-but-different stage
+  // has to fail too, or this only guards the one value we happened to see.
+  const intended = {
+    regulatory_behemoth: 'deep_space_lane',
+    clarity_destroyer: 'ledger_city',
+    gary_fog: 'ledger_city',
+  };
+  for (const [actKey, want] of Object.entries(intended)) {
+    const plan = GUARDIAN_PLANS.find((p) => p.actKey === actKey);
+    if (!plan) {
+      console.error(`Mission validation FAILED: no guardian plan for "${actKey}".`);
+      process.exit(1);
+    }
+    if (plan.stageKey !== want) {
+      console.error(`Mission validation FAILED: ${actKey} is presented in "${plan.stageKey}", expected "${want}".`);
+      process.exit(1);
+    }
+  }
+
+  // The general rule, and the one that catches the NEXT act inserted without a
+  // stage: a guardian interrupts a place, it does not travel to a new one, so
+  // its stage is always that of the act it follows. This is also what keeps
+  // the explicit stageKey honest as acts are reordered.
+  for (const plan of GUARDIAN_PLANS) {
+    const index = acts.indexOf(plan.actKey);
+    if (index < 1) {
+      console.error(`Mission validation FAILED: guardian "${plan.actKey}" is not an act, or has nothing before it.`);
+      process.exit(1);
+    }
+    const previous = stageOf(acts[index - 1]);
+    if (!previous) {
+      console.error(`Mission validation FAILED: guardian "${plan.actKey}" follows "${acts[index - 1]}", which authors no stage.`);
+      process.exit(1);
+    }
+    if (plan.stageKey !== previous) {
+      console.error(
+        `Mission validation FAILED: guardian "${plan.actKey}" follows "${acts[index - 1]}" (${previous}) `
+        + `but is presented in "${plan.stageKey}".`,
+      );
+      process.exit(1);
+    }
+  }
+
+  // And no guardian may reach the wave ladder at all -- the fallback is what
+  // produced data_canyon, and every boss act must be answered before it.
+  for (const plan of GUARDIAN_PLANS) {
+    if (!plan.stageKey) {
+      console.error(`Mission validation FAILED: guardian "${plan.actKey}" has no stage and would fall to the wave ladder.`);
+      process.exit(1);
+    }
+  }
+
+  // THE DATA BEING RIGHT IS NOT ENOUGH. Everything above checks the plans;
+  // none of it checks that currentStage() reads them. Found by mutation:
+  // stubbing the lookup out sent every guardian back to the wave ladder and
+  // the whole gate stayed green, because the stageKeys were still correct --
+  // which is precisely the shape of the bug this block exists to prevent.
+  const stageFn = readFileSync('src/game/core/Game2A.ts', 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .split('private currentStage(')[1]?.split('\n  }')[0] ?? '';
+  if (!stageFn) {
+    console.error('Mission validation FAILED: could not read currentStage() — the scraper is broken.');
+    process.exit(1);
+  }
+  if (!/guardianPlanFor\(/.test(stageFn) || !/\.stageKey/.test(stageFn)) {
+    console.error('Mission validation FAILED: currentStage() must resolve a guardian act through its plan, or boss fights fall to the wave ladder.');
+    process.exit(1);
+  }
+  // A reverted hand-written special case would satisfy the grep above while
+  // leaving the other two guardians on the fallback.
+  if (/currentAct\?\.key === 'gary_fog'/.test(stageFn)) {
+    console.error('Mission validation FAILED: currentStage() hand-cases gary_fog again — every guardian must come from its plan.');
+    process.exit(1);
+  }
+}
 
 const encounterErrors = encounters.validateEarthFlightEncounters();
 if (encounterErrors.length > 0) {
