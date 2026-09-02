@@ -15,6 +15,7 @@
 // everything was full the rank was converted to score in silence and the
 // player never saw a level-up at all.
 
+import { build } from 'esbuild';
 import { readFileSync } from 'node:fs';
 
 const failures = [];
@@ -29,31 +30,103 @@ const MAX_BARRELS = num('MAX_BARRELS');
 
 // ---- the gun stays symmetric, whatever it is holding --------------------
 //
-// Re-implemented from the source's own rule so the shape is checked, not the
-// text. Every weapon in the registry, at every barrel count.
+// This block used to RE-IMPLEMENT the barrel rule and then check its own copy,
+// which meant it could not see a change to the real one at all. It drives the
+// shipped `currentVolley()` now.
+const store = new Map();
+globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, String(v)), removeItem: (k) => void store.delete(k) };
+const noopCtx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : k === 'measureText' ? () => ({ width: 10 })
+  : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop() {} }) : () => {}),
+  set: (t, k, v) => { t[k] = v; return true; } });
+const stubCanvas = () => ({ width: 0, height: 0, style: {}, getContext: () => noopCtx, addEventListener() {}, removeEventListener() {},
+  getBoundingClientRect: () => ({ left: 0, top: 0, width: 393, height: 793 }), setPointerCapture() {}, releasePointerCapture() {} });
+globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+globalThis.Image = class {};
+globalThis.requestAnimationFrame = () => 0;
+globalThis.performance = globalThis.performance ?? { now: () => 0 };
+globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
+globalThis.screen = { width: 393, height: 793, orientation: { angle: 0 } };
+globalThis.devicePixelRatio = 1;
+globalThis.document = { addEventListener() {}, removeEventListener() {}, querySelector: () => null, createElement: stubCanvas, body: { appendChild() {} } };
+globalThis.innerWidth = 393;
+globalThis.innerHeight = 793;
+globalThis.window = { addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true,
+  setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: (h) => clearTimeout(h),
+  localStorage: globalThis.localStorage, devicePixelRatio: 1, innerWidth: 393, innerHeight: 793 };
+globalThis.location = { search: '', pathname: '/' };
+
+// Labels only, so a failure names the gun. The shot data itself comes from the
+// running code below, never from this parse.
 const weapons = [...registry.matchAll(/label: '([A-Z\- ]+)',[\s\S]*?shots: (\[[\s\S]*?\]),/g)]
-  .map(([, label, shots]) => ({
-    label,
-    offsets: [...shots.matchAll(/offsetX: (-?\d+)/g)].map((m) => Number(m[1])),
-  }))
+  .map(([, label, shots]) => ({ label, offsets: [...shots.matchAll(/offsetX: (-?\d+)/g)].map((m) => Number(m[1])) }))
   .filter((weapon) => weapon.offsets.length > 0);
+check(weapons.length >= 4, 'could not read the weapon ladder');
 
-check(weapons.length >= 4, `expected the weapon ladder, parsed ${weapons.length}`);
+const bundle = await build({ entryPoints: ['src/game/core/Game2A.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { Game2A } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+const volleyFor = (tier, barrels) => {
+  const g = new Game2A(stubCanvas());
+  g.deployTestMode();
+  g.reset();
+  g.baseWeaponTier = tier;
+  g.xpLevel = 1;
+  g.barrels = barrels;
+  return g.currentVolley().map((shot) => shot.offsetX);
+};
 
-for (const weapon of weapons) {
-  const widest = Math.max(...weapon.offsets.map(Math.abs), 0);
+// The narrowest ENEMY in the game, read from the running registry rather than
+// scraped: `hitbox: { w:` also matches projectiles and pickups, and a 7px
+// bullet as the yardstick would make every gap look safe.
+//
+// A hole wider than this is a hole a target can sit in, which is what "it
+// doesn't hit anything in the middle of the fire pattern" was: an even gun has
+// no beam on the centreline, and at +/-9 TWIN's inner gap was 18px against
+// enemies 15-19px wide.
+const registryBundle = await build({ entryPoints: ['src/game/content/registry.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { ENEMIES } = await import(`data:text/javascript;base64,${Buffer.from(registryBundle.outputFiles[0].text).toString('base64')}`);
+const threatBundle = await build({ entryPoints: ['src/game/content/EarthThreats.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { EARTH_ENEMIES } = await import(`data:text/javascript;base64,${Buffer.from(threatBundle.outputFiles[0].text).toString('base64')}`);
+const enemyWidths = [...Object.values(ENEMIES), ...Object.values(EARTH_ENEMIES ?? {})].map((def) => def.hitbox.w);
+const narrowest = Math.min(...enemyWidths);
+check(enemyWidths.length >= 4 && narrowest > 8, `could not read enemy hitboxes (narrowest ${narrowest})`);
+
+for (let tier = 1; tier <= weapons.length; tier += 1) {
+  const label = weapons[tier - 1]?.label ?? `tier ${tier}`;
+  let previous = 0;
   for (let barrels = 0; barrels <= MAX_BARRELS; barrels += 1) {
-    const shots = [...weapon.offsets];
-    for (let pair = 1; pair <= barrels; pair += 1) {
-      if (shots.length + 2 > MAX_VOLLEY) break;
-      const offset = widest + 9 * pair;
-      shots.push(-offset, offset);
+    const shots = volleyFor(tier, barrels).sort((a, b) => a - b);
+    const symmetric = shots.every((value, i) => Math.abs(value + shots[shots.length - 1 - i]) < 1e-9);
+    check(symmetric, `${label} with ${barrels} barrel(s) fires asymmetrically: ${shots.join(', ')}`);
+    check(shots.length <= MAX_VOLLEY, `${label} x${barrels} exceeds the volley cap`);
+
+    // The widest gap anywhere in the pattern, centre included.
+    let widestGap = 0;
+    for (let i = 1; i < shots.length; i += 1) widestGap = Math.max(widestGap, shots[i] - shots[i - 1]);
+    check(
+      shots.length === 1 || widestGap < narrowest,
+      `${label} x${barrels} leaves a ${widestGap}px gap at [${shots.join(', ')}] — the narrowest enemy is ${narrowest.toFixed(0)}px and can sit inside it`,
+    );
+
+    // A barrel you picked up has to buy beams until the cap is genuinely full...
+    if (barrels > 0) {
+      check(
+        shots.length > previous || previous >= MAX_VOLLEY - 1,
+        `${label}: barrel ${barrels} bought nothing (${previous} -> ${shots.length} beams, cap ${MAX_VOLLEY})`,
+      );
+      // ...and no barrel may buy more than a barrel. One centre beam or one
+      // pair, never both off the same pickup: without this the centre beam
+      // could be handed out free and the first barrel would be worth three.
+      check(
+        shots.length - previous <= 2,
+        `${label}: barrel ${barrels} added ${shots.length - previous} beams; a barrel is worth at most two`,
+      );
     }
-    const sorted = [...shots].sort((a, b) => a - b);
-    const symmetric = sorted.every((value, i) => Math.abs(value + sorted[sorted.length - 1 - i]) < 1e-9);
-    check(symmetric, `${weapon.label} with ${barrels} barrel(s) fires asymmetrically: ${sorted.join(', ')}`);
-    check(shots.length <= MAX_VOLLEY, `${weapon.label} x${barrels} exceeds the volley cap`);
+    previous = shots.length;
   }
+  // Every gun must be able to spend the whole cap, not stall one short of it
+  // because its base count has the wrong parity.
+  const full = volleyFor(tier, MAX_BARRELS).length;
+  check(full === MAX_VOLLEY, `${label} tops out at ${full} beams, but the cap is ${MAX_VOLLEY}`);
 }
 
 // The cap has to be odd, or an odd-base gun cannot take its last barrel pair.

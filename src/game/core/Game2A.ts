@@ -4151,7 +4151,28 @@ export class Game2A {
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
-    for (let pair = 1; pair <= this.barrels; pair += 1) {
+
+    // On an even gun the FIRST barrel goes down the middle; the rest go on in
+    // pairs.
+    //
+    // "When you get 5 the sixth makes the auto cannon split into 2 rows of 3.
+    // It loses power and doesn't hit anything in the middle of the fire
+    // pattern." Both halves were true and they were one fault. Pairs-only kept
+    // the gun symmetric but could never fill the centre, so a four-beam gun
+    // plus a barrel fired -26,-17,-6,6,17,26: three each side, and the widest
+    // gap in the whole pattern sitting exactly where you are aiming.
+    //
+    // It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
+    // pairs move in twos, so QUAD stopped at six and the seventh slot was
+    // unreachable -- measured, its second and third barrel pickups bought
+    // nothing at all. The centre beam is what makes that last slot spendable,
+    // which is why one rule fixes the hole and the dead pickups together.
+    let pairs = this.barrels;
+    if (!weapon.shots.some((shot) => shot.offsetX === 0) && shots.length < MAX_VOLLEY) {
+      shots.push({ offsetX: 0, angle: 0 });
+      pairs -= 1;
+    }
+    for (let pair = 1; pair <= pairs; pair += 1) {
       // A pair goes on together or not at all, so the gun stays symmetric.
       if (shots.length + 2 > MAX_VOLLEY) break;
       // Parallel, not fanned. Barrels used to angle outward 0.045rad per pair,

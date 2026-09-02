@@ -220,9 +220,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     projectileKey: 'bb_shot',
     fireRate: 0.13,
     damage: 1,
+    // +/-6, not +/-9. An even gun has no beam on the centreline, so the gap
+    // between its inner pair is a hole a target can sit in -- and at +/-9 that
+    // hole was 18px against enemies 15-19px wide. Measured, TWIN BEAM did
+    // 0.80 dps to a drone dead ahead while the ONE-beam BB SHOT below it did
+    // 1.52: the second rung of the ladder was a downgrade from the first. At
+    // +/-6 the gap is 12px and nothing in the game can hide inside it.
     shots: [
-      { offsetX: -9, angle: 0 },
-      { offsetX: 9, angle: 0 },
+      { offsetX: -6, angle: 0 },
+      { offsetX: 6, angle: 0 },
     ],
   },
   // NOTHING IN THE LADDER FANS.
