@@ -124,6 +124,8 @@ export interface CockpitContact {
   capital?: boolean;
   /** The held lock. Marked distinctly, because it is the one the missile goes to. */
   locked?: boolean;
+  /** An incoming seeker. Plotted small and red, and it flashes. */
+  seeker?: boolean;
 }
 
 /** What the right screen says about the thing you are locked onto. */
@@ -171,6 +173,10 @@ export interface CockpitState {
   /** False while the coil is too hot to re-engage. */
   warpReady: boolean;
   throttle: number;
+  /** Seekers still carrying your scent. Drives the inbound warning. */
+  inbound: number;
+  /** False while the flare dispenser is reloading. */
+  flareReady: boolean;
   /** 0..1, or null when nothing is engaged. */
   bossHealth: number | null;
   bossLabel: string;
@@ -185,7 +191,16 @@ export interface CockpitState {
   lockProgress: number;
   /** Radar's outer ring, in world units. */
   radarRange: number;
-  rollReady: boolean;
+
+  /**
+   * The ship's own attitude, for the horizon.
+   *
+   * Elevation wraps a full turn now, so these are what tells the player they
+   * are inverted. Before the loop existed, pitch was clamped to 76 degrees and
+   * the panel had no reason to know either number.
+   */
+  pitch: number;
+  roll: number;
   clock: number;
 }
 
@@ -440,6 +455,132 @@ export class Cockpit {
     this.drawRadar(px(ART.mainScreen.x), py(ART.mainScreen.y), pr(ART.mainScreen.w), ART.mainScreen.h * art.h, state);
     this.drawHullScreen(px(ART.leftScreen.x), py(ART.leftScreen.y), pr(ART.leftScreen.w), ART.leftScreen.h * art.h, state);
     this.drawTargetScreen(px(ART.rightScreen.x), py(ART.rightScreen.y), pr(ART.rightScreen.w), ART.rightScreen.h * art.h, state);
+    // Drawn from `frame.aperture`, which BOTH layouts supply -- the canopy's
+    // is measured off the artwork's alpha hole, the console's is the whole
+    // area above the band. Keying it off `art` instead would put it on the
+    // panel in one orientation and nowhere in the other.
+    this.drawAttitude(frame, state);
+    this.drawInbound(frame, state);
+  }
+
+  /**
+   * The artificial horizon: the instrument the pitch clamp existed instead of.
+   *
+   * Elevation used to stop at 76 degrees, reasoned as "pitching past vertical
+   * would invert the world with no horizon to tell you it had happened". That
+   * is an argument for a horizon, not for a wall, and a phone test found the
+   * wall the way players find walls -- by flying into it. So the nose is free
+   * and this says which way is up.
+   *
+   * A real ADI: a ladder that slides DOWN as the nose comes up, rotated
+   * opposite the bank so it stays level with the world while the ship banks
+   * around it, against a fixed nose marker that never moves. Sky and ground
+   * are tinted differently, which is what makes inverted readable at a glance
+   * rather than something to work out from a number.
+   */
+  /**
+   * The missile warning, and the state of the thing that answers it.
+   *
+   * Only on screen when something is actually inbound. A warning light that is
+   * always lit is furniture; one that appears is information -- and this is the
+   * only threat in the level a player cannot see coming by looking around,
+   * because a seeker approaches from wherever it was launched.
+   */
+  private drawInbound(frame: CockpitFrame, state: CockpitState): void {
+    if (state.inbound <= 0) return;
+    const { ctx } = this;
+    const { aperture } = frame;
+    const size = Math.max(9, Math.min(aperture.w * 0.032, 17));
+    const cx = aperture.x + aperture.w * 0.5;
+    const cy = aperture.y + aperture.h * 0.17;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${size}px "Courier New", monospace`;
+    // Flashing, because it is a warning. Steady red at the top of the view
+    // reads as decoration inside about two seconds.
+    ctx.globalAlpha = 0.55 + 0.45 * Math.abs(Math.sin(state.clock * 7));
+    ctx.fillStyle = RED;
+    ctx.fillText(state.inbound > 1 ? `MISSILE INBOUND x${state.inbound}` : 'MISSILE INBOUND', cx, cy);
+    ctx.globalAlpha = 1;
+    ctx.font = `${size * 0.8}px "Courier New", monospace`;
+    ctx.fillStyle = state.flareReady ? 'rgba(79,216,255,0.85)' : 'rgba(150,160,175,0.7)';
+    ctx.fillText(state.flareReady ? 'FLARES READY' : 'FLARES RELOADING', cx, cy + size * 1.3);
+    ctx.restore();
+  }
+
+  private drawAttitude(frame: CockpitFrame, state: CockpitState): void {
+    const { ctx } = this;
+    const { aperture } = frame;
+    // Sits low in the view so it never fights the reticle or a target bracket.
+    const size = Math.min(aperture.w * 0.19, aperture.h * 0.34);
+    if (size < 26) return;
+    const cx = aperture.x + aperture.w * 0.5;
+    const cy = aperture.y + aperture.h - size * 0.72;
+    const r = size * 0.5;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    // Opposite the camera roll: the world stays level, the ship banks past it.
+    ctx.rotate(-state.roll);
+    // sin() rather than the raw angle, so the ladder eases to a stop at the
+    // vertical and comes back the other way through a loop instead of running
+    // off and snapping when the angle wraps.
+    const slide = Math.sin(state.pitch) * r * 1.15;
+    // Past vertical the ground is overhead. This is the whole point of the
+    // instrument, so it is a real state and not a special case.
+    const inverted = Math.cos(state.pitch) < 0;
+    ctx.fillStyle = inverted ? 'rgba(90,40,20,0.55)' : 'rgba(20,50,90,0.55)';
+    ctx.fillRect(-r * 2, -r * 2, r * 4, r * 2 + slide);
+    ctx.fillStyle = inverted ? 'rgba(20,50,90,0.55)' : 'rgba(90,40,20,0.55)';
+    ctx.fillRect(-r * 2, slide, r * 4, r * 2);
+
+    ctx.strokeStyle = inverted ? 'rgba(255,150,90,0.95)' : 'rgba(120,220,255,0.95)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.6, slide);
+    ctx.lineTo(r * 1.6, slide);
+    ctx.stroke();
+
+    // Ladder rungs, so rate of change is visible and not just position.
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(190,225,245,0.5)';
+    for (const step of [-2, -1, 1, 2]) {
+      const y = slide + step * r * 0.42;
+      const half = step % 2 === 0 ? r * 0.5 : r * 0.28;
+      ctx.beginPath();
+      ctx.moveTo(-half, y);
+      ctx.lineTo(half, y);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
+
+    // Bezel and the fixed nose marker, OUTSIDE the clip and the rotation:
+    // the ship's own reference does not move, which is what everything else is
+    // read against.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(150,190,215,0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffd24a';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.42, cy);
+    ctx.lineTo(cx - r * 0.14, cy);
+    ctx.moveTo(cx + r * 0.14, cy);
+    ctx.lineTo(cx + r * 0.42, cy);
+    ctx.moveTo(cx, cy - r * 0.1);
+    ctx.lineTo(cx, cy + r * 0.1);
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -509,10 +650,16 @@ export class Cockpit {
       const px = cx + Math.sin(contact.bearing) * t * r;
       const py = cy - Math.cos(contact.bearing) * t * r;
       const size = contact.capital ? Math.max(3.4, r * 0.09) : Math.max(2.2, r * 0.045);
+      ctx.save();
+      // A seeker flashes. It is smaller than a fighter and it is the one blip
+      // on here that is going to hit you if you do nothing about it, so it has
+      // to be the one that catches the eye rather than the one that hides.
+      if (contact.seeker) ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(state.clock * 9));
       ctx.fillStyle = contact.capital ? AMBER : RED;
       ctx.beginPath();
-      ctx.arc(px, py, size, 0, Math.PI * 2);
+      ctx.arc(px, py, contact.seeker ? size * 0.8 : size, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
 
       // The lock gets a ring, not a colour. Colour already carries capital vs
       // fighter here, and stacking a second meaning on it would lose one.
@@ -600,9 +747,13 @@ export class Cockpit {
       ctx.fillRect(x + w * 0.30 + i * segW, y + h * 0.63, segW * 0.74, h * 0.11);
     }
 
-    ctx.fillStyle = state.rollReady ? 'rgba(79,216,255,0.7)' : 'rgba(120,140,160,0.55)';
+    // This corner used to read ROLL RDY. The roll is gone and the double-tap it
+    // was bound to is the trigger now, so the space says what the gesture does
+    // -- a control that changed under the player needs telling, once, where
+    // they are already looking.
+    ctx.fillStyle = state.gunsFiring ? 'rgba(79,216,255,0.9)' : 'rgba(120,140,160,0.55)';
     ctx.font = `${Math.max(5, w * 0.075)}px "Courier New", monospace`;
-    ctx.fillText(state.rollReady ? 'ROLL RDY' : 'ROLL ...', x + w * 0.07, y + h * 0.93);
+    ctx.fillText(state.gunsFiring ? 'FIRING' : '2x TAP = GUNS', x + w * 0.07, y + h * 0.93);
     ctx.restore();
   }
 

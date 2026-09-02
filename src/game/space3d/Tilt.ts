@@ -141,7 +141,24 @@ export function gravityFromOrientation(beta: number, gamma: number): Vec3 {
  * is deliberately discarded, so spinning the handset does not steer.
  */
 export function projectToScreen(gravity: Vec3, neutral: Vec3, screenAngle: number): { right: number; down: number } {
-  const a = screenAngle * DEG;
+  // NEGATIVE screenAngle. `screen.orientation.angle` is how far the CONTENT has
+  // been rotated to stay upright, so the device has turned the other way, and
+  // the screen's axes expressed in device coordinates rotate by -angle.
+  //
+  // Reported from a handset: "on landscape it's backwards, you go left it goes
+  // right." Measured against a rest pose taken from that session's own log --
+  // angle 90, beta -2.3, gamma -64.8, which puts device -x straight down -- the
+  // basis this built was exactly 180 degrees out:
+  //
+  //     angle  code screenDown   true screenDown   dot
+  //       0    ( 0.00, -1.00)    (-0.17, -0.98)   +0.98   correct
+  //      90    ( 1.00,  0.00)    (-1.00,  0.04)   -1.00   inverted
+  //
+  // 0 and 180 came out right because cosine is even and sine is zero there,
+  // which is why three years of portrait testing never caught it and why only
+  // landscape was ever reported wrong. Both axes inverted together; the pitch
+  // half went unnoticed because a symmetric wrong answer still moves.
+  const a = -screenAngle * DEG;
   const screenRight: Vec3 = { x: Math.cos(a), y: Math.sin(a), z: 0 };
   const screenDown: Vec3 = { x: Math.sin(a), y: -Math.cos(a), z: 0 };
 

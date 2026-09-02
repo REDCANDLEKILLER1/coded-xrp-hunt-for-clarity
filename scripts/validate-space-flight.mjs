@@ -76,7 +76,11 @@ near(rangeTo(toView(cam({ yaw: 1.1 }), 300, -120, 640)), rangeTo(toView(cam(), 3
 
 // forward() has to agree with the projection, or thrust flies you somewhere
 // other than where you are pointing -- which is unplayable and silent.
-for (const [yaw, pitch] of [[0, 0], [1.2, 0], [-2.4, 0.5], [0.7, -0.9]]) {
+// The past-vertical cases matter now that elevation wraps: 1.6 and 2.1 rad are
+// beyond the old 1.32 clamp, and 3.0 is nearly inverted. They pass because
+// toView/forward/project are general trigonometry -- the clamp was policy, not
+// arithmetic -- and this is what keeps that true.
+for (const [yaw, pitch] of [[0, 0], [1.2, 0], [-2.4, 0.5], [0.7, -0.9], [0, 1.6], [1.1, 2.1], [-0.6, 3.0], [2.0, -2.4]]) {
   const f = forward(cam({ yaw, pitch }));
   near(Math.hypot(f.x, f.y, f.z), 1, 1e-9, `forward(${yaw},${pitch}) must be a unit vector`);
   const ahead = project(cam({ yaw, pitch }), f.x * 900, f.y * 900, f.z * 900);
@@ -132,6 +136,7 @@ check(onScreen(cam(), project(cam(), -30000, 0, 500), 40) === false, 'a contact 
 check(onScreen(cam(), centre, 40) === true, 'a contact dead ahead is on screen');
 
 // ---- the segment's rules --------------------------------------------------
+const codeOfSource = (source) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const game = readFileSync('src/game/space3d/Space3DGame.ts', 'utf8');
 const leg = readFileSync('src/game/space3d/SpaceLane.ts', 'utf8');
 const cockpit = readFileSync('src/game/space3d/Cockpit.ts', 'utf8');
@@ -239,7 +244,64 @@ check(/private desiredPosition\(/.test(game), 'enemies must fly to a position, n
 check(/Math\.random\(\) \* Math\.PI \* 2/.test(game.slice(game.indexOf('private scramble('))),
   'squadrons must be scrambled on a random bearing all the way around');
 check(!/lane grid|drawLaneGrid/.test(game), 'there is no floor in open space: the lane grid must be gone');
-check(/PITCH_LIMIT/.test(game), 'elevation must be clamped, or pitching past vertical silently inverts the world');
+// ---- the nose is free, and the world says which way is up -----------------
+//
+// This used to be `check(/PITCH_LIMIT/.test(game), 'elevation must be
+// clamped, ...')`. Two things were wrong with it.
+//
+// It asserted the REMEDY instead of the rule. The rule is "never invert the
+// world with nothing to tell you it happened"; clamping to 76 degrees was one
+// way to obey it, and the way a phone test found by flying into the wall. An
+// instrument obeys it too, and lets the ship loop.
+//
+// And it was satisfied by a COMMENT. Deleting the constant while leaving a
+// sentence explaining the deletion kept the gate green, because the grep only
+// ever wanted the letters. That is the fifth check in this repository to match
+// prose instead of code, so everything below reads comment-stripped source.
+{
+  const code = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const cockpitCode = cockpit.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+  check(
+    /this\.camera\.pitch = wrapAngle\(this\.camera\.pitch \+ this\.pitchRate \* dt\)/.test(code),
+    'elevation must WRAP, so the ship can complete a loop instead of stopping at a wall',
+  );
+  check(
+    !/PITCH_LIMIT/.test(code),
+    'a pitch clamp is back in the code -- the nose has to come all the way round',
+  );
+
+  // The freedom is only allowed BECAUSE the instrument exists. If the horizon
+  // ever goes, the clamp has to come back, and this is what says so.
+  check(/private drawAttitude\(/.test(cockpitCode), 'unclamped pitch requires an attitude indicator');
+  check(/this\.drawAttitude\(frame, state\)/.test(cockpitCode), 'the attitude indicator must actually be drawn');
+  // Pinned to the ROTATION, not to the identifier. `/state\.roll/` matched
+  // `state.rollReady` -- an unrelated field two functions away -- so removing
+  // the bank from the horizon left the gate green. Same shape as the
+  // `rollClock` / `lock` collision this repo has already been bitten by once.
+  check(
+    /ctx\.rotate\(-state\.roll\)/.test(cockpitCode),
+    'the horizon must counter-rotate by the ship\'s roll, or it does not stay level with the world',
+  );
+  check(
+    /Math\.sin\(state\.pitch\)/.test(cockpitCode),
+    'the horizon must slide with the ship\'s live pitch, or it is decoration',
+  );
+  check(
+    /pitch: this\.camera\.pitch/.test(code) && /roll: this\.camera\.roll/.test(code),
+    'cockpitState must feed the horizon the real camera attitude',
+  );
+  // Drawn from the aperture, which both layouts supply. Keying it to the
+  // artwork rect would put it on the panel in canopy and nowhere in console.
+  check(
+    /drawAttitude\(frame: CockpitFrame/.test(cockpitCode) && /const \{ aperture \} = frame/.test(cockpitCode),
+    'the horizon must be placed from frame.aperture, so it exists in BOTH cockpit layouts',
+  );
+  check(
+    /Math\.cos\(state\.pitch\) < 0/.test(cockpitCode),
+    'the horizon must show inversion as a distinct state -- that is the whole reason the clamp could go',
+  );
+}
 check(/private drawOffscreenCues\(/.test(game) && /this\.drawOffscreenCues\(/.test(game),
   'threats off the glass need a direction cue, or a tail is invisible until the hull runs out');
 
@@ -345,12 +407,12 @@ check(/MISSILE_TURN_RATE/.test(game), 'the seeker must have a bounded turn rate 
 const codeOnly = game.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 check(codeOnly.length > game.length * 0.5, 'comment stripping ate the file — the scraper is broken');
 check(!/barrel roll.{0,40}lock/i.test(codeOnly), 'a roll must not defeat a seeker by animation');
-// Precise, because a substring search cannot work here: "rollClock" itself
-// contains the letters "lock", so any proximity grep around it matches itself.
-// Assert the actual thing instead -- the roll gesture never writes the lock.
-const rollBody = game.split('private startRoll(): void {')[1]?.split('\n  }\n')[0] ?? '';
-check(rollBody.includes('rollClock'), 'could not find startRoll — the scraper is broken');
-check(!/lockId|lockProgress/.test(rollBody), 'starting a roll must not clear or grant the lock');
+// The gesture that must not touch the lock is the double-tap, which used to
+// start a barrel roll and now pulls the trigger. Same rule, current mechanic:
+// shooting must not hand you a lock or take one away.
+const downBody = game.split("this.canvas.addEventListener('pointerdown', (event) => {")[1]?.split('\n    });\n')[0] ?? '';
+check(downBody.includes('tapFiring'), 'could not find the pointer-down handler — the scraper is broken');
+check(!/lockId|lockProgress/.test(downBody), 'pulling the trigger must not clear or grant the lock');
 
 // ---- the rescale: space has to be big enough to see something coming -----
 {
@@ -581,6 +643,150 @@ for (const match of game.matchAll(/cueMusic\('([a-z0-9_]+)'\)/g)) {
 check(/coded:space-complete/.test(game) && /coded:space-defeat/.test(game), 'the segment must announce its outcome');
 check(!/CampaignProgress|MissionDirector/.test(game), 'the segment must not wire itself into the campaign');
 check(/params\.has\('space'\)/.test(main), 'the playtest route must be reachable');
+
+// ---- the lean into a turn must stay a lean ---------------------------------
+// Reported from a handset: "when you try to go left and right it rolls the ship
+// instead of turning." The yaw was correct the whole time; a 16-degree scene
+// rotation was simply louder than it on a phone-sized screen. The bank is a
+// named constant now so it cannot drift back up unnoticed, and it must stay far
+// enough below the deliberate barrel roll that the two never read as the same
+// move.
+const bankCode = codeOfSource(game);
+const bankMatch = bankCode.match(/const TURN_BANK = ([\d.]+);/);
+check(Boolean(bankMatch), 'the lean into a turn must be a named constant, not a literal buried in the update');
+if (bankMatch) {
+  const bank = Number(bankMatch[1]);
+  check(bank > 0, 'a turn should still lean the ship; zero would be a flat turn');
+  check(bank <= 0.12, `the lean must stay small enough that a turn reads as a turn, got ${bank} rad (${(bank * 180 / Math.PI).toFixed(0)} deg)`);
+}
+check(
+  /const bank = clamp\(this\.yawRate \/ TURN_RATE, -1, 1\) \* TURN_BANK;/.test(bankCode),
+  'the lean must be driven by the actual yaw rate through TURN_BANK',
+);
+// The barrel roll is gone: it was bound to the double-tap that is now the
+// trigger, and it carried a deflect that made it the dodge as well as a move.
+// Nothing may quietly bring either half back.
+check(!/startRoll/.test(bankCode), 'the barrel roll must stay removed; its gesture is the trigger now');
+check(!/rollClock|rollCooldown/.test(bankCode), 'no roll timers may linger once the roll is gone');
+check(
+  /this\.camera\.roll = -bank;/.test(bankCode),
+  'the only rotation left on the view is the lean into a turn',
+);
+
+// ---- the finger flies the ship --------------------------------------------
+// "I just played it with my finger and I like it better instead of using tilt
+// ... let's pause that." Tilt is unhooked, not deleted, so these pin the pause
+// rather than the removal: the module, its validator and the sensitivity
+// setting all stay, and one word turns it back on.
+check(/const TILT_STEERING = false;/.test(bankCode), 'tilt steering must stay paused until it is asked for again');
+check(
+  /if \(TILT_STEERING && this\.tilt\.ready && this\.pointerId === null\)/.test(bankCode),
+  'the sensor must not override the drag stick while tilt is paused',
+);
+check(
+  /if \(TILT_STEERING && this\.tilt\.status === 'needs_permission'\)/.test(bankCode),
+  'a paused sensor must not still ask for permission',
+);
+check(/from '\.\/Tilt'/.test(bankCode), 'Tilt.ts is paused, not deleted — the import stays');
+
+// ---- the double tap is the trigger ----------------------------------------
+// It used to start a barrel roll. Holding the second tap keeps the guns firing,
+// so one thumb steers and shoots without leaving the glass; a quick double-tap
+// still gets TAP_FIRE_MIN_SECONDS of burst rather than a few milliseconds of
+// nothing.
+check(
+  /if \(this\.tapFiring \|\| this\.tapFireFloor > 0\) return true;/.test(bankCode),
+  'a held double-tap must pull the trigger',
+);
+check(
+  /this\.lastTapAt >= 0 && this\.clock - this\.lastTapAt < DOUBLE_TAP_SECONDS/.test(bankCode),
+  'the second tap of a pair is what fires; a single tap must not',
+);
+check(
+  /if \(!this\.tapFiring && !this\.pointerMoved && this\.clock - this\.pointerDownAt < 0\.35\)/.test(bankCode),
+  'a DRAG must not count as half a double-tap, or steering then tapping would fire',
+);
+const tapFloor = Number(bankCode.match(/const TAP_FIRE_MIN_SECONDS = ([\d.]+);/)?.[1]);
+check(tapFloor > 0.1 && tapFloor < 0.6, `a quick double-tap needs a real burst, got ${tapFloor}s`);
+check(
+  /this\.tapFireFloor = Math\.max\(0, this\.tapFireFloor - dt\)/.test(bankCode),
+  'the burst floor must tick down, or the guns latch on forever',
+);
+check(!/state\.rollReady/.test(codeOfSource(cockpit)), 'the cockpit must not report a roll the ship cannot do');
+check(/2x TAP = GUNS/.test(cockpit), 'the console has to teach the gesture that replaced the roll');
+
+// ---- homing missiles, and the two answers to them -------------------------
+// "AutoFlare and you get to try to shoot down the missiles -- make the missiles
+// where they have targeting so you can possibly shoot them before they get to
+// you." Three things must hold together or a seeker is a tax rather than a
+// fight: slow enough to see coming, fragile enough to shoot, and stubborn
+// enough that ignoring it costs you.
+const seekerNum = (name) => Number(bankCode.match(new RegExp(`const ${name} = ([\\d.]+);`))?.[1]);
+const seekerSpeed = seekerNum('SEEKER_SPEED');
+const yourSpeed = seekerNum('MISSILE_SPEED');
+const seekerTurn = seekerNum('SEEKER_TURN_RATE');
+const yourTurn = seekerNum('MISSILE_TURN_RATE');
+check(Number.isFinite(seekerSpeed) && Number.isFinite(seekerTurn), 'enemy seekers need named speed and agility');
+// Relationships, not numbers: retuning either side keeps this honest.
+check(seekerSpeed < yourSpeed, `a seeker must be slower than yours so it can be outrun (${seekerSpeed} vs ${yourSpeed})`);
+check(seekerTurn < yourTurn, `a seeker must be less agile than yours so flying still matters (${seekerTurn} vs ${yourTurn})`);
+check(seekerNum('SEEKER_HP') <= 2, 'a seeker has to die to a burst, or shooting it down is not an option');
+check(seekerNum('SEEKER_HIT_RADIUS') > seekerNum('SEEKER_ARM_RANGE'),
+  'the window to shoot a seeker must be wider than the window in which it kills you');
+
+// It has to be shootable, and killing it has to be worth something.
+check(
+  /if \(!missile\.hostile \|\| missile\.hp <= 0\) continue;[\s\S]{0,200}?SEEKER_HIT_RADIUS/.test(bankCode),
+  'player bolts must be able to destroy an incoming seeker',
+);
+check(/this\.score \+= SEEKER_SCORE;/.test(bankCode), 'shooting a seeker down must be worth something');
+// And it must not blow up its own side on the way in.
+check(
+  /if \(missile\.hostile \|\| missile\.life <= 0\) continue;/.test(bankCode),
+  'a seeker must not damage the squadron that launched it',
+);
+
+// The flares: automatic, on a cooldown, and only against something CLOSING.
+check(/private updateFlares\(dt: number\): void \{/.test(bankCode), 'the flare dispenser must exist');
+check(seekerNum('FLARE_COOLDOWN') >= 3, 'flares on no cooldown would make seekers free');
+check(
+  /missile\.vx \* dx \+ missile\.vy \* dy \+ missile\.vz \* dz <= 0\) continue;/.test(bankCode),
+  'the dispenser must only trip on a seeker that is closing, not one already past',
+);
+// Pinned to the ASSIGNMENT, not to the two constants near it. The loose
+// version matched the trigger loop above and survived deleting the line that
+// actually hands the seeker its decoy.
+check(
+  /missile\.decoy = this\.decoys\[[^\]]+\]/.test(bankCode),
+  'a flare must actually take the seekers off you',
+);
+check(
+  /if \(!missile\.hostile \|\| missile\.life <= 0 \|\| missile\.decoy\) continue;/.test(bankCode),
+  'a decoyed seeker must not still detonate on the ship it just lost',
+);
+check(/missile\.life = Math\.min\(missile\.life, SEEKER_DECOYED_LIFE\);/.test(bankCode),
+  'a decoyed seeker must burn out rather than fly blind forever');
+
+// Authored, not hardcoded: which ships carry ordnance is a level-design call.
+check(/missileInterval\?: number;/.test(leg), 'seeker ordnance must be authored on the squadron table');
+const armed = [...leg.matchAll(/missileInterval: ([\d.]+)/g)].map((m) => Number(m[1]));
+check(armed.length >= 1, 'at least one squadron must actually carry seekers, or none are ever launched');
+check(armed.every((v) => v >= 4), `a squadron launching every ${Math.min(...armed)}s is a seeker stream, not a threat`);
+check(/key: 'seekers'/.test(leg), 'the boss needs an ordnance attack');
+check(/'spread' \| 'lance' \| 'swarm' \| 'wall' \| 'seekers'/.test(leg), "the boss attack key must include 'seekers'");
+
+// The warning, because a seeker is the one threat you cannot see by looking.
+check(/private drawInbound\(/.test(cockpit), 'an incoming seeker must warn the player');
+// Defining it is not drawing it: deleting the call left the method in place and
+// the whole warning off the screen.
+check(
+  /this\.drawInbound\(frame, state\);/.test(codeOfSource(cockpit)),
+  'the warning must actually be drawn, not merely defined',
+);
+check(/MISSILE INBOUND/.test(cockpit), 'the warning has to say what it is');
+check(/FLARES READY/.test(cockpit) && /FLARES RELOADING/.test(cockpit), 'the dispenser state must be readable');
+check(/if \(state\.inbound <= 0\) return;/.test(codeOfSource(cockpit)), 'a warning light that is always lit is furniture');
+check(/seeker\?: boolean;/.test(cockpit), 'seekers must plot on the radar');
 
 if (failures.length > 0) {
   console.error('space flight FAILED');

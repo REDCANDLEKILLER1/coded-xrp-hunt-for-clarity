@@ -108,6 +108,9 @@ type Contact = {
   speed: number;
   fireClock: number;
   fireInterval: number;
+  /** Seconds between seeker launches, or 0 for a ship that only has guns. */
+  missileInterval: number;
+  missileClock: number;
   score: number;
   /** Which way round the player this one circles, and from what angle. */
   orbitPhase: number;
@@ -130,7 +133,27 @@ type Missile = {
   x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number;
   /** The lock it was fired with. It tracks THIS and nothing else. */
   targetId: number;
+  /**
+   * True for an enemy seeker, which homes on the SHIP rather than a contact.
+   *
+   * One array and a flag, the way `bolts` already tells its two kinds apart.
+   * Two arrays would mean two copies of the homing integrator, and the whole
+   * point of a seeker is that it steers exactly like the one you fire.
+   */
+  hostile: boolean;
+  /** Hits to kill. A seeker can be shot out of the air; yours cannot be. */
+  hp: number;
+  /** The flare it took instead of you, or null while it still has your scent. */
+  decoy: Decoy | null;
 };
+
+/**
+ * A flare: a bright, hot, short-lived thing that is not your ship.
+ *
+ * It has velocity because a flare that hangs where it was dropped is a flare
+ * the seeker flies past on its way back to you.
+ */
+type Decoy = { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number };
 type Burst = { x: number; y: number; z: number; life: number; max: number };
 /** Stars sit on a unit sphere: infinitely far, so they turn but never pass. */
 type Star = { x: number; y: number; z: number; mag: number };
@@ -159,7 +182,6 @@ const TURN_RATE = 1.35;
 /** How quickly the turn rate reaches the stick. Lower is a heavier ship. */
 const TURN_EASE = 3.4;
 /** The warship is a capital hull, not a fighter: it does not pitch past this. */
-const PITCH_LIMIT = 1.32;
 /** Stick travel, in screen fractions, for a full-rate turn. */
 const STICK_TRAVEL = 0.26;
 
@@ -184,11 +206,86 @@ const MISSILE_TURN_RATE = 2.4;
 const MISSILE_DAMAGE = 6;
 /** Half-angle of the cone a missile will look inside for something to chase. */
 const MISSILE_SEEK_CONE = 0.42;
+
+// Enemy seekers, flares, and the answer to both.
+//
+// "AutoFlare and you get to try to shoot down the missiles -- make the missiles
+// where they have targeting so you can possibly shoot them before they get to
+// you." Three things have to be true at once for that to be a fight rather than
+// a tax: the seeker has to be slow enough to see coming, fragile enough that a
+// gun burst kills it, and stubborn enough that ignoring it costs you.
+/** Slower than yours (1150) so it can be outrun and, mainly, out-shot. */
+const SEEKER_SPEED = 560;
+/** Half your missile's agility: it can be beaten by flying, with effort. */
+const SEEKER_TURN_RATE = 1.05;
+const SEEKER_LIFE = 16;
+/** One clean burst kills it. It is a threat because of what it does, not its hp. */
+const SEEKER_HP = 1;
+/** How near a bolt must pass to kill it. Generous: it is a small, fast target. */
+const SEEKER_HIT_RADIUS = 62;
+/** How close it gets before the warhead goes off. */
+const SEEKER_ARM_RANGE = 60;
+/** Killing one is worth something -- it was going to cost you a hull point. */
+const SEEKER_SCORE = 45;
+/** Range a stand-off ship must be inside before it will spend a seeker. */
+const SEEKER_LAUNCH_RANGE = 4200;
+
+/** Seconds between automatic flare pops. Long enough that a salvo still bites. */
+const FLARE_COOLDOWN = 7;
+/** A seeker this close and still closing trips the dispenser. */
+const FLARE_TRIGGER_RANGE = 620;
+/** Seekers within this of the ship when the flares go take the bait. */
+const FLARE_BREAK_RANGE = 780;
+const FLARE_LIFE = 3.2;
+const FLARE_COUNT = 3;
+/**
+ * A decoyed seeker gets this long to live, not its full remaining life.
+ *
+ * It has lost you and it is not coming back -- flares that only delayed the
+ * hit would make the dispenser feel like nothing. Cutting the life short is
+ * also what keeps a long fight from filling space with blind ordnance.
+ */
+const SEEKER_DECOYED_LIFE = 4;
 /** Seconds without damage before a shield bank starts coming back. */
 const SHIELD_REGEN_DELAY = 4.5;
 const SHIELD_REGEN_PER_SECOND = 0.22;
+/**
+ * How far the view leans into a turn, in radians.
+ *
+ * This is the only rotation the view has left now that the barrel roll is gone,
+ * and it has to stay small enough that a turn still reads as a turn on a screen
+ * the size of a hand.
+ */
+const TURN_BANK = 0.1;
+
 /** Two taps on empty glass inside this window is a barrel roll. */
+/**
+ * Tilt steering is PAUSED, not removed.
+ *
+ * "I just played it with my finger and I like it better instead of using tilt
+ * ... it's so hard to control, let's get rid of the tilt for now, let's pause
+ * that." The drag stick was already built as the fallback for desktop and for a
+ * denied permission; this makes it the control scheme and stops the sensor
+ * overriding it.
+ *
+ * Nothing is deleted. Tilt.ts, its validator, the sensitivity setting and the
+ * whole calibration path stay exactly where they are, the way the on-foot
+ * interior was unhooked rather than thrown away. Flipping this back on is one
+ * word.
+ */
+const TILT_STEERING = false;
+
 const DOUBLE_TAP_SECONDS = 0.32;
+
+/**
+ * Shortest burst a double-tap can produce.
+ *
+ * Firing runs while the second tap is HELD, so one thumb steers and shoots
+ * without leaving the glass. A quick double-tap would otherwise hold the
+ * trigger for a few milliseconds and produce nothing; this makes the fast
+ * gesture a real burst.
+ */
+const TAP_FIRE_MIN_SECONDS = 0.22;
 /**
  * The warp drive: hold it and cross real distance, but the coil heats.
  *
@@ -211,8 +308,6 @@ const MUZZLE_AHEAD = 210;
 /** Nothing that is merely a bolt may take over the screen. */
 const MAX_BOLT_PIXELS = 30;
 const HIT_GRACE = 1.2;
-const ROLL_TIME = 0.7;
-const ROLL_COOLDOWN = 1.1;
 
 const STAR_COUNT = 260;
 const MOTE_COUNT = 90;
@@ -359,12 +454,23 @@ export class Space3DGame {
   private yawRate = 0;
   private pitchRate = 0;
   private throttle = 0.72;
-  private rollClock = 0;
-  private rollCooldown = 0;
+  /**
+   * The steering pointer is also the trigger, once it arrives as a double-tap.
+   *
+   * Held: guns fire until the finger lifts. `tapFireFloor` keeps a quick
+   * double-tap firing for TAP_FIRE_MIN_SECONDS after release, so the fast
+   * gesture is a burst rather than nothing.
+   */
+  private tapFiring = false;
+  private tapFireFloor = 0;
 
   private contacts: Contact[] = [];
   private bolts: Bolt[] = [];
   private missiles: Missile[] = [];
+  private decoys: Decoy[] = [];
+  private flareCooldown = 0;
+  /** Seekers with your scent right now. Drives the inbound warning. */
+  private inbound = 0;
   private bursts: Burst[] = [];
   private stars: Star[] = [];
   private motes: Mote[] = [];
@@ -514,11 +620,14 @@ export class Space3DGame {
     this.yawRate = 0;
     this.pitchRate = 0;
     this.throttle = 0.72;
-    this.rollClock = 0;
-    this.rollCooldown = 0;
+    this.tapFiring = false;
+    this.tapFireFloor = 0;
     this.contacts = [];
     this.bolts = [];
     this.missiles = [];
+    this.decoys = [];
+    this.flareCooldown = 0;
+    this.inbound = 0;
     this.bursts = [];
     this.gunHeat = 0;
     this.gunClock = 0;
@@ -588,7 +697,9 @@ export class Space3DGame {
       event.preventDefault();
       // iOS will not hand over the sensor without a live gesture, so take the
       // grant from the first touch rather than making the player find a button.
-      if (this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
+      // Skipped while tilt is paused: asking for a sensor nothing reads is a
+      // permission dialog in exchange for nothing.
+      if (TILT_STEERING && this.tilt.status === 'needs_permission') void this.tilt.requestPermission();
       // The settings overlay claims every pointer while it is open, BEFORE the
       // retry tap and before the weapon buttons -- otherwise a tap meant for a
       // row would also restart the run or fire a missile through the panel.
@@ -626,6 +737,16 @@ export class Space3DGame {
       this.pointerStart = { x: event.clientX, y: event.clientY };
       this.pointerMoved = false;
       this.pointerDownAt = this.clock;
+
+      // The second tap of a pair pulls the trigger, and KEEPS it pulled while
+      // the finger stays down -- so the same thumb shoots and then drags the
+      // ship onto the target without ever coming off the glass. This is what
+      // the double tap used to spend on a barrel roll.
+      if (this.lastTapAt >= 0 && this.clock - this.lastTapAt < DOUBLE_TAP_SECONDS) {
+        this.tapFiring = true;
+        this.tapFireFloor = TAP_FIRE_MIN_SECONDS;
+        this.lastTapAt = -1;
+      }
       this.tryCapture(event.pointerId);
     });
 
@@ -646,16 +767,12 @@ export class Space3DGame {
     const release = (event: PointerEvent): void => {
       if (this.weaponPointers.delete(event.pointerId)) return;
       if (event.pointerId !== this.pointerId) return;
-      // The roll moved to a DOUBLE tap. A single tap used to do it, which is
-      // ambiguous now that there are buttons to press and a glass to miss.
-      if (!this.pointerMoved && this.clock - this.pointerDownAt < 0.35) {
-        if (this.clock - this.lastTapAt < DOUBLE_TAP_SECONDS) {
-          this.startRoll();
-          this.lastTapAt = -1;
-        } else {
-          this.lastTapAt = this.clock;
-        }
+      // A tap that did not travel is half of a double-tap. A drag never is:
+      // steering across the screen and then tapping must not fire the guns.
+      if (!this.tapFiring && !this.pointerMoved && this.clock - this.pointerDownAt < 0.35) {
+        this.lastTapAt = this.clock;
       }
+      this.tapFiring = false;
       this.pointerId = null;
       this.stickX = 0;
       this.stickY = 0;
@@ -669,7 +786,6 @@ export class Space3DGame {
       if (event.key === ' ') {
         event.preventDefault();
         if (this.mode === 'won' || this.mode === 'lost') this.restart();
-        else this.startRoll();
       }
       if (event.key.toLowerCase() === 'm') this.fireMissile();
     });
@@ -791,10 +907,17 @@ export class Space3DGame {
     return null;
   }
 
-  /** True while a finger is holding the trigger, or the keyboard is. */
+  /**
+   * True while the trigger is pulled: the GUNS button, the keyboard, or a
+   * double-tap being held on the glass.
+   *
+   * Space used to be the barrel roll and was excluded here for that reason.
+   * With the roll gone it is a trigger like the rest.
+   */
   private get gunsHeld(): boolean {
+    if (this.tapFiring || this.tapFireFloor > 0) return true;
     for (const id of this.weaponPointers.values()) if (id === 'guns') return true;
-    return this.keys.has(' ') === false && (this.keys.has('f') || this.keys.has('control'));
+    return this.keys.has(' ') || this.keys.has('f') || this.keys.has('control');
   }
 
   /** True while warp is demanded AND the coil will accept it. */
@@ -828,12 +951,7 @@ export class Space3DGame {
     }
   }
 
-  private startRoll(): void {
-    if (this.rollCooldown > 0 || this.rollClock > 0) return;
-    this.rollClock = ROLL_TIME;
-    this.rollCooldown = ROLL_TIME + ROLL_COOLDOWN;
-    sfx.play('pulse');
-  }
+
 
   private resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -888,6 +1006,7 @@ export class Space3DGame {
     this.updateLock(dt);
     this.updateBolts(dt);
     this.updateMissiles(dt);
+    this.updateFlares(dt);
     this.fireGuns(dt);
     this.updateShields(dt);
     this.collide();
@@ -939,16 +1058,17 @@ export class Space3DGame {
 
   private updateFlight(dt: number): void {
     if (this.graceClock > 0) this.graceClock = Math.max(0, this.graceClock - dt);
-    if (this.rollClock > 0) this.rollClock = Math.max(0, this.rollClock - dt);
-    if (this.rollCooldown > 0) this.rollCooldown = Math.max(0, this.rollCooldown - dt);
+    // A quick double-tap keeps firing for a moment after the finger lifts, so
+    // the fast gesture is a burst rather than a few milliseconds of nothing.
+    if (this.tapFireFloor > 0) this.tapFireFloor = Math.max(0, this.tapFireFloor - dt);
 
-    // Tilt flies the ship when the sensor is live. Drag stays as the fallback
-    // for desktop, for a denied permission, and for headless verification --
-    // a denied prompt must not leave an unplayable level with no way out.
-    this.tilt.update(dt);
+    // The finger flies the ship. Displacement from where it went down is a
+    // turn RATE, so a thumb can come all the way around -- which a
+    // position-mapped drag can never do, because it runs out of screen.
+    if (TILT_STEERING) this.tilt.update(dt);
     let stickX = this.stickX;
     let stickY = this.stickY;
-    if (this.tilt.ready && this.pointerId === null) {
+    if (TILT_STEERING && this.tilt.ready && this.pointerId === null) {
       const lean = this.tilt.read();
       stickX = lean.x;
       stickY = lean.y;
@@ -987,19 +1107,37 @@ export class Space3DGame {
         yawRate: Math.round(this.yawRate * 100) / 100,
         pitchRate: Math.round(this.pitchRate * 100) / 100,
         pitch: Math.round(this.camera.pitch * 100) / 100,
-        pitchPinned: Math.abs(this.camera.pitch) >= PITCH_LIMIT - 1e-3,
       });
     }
 
     this.camera.yaw = wrapAngle(this.camera.yaw + this.yawRate * dt);
-    // Elevation is clamped rather than wrapped: pitching past vertical would
-    // invert the world with no horizon to tell you it had happened.
-    this.camera.pitch = clamp(this.camera.pitch + this.pitchRate * dt, -PITCH_LIMIT, PITCH_LIMIT);
+    // Elevation WRAPS, so the ship can loop.
+    //
+    // It used to clamp at PITCH_LIMIT (1.32 rad, 76 degrees), on the reasoning
+    // that "pitching past vertical would invert the world with no horizon to
+    // tell you it had happened". The reasoning was sound; the remedy was aimed
+    // at the wrong thing. A phone test found the wall directly -- "you hit a
+    // place where it won't let you go any further" -- and the objection was
+    // never to being inverted, it was to being inverted with no way to know.
+    // So the horizon got built (Cockpit.drawAttitude) and the wall came down.
+    //
+    // Nothing in the projection needed changing for this. `toView`, `forward`
+    // and `project` are general trigonometry: measured before touching them,
+    // the point the ship is flying at still lands exactly on the reticle at 91,
+    // 120, 181 and 270 degrees, and at 270 the world draws upside down, which
+    // is what a ship that has looped is supposed to look like. The clamp was
+    // policy, not arithmetic.
+    this.camera.pitch = wrapAngle(this.camera.pitch + this.pitchRate * dt);
 
     // Bank into the turn, plus the barrel roll on top.
-    const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * 0.28;
-    const spin = this.rollClock > 0 ? (1 - this.rollClock / ROLL_TIME) * Math.PI * 2 : 0;
-    this.camera.roll = -bank + spin;
+    //
+    // The bank used to reach 16 degrees, and on a phone that was the loudest
+    // thing on screen: "when you try to go left and right it rolls the ship
+    // instead of turning." The yaw was real and correct the whole time, it just
+    // could not be seen underneath a scene rotating that far. Six degrees still
+    // leans the ship into a turn without the lean becoming the turn.
+    const bank = clamp(this.yawRate / TURN_RATE, -1, 1) * TURN_BANK;
+    this.camera.roll = -bank;
 
     // Warp: heat while engaged, cool while not. Maxing the coil latches it out
     // until it has cooled well down, so you cannot feather the limit -- you
@@ -1121,6 +1259,12 @@ export class Space3DGame {
         speed: squadron.speed * squadronClass.speedScale,
         fireClock: squadron.fireInterval > 0 ? squadron.fireInterval * (0.5 + Math.random()) : Number.POSITIVE_INFINITY,
         fireInterval: squadron.fireInterval,
+        missileInterval: squadron.missileInterval ?? 0,
+        // Staggered, so a flight of four does not launch as one indivisible
+        // salvo the dispenser answers with a single pop.
+        missileClock: squadron.missileInterval
+          ? squadron.missileInterval * (0.6 + Math.random() * 0.8)
+          : Number.POSITIVE_INFINITY,
         score: squadron.score,
         orbitPhase: Math.random() * Math.PI * 2,
         orbitTilt: (Math.random() - 0.5) * 1.4,
@@ -1309,6 +1453,16 @@ export class Space3DGame {
         if (contact.fireClock <= 0) {
           contact.fireClock = contact.fireInterval;
           this.fireHostile(contact);
+        }
+      }
+      // Ordnance is not on the same leash as the guns: a stand-off ship holds
+      // at a range where its guns are a nuisance, and the seeker is the reason
+      // you cannot simply ignore it out there.
+      if (contact.missileInterval > 0 && range < SEEKER_LAUNCH_RANGE) {
+        contact.missileClock -= dt;
+        if (contact.missileClock <= 0) {
+          contact.missileClock = contact.missileInterval;
+          this.launchSeeker(contact.x, contact.y, contact.z);
         }
       }
     }
@@ -1572,6 +1726,9 @@ export class Space3DGame {
         speed: 215,
         fireClock: 1.6,
         fireInterval: 2.2,
+        // Escorts are knife-fighters; the ordnance lives on the stand-off ships.
+        missileInterval: 0,
+        missileClock: Number.POSITIVE_INFINITY,
         score: 70,
         orbitPhase: angle,
         orbitTilt: (Math.random() - 0.5) * 1.2,
@@ -1581,6 +1738,13 @@ export class Space3DGame {
   }
 
   private fireBossPattern(key: string, shots: number): void {
+    if (key === 'seekers') {
+      for (let i = 0; i < shots; i += 1) {
+        const spread = (i - (shots - 1) / 2) * 90;
+        this.launchSeeker(this.boss.x + spread, this.boss.y, this.boss.z);
+      }
+      return;
+    }
     sfx.play('enemyShoot');
     const dx = this.camera.x - this.boss.x;
     const dy = this.camera.y - this.boss.y;
@@ -1717,6 +1881,9 @@ export class Space3DGame {
     this.missileCharge = 0;
     const dir = forward(this.camera);
     this.missiles.push({
+      hostile: false,
+      hp: 1,
+      decoy: null,
       x: this.camera.x + dir.x * MUZZLE_AHEAD,
       y: this.camera.y + dir.y * MUZZLE_AHEAD + 14,
       z: this.camera.z + dir.z * MUZZLE_AHEAD,
@@ -1731,24 +1898,133 @@ export class Space3DGame {
   }
 
   /** Missiles steer toward their mark at a bounded rate, so they can be out-turned. */
+  /**
+   * An enemy seeker, aimed at where you are now and steering from there.
+   *
+   * It is launched toward the ship rather than along the firer's nose: a
+   * seeker that has to turn 90 degrees off the rail before it starts tracking
+   * is one you never have to answer.
+   */
+  private launchSeeker(x: number, y: number, z: number): void {
+    const dir = normalise({ x: this.camera.x - x, y: this.camera.y - y, z: this.camera.z - z });
+    this.missiles.push({
+      hostile: true,
+      hp: SEEKER_HP,
+      decoy: null,
+      x,
+      y,
+      z,
+      vx: dir.x * SEEKER_SPEED,
+      vy: dir.y * SEEKER_SPEED,
+      vz: dir.z * SEEKER_SPEED,
+      life: SEEKER_LIFE,
+      targetId: -1,
+    });
+    sfx.play('enemyShoot');
+    this.banner('MISSILE LAUNCH', 1.6);
+  }
+
+  /**
+   * What a seeker is steering at: the flare it took, or the ship.
+   *
+   * Once decoyed it never re-acquires. A flare that only delayed the hit would
+   * make the dispenser feel like nothing, and the point of an automatic
+   * countermeasure is that it actually counters.
+   */
+  private seekerMark(missile: Missile): { x: number; y: number; z: number } | null {
+    if (missile.decoy) return missile.decoy.life > 0 ? missile.decoy : null;
+    return { x: this.camera.x, y: this.camera.y, z: this.camera.z };
+  }
+
+  /**
+   * Flares, popped for you when something is about to hit you.
+   *
+   * Automatic by request. The cooldown is what stops it being a free pass: a
+   * second salvo inside seven seconds is yours to shoot down or fly out of.
+   */
+  private updateFlares(dt: number): void {
+    for (const decoy of this.decoys) {
+      decoy.x += decoy.vx * dt;
+      decoy.y += decoy.vy * dt;
+      decoy.z += decoy.vz * dt;
+      decoy.life -= dt;
+    }
+    this.decoys = this.decoys.filter((decoy) => decoy.life > 0);
+    if (this.flareCooldown > 0) this.flareCooldown = Math.max(0, this.flareCooldown - dt);
+
+    this.inbound = 0;
+    let threatened = false;
+    for (const missile of this.missiles) {
+      if (!missile.hostile || missile.decoy) continue;
+      this.inbound += 1;
+      const dx = this.camera.x - missile.x;
+      const dy = this.camera.y - missile.y;
+      const dz = this.camera.z - missile.z;
+      const range = Math.hypot(dx, dy, dz);
+      if (range > FLARE_TRIGGER_RANGE) continue;
+      // Closing, not merely near: a seeker that has already overshot and is on
+      // its way out must not spend the dispenser.
+      if (missile.vx * dx + missile.vy * dy + missile.vz * dz <= 0) continue;
+      threatened = true;
+    }
+    if (!threatened || this.flareCooldown > 0) return;
+
+    this.flareCooldown = FLARE_COOLDOWN;
+    const dir = forward(this.camera);
+    const right = normalise({ x: dir.z, y: 0, z: -dir.x });
+    const up = cross(dir, right);
+    for (let i = 0; i < FLARE_COUNT; i += 1) {
+      const t = i / (FLARE_COUNT - 1) - 0.5;
+      const away = normalise({
+        x: -dir.x + right.x * t * 1.6 + up.x * 0.35,
+        y: -dir.y + right.y * t * 1.6 + up.y * 0.35,
+        z: -dir.z + right.z * t * 1.6 + up.z * 0.35,
+      });
+      // Dropped a little behind the ship rather than on it, so the seekers are
+      // pulled into a volume you have already left.
+      const decoy: Decoy = {
+        x: this.camera.x + away.x * 90,
+        y: this.camera.y + away.y * 90,
+        z: this.camera.z + away.z * 90,
+        vx: away.x * 260,
+        vy: away.y * 260,
+        vz: away.z * 260,
+        life: FLARE_LIFE,
+      };
+      this.decoys.push(decoy);
+      this.burst(decoy.x + away.x * 40, decoy.y + away.y * 40, decoy.z + away.z * 40);
+    }
+    for (const missile of this.missiles) {
+      if (!missile.hostile || missile.decoy) continue;
+      const range = Math.hypot(missile.x - this.camera.x, missile.y - this.camera.y, missile.z - this.camera.z);
+      if (range > FLARE_BREAK_RANGE) continue;
+      missile.decoy = this.decoys[Math.floor(Math.random() * this.decoys.length)] ?? null;
+      missile.life = Math.min(missile.life, SEEKER_DECOYED_LIFE);
+    }
+    sfx.play('pulse');
+    this.banner('FLARES AWAY', 1.4);
+  }
+
   private updateMissiles(dt: number): void {
     this.missileCharge = Math.min(1, this.missileCharge + dt / MISSILE_CHARGE_SECONDS);
     for (const missile of this.missiles) {
-      const mark = this.seekTarget(missile);
+      const mark = missile.hostile ? this.seekerMark(missile) : this.seekTarget(missile);
       if (mark) {
         const toward = normalise({ x: mark.x - missile.x, y: mark.y - missile.y, z: mark.z - missile.z });
         const heading = normalise({ x: missile.vx, y: missile.vy, z: missile.vz });
         // Bounded turn: a seeker that snaps to its mark cannot be beaten by
         // flying, and beating it by flying is the entire point.
-        const blend = Math.min(1, MISSILE_TURN_RATE * dt);
+        const turn = missile.hostile ? SEEKER_TURN_RATE : MISSILE_TURN_RATE;
+        const speed = missile.hostile ? SEEKER_SPEED : MISSILE_SPEED;
+        const blend = Math.min(1, turn * dt);
         const steered = normalise({
           x: heading.x + (toward.x - heading.x) * blend,
           y: heading.y + (toward.y - heading.y) * blend,
           z: heading.z + (toward.z - heading.z) * blend,
         });
-        missile.vx = steered.x * MISSILE_SPEED;
-        missile.vy = steered.y * MISSILE_SPEED;
-        missile.vz = steered.z * MISSILE_SPEED;
+        missile.vx = steered.x * speed;
+        missile.vy = steered.y * speed;
+        missile.vz = steered.z * speed;
       }
       missile.x += missile.vx * dt;
       missile.y += missile.vy * dt;
@@ -1963,6 +2239,22 @@ export class Space3DGame {
         break;
       }
       if (bolt.life <= 0) continue;
+      // Seekers can be shot out of the air. This is the whole reason they are
+      // slow and fragile: an incoming missile is a target, not a countdown.
+      for (const missile of this.missiles) {
+        if (!missile.hostile || missile.hp <= 0) continue;
+        if (segmentDistance(from, to, missile) > SEEKER_HIT_RADIUS) continue;
+        missile.hp -= 1;
+        bolt.life = 0;
+        if (missile.hp <= 0) {
+          missile.life = 0;
+          this.score += SEEKER_SCORE;
+          this.burst(missile.x, missile.y, missile.z);
+          sfx.play('explode');
+        }
+        break;
+      }
+      if (bolt.life <= 0) continue;
       if (this.mode === 'boss' && this.bossHp > 0 && segmentDistance(from, to, this.boss) <= this.leg.boss.size * 0.45) {
         // The interdictor is only soft on its recovery: shooting it through a
         // wind-up is meant to be worth less than waiting for the opening.
@@ -1974,9 +2266,10 @@ export class Space3DGame {
         if (this.bossHp <= 0) this.win();
       }
     }
-    // Missiles: same swept test, bigger radius, much bigger bite.
+    // Missiles: same swept test, bigger radius, much bigger bite. Yours only --
+    // a seeker passing through a squadron does not blow up its own side.
     for (const missile of this.missiles) {
-      if (missile.life <= 0) continue;
+      if (missile.hostile || missile.life <= 0) continue;
       const from = { x: missile.x - missile.vx * (1 / 60), y: missile.y - missile.vy * (1 / 60), z: missile.z - missile.vz * (1 / 60) };
       const to = { x: missile.x, y: missile.y, z: missile.z };
       for (const contact of this.contacts) {
@@ -2008,17 +2301,25 @@ export class Space3DGame {
     this.bolts = this.bolts.filter((bolt) => bolt.life > 0);
     this.contacts = this.contacts.filter((contact) => contact.hp > 0);
 
-    // A roll deflects rather than phases: shots that would have hit are spent.
-    if (this.rollClock > 0) {
-      for (const bolt of this.bolts) {
-        if (!bolt.hostile) continue;
-        const range = Math.hypot(bolt.x - this.camera.x, bolt.y - this.camera.y, bolt.z - this.camera.z);
-        if (range < 160) bolt.life = 0;
-      }
-      this.bolts = this.bolts.filter((bolt) => bolt.life > 0);
-      return;
-    }
+    // The barrel roll used to spend any hostile bolt within 160 units, which
+    // made it the dodge as well as the move. Both are gone together: a roll
+    // that deflected without being rollable would be a rule with no gesture.
+    // Flying out of the line of fire is the dodge now.
     if (this.graceClock > 0) return;
+
+    for (const missile of this.missiles) {
+      // A decoyed seeker is chasing a flare, and the flares are dropped from
+      // the ship -- so its course still runs close by. It has lost you: letting
+      // it detonate on the way past would make the dispenser a coin flip.
+      if (!missile.hostile || missile.life <= 0 || missile.decoy) continue;
+      const range = Math.hypot(missile.x - this.camera.x, missile.y - this.camera.y, missile.z - this.camera.z);
+      if (range > SEEKER_ARM_RANGE) continue;
+      missile.life = 0;
+      this.burst(missile.x, missile.y, missile.z);
+      sfx.play('bigExplode');
+      this.takeHitFrom(missile.x - missile.vx, missile.y - missile.vy, missile.z - missile.vz);
+      break;
+    }
 
     for (const bolt of this.bolts) {
       if (!bolt.hostile || bolt.life <= 0) continue;
@@ -2169,6 +2470,10 @@ export class Space3DGame {
       const p = project(this.camera, missile.x, missile.y, missile.z);
       if (p.visible) drawables.push({ depth: p.depth, paint: () => this.drawMissile(missile, p) });
     }
+    for (const decoy of this.decoys) {
+      const p = project(this.camera, decoy.x, decoy.y, decoy.z);
+      if (p.visible) drawables.push({ depth: p.depth, paint: () => this.drawFlare(decoy, p) });
+    }
     for (const burst of this.bursts) {
       const p = project(this.camera, burst.x, burst.y, burst.z);
       if (p.visible) drawables.push({ depth: p.depth, paint: () => this.drawBurst(burst, p) });
@@ -2232,6 +2537,20 @@ export class Space3DGame {
         locked: contact.id === this.lockId,
       });
     }
+    // Seekers plot too. Being tailed by something you cannot see is exactly
+    // what the radar exists for, and an incoming missile is the purest case.
+    for (const missile of this.missiles) {
+      if (!missile.hostile || missile.life <= 0) continue;
+      const view = toView(this.camera, missile.x, missile.y, missile.z);
+      const range = rangeTo(view);
+      contacts.push({
+        bearing: bearing(view),
+        range,
+        elevation: clamp(-view.y / Math.max(1, range), -1, 1),
+        hostile: true,
+        seeker: true,
+      });
+    }
     if (this.mode === 'boss' && this.bossHp > 0) {
       const view = toView(this.camera, this.boss.x, this.boss.y, this.boss.z);
       const range = rangeTo(view);
@@ -2256,6 +2575,8 @@ export class Space3DGame {
       warpEngaged: this.warpHeld,
       warpReady: this.warpReady,
       throttle: this.throttle,
+      inbound: this.inbound,
+      flareReady: this.flareCooldown <= 0,
       bossHealth: this.mode === 'boss' && this.bossHp > 0 ? Math.max(0, this.bossHp / this.leg.boss.hp) : null,
       bossLabel: this.leg.boss.label,
       status: this.mode === 'boss' ? 'INTERCEPT' : `NAV ${this.leg.destination}`,
@@ -2264,7 +2585,11 @@ export class Space3DGame {
       lock: this.lockReadout(),
       lockProgress: this.lockId === null ? this.lockProgress : 1,
       radarRange: RADAR_RANGE,
-      rollReady: this.rollCooldown <= 0,
+      // The horizon reads these live. Passing anything derived or smoothed
+      // here would make the instrument agree with itself rather than with the
+      // ship, which is the one thing it must not do.
+      pitch: this.camera.pitch,
+      roll: this.camera.roll,
       clock: this.clock,
     };
   }
@@ -2541,7 +2866,14 @@ export class Space3DGame {
     // The backdrop is the sky at infinity: it slides with the camera's heading
     // so turning changes what is out there, rather than dragging a wallpaper.
     const shiftX = -wrapAngle(this.camera.yaw) / Math.PI * w * 0.5;
-    const shiftY = this.camera.pitch / Math.PI * h * 0.7;
+    // Driven by sin(pitch), not by pitch itself, because pitch WRAPS now.
+    //
+    // A linear pitch/PI term was continuous while pitch was clamped to +/-1.32,
+    // but the moment it can reach +/-PI the sky snaps the full height of the
+    // screen as the angle wraps -- a visible tear at exactly the top of a loop.
+    // sin() carries the same sense through the useful range and comes back
+    // smoothly, so a loop slides the far field through and out the other side.
+    const shiftY = Math.sin(this.camera.pitch) * h * 0.7;
     // Faint. At half opacity this read as a wall hanging in front of the ship
     // instead of as the far field, and it drowned the stars that are the only
     // thing telling you which way you are pointing.
@@ -2705,17 +3037,40 @@ export class Space3DGame {
     const size = clamp(screenSize(this.camera, 26, p.depth), 2, 44);
     const { ctx } = this;
     ctx.save();
+    // Yours and theirs share a sprite; the tint is what tells them apart at a
+    // glance, and at a glance is the only look you get.
+    if (missile.hostile) {
+      ctx.shadowColor = '#ff3355';
+      ctx.shadowBlur = size * 0.9;
+    }
     if (!this.sprites.draw('projectiles', 'seeker_missile', p.sx - size / 2, p.sy - size, size, size * 2, this.clock)) {
-      ctx.fillStyle = AMBER;
+      ctx.fillStyle = missile.hostile ? '#ff3355' : AMBER;
       ctx.beginPath();
       ctx.arc(p.sx, p.sy, size * 0.5, 0, Math.PI * 2);
       ctx.fill();
     }
     // A short exhaust so it reads as under power rather than falling.
     ctx.globalAlpha = 0.55 + 0.3 * Math.sin(this.clock * 40);
-    ctx.fillStyle = '#ffd27a';
+    ctx.fillStyle = missile.hostile ? '#ff8a6a' : '#ffd27a';
     ctx.beginPath();
     ctx.arc(p.sx, p.sy + size * 0.7, size * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** A flare: too bright to look at, burning down, obviously not a ship. */
+  private drawFlare(decoy: Decoy, p: ReturnType<typeof project>): void {
+    if (!onScreen(this.camera, p, 60)) return;
+    const fade = clamp(decoy.life / FLARE_LIFE, 0, 1);
+    const size = clamp(screenSize(this.camera, 30, p.depth), 2, 40) * (0.6 + 0.4 * Math.sin(this.clock * 55));
+    const { ctx } = this;
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.shadowColor = '#fff2b0';
+    ctx.shadowBlur = size * 2;
+    ctx.fillStyle = '#fff6c8';
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, Math.max(1.2, size * 0.5), 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
