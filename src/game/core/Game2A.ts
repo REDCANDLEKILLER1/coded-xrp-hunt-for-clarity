@@ -3733,8 +3733,20 @@ export class Game2A {
       // them all would trap the player behind an overlay with no way out. In
       // that case any tap banks the level and closes.
       if (!this.allUpgradesMaxed()) return void sfx.play('deny');
-      this.score += ALL_MAXED_SCORE;
-      this.missionBannerText = `ALL SYSTEMS MAX // +${ALL_MAXED_SCORE}`;
+      // Pay for EVERY rank being closed out, not just the one on screen.
+      //
+      // awardXp loops -- a single boss kill can cross two thresholds at once --
+      // so pendingUpgrades is regularly greater than 1, and this used to add a
+      // flat ALL_MAXED_SCORE and then set pendingUpgrades to 0. Two ranks
+      // banked together paid 250 instead of 500 and the second one vanished
+      // with no message. It is worst exactly where it is most likely: late in a
+      // run, with every track full, killing something big.
+      const banked = Math.max(1, this.pendingUpgrades);
+      const reward = ALL_MAXED_SCORE * banked;
+      this.score += reward;
+      this.missionBannerText = banked > 1
+        ? `ALL SYSTEMS MAX // ${banked} RANKS +${reward}`
+        : `ALL SYSTEMS MAX // +${reward}`;
       this.missionBannerClock = 2.4;
       this.pendingUpgrades = 0;
       this.upgradeOffer = [];
