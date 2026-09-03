@@ -132,7 +132,43 @@
       "notes": "Guardian Protocol, the transit-leg boss. Keyed from the approved 1254x1254 RGB render: background flooded from the borders so the dark armour panels stay solid, with a 7px luminance feather on the neon falloff. Squared, trimmed and resampled to 640."
     }
   },
-  "weapons": {},
+  "weapons": {
+    "bb_shot": {
+      "src": "/assets/weapons/weapon_lvl1_bb_shot.webp",
+      "type": "image",
+      "notes": "Rung 1 card art. Pack: CODED_XRP_2D_WEAPON_UPGRADE_RUNTIME_PACK, ledger-verified."
+    },
+    "bb_repeater": {
+      "src": "/assets/weapons/weapon_lvl2_twin_beam.webp",
+      "type": "image",
+      "notes": "Rung 2 card art."
+    },
+    "tri_beam": {
+      "src": "/assets/weapons/weapon_lvl3_tri_shot.webp",
+      "type": "image",
+      "notes": "Rung 3 card art."
+    },
+    "quad_beam": {
+      "src": "/assets/weapons/weapon_lvl4_wide_spread.webp",
+      "type": "image",
+      "notes": "Rung 4 card art. Pack filename says \"wide_spread\"; the gun fires four PARALLEL columns -- nothing in the ladder fans."
+    },
+    "pulse_wave": {
+      "src": "/assets/weapons/weapon_lvl5_pulse_wave.webp",
+      "type": "image",
+      "notes": "Rungs 5 and 6 card art -- one image for the two openers of the pulse family."
+    },
+    "ledger_storm": {
+      "src": "/assets/weapons/weapon_lvl8_ledger_storm.webp",
+      "type": "image",
+      "notes": "Rung 7 card art."
+    },
+    "hyper_pulse": {
+      "src": "/assets/weapons/weapon_lvl9_hyper_pulse.webp",
+      "type": "image",
+      "notes": "Rung 8 card art, the ladder capstone."
+    }
+  },
   "projectiles": {
     "bb_shot": {
       "src": "/assets/projectiles/bb_shot.webp",
