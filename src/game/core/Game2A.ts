@@ -299,6 +299,50 @@ const SHIELD_PICKUP_EVERY_KILLS = 9;
 const BOSS_RESUPPLY_DRIFT = 0.5;
 
 /**
+ * Reading a ship against black.
+ *
+ * Every hull carried an always-on ring at 0.58x its size in the hull's accent
+ * colour, and the escort shield was a disc filled at up to half opacity across
+ * 0.86x the boss. At the sizes this game actually draws -- enemies land at
+ * 19-23px on a phone -- a ring that big and that bright IS the sprite: what
+ * you see is a circle, and the ship is whatever is inside it. Playtest, in as
+ * many words: the ships look like floating circles.
+ *
+ * Three rules replace it.
+ *
+ * Nothing is ever filled over a hull. A shield is an outline, and it moves --
+ * a still ring reads as a lid welded to the ship, a ripple reads as a field
+ * that is holding. And the only always-on light is a rim: a soft wash that
+ * peaks at the silhouette's edge and falls away to nothing both inward and
+ * outward, so it lifts the ship off the background without painting over it
+ * or drawing a disc around it.
+ *
+ * The colours are the sides. Green is yours; red is theirs. The player ring
+ * used to take the hull accent, which meant it was only green on the default
+ * hull and turned into whatever the ship you picked happened to be.
+ */
+const PLAYER_SHIELD_COLOR = '#00FF00';
+const ENEMY_SHIELD_COLOR = '#ff3355';
+/** Peak opacity of a rim light. Low enough that the sprite still wins. */
+const RIM_GLOW_ALPHA = 0.2;
+/** Rim radius as a fraction of the hull's larger side. */
+const RIM_GLOW_SCALE = 0.86;
+/** Where in that radius the light peaks -- roughly the silhouette's edge. */
+const RIM_GLOW_EDGE = 0.6;
+/** A shield outline is hairline on purpose: the hull has to stay the subject. */
+const SHIELD_RING_WIDTH = 1.5;
+/** Ring radius as a fraction of the hull's larger side. */
+const SHIELD_RING_SCALE = 0.72;
+/** How far the ring breathes, as a fraction of its radius. */
+const SHIELD_RIPPLE = 0.07;
+/** Radians per second the bright arc travels around the ring. */
+const SHIELD_SWEEP_RATE = 2.2;
+/** Length of that arc. */
+const SHIELD_SWEEP_ARC = Math.PI * 0.55;
+/** How far outside the ring the arc rides, as a multiple of the radius. */
+const SHIELD_SWEEP_OFFSET = 1.12;
+
+/**
  * The boss attack table.
  *
  * `telegraph` is how long the tell runs before anything is fired. It is the
@@ -453,6 +497,8 @@ export class Game2A {
   /** Counts up while a fog gate or shield cover is being cut automatically. */
   private fogCutClock = 0;
   private shieldCutClock = 0;
+  /** Rim-light gradients, keyed by colour and radius. See drawRimGlow. */
+  private readonly rimGlows = new Map<string, CanvasGradient>();
   private progress: CampaignProgress = this.loadProgress();
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
@@ -2490,8 +2536,80 @@ export class Game2A {
     return drawn;
   }
 
+  /**
+   * A rim light: one soft wash that peaks at the silhouette's edge.
+   *
+   * Transparent in the middle and transparent again outside, so it never lies
+   * over the sprite and never closes into a disc. It goes down BEFORE the hull
+   * for the same reason.
+   *
+   * The gradient is built at the origin and cached per colour and radius --
+   * there are only a handful of distinct pairs, and a fresh gradient per ship
+   * per frame is a few thousand allocations a second for a halo.
+   */
+  private drawRimGlow(x: number, y: number, size: number, color: string): void {
+    const radius = size * RIM_GLOW_SCALE;
+    if (radius <= 0) return;
+    const key = `${color}:${radius.toFixed(1)}`;
+    let glow = this.rimGlows.get(key);
+    if (!glow) {
+      glow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+      glow.addColorStop(0, 'transparent');
+      glow.addColorStop(RIM_GLOW_EDGE, color);
+      glow.addColorStop(1, 'transparent');
+      this.rimGlows.set(key, glow);
+    }
+    const c = this.ctx;
+    c.save();
+    c.translate(x, y);
+    c.globalAlpha = RIM_GLOW_ALPHA;
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(0, 0, radius, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+
+  /**
+   * A shield, drawn as an outline that is doing something.
+   *
+   * A hairline ring that breathes, plus one brighter arc travelling around it.
+   * No fill at any opacity: the hull underneath is the thing the player is
+   * aiming at and steering, and covering it is what made the old bubble read
+   * as a bug rather than as a shield.
+   *
+   * `strength` (0..1) only moves the opacity. A shield down to its last
+   * segment should look thin, not smaller -- the radius is where the hull is.
+   */
+  private drawShieldField(x: number, y: number, radius: number, color: string, strength: number): void {
+    if (radius <= 0) return;
+    const held = clamp(strength, 0, 1);
+    // Offset by position so two ships side by side do not pulse in lockstep.
+    const live = radius * (1 + SHIELD_RIPPLE * Math.sin(this.clock * 5 + x * 0.05 + y * 0.03));
+    const c = this.ctx;
+    c.save();
+    c.strokeStyle = color;
+    c.lineWidth = SHIELD_RING_WIDTH;
+    c.globalAlpha = 0.3 + 0.35 * held;
+    c.beginPath();
+    c.arc(x, y, live, 0, Math.PI * 2);
+    c.stroke();
+    // The travelling arc sits just outside the ring rather than on top of it,
+    // so what you see is two lines and one of them is moving. Painted at the
+    // same radius it only brightened a quarter of a solid ring, which still
+    // read as a lid.
+    const sweep = this.clock * SHIELD_SWEEP_RATE;
+    c.globalAlpha = 0.55 + 0.4 * held;
+    c.beginPath();
+    c.arc(x, y, live * SHIELD_SWEEP_OFFSET, sweep, sweep + SHIELD_SWEEP_ARC);
+    c.stroke();
+    c.restore();
+  }
+
   private drawPlayer(): void {
     const def = this.playerDef();
+    const size = Math.max(def.draw.w, def.draw.h);
+    this.drawRimGlow(this.player.x, this.player.y, size, def.accent);
     const drawn = this.drawFacing(def.sprite, this.player.x, this.player.y, def.draw.w, def.draw.h, this.playerFacing);
     if (!drawn) {
       this.ctx.save();
@@ -2509,15 +2627,24 @@ export class Game2A {
       this.ctx.stroke();
       this.ctx.restore();
     }
-    this.ctx.strokeStyle = def.accent;
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
-    this.ctx.stroke();
+    // The ring that used to live here was unconditional and took the hull's
+    // accent, so it was on when there was no shield to show and green only if
+    // you happened to be flying the default ship. It is the shield now, in the
+    // one colour, and only when there is one.
+    if (this.shield > 0) {
+      this.drawShieldField(
+        this.player.x,
+        this.player.y,
+        size * SHIELD_RING_SCALE,
+        PLAYER_SHIELD_COLOR,
+        this.shield / Math.max(1, this.shieldMax),
+      );
+    }
   }
 
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
+    this.drawRimGlow(drone.x, drone.y, Math.max(def.draw.w, def.draw.h), def.accent);
     const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
     if (!drawn) {
       this.ctx.save();
@@ -2535,13 +2662,19 @@ export class Game2A {
       this.ctx.restore();
     }
 
-    this.ctx.save();
-    this.ctx.strokeStyle = def.accent;
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.arc(drone.x, drone.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
-    this.ctx.stroke();
-    this.ctx.restore();
+    // An escort is the only enemy carrying a shield, and it is carrying the
+    // BOSS's -- so it gets the outline while the screen is up. That is worth
+    // showing: it names the four ships you have to clear, instead of leaving
+    // the player to work out which drones the bubble is counting.
+    if (drone.escort && this.bossShielded()) {
+      this.drawShieldField(
+        drone.x,
+        drone.y,
+        Math.max(def.draw.w, def.draw.h) * SHIELD_RING_SCALE,
+        ENEMY_SHIELD_COLOR,
+        1,
+      );
+    }
   }
 
   private drawBolt(bolt: ProjectileActor): void {
@@ -2693,28 +2826,32 @@ export class Game2A {
   /**
    * The escort shield.
    *
-   * Drawn as a bubble with a live count, because a boss that simply stops
-   * taking damage looks broken. The count is the instruction: it says what to
-   * shoot instead.
+   * A boss that simply stops taking damage looks broken, so the shield has to
+   * be visible and the count has to say what to shoot instead. What it must
+   * NOT do is hide the boss: it was a #36a3ff disc filled at 0.34-0.50 across
+   * 0.86x the largest boss on the field, which is most of the screen during
+   * the phase where reading the attack tell matters most. It is the same
+   * outline every shield uses now, in the enemy colour -- and blue is the
+   * player's own HUD shield bar, which was a second reason it read wrong.
    */
   private drawBossShield(boss: BossActor): void {
     const remaining = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
-    const radius = Math.max(boss.w, boss.h) * 0.86;
+    // Sized off the DRAWN silhouette, not the hitbox. `boss.w/h` is the
+    // collision box, which after scaling is about a quarter smaller than the
+    // art: Gary Fog collides at 59x54 and draws at 76x81. The old 0.86x
+    // hitbox radius does clear all four bosses as they are drawn today, but
+    // only by coincidence -- it tracks a number the player cannot see. This
+    // one tracks the one they can, so it keeps clearing the ship if either
+    // is retuned.
+    const def = this.bossDef(boss.bossKey);
+    const radius = Math.max(def.draw.w, def.draw.h) * SHIELD_RING_SCALE;
+    this.drawShieldField(boss.x, boss.y, radius, ENEMY_SHIELD_COLOR, 1);
     const c = this.ctx;
     c.save();
-    c.globalAlpha = 0.34 + 0.16 * Math.sin(this.clock * 6);
-    c.fillStyle = '#36a3ff';
-    c.beginPath();
-    c.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
-    c.fill();
-    c.globalAlpha = 0.95;
-    c.lineWidth = 3;
-    c.strokeStyle = '#8dcfff';
-    c.stroke();
     c.fillStyle = '#d8ffe8';
     c.textAlign = 'center';
     c.font = '900 10px ui-sans-serif, system-ui';
-    // Above the bubble, but never up in the HUD strip and never down in the
+    // Above the field, but never up in the HUD strip and never down in the
     // bottom row of buttons -- both of which it landed in on the first try.
     c.fillText(
       `SHIELDED • CLEAR ${remaining} ESCORT${remaining === 1 ? '' : 'S'}`,
