@@ -106,6 +106,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 2.6,
     projectileSpeed: 210,
     accent: '#ff3355',
+    doctrine: 'pressure',
   },
   fog_raider: {
     key: 'fog_raider',
@@ -123,6 +124,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 2.2,
     projectileSpeed: 240,
     accent: '#b56cff',
+    doctrine: 'burst',
   },
   whale_scout: {
     key: 'whale_scout',
@@ -140,6 +142,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 3.0,
     projectileSpeed: 195,
     accent: '#36a3ff',
+    doctrine: 'salvo',
   },
   rug_fighter: {
     key: 'rug_fighter',
@@ -157,6 +160,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 1.9,
     projectileSpeed: 265,
     accent: '#ffd24a',
+    doctrine: 'broadside',
   },
 });
 
