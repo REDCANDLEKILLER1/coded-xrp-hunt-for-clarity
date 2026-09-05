@@ -245,11 +245,6 @@
     }
   },
   "hazards": {
-    "defense_turret": {
-      "src": "/assets/hazards/defense_turret.webp",
-      "type": "image",
-      "notes": "Phase O optimized v16 canon master: ground_basic_turret"
-    },
     "basic_turret": {
       "src": "/assets/hazards/basic_turret.webp",
       "type": "image",
