@@ -470,8 +470,36 @@ const RADIAL_SHOTS = 14;
 const RADIAL_GAP = 3;
 const BOSS_CHARGE_SPEED = 430;
 /** Escorts launched by a screen attack, and how long before they break off. */
-const ESCORT_COUNT = 4;
+/**
+ * The escort screen, as a clock rather than a wall.
+ *
+ * It used to be uncapped and untimed: every `escort_screen` beat pushed four
+ * more escorts with no check for the ones already alive, and the shield held
+ * until every one of them was dead. In Behemoth phase 2 that beat lands every
+ * 3.92s while each escort lives 16s, so four launches overlap into twenty
+ * frozen ships and the boss takes no damage at all. That is Ryan's 87-second
+ * fight, and it is arithmetic, not tuning.
+ *
+ * Now: a launch REFILLS to the cap instead of adding to it, the screen has its
+ * own life, every kill cuts that life, and a spent screen cannot come back for
+ * a while. Worst case with the player killing nothing is SCREEN_SECONDS shielded
+ * out of SCREEN_SECONDS + SCREEN_COOLDOWN, so the boss is exposed at least
+ * 67% of the fight by construction rather than by hope.
+ */
+const ESCORT_COUNT = 3;
 const ESCORT_PATIENCE = 16;
+/** How long a fresh screen holds on its own. */
+const SCREEN_SECONDS = 6;
+/** Seconds cut from that life per escort destroyed. */
+const SCREEN_KILL_CUT = 2;
+/** How long after a screen ends before another may launch. */
+const SCREEN_COOLDOWN = 12;
+/**
+ * When the clock runs out with escorts still flying, the shield OVERLOADS: the
+ * survivors stop screening and the boss is forced open. Every screen therefore
+ * ends in a punish window, so the clock is a promise rather than a timeout.
+ */
+const SCREEN_OVERLOAD_RECOVER = 2;
 /**
  * Pressure kept on during a boss fight.
  *
@@ -541,6 +569,10 @@ export class Game2A {
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
   private bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+  /** Seconds of screen left. Zero means the boss is open. */
+  private screenClock = 0;
+  /** Seconds before another screen may launch. */
+  private screenCooldown = 0;
   private warshipLaunchClock = WARSHIP_LAUNCH_INTERVAL;
   /** Cleared once the player has actually double-tapped, so the nudge stops. */
   private bombHintShown = false;
@@ -793,6 +825,13 @@ export class Game2A {
       this.startBossIfReady();
       if (this.boss) {
         this.updateBoss(dt);
+        // Escorts were frozen for the whole fight: moveDrones is the only
+        // place stance, fire, dodge and patience advance, and it was reached
+        // only through updateDrones, which this branch skips. So the screen
+        // never flew, never shot, and never broke off -- and ESCORT_PATIENCE,
+        // the thing the code claimed made a deadlock impossible, was never
+        // decremented at all. This is the missing call.
+        this.moveDrones(dt);
       } else if (this.victoryPendingClock <= 0) {
         this.updateDrones(dt);
         this.updateHazards(dt);
@@ -1797,6 +1836,7 @@ export class Game2A {
   private updateBoss(dt: number): void {
     const boss = this.boss;
     if (!boss) return;
+    this.updateScreen(boss, dt);
     const def = this.bossDef(boss.bossKey);
     boss.age += dt;
     boss.contactClock = Math.max(0, boss.contactClock - dt);
@@ -1884,6 +1924,8 @@ export class Game2A {
     this.bossSpawnClock -= dt;
     if (this.bossSpawnClock > 0) return;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+    this.screenClock = 0;
+    this.screenCooldown = 0;
     if (this.drones.length >= BOSS_PRESSURE_CAP) return;
 
     const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
@@ -2043,10 +2085,20 @@ export class Game2A {
    * that drifted somewhere awkward.
    */
   private launchEscorts(boss: BossActor): void {
-    const key = availableEnemyKeys(ENEMIES, this.wave)[0] ?? 'regulator_drone';
+    // A spent screen has to cool down first, so the beat cannot outrun the
+    // player's ability to clear it.
+    if (this.screenCooldown > 0) return;
+    // REFILL to the cap, never add to it. The old loop pushed a full set every
+    // time the script came round, which is how four launches became twenty
+    // live escorts.
+    const alive = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
+    const wanted = Math.max(0, ESCORT_COUNT - alive);
+    if (wanted === 0) return;
+    this.screenClock = SCREEN_SECONDS;
+    const key = this.escortKeyFor(boss);
     const def = this.enemyDef(key);
-    for (let i = 0; i < ESCORT_COUNT; i += 1) {
-      const spread = (i - (ESCORT_COUNT - 1) / 2) * 46;
+    for (let i = 0; i < wanted; i += 1) {
+      const spread = (i - (wanted - 1) / 2) * 46;
       const x = clamp(boss.x + spread, 26, this.w - 26);
       this.drones.push({
         x,
@@ -2060,7 +2112,7 @@ export class Game2A {
         age: 0,
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
-        direction: i < ESCORT_COUNT / 2 ? -1 : 1,
+        direction: i < wanted / 2 ? -1 : 1,
         fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
         stance: 'entering',
         stationX: x,
@@ -2079,7 +2131,63 @@ export class Game2A {
 
   /** True while any launched escort is still fighting. */
   private bossShielded(): boolean {
+    if (this.screenClock <= 0) return false;
     return this.drones.some((drone) => drone.escort && drone.stance !== 'fleeing');
+  }
+
+  /**
+   * Who a boss sends up.
+   *
+   * Every screen used to be `availableEnemyKeys(...)[0]`, i.e. regulator
+   * drones, whatever the boss and whatever the wave -- so all four bosses
+   * screened themselves with the same 1hp weaver.
+   */
+  private escortKeyFor(boss: BossActor): string {
+    const byBoss: Record<string, string> = {
+      gary_fog: 'fog_raider',
+      regulatory_behemoth: 'regulator_drone',
+      clarity_destroyer: 'whale_scout',
+      final_clarity: 'rug_fighter',
+    };
+    const key = byBoss[boss.bossKey];
+    if (key && ENEMIES[key]) return key;
+    return availableEnemyKeys(ENEMIES, this.wave)[0] ?? 'regulator_drone';
+  }
+
+  /**
+   * Runs the screen clock, and ends it the way it has to end.
+   *
+   * Three exits, and all three open the boss. Every escort dead: the screen is
+   * cleared early, which is the skilful one. The clock expires with escorts
+   * still flying: OVERLOAD -- the survivors stop screening and the boss is
+   * forced into a recover window, so the player who could not clear it still
+   * gets the punish. Or the boss dies first.
+   */
+  private updateScreen(boss: BossActor, dt: number): void {
+    if (this.screenCooldown > 0) this.screenCooldown = Math.max(0, this.screenCooldown - dt);
+    // An escort that has broken off is not screening any more, so it stops
+    // being an escort. Without this it keeps the flag while no longer counting
+    // toward the cap, and a refill can put more than ESCORT_COUNT of them on
+    // the field -- which is the stacking this whole change exists to stop.
+    for (const drone of this.drones) if (drone.escort && drone.stance === 'fleeing') drone.escort = false;
+    if (this.screenClock <= 0) return;
+    const alive = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
+    if (alive === 0) {
+      this.screenClock = 0;
+      this.screenCooldown = SCREEN_COOLDOWN;
+      return;
+    }
+    this.screenClock -= dt;
+    if (this.screenClock > 0) return;
+    // Overload.
+    this.screenClock = 0;
+    this.screenCooldown = SCREEN_COOLDOWN;
+    for (const drone of this.drones) if (drone.escort) drone.escort = false;
+    boss.attackState = 'recover';
+    boss.attackClock = SCREEN_OVERLOAD_RECOVER;
+    this.missionBannerText = 'SHIELD OVERLOAD // BOSS EXPOSED';
+    this.missionBannerClock = 1.8;
+    sfx.play('deny');
   }
 
   private pushBossShot(x: number, y: number, angle: number, speed: number, color: string): void {
@@ -3891,6 +3999,13 @@ export class Game2A {
   }
 
   private registerKill(drone: EnemyActor): void {
+    // Clearing the screen is the skilful way out of it, so every escort taken
+    // down buys real time off the shield rather than only counting down a
+    // label. Three kills at SCREEN_KILL_CUT each ends a SCREEN_SECONDS screen
+    // outright, which is the promise the "CLEAR N ESCORTS" prompt makes.
+    if (drone.escort && this.screenClock > 0) {
+      this.screenClock = Math.max(0, this.screenClock - SCREEN_KILL_CUT);
+    }
     const def = this.enemyDef(drone.enemyKey);
     this.score += def.score;
     this.killedThisWave += 1;
@@ -4233,6 +4348,8 @@ export class Game2A {
     this.seekers = [];
     this.seekerClock = SEEKER_INTERVAL;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+    this.screenClock = 0;
+    this.screenCooldown = 0;
     this.warshipLaunchClock = WARSHIP_LAUNCH_INTERVAL;
     // Restart the nudge each run: a player who has never dropped a bomb still
     // has not been taught, and the timer would otherwise be spent already.
