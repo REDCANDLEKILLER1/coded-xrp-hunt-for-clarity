@@ -85,7 +85,8 @@ for (const height of [274, 780]) {
 // ---- health scales with what the player brings -------------------------
 check(BASE > 0, 'BASE_PLAYER_DPS is missing');
 check(CAP >= 4, `a firepower cap of ${CAP} cannot cover an 11x damage range`);
-check(/private firepowerScale\(\): number \{/.test(game), 'firepowerScale is missing');
+check(/private loadoutScale\(\): number \{/.test(game), 'loadoutScale is missing -- the boss spawn snapshot');
+check(/private pressureScale\(\): number \{/.test(game), 'pressureScale is missing -- the run-progress curve');
 check(/private playerDps\(\): number \{/.test(game), 'playerDps is missing');
 
 // Model the ladder the way the game does, and require a consistent fight.
@@ -120,7 +121,7 @@ check(Math.min(...seconds) > 8, `the fastest loadout kills the first boss in ${M
 
 // The boss must actually use its own scaled maximum, not the tuning number.
 check(/maxHp: number;/.test(game), 'BossActor needs its own maximum');
-check(/hp: Math\.round\(def\.hp \* this\.firepowerScale\(\)\)/.test(game), 'boss health must scale at spawn');
+check(/hp: Math\.round\(def\.hp \* this\.loadoutScale\(\)\)/.test(game), 'boss health must snapshot the loadout at spawn');
 check(/this\.boss\.hp \?\? 0\) \/ this\.boss\.maxHp/.test(game), 'the health bar must read against the scaled maximum');
 check(/bossPhaseIndex\(def, boss\.hp \?\? boss\.maxHp, boss\.maxHp\)/.test(game),
   'phase thresholds must be measured against the scaled maximum, or a scaled boss opens in its last phase');
@@ -131,11 +132,13 @@ check(share > 0 && share < 1, `ENEMY_SCALE_SHARE of ${share} should be a partial
 check(/private enemyHp\(def: EnemyDef\): number \{/.test(game), 'enemyHp is missing');
 check(!/hp: def\.hp,\n\s+enemyKey/.test(game), 'a drone spawn still uses unscaled health');
 const toughest = Math.max(...Object.values(ENEMIES).map((enemy) => enemy.hp));
-const worst = Math.round(toughest * (1 - share + share * CAP));
+const pressureCap = Number(/const PRESSURE_CAP = ([\d.]+);/.exec(game)?.[1]);
+check(pressureCap > 1, 'PRESSURE_CAP is missing');
+const worst = Math.round(toughest * (1 - share + share * pressureCap));
 check(worst <= 14, `the toughest drone reaches ${worst} health at full scale, which is a sponge`);
 check(/private enemySpeed\(def: EnemyDef\): number \{/.test(game), 'enemySpeed is missing');
-check(/firepowerScale\(\)/.test(game.split('private arenaEnemyCap(')[1]?.split('\n  }\n')[0] ?? ''),
-  'a bigger gun should face more enemies, not just tougher ones');
+check(/pressureScale\(\)/.test(game.split('private arenaEnemyCap(')[1]?.split('\n  }\n')[0] ?? ''),
+  'the arena cap must follow the run, not the gun');
 
 // ---- smaller ships, hitboxes included ----------------------------------
 check(/const COMBAT_SCALE = ([\d.]+);/.test(registrySrc), 'COMBAT_SCALE is missing');

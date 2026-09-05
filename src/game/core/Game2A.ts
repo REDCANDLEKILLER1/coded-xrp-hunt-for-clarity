@@ -20,7 +20,7 @@ import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
+import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -46,7 +46,17 @@ type EnemyActor = Actor & {
   escort: boolean;
 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
-type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
+type HostileProjectile = Actor & {
+  damage: number;
+  color: string;
+  projectileKey: string;
+  /** Radians per second this round may steer toward the player. Salvo only. */
+  homing?: number;
+  /** Seconds of steering left before it commits to its heading. */
+  track?: number;
+  /** Drawn size, so a heavy round reads as heavy without new art. */
+  size?: number;
+};
 type BossActor = Actor & {
   bossKey: string;
   state: 'intro' | 'fight';
@@ -133,6 +143,47 @@ const ENEMY_TACTICS: Record<EnemyDef['behavior'], {
   zigzag: { sway: 74, swaySpeed: 2.6, dive: 0.22, burst: 1, spread: 0, firesAtRest: true },
   dive: { sway: 34, swaySpeed: 1.0, dive: 0.62, burst: 3, spread: 0.2, firesAtRest: false },
 };
+/**
+ * What each doctrine actually fires.
+ *
+ * Before this table every armed enemy pushed one aimed `enemy_missile` at
+ * `def.projectileSpeed`, so six ships with six silhouettes and six accent
+ * colours all played identically: one bullet, straight at you, on a timer.
+ * Cadence was the only difference, and cadence is not a weapon.
+ *
+ * `speed` and `interval` MULTIPLY the enemy's own numbers rather than
+ * replacing them, so the per-ship tuning already in the registry still means
+ * something and a doctrine cannot silently make a slow ship fast.
+ *
+ * `damage` stays 1 everywhere on purpose. This PR gives the roster different
+ * weapons, not more teeth -- difficulty is the pressure curve's job, and a
+ * doctrine that also raised damage would smuggle a balance change in behind a
+ * readability change.
+ */
+const ENEMY_DOCTRINES: Record<EnemyDoctrine, {
+  /** Rounds per volley. */
+  shots: number;
+  /** Radians between them. */
+  spread: number;
+  /** Multiplier on the enemy's own projectileSpeed. */
+  speed: number;
+  /** Multiplier on the enemy's own fireRate. Below 1 is faster. */
+  interval: number;
+  projectileKey: string;
+  /** Drawn size, so a heavy round reads as heavy at 20px. */
+  size: number;
+  /** Steers toward the player. Only the salvo does. */
+  homing?: number;
+  label: string;
+}> = {
+  pressure: { shots: 1, spread: 0, speed: 1.15, interval: 0.55, projectileKey: 'enemy_red_bullet', size: 7, label: 'RAPID' },
+  burst: { shots: 3, spread: 0.11, speed: 1.0, interval: 1.15, projectileKey: 'enemy_red_bullet', size: 8, label: 'BURST' },
+  salvo: { shots: 1, spread: 0, speed: 0.62, interval: 1.5, projectileKey: 'enemy_missile', size: 13, homing: 1.5, label: 'SEEKER' },
+  broadside: { shots: 5, spread: 0.26, speed: 0.9, interval: 1.35, projectileKey: 'enemy_red_bullet', size: 8, label: 'BROADSIDE' },
+};
+/** How long a tracking missile keeps steering before it goes ballistic. */
+const SALVO_TRACK_SECONDS = 2.4;
+
 const ENEMY_DODGE_RANGE = 92;        // px ahead of a bolt an enemy reacts to
 const ENEMY_DODGE_COOLDOWN = 0.55;
 const ENEMY_ESCAPE_PENALTY = 40;     // score lost when one gets away
@@ -271,8 +322,46 @@ const ALL_MAXED_SCORE = 250;
  * BASE is BB SHOT with no barrels -- the loadout every other number was tuned
  * against, so scale 1 leaves the early game exactly as it was.
  */
+/**
+ * Two scales, and the difference between them is the whole point.
+ *
+ * `loadoutScale()` is sampled ONCE, when a boss spawns, so a boss fight lasts
+ * about the same time whatever gun turned up. It is a snapshot.
+ *
+ * `pressureScale()` is continuous, and it is what everything on screen reads.
+ *
+ * They used to be one function. `firepowerScale()` was a LIVE read of the
+ * current gun -- volley length * damage / fireRate over a BB SHOT baseline --
+ * and drone health, hazard health, enemy speed and the arena cap all called it
+ * every frame. So catching an UPGRADE CRATE mid-wave turned every 1hp
+ * regulator already on screen into a 3hp regulator, instantly, before a shot
+ * was fired with the new gun. That is the exact thing the owner ruled out:
+ * "player upgrade = small difficulty adjustment after time/waves, NOT
+ * immediate weapon pickup. A player upgrade must feel like a reward."
+ *
+ * So the continuous half is now the run itself. `wave` is already that signal
+ * -- the mission act index in the campaign, score/500 in the arcade -- and
+ * `clock` is the run timer. Neither can be moved by a pickup.
+ *
+ * The boss snapshot stays, and that is deliberate rather than an oversight.
+ * Measured against the shipped ladder, a decoupled boss health cannot hold a
+ * fight length: the ladder spans 11.3x in dps (BB SHOT 7.1 to CLARITY LANCE
+ * with three barrels 80.8), so any single curve either gives a maxed gun a
+ * 3-second story boss or a starter gun a 100-second slog. A snapshot at spawn
+ * is not the reported bug -- it cannot be moved by a pickup once the fight has
+ * started -- and compressing that spread is PR4's job, not this one.
+ */
 const BASE_PLAYER_DPS = 1 / 0.14;
 const FIREPOWER_CAP = 9;
+/**
+ * The continuous curve.
+ *
+ * Rises with waves and with time on the clock, capped so a long run does not
+ * become a wall. Read every frame by everything except the boss snapshot.
+ */
+const PRESSURE_PER_WAVE = 0.16;
+const PRESSURE_PER_MINUTE = 0.07;
+const PRESSURE_CAP = 3;
 /**
  * Trash does not scale all the way.
  *
@@ -820,8 +909,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.firepowerScale()),
-      maxHp: Math.round(def.hp * this.firepowerScale()),
+      hp: Math.round(def.hp * this.loadoutScale()),
+      maxHp: Math.round(def.hp * this.loadoutScale()),
       bossKey: def.key,
       state: 'intro',
       age: -plan.musicLeadSeconds,
@@ -1461,7 +1550,8 @@ export class Game2A {
       drone.fireClock = 0.12;
       return;
     }
-    drone.fireClock = def.fireRate + Math.random() * ENEMY_FIRE_JITTER;
+    const doctrine = ENEMY_DOCTRINES[def.doctrine ?? 'pressure'];
+    drone.fireClock = def.fireRate * doctrine.interval + Math.random() * ENEMY_FIRE_JITTER;
 
     const dx = this.player.x - drone.x;
     const dy = this.player.y - drone.y;
@@ -1470,19 +1560,27 @@ export class Game2A {
     if (dy / length < ENEMY_FIRE_ARC) return;
 
     const aim = Math.atan2(dy, dx);
-    const middle = (tactics.burst - 1) / 2;
-    for (let i = 0; i < tactics.burst; i += 1) {
-      const angle = aim + (i - middle) * tactics.spread;
+    const speed = def.projectileSpeed * doctrine.speed;
+    // The doctrine's own fan, widened by the movement tactic's spread only
+    // where the tactic already had one. A dive-bomber's shots stay looser than
+    // a station-keeper's, which is the read the movement was already teaching.
+    const spread = doctrine.spread + tactics.spread * 0.5;
+    const middle = (doctrine.shots - 1) / 2;
+    for (let i = 0; i < doctrine.shots; i += 1) {
+      const angle = aim + (i - middle) * spread;
       this.hostileShots.push({
         x: drone.x,
         y: drone.y + drone.h * 0.4,
-        w: 8,
-        h: 8,
-        vx: Math.cos(angle) * def.projectileSpeed,
-        vy: Math.sin(angle) * def.projectileSpeed,
+        w: doctrine.size,
+        h: doctrine.size,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
         damage: 1,
         color: def.accent,
-        projectileKey: 'enemy_missile',
+        projectileKey: doctrine.projectileKey,
+        size: doctrine.size,
+        homing: doctrine.homing,
+        track: doctrine.homing ? SALVO_TRACK_SECONDS : undefined,
       });
     }
     sfx.play('enemyShoot');
@@ -1491,10 +1589,10 @@ export class Game2A {
 
   /** How many enemies may share the arena at once, by wave. */
   private arenaEnemyCap(): number {
-    // Numbers are the other half of the answer to a big gun: a maxed loadout
-    // clears a screen fast, so it should have more screen to clear.
-    const forFirepower = Math.floor(this.firepowerScale() / 2);
-    return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forFirepower);
+    // Numbers are the other half of the pressure curve: a run that has been
+    // going a while should have more screen to clear, whatever gun turned up.
+    const forPressure = Math.floor(this.pressureScale() / 2);
+    return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forPressure);
   }
 
   /** Station-keeping drift so a held position still reads as flying, not parking. */
@@ -1622,6 +1720,20 @@ export class Game2A {
 
   private updateHostileShots(dt: number): void {
     for (const shot of this.hostileShots) {
+      // A salvo round steers for a couple of seconds, then commits. The timer
+      // is what makes it dodgeable: a missile that tracked forever would be an
+      // unavoidable hit rather than a threat you have to break away from, and
+      // the whole point of the Whale Scout is that it is worth killing first.
+      if (shot.homing && (shot.track ?? 0) > 0) {
+        shot.track = (shot.track ?? 0) - dt;
+        const speed = Math.hypot(shot.vx, shot.vy);
+        const want = Math.atan2(this.player.y - shot.y, this.player.x - shot.x);
+        // turnToward already crosses the -PI/+PI seam correctly; the boss duel
+        // leans on it for the same reason.
+        const angle = turnToward(Math.atan2(shot.vy, shot.vx), want, shot.homing * dt);
+        shot.vx = Math.cos(angle) * speed;
+        shot.vy = Math.sin(angle) * speed;
+      }
       shot.x += shot.vx * dt;
       shot.y += shot.vy * dt;
     }
@@ -1649,8 +1761,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.firepowerScale()),
-      maxHp: Math.round(def.hp * this.firepowerScale()),
+      hp: Math.round(def.hp * this.loadoutScale()),
+      maxHp: Math.round(def.hp * this.loadoutScale()),
       bossKey,
       state: 'intro',
       age: 0,
@@ -4353,19 +4465,33 @@ export class Game2A {
    * arriving faster.
    */
   private enemyHp(def: EnemyDef): number {
-    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
     return Math.max(1, Math.round(scaled));
   }
 
   /** Mines and turrets are shot at too, so they ride the same curve. */
   private hazardHp(def: HazardDef): number {
-    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
     return Math.max(1, Math.round(scaled));
   }
 
   /** A drone's speed, which climbs with the wave and with the gun facing it. */
   private enemySpeed(def: EnemyDef): number {
-    return def.baseSpeed + this.wave * 7 + (this.firepowerScale() - 1) * ENEMY_SPEED_PER_SCALE;
+    return def.baseSpeed + this.wave * 7 + (this.pressureScale() - 1) * ENEMY_SPEED_PER_SCALE;
+  }
+
+  /**
+   * How hard the game is pushing right now, on a 1..PRESSURE_CAP curve.
+   *
+   * Reads the RUN and nothing else. It must never consult the weapon, the
+   * volley, the barrel count or any pickup -- that coupling is the bug this
+   * replaced, and validate-difficulty fails if any of those names appear in
+   * this method.
+   */
+  private pressureScale(): number {
+    const fromWaves = (this.wave - 1) * PRESSURE_PER_WAVE;
+    const fromTime = (this.clock / 60) * PRESSURE_PER_MINUTE;
+    return clamp(1 + fromWaves + fromTime, 1, PRESSURE_CAP);
   }
 
   /** Sustained damage per second this loadout puts out. */
@@ -4375,12 +4501,13 @@ export class Game2A {
   }
 
   /**
-   * How much tougher everything has to be for this loadout to be a fight.
+   * The boss snapshot. Sampled at spawn and never again.
    *
-   * 1 at the starting gun, rising with the volley and the weapon's own damage.
-   * Capped, because past a point a longer fight stops being a better one.
+   * Only `startBossIfReady` and the Gary Fog entrance may call this. Anything
+   * that reads it per-frame is back to handing the player's upgrade straight
+   * back as hit points.
    */
-  private firepowerScale(): number {
+  private loadoutScale(): number {
     return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
   }
 
