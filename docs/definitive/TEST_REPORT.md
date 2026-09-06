@@ -1,5 +1,7 @@
 # Foundation verification — 2026-09-06
 
+Asset catalog follow-up: all 39 validators and TypeScript/Vite build pass. Audio tests execute the actual metadata/catalog resolver, reject mistyped and orphan tracks, and retain user-gesture/mute/cue checks. Actual local browser resource entries show 47 flight images and no legacy interior character/room images, GLB or MP3 on first load. Initial JS 251.44 KB (73.98 KB gzip); lazy mesh chunk 639.30 KB (163.58 KB gzip). These are build artifact sizes, not total session transfer or frame-time measurements.
+
 This report covers the current foundation, not the connected campaign deliverable.
 
 - Ordinary `npm ci`: pass after recording the missing, exact-version optional Windows Rollup component in the project lockfile.

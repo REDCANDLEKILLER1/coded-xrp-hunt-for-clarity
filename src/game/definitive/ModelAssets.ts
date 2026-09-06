@@ -1,11 +1,9 @@
 import { BufferGeometry, Material, Object3D, Texture } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
-import type { AssetManifest } from '../core/Types';
+import { loadAssetCatalog } from '../core/AssetCatalog';
 
 export async function loadModel(id: string, signal: AbortSignal): Promise<GLTF> {
-  const response = await fetch('/assets/manifest.json', { signal });
-  if (!response.ok) throw new Error(`Asset registry unavailable (${response.status})`);
-  const manifest: AssetManifest = await response.json();
+  const manifest = await loadAssetCatalog();
   const entry = manifest.models?.[id];
   if (!entry || typeof entry === 'string' || entry.type !== 'model' || !/^\/assets\/models\/[a-z0-9_/-]+\.glb$/.test(entry.src)) throw new Error(`Model is not registered: ${id}`);
   const file = await fetch(entry.src, { signal });

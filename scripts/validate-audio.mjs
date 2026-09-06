@@ -7,11 +7,16 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { readdirSync } from 'node:fs';
+import { build } from 'esbuild';
 
 const failures = [];
 const check = (ok, message) => { if (!ok) failures.push(message); };
 
-const manifest = JSON.parse(readFileSync('public/assets/audio/manifest.json', 'utf8'));
+const config = JSON.parse(readFileSync('public/assets/audio/manifest.json', 'utf8'));
+const assets = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));
+const compiled = await build({ entryPoints: ['src/game/audio/MusicCatalog.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { resolveMusicCatalog } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
+const manifest = resolveMusicCatalog(config, assets);
 const director = readFileSync('src/game/audio/MusicDirector.ts', 'utf8');
 const main = readFileSync('src/main.ts', 'utf8');
 const game2a = readFileSync('src/game/core/Game2A.ts', 'utf8');
@@ -73,10 +78,17 @@ check(/preload = 'none'/.test(director), 'tracks must not preload — they are s
 check(/if \(trackKey === this\.currentTrack\) return;/.test(director), 're-cueing the playing track must be a no-op, or music restarts constantly');
 check(/loop = def\.loop/.test(director), 'looping must come from the manifest');
 
-// Audio must stay out of the image manifest: AssetLoader preloads every entry
-// there as an Image, so an mp3 in that file registers as a broken sprite.
-const imageManifest = readFileSync('public/assets/manifest.json', 'utf8');
-check(!/\.mp3/.test(imageManifest), 'audio must not be listed in the image manifest — AssetLoader would preload it as an Image');
+// Owner-approved typed catalog: a single path declaration, with lazy audio decode.
+check(!/\.mp3/.test(JSON.stringify(config)), 'music settings must not duplicate the authoritative asset paths');
+for (const key of Object.keys(manifest.tracks)) check(assets.audio[key]?.type === 'audio', `audio.${key} needs its explicit type`);
+for (const mutated of [
+  { ...assets, audio: { ...assets.audio, theme: { ...assets.audio.theme, type: 'image' } } },
+  { ...assets, audio: { ...assets.audio, orphan: { type: 'audio', src: '/assets/audio/orphan.mp3' } } },
+]) {
+  let rejected = false;
+  try { resolveMusicCatalog(config, mutated); } catch { rejected = true; }
+  check(rejected, 'the actual resolver must reject mistyped or unconsumed audio');
+}
 
 // The theme carries the title screen and the pause menu.
 check(/music\.cue\('theme'\)/.test(main), 'the theme must be cued for the title/campaign screen');

@@ -14,5 +14,6 @@
       "status": "runtime model review; provisional materials"
     }
   ],
-  "remaining": "Scene loading groups, legacy image consumers and the audio registry still require the full campaign asset audit."
+  "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",
+  "remaining": "New character/environment/space assets and the full campaign consumer/performance audit remain."
 }
