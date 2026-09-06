@@ -87,7 +87,16 @@ type WarshipActor = Actor & {
   age: number;
   fireClock: number;
 };
-type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number };
+type ProjectileActor = Actor & {
+  damage: number;
+  projectileKey: string;
+  pierce: number;
+  /** Rocket family: blast radius, and what it deals to what it did not hit. */
+  splash?: number;
+  splashDamage?: number;
+  /** Plasma family: deletes hostile shots it touches. */
+  clearsShots?: boolean;
+};
 /** A player missile that steers. `target` is re-acquired if its quarry dies. */
 type SeekerActor = Actor & { damage: number; angle: number; age: number };
 /**
@@ -237,7 +246,7 @@ const XP_LEVEL_STEP = 150;
  * through the level and CLARITY LANCE only at the very end, so the ladder is a
  * long-term goal rather than a five-minute climb.
  */
-const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
+const WEAPON_TIER_LEVELS = [3, 5, 7, 9, 11, 13, 16, 19];
 
 // Boss duel.
 //
@@ -256,7 +265,7 @@ const MAX_BARRELS = 3;
  * Barrels come in pairs, so this wants to be odd -- at 6 an odd-base gun like
  * BB SHOT or the Lance could only take two of its three barrels.
  */
-const MAX_VOLLEY = 7;
+const MAX_VOLLEY = 11;
 /**
  * How long a freshly-opened upgrade overlay ignores taps.
  *
@@ -343,7 +352,20 @@ const ALL_MAXED_SCORE = 250;
  * started -- and compressing that spread is PR4's job, not this one.
  */
 const BASE_PLAYER_DPS = 1 / 0.14;
-const FIREPOWER_CAP = 9;
+/**
+ * The ceiling on the boss snapshot.
+ *
+ * Was 9, which was right for a five-rung ladder spanning about 11x. The nine
+ * rungs span 76x from BB SHOT to a three-barrel HYPER PULSE, so a cap of 9
+ * meant the top of the ladder outran the compensation and killed the first
+ * boss in under three seconds.
+ *
+ * Raising it is only safe because `pressureScale()` now carries trash, hazards
+ * and the arena cap -- this number reaches nothing but boss health at spawn.
+ * On the old coupled code the same change would have turned a 1hp drone into a
+ * 36hp one.
+ */
+const FIREPOWER_CAP = 80;
 /**
  * The continuous curve.
  *
@@ -1288,6 +1310,9 @@ export class Game2A {
           damage: weapon.damage,
           projectileKey: weapon.projectileKey,
           pierce: weapon.pierce ?? 0,
+          splash: weapon.splash,
+          splashDamage: weapon.splashDamage,
+          clearsShots: weapon.clearsShots,
         });
       }
       sfx.play('shoot');
@@ -2003,6 +2028,41 @@ export class Game2A {
     }
   }
 
+  /**
+   * The rocket family's blast.
+   *
+   * What makes a rocket an answer rather than a worse single lane: a shell
+   * that lands beside a cluster still hurts the cluster. `hit` is excluded so
+   * the direct target is not damaged twice by its own shell.
+   */
+  private splashFrom(bolt: ProjectileActor, hit: Actor): void {
+    if (!bolt.splash || !bolt.splashDamage) return;
+    for (const drone of this.drones) {
+      if (drone === hit || (drone.hp ?? 0) <= 0) continue;
+      if (Math.hypot(drone.x - bolt.x, drone.y - bolt.y) > bolt.splash) continue;
+      drone.hp = (drone.hp ?? 1) - bolt.splashDamage;
+      if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
+    }
+    for (const hazard of this.hazards) {
+      if (hazard === hit || (hazard.hp ?? 0) <= 0) continue;
+      if (Math.hypot(hazard.x - bolt.x, hazard.y - bolt.y) > bolt.splash) continue;
+      hazard.hp = (hazard.hp ?? 1) - bolt.splashDamage;
+    }
+    this.ring(bolt.x, bolt.y);
+  }
+
+  /**
+   * The plasma family's defensive half.
+   *
+   * A plasma lane deletes hostile shots it touches, so the gun is also a hole
+   * punched through incoming fire. It costs the bolt nothing -- eating a
+   * bullet should not use up the shot you aimed at something.
+   */
+  private clearShotsWith(bolt: ProjectileActor): void {
+    if (!bolt.clearsShots) return;
+    this.hostileShots = this.hostileShots.filter((shot) => !overlap(box(bolt, 0.8), box(shot, 0.9)));
+  }
+
   private collisions(): void {
     // A piercing bolt spends one charge per target instead of dying on contact,
     // so CLARITY LANCE punches a whole column rather than the first thing it
@@ -2017,12 +2077,14 @@ export class Game2A {
     };
 
     for (const bolt of this.bolts) {
+      this.clearShotsWith(bolt);
       for (const drone of this.drones) {
         if ((drone.hp ?? 0) <= 0) continue;
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
           const spent = spend(bolt);
           drone.hp = (drone.hp ?? 1) - bolt.damage;
           if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
+          this.splashFrom(bolt, drone);
           if (spent) break;
         }
       }
@@ -4273,26 +4335,46 @@ export class Game2A {
     return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
   }
 
+  /**
+   * The volley this loadout actually fires.
+   *
+   * Carries the #113 fix, generalised: on an EVEN gun the first barrel goes
+   * down the MIDDLE, and only then do pairs go on.
+   *
+   * "When you get 5 the sixth makes the auto cannon split into 2 rows of 3.
+   * It loses power and doesn't hit anything in the middle of the fire
+   * pattern." Both halves were true and they were one fault. Pairs-only kept
+   * the gun symmetric but could never fill the centre, so a four-beam gun plus
+   * a barrel fired -26,-17,-6,6,17,26: three each side, with the widest gap in
+   * the pattern sitting exactly where the player was aiming.
+   *
+   * It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
+   * pairs move in twos, so QUAD stopped at six and its second and third barrel
+   * pickups bought nothing at all. The centre beam is what makes the last slot
+   * spendable, which is why one rule fixes the hole and the dead pickups at
+   * once.
+   *
+   * Lanes are parallel. Barrels used to fan outward 0.045rad per pair, and an
+   * angle becomes width over distance: a three-barrel gun swept 75% of a
+   * portrait screen by the time its shots reached the top. Nothing the player
+   * can equip sprays -- the volley that leaves the muzzle is the volley that
+   * arrives.
+   */
   private currentVolley(): WeaponShotDef[] {
     const weapon = this.currentWeapon();
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
-    for (let pair = 1; pair <= this.barrels; pair += 1) {
+
+    let pairs = this.barrels;
+    if (!weapon.shots.some((shot) => shot.offsetX === 0) && shots.length < MAX_VOLLEY) {
+      shots.push({ offsetX: 0, angle: 0 });
+      pairs -= 1;
+    }
+    for (let pair = 1; pair <= pairs; pair += 1) {
       // A pair goes on together or not at all, so the gun stays symmetric.
       if (shots.length + 2 > MAX_VOLLEY) break;
-      // Parallel, not fanned. Barrels used to angle outward 0.045rad per pair,
-      // and an angle becomes width over distance: on a 780px portrait screen a
-      // three-barrel gun swept 75% of the whole width by the time its shots
-      // reached the top, so there was nothing to aim at and nothing to do but
-      // slide side to side. The same gun covered 40% on the short landscape
-      // screen, which is why this only showed up in portrait.
-      //
-      // A barrel adds a BEAM, and now so does every rung of the ladder: the
-      // last fanning gun (TRI-SPREAD, +/-0.18rad) is gone. Nothing the player
-      // can equip sprays any more -- the volley that leaves the muzzle is the
-      // volley that reaches the target.
-      const offset = widest + 9 * pair;
+      const offset = widest + weapon.laneStep * pair;
       shots.push({ offsetX: -offset, angle: 0 });
       shots.push({ offsetX: offset, angle: 0 });
     }

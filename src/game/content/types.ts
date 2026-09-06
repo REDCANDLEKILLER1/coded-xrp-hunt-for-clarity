@@ -127,7 +127,43 @@ export interface WeaponDef {
   shots: WeaponShotDef[];
   /** Extra targets a single bolt punches through before it dies. */
   pierce?: number;
+  /**
+   * Which weapon family this rung belongs to.
+   *
+   * Families are meant to play differently, not just add up differently. A
+   * ladder where every rung fires the same bolt with a bigger number is a
+   * ladder of one weapon, and the only decision it offers is "wait".
+   */
+  family: WeaponFamily;
+  /**
+   * Blast radius in pixels. A rocket damages what it lands near, so a shell
+   * that misses down a lane still contributes -- which is what makes the
+   * family an answer to spread-out targets rather than a worse single lane.
+   */
+  splash?: number;
+  /** Damage dealt inside `splash` to everything that was not hit directly. */
+  splashDamage?: number;
+  /**
+   * Deletes hostile shots it touches. A plasma lane is a moving hole in a fog
+   * wall, which is a defensive answer no other family offers.
+   */
+  clearsShots?: boolean;
+  /**
+   * Pixels between lanes when a barrel adds one.
+   *
+   * Per family, because a family's identity is partly its pattern width: a
+   * storm wants tight overlapping lanes, a pulse wants reach.
+   */
+  laneStep: number;
 }
+
+/**
+ * The five weapon families.
+ *
+ * `starter` is plain parallel lanes -- coverage. `pulse` pierces. `rocket`
+ * splashes. `plasma` eats incoming fire. `elite` combines.
+ */
+export type WeaponFamily = 'starter' | 'pulse' | 'rocket' | 'plasma' | 'elite';
 
 export interface PickupDef {
   key: string;

@@ -202,19 +202,33 @@ for (const encounter of Object.values(EARTH_FLIGHT_ENCOUNTERS)) {
 }
 check(levelXp > 0, 'could not price the level in XP — the scraper is broken');
 
-const quadLevel = tierLevels[2];
-const lanceLevel = tierLevels[3];
-const quadAt = cumulative(quadLevel) / levelXp;
-const lanceAt = cumulative(lanceLevel) / levelXp;
+// "it's supposed to take longer ... less like a video arcade game and more
+// like a long-term RPG."
+//
+// Stated against the ladder rather than against two rungs by index. The old
+// version named tierLevels[2] as QUAD BEAM and tierLevels[3] as CLARITY LANCE,
+// which stopped meaning anything the moment the ladder was not five rungs
+// long -- and said nothing at all about the rungs in between.
+const arrivesAt = tierLevels.map((level) => cumulative(level) / levelXp);
+const reachedInLevelOne = arrivesAt.filter((share) => share <= 1).length + 1;
+const topAt = arrivesAt[arrivesAt.length - 1];
 
-// "it's supposed to take longer ... less like a video arcade game and more like
-// a long-term RPG". The fourth gun must be past the halfway mark and the fifth
-// must be a genuine end-of-level goal.
-check(quadAt > 0.45, `QUAD BEAM arrives ${(quadAt * 100).toFixed(0)}% into the level — still arcade pacing`);
-check(lanceAt > 0.8, `CLARITY LANCE arrives ${(lanceAt * 100).toFixed(0)}% into the level — not a long-term goal`);
-check(lanceAt <= 1.2, `CLARITY LANCE needs ${(lanceAt * 100).toFixed(0)}% of the level's XP — unreachable`);
+// The top of the ladder is a goal beyond this level, not a reward inside it.
+check(topAt > 1, `the last gun arrives ${(topAt * 100).toFixed(0)}% into level 1 — the ladder has no long-term goal left`);
+// ...but not so far out that it is unreachable in the campaign.
+check(topAt <= 2.6, `the last gun needs ${(topAt * 100).toFixed(0)}% of a level's XP — effectively unreachable`);
+// A meaningful part of the ladder must still be ahead of the player when the
+// level ends, and a meaningful part must be behind them.
+check(reachedInLevelOne < ladder.length,
+  `all ${ladder.length} guns are handed out inside level 1 — nothing is left to climb`);
+check(reachedInLevelOne >= Math.ceil(ladder.length / 2),
+  `only ${reachedInLevelOne} of ${ladder.length} guns are reachable in level 1 — the ladder stalls`);
+// No rung may be free: the second gun still has to be earned.
+check(arrivesAt[0] > 0.03, `the second gun arrives ${(arrivesAt[0] * 100).toFixed(1)}% into the level — that is a handout`);
+// And the spacing must not bunch: no two consecutive grants on the same level.
+check(tierLevels.every((v, i) => i === 0 || v > tierLevels[i - 1]), 'weapon grants must land on distinct levels');
 check(cumulative(2) >= 120, `level 2 costs ${cumulative(2)} XP — too cheap for RPG pacing`);
-console.log(`  level pays ~${Math.round(levelXp)} XP • QUAD at ${(quadAt * 100).toFixed(0)}% • LANCE at ${(lanceAt * 100).toFixed(0)}%`);
+console.log(`  level pays ~${Math.round(levelXp)} XP • ${reachedInLevelOne}/${ladder.length} guns reachable in level 1 • top gun at ${(topAt * 100).toFixed(0)}%`);
 // A choice made under fire is a reflex test, not a choice.
 check(/if \(this\.upgradeOffer\.length > 0\) return;/.test(game), 'the fight must freeze while an upgrade is being chosen');
 
