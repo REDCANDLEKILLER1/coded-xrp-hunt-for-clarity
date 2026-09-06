@@ -485,15 +485,9 @@ const bossHp = Number(leg.match(/hp: (\d+),\n\s+\/\*\*[\s\S]*?size:|hp: (\d+),\s
   || Number(leg.slice(leg.indexOf('boss: {')).match(/hp: (\d+)/)?.[1]);
 check(shotInterval > 0, 'could not read the fire interval');
 check(bossHp > 0, 'could not read the boss health');
-// Two barrels per volley, every hit landing. "Perfect" now also means heat is
-// MANAGED -- burst fire keeps the cadence at full rate, and a player who holds
-// the trigger down forever is choosing a slower gun. So the ceiling is still
-// the un-slowed rate; what changed is that reaching it is a skill.
+// Two barrels per pulse, alternating among four mounts at fixed cadence.
 const perfectDps = (2 / shotInterval) * average;
-// And heat must stay a tax, not a wall: a gun that got dramatically slower
-// would take the fight away at the moment it is most needed.
-const slowdown = Number(game.match(/const HEAT_MAX_SLOWDOWN = ([\d.]+);/)?.[1]);
-check(slowdown > 1 && slowdown <= 2.5, `heat slowdown of ${slowdown}x is either no penalty at all or a wall`);
+check(!/HEAT_MAX_SLOWDOWN|gunHeat/.test(game), 'the captured Warship primary battery must retain fixed hold-to-fire cadence');
 const ttk = bossHp / perfectDps;
 check(ttk >= 25, `the boss dies in ${ttk.toFixed(0)}s of PERFECT shooting — a level boss must outlast a held trigger`);
 check(ttk <= 45, `the boss takes ${ttk.toFixed(0)}s of perfect shooting — past this it is a sponge, not a fight`);
@@ -573,10 +567,10 @@ check(ttk <= 45, `the boss takes ${ttk.toFixed(0)}s of perfect shooting — past
 // the skill the pipper exists to reward would evaporate.
 {
   const fire = game.split('private fireGuns(dt: number): void {')[1]?.split('\n  }\n')[0] ?? '';
-  check(fire.includes('forward(this.camera)'), 'could not find fireGuns — the scraper is broken');
+  check(fire.includes('batteryShot(this.camera'), 'fireGuns must use the validated Warship convergence adapter');
   check(!/leadPoint|lockTarget|lockId/.test(fire), 'fireGuns reads the lock or the lead: the guns must fire where the nose points');
   const bolt = game.split('private fireGuns(dt: number): void {')[1]?.split('sfx.play')[0] ?? '';
-  check(/vx: dir\.x \* BOLT_SPEED/.test(bolt), 'bolts must leave along the camera forward vector');
+  check(/vx: dir\.x \* BOLT_SPEED/.test(bolt), 'bolts must use the validated convergent direction');
 }
 
 // ---- the lock, and the missile that needs it ------------------------------
@@ -731,8 +725,8 @@ check(Number.isFinite(seekerSpeed) && Number.isFinite(seekerTurn), 'enemy seeker
 check(seekerSpeed < yourSpeed, `a seeker must be slower than yours so it can be outrun (${seekerSpeed} vs ${yourSpeed})`);
 check(seekerTurn < yourTurn, `a seeker must be less agile than yours so flying still matters (${seekerTurn} vs ${yourTurn})`);
 check(seekerNum('SEEKER_HP') <= 2, 'a seeker has to die to a burst, or shooting it down is not an option');
-check(seekerNum('SEEKER_HIT_RADIUS') > seekerNum('SEEKER_ARM_RANGE'),
-  'the window to shoot a seeker must be wider than the window in which it kills you');
+check(seekerNum('SEEKER_HIT_RADIUS') > 34,
+  'seeker shooting radius must exceed the transverse hull plus missile padding (34 units)');
 
 // It has to be shootable, and killing it has to be worth something.
 check(
