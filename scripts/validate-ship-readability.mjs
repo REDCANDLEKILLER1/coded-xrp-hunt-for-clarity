@@ -224,7 +224,7 @@ if (game.drones.length === 0) {
   for (let i = 0; i < 400 && game.drones.length === 0; i += 1) game.update(0.05);
 }
 check(game.drones.length > 0, 'could not get an enemy on the field');
-const drone = game.drones[0];
+let drone = game.drones[0];
 if (drone) {
   drone.escort = false;
   rec.reset();
@@ -243,8 +243,10 @@ if (drone) {
     game.boss.x = 200;
     game.boss.y = 260;
   }
-  game.drones.push(drone);
-  drone.escort = true;
+  game.launchEscorts(game.boss);
+  drone = game.drones.find((enemy) => enemy.escort);
+  check(!!drone, 'the real screen launcher must produce a visible escort');
+  if (!drone) throw new Error('Cannot verify escort rendering without an escort');
   drone.stance = 'holding';
   check(game.bossShielded() === true, 'a live escort should be holding a shield -- the enemy-shield check needs one');
   rec.reset();

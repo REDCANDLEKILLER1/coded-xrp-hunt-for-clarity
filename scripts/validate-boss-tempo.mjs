@@ -251,6 +251,55 @@ for (const boss of scripted) {
   }
 }
 
+// Combined campaign behavior: the original contributions were tested separately.
+// Run their real entry points together so a correct arcade clock cannot hide a
+// frozen campaign escort or a pressure tick that cancels the exposure window.
+{
+  const { EARTH_LEDGER_PRIME_MISSION: mission } = await load('src/game/content/missions/ledgerPrime.ts');
+  const g = new Game2A(stubCanvas());
+  g.deployTestMode();
+  g.reset();
+  g.missionDirector.startAtAct(mission, 'regulatory_behemoth');
+  g.updateMission(1 / 60);
+  g.boss.state = 'fight';
+  g.boss.age = 0;
+  g.boss.y = 200;
+  g.launchEscorts(g.boss);
+  const movingEscort = g.drones.find((d) => d.escort);
+  check(!!movingEscort, 'campaign guardian must launch real escorts');
+  const beforeY = movingEscort.y;
+  g.updateMission(1 / 60);
+  check(movingEscort.y !== beforeY, 'campaign update must move escorts as the arcade update does');
+
+  g.registerKill(movingEscort);
+  g.drones = g.drones.filter((d) => d !== movingEscort);
+  const shortened = g.screenClock;
+  g.launchEscorts(g.boss);
+  check(g.screenClock === shortened, 'another attack beat must not refill a partially cleared screen clock');
+  check(g.drones.filter((d) => d.escort).length === 2, 'a killed escort stays killed for the rest of that screen');
+  g.bossSpawnClock = 0;
+  g.bossPressure(1 / 60);
+  check(g.screenClock === shortened, 'ambient boss pressure must not cancel an active screen');
+
+  for (const d of [...g.drones].filter((d) => d.escort)) {
+    g.registerKill(d);
+    g.drones = g.drones.filter((other) => other !== d);
+  }
+  check(!g.bossShielded() && g.screenCooldown >= 12, 'rapid full clear must start the complete exposure cooldown');
+  check(g.boss.attackState === 'recover', 'a successful full clear must open a punish window');
+  const cooldown = g.screenCooldown;
+  g.bossSpawnClock = 0;
+  g.bossPressure(1 / 60);
+  g.launchEscorts(g.boss);
+  check(g.screenCooldown === cooldown && !g.bossShielded(), 'pressure and launch beats must preserve the full-clear cooldown');
+  g.updateScreen(g.boss, 11);
+  g.launchEscorts(g.boss);
+  check(!g.bossShielded(), 'no shield may relaunch before twelve seconds of exposure');
+  g.updateScreen(g.boss, 1);
+  g.launchEscorts(g.boss);
+  check(g.bossShielded(), 'the next screen may launch after its cooldown expires');
+}
+
 if (failures.length) {
   console.error('boss-tempo: FAIL');
   for (const failure of failures) console.error(`  - ${failure}`);

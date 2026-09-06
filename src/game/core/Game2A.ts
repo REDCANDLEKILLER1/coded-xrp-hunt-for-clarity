@@ -900,6 +900,7 @@ export class Game2A {
     if (guardian) {
       if (!this.boss) this.startGuardian(guardian);
       this.updateBoss(dt);
+      this.moveDrones(dt);
       return;
     }
 
@@ -932,6 +933,8 @@ export class Game2A {
   }
 
   private startGuardian(plan: GuardianEncounterPlan): void {
+    this.screenClock = 0;
+    this.screenCooldown = 0;
     const def = this.bossDef(plan.bossKey);
     this.drones = [];
     this.hazards = [];
@@ -1785,6 +1788,8 @@ export class Game2A {
     if (this.boss || this.missionDirector.activeMission) return;
     const bossKey = nextBossKey(BOSSES, this.wave, this.completedBosses);
     if (!bossKey) return;
+    this.screenClock = 0;
+    this.screenCooldown = 0;
     const def = this.bossDef(bossKey);
     this.drones = [];
     this.hazards = [];
@@ -1924,8 +1929,6 @@ export class Game2A {
     this.bossSpawnClock -= dt;
     if (this.bossSpawnClock > 0) return;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
-    this.screenClock = 0;
-    this.screenCooldown = 0;
     if (this.drones.length >= BOSS_PRESSURE_CAP) return;
 
     const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
@@ -2087,7 +2090,7 @@ export class Game2A {
   private launchEscorts(boss: BossActor): void {
     // A spent screen has to cool down first, so the beat cannot outrun the
     // player's ability to clear it.
-    if (this.screenCooldown > 0) return;
+    if (this.screenCooldown > 0 || this.screenClock > 0) return;
     // REFILL to the cap, never add to it. The old loop pushed a full set every
     // time the script came round, which is how four launches became twenty
     // live escorts.
@@ -2173,19 +2176,22 @@ export class Game2A {
     if (this.screenClock <= 0) return;
     const alive = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
     if (alive === 0) {
-      this.screenClock = 0;
-      this.screenCooldown = SCREEN_COOLDOWN;
+      this.endScreen(boss, false);
       return;
     }
     this.screenClock -= dt;
     if (this.screenClock > 0) return;
-    // Overload.
+    this.endScreen(boss, true);
+  }
+
+  /** Every exit starts the same exposure window, including a rapid full clear. */
+  private endScreen(boss: BossActor, overloaded: boolean): void {
     this.screenClock = 0;
     this.screenCooldown = SCREEN_COOLDOWN;
     for (const drone of this.drones) if (drone.escort) drone.escort = false;
     boss.attackState = 'recover';
     boss.attackClock = SCREEN_OVERLOAD_RECOVER;
-    this.missionBannerText = 'SHIELD OVERLOAD // BOSS EXPOSED';
+    this.missionBannerText = overloaded ? 'SHIELD OVERLOAD // BOSS EXPOSED' : 'SCREEN CLEARED // BOSS EXPOSED';
     this.missionBannerClock = 1.8;
     sfx.play('deny');
   }
@@ -4005,6 +4011,7 @@ export class Game2A {
     // outright, which is the promise the "CLEAR N ESCORTS" prompt makes.
     if (drone.escort && this.screenClock > 0) {
       this.screenClock = Math.max(0, this.screenClock - SCREEN_KILL_CUT);
+      if (this.screenClock === 0 && this.boss) this.endScreen(this.boss, false);
     }
     const def = this.enemyDef(drone.enemyKey);
     this.score += def.score;
