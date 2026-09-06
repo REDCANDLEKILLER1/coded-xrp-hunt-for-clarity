@@ -143,8 +143,11 @@ const cockpit = readFileSync('src/game/space3d/Cockpit.ts', 'utf8');
 const main = readFileSync('src/main.ts', 'utf8');
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 
-check(Object.keys(pkg.dependencies ?? {}).length === 0, 'the transit must not add a runtime dependency');
-check(!/three|babylon|@react-three/i.test(JSON.stringify(pkg)), 'no 3D engine: this is a rotation and a divide over the sprites that already ship');
+// The owner approved Three.js for the definitive scenes in PR124. The legacy
+// projected-flight implementation remains independently testable during migration.
+check(Object.keys(pkg.dependencies ?? {}).every((key) => key === 'three'), 'runtime dependencies must stay within the approved Three.js scope');
+check(!/babylon|@react-three/i.test(JSON.stringify(pkg)), 'do not introduce an additional renderer or framework');
+check(/import\('\.\/game\/definitive\/MeshRuntime'\)/.test(main), 'the mesh renderer must load only on entering a 3D scene');
 
 // Every sprite it names must already exist in the manifest.
 const manifest = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));

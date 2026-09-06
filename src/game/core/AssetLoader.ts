@@ -77,6 +77,8 @@ export class AssetLoader {
       return { id, category, src: definition, type: 'image' };
     }
 
+    if (definition?.type === 'model' || definition?.type === 'audio') return null;
+
     if (!definition?.src) {
       this.diagnostics.push({ id, category, src: '', status: 'error', type: 'image' });
       return null;

@@ -354,5 +354,17 @@
     }
   },
   "base": {},
-  "campaign": {}
+  "campaign": {},
+  "models": {
+    "regulatory_warship": {
+      "src": "/assets/models/regulatory_warship.glb",
+      "type": "model",
+      "scenes": [
+        "model_review"
+      ],
+      "bytes": 396960,
+      "sha256": "b98ed0d1ab9c3851f4c18f9ae9fdc472afb6a19a9b9e82e1bebfdfbf2f5b79cb",
+      "notes": "Astra v03 LOD2 runtime derivative; six joined material surfaces, 5156 triangles, all nine attachment nodes; provisional materials. Actual consumer: definitive ModelAssets / MeshRuntime model review."
+    }
+  }
 }

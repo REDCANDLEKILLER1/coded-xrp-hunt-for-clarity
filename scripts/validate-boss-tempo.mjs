@@ -61,6 +61,10 @@ const FIGHT_LIMIT = 100;
  * The gun is deliberately the STARTER, because a slog is a starter-gun problem.
  */
 function fight(bossKey, { seed = 1 } = {}) {
+  const originalRandom = Math.random;
+  let rng = seed;
+  const random = () => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng / 2147483648; };
+  Math.random = random;
   const g = new Game2A(stubCanvas());
   g.deployTestMode();
   g.reset();
@@ -68,7 +72,7 @@ function fight(bossKey, { seed = 1 } = {}) {
   // Force this specific boss up rather than whichever is next in the ladder.
   g.completedBosses = new Set(Object.keys(BOSSES).filter((key) => key !== bossKey));
   g.startBossIfReady();
-  if (!g.boss || g.boss.bossKey !== bossKey) return { spawned: false };
+  if (!g.boss || g.boss.bossKey !== bossKey) { Math.random = originalRandom; return { spawned: false }; }
 
   const dt = 1 / 60;
   let t = 0;
@@ -78,8 +82,6 @@ function fight(bossKey, { seed = 1 } = {}) {
   let peakEscorts = 0;
   let shieldedSeconds = 0;
   const escortTracks = new Map();
-  let rng = seed;
-  const random = () => { rng = (rng * 1103515245 + 12345) % 2147483648; return rng / 2147483648; };
 
   try {
   while (g.boss && t < FIGHT_LIMIT * 2) {
@@ -110,6 +112,8 @@ function fight(bossKey, { seed = 1 } = {}) {
   }
   } catch (error) {
     return { spawned: true, escortsMoved: 0, escortsAged: 0, escortsSeen: 0, crashed: String(error && error.message ? error.message : error), seconds: t, worstStall, peakEscorts, shieldedShare: 0, killed: false };
+  } finally {
+    Math.random = originalRandom;
   }
   const tracks = [...escortTracks.values()];
   return { spawned: true, escortsMoved: tracks.filter((v) => v.moved).length, escortsAged: tracks.filter((v) => v.aged).length, escortsSeen: tracks.length, seconds: t, worstStall, peakEscorts, shieldedShare: shieldedSeconds / Math.max(0.001, t), killed: !g.boss };

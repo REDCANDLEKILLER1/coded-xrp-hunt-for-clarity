@@ -1,0 +1,18 @@
+{
+  "stage": "foundation in progress",
+  "assets": [
+    {
+      "id": "models:regulatory_warship",
+      "path": "public/assets/models/regulatory_warship.glb",
+      "bytes": 396960,
+      "sha256": "b98ed0d1ab9c3851f4c18f9ae9fdc472afb6a19a9b9e82e1bebfdfbf2f5b79cb",
+      "triangles": 5156,
+      "materialGroups": 6,
+      "nodes": 9,
+      "source": "Astra-created v03 LOD2",
+      "consumer": "MeshRuntime.showModel via ModelAssets.loadModel",
+      "status": "runtime model review; provisional materials"
+    }
+  ],
+  "remaining": "Scene loading groups, legacy image consumers and the audio registry still require the full campaign asset audit."
+}

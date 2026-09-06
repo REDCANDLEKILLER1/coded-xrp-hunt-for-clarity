@@ -11,7 +11,9 @@ import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
 import { showDebugLogView } from './game/ui/DebugLogView';
+import { CampaignSave, reviewSaveSlot } from './game/definitive/CampaignSave';
 import {
+  configureCampaignPersistence,
   loadCampaignProgress,
   missionCheckpointFor,
   recordMissionCheckpoint,
@@ -27,6 +29,26 @@ const returnMap = document.querySelector<HTMLButtonElement>('#return-map');
 if (!canvas || !campaignRoot || !gameShell || !returnMap) {
   throw new Error('Required campaign UI was not found.');
 }
+
+let previewStorage: Storage | null = null;
+try { previewStorage = window.localStorage; } catch { /* Session play remains available. */ }
+const definitiveSave = new CampaignSave(previewStorage, reviewSaveSlot(new URLSearchParams(location.search)));
+configureCampaignPersistence({
+  load: () => definitiveSave.snapshot.earth,
+  save: (progress) => { definitiveSave.update((draft) => { draft.earth = progress; }); },
+});
+const previewNotice = document.createElement('div');
+previewNotice.className = 'definitive-preview-notice';
+previewNotice.setAttribute('role', 'status');
+const paintSaveNotice = (): void => {
+  const result = definitiveSave.lastResult;
+  previewNotice.textContent = !result.ok && !['duplicate', 'condition'].includes(result.reason)
+    ? 'PREVIEW · Save unavailable — progress is not being stored. Reload to retry.'
+    : `DEVELOPMENT PREVIEW · ${definitiveSave.testSlot ? 'SECTION TEST SAVE' : definitiveSave.persistence === 'session' ? 'SESSION SAVE' : 'SEPARATE SAVE'}`;
+};
+definitiveSave.subscribe(paintSaveNotice);
+paintSaveNotice();
+document.body.appendChild(previewNotice);
 
 debugLog.restore();
 debugLog.log('boot', 'startup', {
@@ -89,6 +111,7 @@ const game = new Game2A(canvas);
 const boarding = new DirectBoardingRuntime(game, gameShell);
 const onFoot = new OnFootGame(gameShell);
 const space = new Space3DGame(gameShell);
+let meshRuntime: import('./game/definitive/MeshRuntime').MeshRuntime | null = null;
 let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
@@ -194,6 +217,7 @@ window.addEventListener('coded:onfoot-defeat', () => {
 });
 
 returnMap.addEventListener('click', () => {
+  meshRuntime?.hide();
   onFoot.hide();
   space.hide();
   canvas.style.visibility = 'visible';
@@ -208,6 +232,16 @@ watchForUpdates(import.meta.url);
 
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
+
+  if (params.get('review') === 'model' || params.has('model')) {
+    map.hide(); game.suspend(); onFoot.hide(); space.hide();
+    gameShell.hidden = false; canvas.style.visibility = 'hidden';
+    void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
+      meshRuntime ??= new MeshRuntime(gameShell);
+      await meshRuntime.showModel();
+    }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });
+    return;
+  }
 
   // Dedicated phone playtest route. It bypasses the title/campaign shell and starts the
   // existing arcade fighter loop without changing its movement, firing, or collision rules.
