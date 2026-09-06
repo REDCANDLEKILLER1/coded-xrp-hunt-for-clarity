@@ -1,4 +1,4 @@
-import { BufferGeometry, Material, Object3D, Texture } from 'three';
+import { BufferGeometry, Material, Object3D, Skeleton, Texture } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { loadAssetCatalog } from '../core/AssetCatalog';
 
@@ -18,14 +18,17 @@ export async function loadModel(id: string, signal: AbortSignal): Promise<GLTF> 
 /** Dispose shared geometry/material/texture references once per scene tree. */
 export function disposeObject(root: Object3D): void {
   const resources = new Set<BufferGeometry | Material | Texture>();
+  const skeletons = new Set<Skeleton>();
   root.traverse((object) => {
-    const drawable = object as Object3D & { geometry?: BufferGeometry; material?: Material | Material[] };
+    const drawable = object as Object3D & { geometry?: BufferGeometry; material?: Material | Material[]; skeleton?: Skeleton };
+    if (drawable.skeleton) skeletons.add(drawable.skeleton);
     if (drawable.geometry) resources.add(drawable.geometry);
     for (const material of drawable.material ? Array.isArray(drawable.material) ? drawable.material : [drawable.material] : []) {
       resources.add(material);
       for (const value of Object.values(material)) if (value instanceof Texture) resources.add(value);
     }
   });
+  for (const skeleton of skeletons) skeleton.dispose();
   for (const resource of resources) {
     resource.dispose();
     if (resource instanceof Texture) {

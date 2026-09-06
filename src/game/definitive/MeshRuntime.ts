@@ -3,6 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject, loadModel } from './ModelAssets';
 import { SceneController, type ManagedScene } from './SceneController';
+import { BoardingScene } from './BoardingScene';
+import { BoardingQuest } from './BoardingQuest';
+import type { CampaignSave } from './CampaignSave';
 
 export const WARSHIP_ATTACHMENTS = ['Ship_Origin', 'Muzzle_FL', 'Muzzle_FR', 'Muzzle_L', 'Muzzle_R', 'Engine_L', 'Engine_R', 'Camera_Chase', 'Camera_Cockpit_Forward'] as const;
 
@@ -41,6 +44,7 @@ export class MeshRuntime {
   }
 
   async showModel(assetId: 'regulatory_warship' | 'xrpman' = 'regulatory_warship'): Promise<void> {
+    this.hud.hidden = false;
     const character = assetId === 'xrpman';
     this.root.dataset.review = character ? 'character' : 'warship';
     this.root.hidden = false;
@@ -181,6 +185,21 @@ export class MeshRuntime {
       this.status.textContent = `Unable to load model: ${this.controller.lastError}`;
       const retry = document.createElement('button'); retry.textContent = 'Retry'; retry.addEventListener('click', () => void this.showModel(assetId)); this.controls.replaceChildren(retry);
     }
+  }
+
+  async showBoarding(save: CampaignSave): Promise<void> {
+    this.root.dataset.review = 'boarding'; this.root.hidden = false; this.hud.hidden = false;
+    this.status.textContent = 'Entering the Warship…'; this.controls.replaceChildren(); this.resize(); this.startLoop();
+    const quest = new BoardingQuest(save);
+    const begin = quest.begin(save.snapshot.fighterShipKey);
+    if (!begin.ok) { this.status.textContent = 'The boarding checkpoint could not be saved. Return to the map and retry.'; return; }
+    const loaded = await this.controller.change(async signal => {
+      const hero = await loadModel('xrpman', signal);
+      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, onDeparture: () => {} }); }
+      catch (error) { disposeObject(hero.scene); throw error; }
+    });
+    if (loaded) this.hud.hidden = true;
+    else if (this.controller.lastError) this.status.textContent = `Boarding could not load: ${this.controller.lastError}. Return to the map and retry.`;
   }
 
   hide(): void { this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0; }

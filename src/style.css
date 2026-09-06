@@ -750,6 +750,24 @@ canvas {
 .mesh-hud p { white-space: pre-line; text-shadow: 0 2px 6px #000; }
 .mesh-controls { pointer-events: auto; display: flex; flex-wrap: wrap; gap: 6px; }
 .mesh-controls button, .mesh-controls select { padding: 9px 12px; margin: 3px; color: #d4e6ed; background: #13212be6; border: 1px solid #304956; border-radius: 6px; cursor: pointer; }
+.boarding-ui { position: absolute; inset: 0; pointer-events: none; color: #e1edf4; font: 600 12px/1.45 ui-sans-serif, system-ui; }
+.boarding-ui button { pointer-events: auto; border: 1px solid #3b586b; border-radius: 8px; color: #dbf0e5; background: #10212de8; min-height: 44px; padding: 10px 13px; touch-action: none; cursor: pointer; }
+.boarding-status { position: absolute; left: 16px; top: 65px; max-width: min(68vw, 550px); text-shadow: 0 2px 4px #000; }
+.boarding-health { color: #97ff9f; letter-spacing: .04em; }
+.boarding-hint { margin: 7px 0; }
+.boarding-map { position: absolute; right: 15px; top: 96px; width: 85px; height: 111px; opacity: .85; background: transparent; border-radius: 6px; }
+.boarding-top { position: absolute; right: 105px; top: 17px; display: flex; gap: 5px; }
+.boarding-actions { position: absolute; bottom: 47px; right: 15px; width: 188px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.boarding-actions .boarding-fire { grid-row: 1 / 3; min-height: 92px; border-color: #00ff00; background: #0c2d17e8; color: #00ff00; }
+.boarding-stick { position: absolute; left: 25px; bottom: 60px; width: 115px; height: 115px; border: 1px solid #64839966; border-radius: 50%; display: grid; place-items: center; color: #94adbc; font-size: 10px; }
+.boarding-dialogue, .boarding-shop { pointer-events: auto; position: absolute; left: 50%; transform: translateX(-50%); bottom: 50px; width: min(620px,calc(100% - 32px)); box-sizing: border-box; background: #081521f7; border: 1px solid #486b7d; border-left: 3px solid #00ff00; border-radius: 10px; padding: 18px; box-shadow: 0 8px 50px #000; }
+.boarding-dialogue[hidden] { display: none; }
+.boarding-dialogue strong { color: #00ff00; letter-spacing: .08em; }
+.boarding-dialogue p { min-height: 48px; font-size: 16px; font-weight: 450; }
+.boarding-dialogue span { margin-right: 20px; color: #77919f; }
+.boarding-dialogue button, .boarding-shop button { margin: 4px; }
+.boarding-shop { bottom: 50%; transform: translate(-50%,50%); }
+@media (orientation: portrait) { .boarding-status { max-width: calc(100% - 115px); font-size: 11px; } .boarding-map { top: 120px; width: 70px; height: 92px; } .boarding-stick { left: 14px; width: 103px; height: 103px; } .boarding-actions { width: 175px; } }
 .mesh-runtime[data-review="character"] .mesh-controls { position: fixed; left: 17px; top: 145px; width: 170px; }
 .mesh-runtime[data-review="character"] .mesh-controls > div { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
 .mesh-runtime[data-review="character"] .mesh-controls select, .mesh-runtime[data-review="character"] .mesh-controls button:last-child { grid-column: 1 / -1; }

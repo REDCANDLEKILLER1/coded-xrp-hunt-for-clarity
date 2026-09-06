@@ -1,6 +1,8 @@
 # Status
 
-Character foundation: XRPMan now has a real skinned GLB review at ?review=character, 46,725 triangles, ten surfaces, eight prototype clips and three embedded texture maps; 3,597,232 bytes. Browser review, deformation tests and Blender roundtrip pass. Forty regression validators and build pass. Boarding quest/dialogue transaction modules are being implemented next; the actual 3D room consumer is not connected yet.
+Boarding mechanics checkpoint: the actual 3D room consumer at ?review=boarding has been played from bay through bridge capture, purchases, departure briefing and return to the optional cache. Portrait and landscape simultaneous touch movement/fire/release/cancel pass in desktop emulation. All 41 validators and build pass. See BOARDING_PROTOTYPE.md for evidence and limits. The normal chapter connection, landing, physical Mr Zamn, environment art and mesh-space departure remain unfinished.
+
+Character foundation: XRPMan has a real skinned GLB review at ?review=character, 46,725 triangles, ten surfaces, eight prototype clips and three embedded texture maps; 3,597,232 bytes. Browser review, deformation tests and Blender roundtrip pass. The private editable v04 master was reopened in Blender 4.3.2 and retains all eight clips and three attachments.
 
 Draft combined preview: PR125, https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app . Independent build passed at 4bf7dc8. PR121 milestone posted. Shared catalog now owns all image/model/audio paths, defers eleven old interior images, and passes all 39 validators plus build. Local browser network inspection confirms no interior images, GLB, or MP3 downloads on initial flight load.
 

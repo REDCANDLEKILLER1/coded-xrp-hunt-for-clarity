@@ -233,12 +233,13 @@ watchForUpdates(import.meta.url);
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
 
-  if (['model', 'character'].includes(params.get('review') ?? '') || params.has('model')) {
+  if (['model', 'character', 'boarding'].includes(params.get('review') ?? '') || params.has('model')) {
     map.hide(); game.suspend(); onFoot.hide(); space.hide();
     gameShell.hidden = false; canvas.style.visibility = 'hidden';
     void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
       meshRuntime ??= new MeshRuntime(gameShell);
-      await meshRuntime.showModel(params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
+      if (params.get('review') === 'boarding') await meshRuntime.showBoarding(definitiveSave);
+      else await meshRuntime.showModel(params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
     }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });
     return;
   }
