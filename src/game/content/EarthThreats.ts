@@ -11,8 +11,12 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     key: 'fast_scout',
     label: 'FAST SCOUT',
     sprite: { category: 'enemies', id: 'fast_scout' },
-    draw: { w: 30, h: 40 },
-    hitbox: { w: 22, h: 30 },
+    // Re-authored down into the light band. At 30x40 this scouted bigger than
+    // both mediums (31px tall against their 25px), so the size classes said
+    // one thing and the content said another -- and size is the only signal
+    // that survives at phone scale.
+    draw: { w: 22, h: 29 },
+    hitbox: { w: 17, h: 23 },
     hp: 1,
     baseSpeed: 205,
     spawnRate: 0.62,
@@ -23,6 +27,7 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 1.7,
     projectileSpeed: 285,
     accent: '#ff5ce1',
+    hull: 'light',
   },
 });
 

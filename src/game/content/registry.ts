@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { BossAttackKey, BossDef, Size, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
+import type { BossAttackKey, BossDef, Size, EnemyDef, HullClass, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from './BossDirector';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
@@ -27,11 +27,26 @@ import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirecto
  */
 const COMBAT_SCALE = 0.78;
 
-function scaled(size: Size): Size {
+/**
+ * How much bigger each hull class draws.
+ *
+ * The only place a size class changes a size. Applied to the draw box and the
+ * hitbox in the same expression, so a ship can never be hit by something that
+ * visibly missed it -- the failure mode that made COMBAT_SCALE a single helper
+ * in the first place.
+ */
+export const HULL_SIZE: Record<HullClass, number> = {
+  light: 1,
+  medium: 1.45,
+  heavy: 1.95,
+};
+
+function scaled(size: Size, hull: HullClass = 'light'): Size {
   // Floored, so nothing rounds away to something unhittable.
+  const scale = COMBAT_SCALE * HULL_SIZE[hull];
   return {
-    w: Math.max(6, Math.round(size.w * COMBAT_SCALE)),
-    h: Math.max(6, Math.round(size.h * COMBAT_SCALE)),
+    w: Math.max(6, Math.round(size.w * scale)),
+    h: Math.max(6, Math.round(size.h * scale)),
   };
 }
 
@@ -40,7 +55,10 @@ export function scaleCombatants<T extends { draw: Size; hitbox: Size }>(
   defs: Record<string, T>,
 ): Record<string, T> {
   return Object.fromEntries(
-    Object.entries(defs).map(([key, def]) => [key, { ...def, draw: scaled(def.draw), hitbox: scaled(def.hitbox) }]),
+    Object.entries(defs).map(([key, def]) => {
+      const hull = (def as { hull?: HullClass }).hull;
+      return [key, { ...def, draw: scaled(def.draw, hull), hitbox: scaled(def.hitbox, hull) }];
+    }),
   ) as Record<string, T>;
 }
 
@@ -106,6 +124,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 2.6,
     projectileSpeed: 210,
     accent: '#ff3355',
+    hull: 'light',
   },
   fog_raider: {
     key: 'fog_raider',
@@ -123,6 +142,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 2.2,
     projectileSpeed: 240,
     accent: '#b56cff',
+    hull: 'medium',
   },
   whale_scout: {
     key: 'whale_scout',
@@ -140,6 +160,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 3.0,
     projectileSpeed: 195,
     accent: '#36a3ff',
+    hull: 'heavy',
   },
   rug_fighter: {
     key: 'rug_fighter',
@@ -157,6 +178,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 1.9,
     projectileSpeed: 265,
     accent: '#ffd24a',
+    hull: 'medium',
   },
 });
 

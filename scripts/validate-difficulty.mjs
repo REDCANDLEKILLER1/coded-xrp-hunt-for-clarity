@@ -142,10 +142,13 @@ check(/const COMBAT_SCALE = ([\d.]+);/.test(registrySrc), 'COMBAT_SCALE is missi
 const combat = Number(/const COMBAT_SCALE = ([\d.]+);/.exec(registrySrc)?.[1]);
 check(combat > 0.5 && combat < 1, `COMBAT_SCALE of ${combat} is not a shrink`);
 // Scaling the sprite without the hitbox gives a ship hit by things that miss.
-const scaler = registrySrc.split('function scaled(size: Size): Size {')[1]?.split('\n}\n')[0] ?? '';
+const scaler = registrySrc.split('function scaled(size: Size, hull: HullClass = \'light\'): Size {')[1]?.split('\n}\n')[0] ?? '';
 check(/w:/.test(scaler) && /h:/.test(scaler), 'the scale helper must resize both axes');
-check(/draw: scaled\(def\.draw\), hitbox: scaled\(def\.hitbox\)/.test(registrySrc),
-  'draw and hitbox must scale together');
+// Both boxes must go through the same helper with the SAME hull argument.
+// A size class that scaled the sprite but not the hitbox would give a ship
+// that is hit by shots which visibly missed it.
+check(/draw: scaled\(def\.draw, hull\), hitbox: scaled\(def\.hitbox, hull\)/.test(registrySrc),
+  'draw and hitbox must scale together, through the same hull');
 for (const [name, defs] of [['SHIPS', SHIPS], ['ENEMIES', ENEMIES], ['BOSSES', BOSSES]]) {
   for (const [key, def] of Object.entries(defs)) {
     check(def.hitbox.w >= 6 && def.hitbox.h >= 6, `${name}.${key} shrank to an unhittable ${def.hitbox.w}x${def.hitbox.h}`);
