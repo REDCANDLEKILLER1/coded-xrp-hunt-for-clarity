@@ -18,6 +18,9 @@ const fixture = new CampaignSave(storage, 'test:boarding');
 assert.equal(fixture.snapshot.earth.highScore, 0, 'section tests start independently');
 assert.equal(reviewSaveSlot(new URLSearchParams('space')), 'test:space');
 assert.equal(reviewSaveSlot(new URLSearchParams('review=boarding')), 'test:boarding');
+assert.equal(reviewSaveSlot(new URLSearchParams('review=boarding&run=deck2')), 'test:boarding:deck2');
+assert.equal(reviewSaveSlot(new URLSearchParams('run=deck2')), 'campaign','test-run labels never alter a real campaign slot');
+assert.equal(reviewSaveSlot(new URLSearchParams('review=boarding&run=../bad')), 'test:boarding');
 assert.equal(reviewSaveSlot(new URLSearchParams()), 'campaign');
 
 const reward = (draft) => {

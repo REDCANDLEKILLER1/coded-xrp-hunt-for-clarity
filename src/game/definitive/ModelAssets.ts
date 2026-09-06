@@ -15,6 +15,14 @@ export async function loadModel(id: string, signal: AbortSignal): Promise<GLTF> 
   return gltf;
 }
 
+/** Parallel scene loads release successful siblings if any required model fails. */
+export async function loadModels(ids: readonly string[], signal: AbortSignal): Promise<GLTF[]> {
+  const results=await Promise.allSettled(ids.map(id=>loadModel(id,signal)));
+  const failure=results.find((result):result is PromiseRejectedResult=>result.status==='rejected');
+  if(failure){for(const result of results)if(result.status==='fulfilled')disposeObject(result.value.scene);throw failure.reason;}
+  return results.map(result=>(result as PromiseFulfilledResult<GLTF>).value);
+}
+
 /** Dispose shared geometry/material/texture references once per scene tree. */
 export function disposeObject(root: Object3D): void {
   const resources = new Set<BufferGeometry | Material | Texture>();

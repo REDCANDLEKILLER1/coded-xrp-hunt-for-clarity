@@ -643,7 +643,19 @@
         "hub"
       ],
       "bytes": 3597232,
-      "sha256": "0f95e53d9beaaa7ff3f909a597723487f8508bfaa77ccbcc9e62681bb6daddea"
+      "sha256": "aaac2c935fe4b248a2faf872b33609c3ac5e65c626550b3ea0c0bfd90cfad20b"
+    },
+    "mr_zamn": {
+      "src": "/assets/models/mr_zamn.glb",
+      "notes": "Original blue heavy armor, shield, fitted beard and three clips on pinned CC0 anatomy. Private master remains outside repository.",
+      "bytes": 3435044,
+      "type": "model",
+      "scenes": [
+        "boarding",
+        "hub",
+        "crew_review"
+      ],
+      "sha256": "e84bd48c4855e9766508f84a76a0b2204deb3d659e9b1b18f53310fb295e2c7f"
     }
   },
   "audio": {

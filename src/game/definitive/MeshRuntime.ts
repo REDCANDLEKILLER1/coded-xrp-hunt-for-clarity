@@ -1,7 +1,7 @@
 import { ACESFilmicToneMapping, AmbientLight, AnimationMixer, Box3, Color, DirectionalLight, GridHelper, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry, SRGBColorSpace, Vector3, WebGLRenderer, PMREMGenerator } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { disposeObject, loadModel } from './ModelAssets';
+import { disposeObject, loadModel, loadModels } from './ModelAssets';
 import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
 import { BoardingQuest } from './BoardingQuest';
@@ -43,13 +43,14 @@ export class MeshRuntime {
     this.resize();
   }
 
-  async showModel(assetId: 'regulatory_warship' | 'xrpman' = 'regulatory_warship'): Promise<void> {
+  async showModel(assetId: 'regulatory_warship' | 'xrpman' | 'mr_zamn' = 'regulatory_warship'): Promise<void> {
     this.hud.hidden = false;
-    const character = assetId === 'xrpman';
+    const character = assetId !== 'regulatory_warship';
+    const characterName=assetId==='mr_zamn'?'MR ZAMN':'XRPMAN';
     this.root.dataset.review = character ? 'character' : 'warship';
     this.root.hidden = false;
     this.resize();
-    this.status.textContent = character ? 'Loading XRPMan…' : 'Loading Warship model…';
+    this.status.textContent = character ? `Loading ${characterName}…` : 'Loading Warship model…';
     this.controls.replaceChildren();
     this.startLoop();
     const loaded = await this.controller.change(async (signal) => {
@@ -149,7 +150,7 @@ export class MeshRuntime {
         ship.traverse((object) => {
           if (!(object instanceof Mesh)) return;
           for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-            if (material instanceof MeshStandardMaterial && material.name.startsWith('Liquidity')) {
+            if (material instanceof MeshStandardMaterial && /^(Liquidity|TruFi blue)/.test(material.name)) {
               material.toneMapped = false; material.needsUpdate = true;
             }
           }
@@ -172,7 +173,7 @@ export class MeshRuntime {
           if (clock > .3) {
             const info = this.renderer.info.render;
             this.status.textContent = character
-              ? `XRPMAN · CHARACTER REVIEW · ${clipName}\n${box.y.toFixed(3)} m · ${gltf.animations.length} animations\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls`
+              ? `${characterName} · CHARACTER REVIEW · ${clipName}\n${box.y.toFixed(3)} m · ${gltf.animations.length} animations\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls`
               : `WARSHIP · MODEL REVIEW · Provisional materials\n${box.z.toFixed(1)} m long · ${box.x.toFixed(1)} m span · ${box.y.toFixed(1)} m high\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls · 9 attachments`;
             clock = 0;
           }
@@ -194,12 +195,15 @@ export class MeshRuntime {
     const begin = quest.begin(save.snapshot.fighterShipKey);
     if (!begin.ok) { this.status.textContent = 'The boarding checkpoint could not be saved. Return to the map and retry.'; return; }
     const loaded = await this.controller.change(async signal => {
-      const hero = await loadModel('xrpman', signal);
-      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, onDeparture: () => {} }); }
-      catch (error) { disposeObject(hero.scene); throw error; }
+      const [hero,crew] = await loadModels(['xrpman','mr_zamn'], signal);
+      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, onDeparture: () => {} }); }
+      catch (error) { disposeObject(hero.scene); disposeObject(crew.scene); throw error; }
     });
     if (loaded) this.hud.hidden = true;
-    else if (this.controller.lastError) this.status.textContent = `Boarding could not load: ${this.controller.lastError}. Return to the map and retry.`;
+    else if (this.controller.lastError) {
+      this.status.textContent = `Boarding could not load: ${this.controller.lastError}. Your checkpoint is retained.`;
+      const retry=document.createElement('button');retry.textContent='Retry boarding';retry.addEventListener('click',()=>void this.showBoarding(save));this.controls.replaceChildren(retry);
+    }
   }
 
   hide(): void { this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0; }
@@ -208,7 +212,7 @@ export class MeshRuntime {
     this.renderer.domElement.removeEventListener('webglcontextlost', this.contextLost);
     this.environment.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); this.root.remove();
   }
-  private readonly contextLost = (event: Event): void => { event.preventDefault(); this.controller.clear(); this.status.textContent = 'Graphics were interrupted. Reload to continue from your checkpoint.'; };
+  private readonly contextLost = (event: Event): void => { event.preventDefault(); this.controller.clear(); this.hud.hidden=false; this.status.textContent = 'Graphics were interrupted. Reload to continue from your checkpoint.'; };
   private readonly resize = (): void => { this.renderer.setSize(this.root.clientWidth || innerWidth, this.root.clientHeight || innerHeight, false); };
   private startLoop(): void {
     if (this.frameId) return;

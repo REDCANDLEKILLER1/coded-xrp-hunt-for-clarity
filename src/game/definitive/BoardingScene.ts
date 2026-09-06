@@ -2,7 +2,7 @@ import { AmbientLight, AnimationMixer, BoxGeometry, Color, CylinderGeometry, Dir
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
-import { DECK, DECK_DOORS, canCross, deckRoom, insideWallMargin, roomAt } from './BoardingLayout';
+import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, roomAt } from './BoardingLayout';
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
@@ -10,7 +10,7 @@ import { coreExposure, selectBoardingTarget } from './BoardingCombat';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; clock: number; charge: number; target: Vector3; base: Vector3; kind: 'guard' | 'relay' | 'core' }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; hostile: boolean; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; onDeparture: () => void }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; onDeparture: () => void }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
@@ -29,6 +29,9 @@ export class BoardingScene implements ManagedScene {
   private readonly lifetime = new AbortController();
   private readonly hero: Group;
   private readonly mixer: AnimationMixer;
+  private readonly crew: Group;
+  private readonly crewMixer: AnimationMixer;
+  private readonly crewMarker: Mesh;
   private readonly roomGroups = new Map<BoardingRoom, Group>();
   private readonly terminals = new Map<BoardingRoom, Mesh>();
   private readonly doorPanels: { door: typeof DECK_DOORS[number]; mesh: Mesh }[] = [];
@@ -78,13 +81,18 @@ export class BoardingScene implements ManagedScene {
   constructor(private readonly host: SceneHost) {
     this.paused=host.quest.save.testSlot;
     this.hero = host.hero.scene; this.mixer = new AnimationMixer(this.hero);
+    this.crew=host.crew.scene;this.crewMixer=new AnimationMixer(this.crew);
+    const idle=host.crew.animations.find(clip=>clip.name==='Idle');if(idle)this.crewMixer.clipAction(idle).play();
+    this.crewMarker=new Mesh(new CylinderGeometry(0,.13,.26,4),this.blue);this.scene.add(this.crewMarker);
+    this.scene.add(this.crew);
+    this.crew.traverse(object=>{if(object instanceof Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])if(material.name==='TruFi blue')material.toneMapped=false;});
     this.room = host.quest.checkpoint;
     const start=deckRoom(this.room);
     this.hero.position.set(start.x,0,start.z-(this.room==='hangar'?5:start.depth*.3));
     this.scene.background=new Color(0x040911); this.scene.environment=host.environment; this.scene.environmentIntensity=.55;
     this.scene.add(this.hero,new AmbientLight(0xaec4db,1.3));
     this.heroShield.scale.set(.78,1.1,.78);this.heroShield.visible=false;this.scene.add(this.heroShield);
-    this.exitField.position.set(0,.025,48);this.exitField.scale.set(15,.025,.45);this.scene.add(this.exitField);
+    this.exitField.position.set(0,.025,DECK_LAYOUT.core.exitFieldZ);this.exitField.scale.set(9,.025,.45);this.scene.add(this.exitField);
     const key=new DirectionalLight(0xb9d9ff,2.3);key.position.set(-12,22,-8);this.scene.add(key);
     const rim=new DirectionalLight(0xff7955,1);rim.position.set(10,8,15);this.scene.add(rim);
     this.hero.traverse(obj=>{
@@ -127,20 +135,20 @@ export class BoardingScene implements ManagedScene {
       this.obstacles.push({x,z,w:1.3,d:.85});
       const terminal=this.part(group,[x,1.23,z],[1.1,.08,.7],this.green);this.terminals.set(room.id,terminal);
       // Functional rooms have distinct machinery rather than recolored boxes.
-      if(room.id==='engineering')for(const z of [-5,5]){
-        const cylinder=new Mesh(new CylinderGeometry(1.4,1.4,2.4,16),this.metal);cylinder.position.set(-24,1.2,z);group.add(cylinder);
-        this.obstacles.push({x:-24,z,w:2.7,d:2.7});
-        this.part(group,[-24,2.43,z],[2.3,.06,1.6],this.red);
+      if(room.id==='engineering'){
+        const cylinder=new Mesh(new CylinderGeometry(1.4,1.4,2.4,16),this.metal);cylinder.position.set(-23,1.2,0);group.add(cylinder);
+        this.obstacles.push({x:-23,z:0,w:2.7,d:2.7});
+        this.part(group,[-23,2.43,0],[2.3,.06,1.6],this.red);
       }
       if(room.id==='rescue'){
         this.part(group,[6,.35,-3],[4,.7,1.7]);this.part(group,[6,.73,-3],[3.8,.05,1.6],this.blue);
         this.obstacles.push({x:6,z:-3,w:4,d:1.7});
       }
-      if(room.id==='bridge')for(const x of [-5,5]){
-        this.part(group,[x,.7,53],[2,1.4,1]);this.part(group,[x,1.42,53],[1.8,.04,.8],this.blue);
-        this.obstacles.push({x,z:53,w:2,d:1});
+      if(room.id==='bridge')for(const x of [-3.5,3.5]){
+        this.part(group,[x,.7,43],[1.6,1.4,1]);this.part(group,[x,1.42,43],[1.4,.04,.8],this.blue);
+        this.obstacles.push({x,z:43,w:1.6,d:1});
       }
-      if(room.id==='hangar')for(const x of [-6,6])this.part(group,[x,.02,-42],[.12,.03,11],this.green);
+      if(room.id==='hangar')for(const x of [-5,5])this.part(group,[x,.02,-29],[.12,.03,11],this.green);
     }
     for(const door of DECK_DOORS){
       const frame=new Group();this.scene.add(frame);
@@ -208,7 +216,10 @@ export class BoardingScene implements ManagedScene {
   private canAct():boolean{return this.active&&!this.paused&&!this.dead&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop');}
   private say(text:string):void{this.message=text;this.messageClock=4;}
   private conversation(scene:DialogueScene,step?:BoardingStep,record=true):void {
-    this.clearInput();
+    this.clearInput();this.play('Idle');
+    if(this.crew.visible&&this.hero.position.distanceTo(this.crew.position)<6){
+      const delta=this.crew.position.clone().sub(this.hero.position);this.hero.rotation.y=Math.atan2(delta.x,delta.z);this.crew.rotation.y=this.hero.rotation.y+Math.PI;
+    }
     this.dialog.open(scene,()=>{
       const result=step&&!this.host.quest.has(step)?this.host.quest.complete(step,scene.id):record?this.host.quest.recordDialogue(scene.id):{ok:true};
       if(result.ok){this.clearInput();return true;}return false;
@@ -216,13 +227,18 @@ export class BoardingScene implements ManagedScene {
   }
   private interact():void {
     if(!this.canAct())return;
+    const q=this.host.quest;
+    if(this.crew.visible&&this.hero.position.distanceTo(this.crew.position)<2.6){
+      if(!q.has('rescue_junction'))this.conversation(BOARDING_DIALOGUE.zamn,'rescue_junction');
+      else this.say(q.has('bridge_secured')?'MR ZAMN · Shields checked. Use the command terminal when you are ready.':'MR ZAMN · I will hold this route. Restore engineering power.');
+      return;
+    }
     const room=deckRoom(this.room),distance=Math.hypot(this.hero.position.x-room.terminal[0],this.hero.position.z-room.terminal[1]);
     if(distance>2.5){this.say('Move close to the glowing terminal to interact.');return;}
-    const q=this.host.quest;
     switch(this.room){
       case 'hangar':q.complete('hangar_safe');this.say('Bay secured. The security door is open.');break;
       case 'security':if(!q.isClear('security'))this.say('Clear the security detail first.');else{q.complete('security_relay');this.say('Door relay disabled. Crew junction unlocked.');}break;
-      case 'rescue':if(!q.has('rescue_junction'))this.conversation(BOARDING_DIALOGUE.zamn,'rescue_junction');else this.say('Mr Zamn is holding the crew route. Restore engineering power.');break;
+      case 'rescue':this.say('Mr Zamn is guarding the blue survivor platform. Speak to him.');break;
       case 'engineering':if(!q.isClear('engineering'))this.say('Clear engineering before rerouting power.');else if(!q.has('engineering_power'))this.conversation(BOARDING_DIALOGUE.engineering,'engineering_power');else this.say('Hangar power is restored.');break;
       case 'command':q.complete('command_access');this.say('Core chamber open. Destroy its two relays.');break;
       case 'core':if(q.has('core_defeated'))this.say('Ledger Shield acquired. Activate SHIELD before the bridge exit field.');else this.say('Break both red relays, then strike while the Core is exposed.');break;
@@ -245,7 +261,8 @@ export class BoardingScene implements ManagedScene {
     if(this.host.quest.isClear(room)||this.enemies.some(e=>e.room===room))return;
     for(const [x,z] of deckRoom(room).enemies)this.enemy(room,x,z,'guard');
     if(room==='core'){
-      this.enemy(room,-6,38,'relay');this.enemy(room,6,38,'relay');this.enemy(room,0,41,'core');
+      for(const [x,z] of DECK_LAYOUT.core.relays)this.enemy(room,x,z,'relay');
+      this.enemy(room,DECK_LAYOUT.core.center[0],DECK_LAYOUT.core.center[1],'core');
       if(!this.coreStarted){this.coreStarted=true;if(!this.host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.core.id))this.conversation(BOARDING_DIALOGUE.core);}
     }
   }
@@ -291,10 +308,22 @@ export class BoardingScene implements ManagedScene {
   update(dt:number):void {
     if(!this.active)return;this.dialog.update(dt);
     this.dialoguePanel.hidden=!this.dialog.active;this.dialogueSpeaker.textContent=this.dialog.speaker;
+    this.ui.classList.toggle('is-conversation',this.dialog.active);
     this.dialogueText.textContent=this.dialog.text;this.dialoguePage.textContent=this.dialog.failed?'Save failed. Retry CONTINUE or SKIP.':this.dialog.page;
+    const crewInHub=this.host.quest.has('bridge_secured');
+    const crewPosition=crewInHub?DECK_LAYOUT.crew.hub:DECK_LAYOUT.crew.rescue;
+    this.crew.position.set(crewPosition[0],0,crewPosition[1]);this.crew.visible=this.room===(crewInHub?'bridge':'rescue');
+    this.crewMarker.visible=this.crew.visible&&!this.host.quest.has('rescue_junction');this.crewMarker.position.copy(this.crew.position).y=2.4;
+    if(this.dialog.active){
+      this.mixer.update(dt);this.crewMixer.update(dt);
+      const focus=this.hero.position.clone();if(this.crew.visible&&focus.distanceTo(this.crew.position)<6)focus.lerp(this.crew.position,.5);
+      this.camera.position.lerp(focus.clone().add(new Vector3(4,4.6,-7)),1-Math.exp(-dt*5));this.camera.lookAt(focus);
+    }
     if(this.dead){this.mixer.update(dt);return;}
     if(this.paused||this.dialog.active||this.ui.querySelector('.boarding-shop')){this.paintHUD();return;}
     this.clock+=dt;this.fireClock-=dt;this.dodgeClock=Math.max(0,this.dodgeClock-dt);this.dodgeCooldown=Math.max(0,this.dodgeCooldown-dt);this.invulnerability=Math.max(0,this.invulnerability-dt);this.messageClock-=dt;
+    this.crewMixer.update(dt);
+    if(this.crew.visible){const direction=this.hero.position.clone().sub(this.crew.position);const angle=Math.atan2(direction.x,direction.z);this.crew.rotation.y+=Math.atan2(Math.sin(angle-this.crew.rotation.y),Math.cos(angle-this.crew.rotation.y))*Math.min(1,dt*2);}
     if(this.shieldOn){this.shield=Math.max(0,this.shield-dt*6);if(!this.shield)this.shieldOn=false;}else this.shield=Math.min(100,this.shield+dt*14);
     this.heroShield.visible=this.shieldOn;this.heroShield.position.copy(this.hero.position).y+=1;
     this.exitField.material=this.host.quest.has('bridge_secured')?this.green:this.red;
@@ -309,6 +338,7 @@ export class BoardingScene implements ManagedScene {
       const target=this.hero.position.clone();target[axis]+=this.move[axis]*distance;const next=roomAt(target.x,target.z);
       if(!next||!insideWallMargin(next,target.x,target.z)||!canCross(this.room,next.id,target.x,target.z))continue;
       if(this.obstacles.some(o=>Math.abs(target.x-o.x)<o.w/2+.3&&Math.abs(target.z-o.z)<o.d/2+.3))continue;
+      if(this.crew.visible&&target.distanceTo(this.crew.position)<.85)continue;
       if(this.enemies.some(e=>e.room===this.room&&e.hp>0&&Math.hypot(target.x-e.mesh.position.x,target.z-e.mesh.position.z)<(e.kind==='core'?2.2:.72)))continue;
       const reason=this.host.quest.lockReason(next.id);
       if(reason){this.say(reason);continue;}
@@ -323,9 +353,9 @@ export class BoardingScene implements ManagedScene {
     this.play(this.dodgeClock>0?'Dodge':firing?'AimFire':this.move.lengthSq()>.04?'Run':'Idle');this.mixer.update(dt);this.hero.updateMatrixWorld(true);
     if(firing&&this.fireClock<=0){this.fireClock=.23;const origin=this.hero.getObjectByName('Hand_R')!.getWorldPosition(new Vector3());const point=target?.mesh.position.clone()??origin.clone().add(new Vector3(Math.sin(this.hero.rotation.y),0,Math.cos(this.hero.rotation.y)).multiplyScalar(15));this.fire(origin,point.sub(origin),false);}
     this.updateEnemies(dt);this.updateBolts(dt);
-    if(this.room==='bridge'&&!this.host.quest.has('bridge_secured')&&this.hero.position.z<49&&!this.shieldOn){this.hurt(2);this.say('Activate Ledger Shield to cross this low-power exit field.');}
+    if(this.room==='bridge'&&!this.host.quest.has('bridge_secured')&&this.hero.position.z<DECK_LAYOUT.core.exitFieldZ+1&&!this.shieldOn){this.hurt(2);this.say('Activate Ledger Shield to cross this low-power exit field.');}
     const focus=this.hero.position.clone().add(new Vector3(0,.7,0));
-    if(this.room==='core')focus.lerp(new Vector3(0,.7,38),.4);
+    if(this.room==='core')focus.lerp(new Vector3(deckRoom('core').x,.7,deckRoom('core').z),.4);
     const offset=new Vector3(9,14,-12).multiplyScalar(this.room==='core'&&this.camera.aspect<1?1.15:1);
     const cameraTarget=focus.clone().add(offset);this.camera.position.lerp(cameraTarget,1-Math.exp(-dt*7));this.camera.lookAt(focus);
     this.statsClock+=dt;if(this.statsClock>.1){this.paintHUD();this.statsClock=0;}
@@ -385,14 +415,14 @@ export class BoardingScene implements ManagedScene {
     for(const {door,mesh} of this.doorPanels)mesh.visible=!!q.lockReason(door.b);
     for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
-    for(const room of DECK){ctx.fillStyle=room.id===this.room?'#00a822':q.lockReason(room.id)?'#70241f':'#243a4c';ctx.fillRect(65+(room.x-room.width/2)*1.65,159-(room.z+room.depth/2+51)*1.35,room.width*1.65-1,room.depth*1.35-1);}
-    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(65+this.hero.position.x*1.65,159-(this.hero.position.z+51)*1.35,2.4,0,Math.PI*2);ctx.fill();
+    for(const room of DECK){ctx.fillStyle=room.id===this.room?'#00a822':q.lockReason(room.id)?'#70241f':'#243a4c';ctx.fillRect(65+(room.x-room.width/2)*2.2,159-(room.z+room.depth/2+37)*1.8,room.width*2.2-1,room.depth*1.8-1);}
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(65+this.hero.position.x*2.2,159-(this.hero.position.z+37)*1.8,2.4,0,Math.PI*2);ctx.fill();
   }
   private coreExposed():boolean{return coreExposure(this.enemies.some(e=>e.room==='core'&&e.kind==='relay'&&e.hp>0),this.clock);}
   private onScreen(position:Vector3):boolean{const p=position.clone().project(this.camera);return Math.abs(p.x)<.92&&Math.abs(p.y)<.8&&p.z>-1&&p.z<1;}
   render():void {this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?49:43;this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);}
   dispose():void {
-    this.active=false;this.clearInput();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.dialog.closeWithoutEffects();this.ui.remove();
+    this.active=false;this.clearInput();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
     // Include pooled/dead objects so shared GPU resources are released exactly once.
     for(const enemy of this.enemies)this.scene.add(enemy.mesh,enemy.tell);
     this.scene.add(new Mesh(this.boltGeometry,this.red),new Mesh(this.box,this.barrierMaterial));

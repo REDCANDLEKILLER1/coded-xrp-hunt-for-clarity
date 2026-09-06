@@ -67,6 +67,15 @@ mixer.update(.2); gltf.scene.updateMatrixWorld(true);
 const aim=attachmentPositions();
 assert.ok(aim[0].z-base[0].z>.3, 'firing hand reaches forward along the GLB +Z axis');
 assert.ok(aim[0].distanceTo(aim[1])>.25, 'hand sockets remain distinct');
+let palmDistance=Infinity;
+gltf.scene.traverse(object=>{
+  if(!object.isSkinnedMesh)return;
+  for(let i=0;i<object.geometry.attributes.position.count;i++){
+    const v=new Vector3().fromBufferAttribute(object.geometry.attributes.position,i);object.applyBoneTransform(i,v);v.applyMatrix4(object.matrixWorld);
+    palmDistance=Math.min(palmDistance,v.distanceTo(aim[0]));
+  }
+});
+assert.ok(palmDistance<.06,'the firing socket touches the actual posed hand surface');
 mixer.stopAllAction();
 const movement={};
 for (const clip of gltf.animations) {

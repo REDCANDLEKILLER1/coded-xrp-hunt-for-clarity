@@ -17,7 +17,7 @@
       "id": "models:xrpman",
       "path": "public/assets/models/xrpman.glb",
       "bytes": 3597232,
-      "sha256": "0f95e53d9beaaa7ff3f909a597723487f8508bfaa77ccbcc9e62681bb6daddea",
+      "sha256": "aaac2c935fe4b248a2faf872b33609c3ac5e65c626550b3ea0c0bfd90cfad20b",
       "triangles": 46725,
       "materialGroups": 10,
       "bones": 163,
@@ -32,9 +32,27 @@
         "KnockdownRecover"
       ],
       "textures": "1024 albedo, 1024 normal, 512 roughness; all embedded",
-      "consumer": "MeshRuntime.showModel(xrpman) at ?review=character",
+      "consumer": "Character review and BoardingScene actual animated hero",
       "source": "CC0 MakeHuman anatomy plus original XRPMan armor, hair, emblems, texture maps and animation",
       "status": "Skinned runtime foundation, browser-reviewed; further character art refinement remains possible during boarding production"
+    },
+    {
+      "id": "models:mr_zamn",
+      "path": "public/assets/models/mr_zamn.glb",
+      "bytes": 3435044,
+      "sha256": "e84bd48c4855e9766508f84a76a0b2204deb3d659e9b1b18f53310fb295e2c7f",
+      "triangles": 43654,
+      "materialGroups": 9,
+      "bones": 163,
+      "animations": [
+        "Idle",
+        "Interact",
+        "Hit"
+      ],
+      "textures": "1024 albedo, 1024 normal, 512 roughness; embedded",
+      "consumer": "Crew review and BoardingScene rescue/hub NPC",
+      "source": "Pinned CC0 MakeHuman anatomy and original blue armor/shield/animation",
+      "status": "Physical crew foundation, private master v03; realism refinement remains"
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

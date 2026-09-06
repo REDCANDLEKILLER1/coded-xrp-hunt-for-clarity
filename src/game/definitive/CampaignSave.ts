@@ -71,7 +71,8 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
 
 export function reviewSaveSlot(params: URLSearchParams): string {
   const section = params.get('review') ?? ['flight', 'space', 'onfoot', 'boss', 'model'].find((key) => params.has(key));
-  return section ? `test:${id(section) ? section : 'section'}` : 'campaign';
+  const run=params.get('run');
+  return section ? `test:${id(section) ? section : 'section'}${run&&/^[a-zA-Z0-9_-]{1,32}$/.test(run)?`:${run}`:''}` : 'campaign';
 }
 
 /** One record commits rewards, purchases, checkpoints and ownership together. */

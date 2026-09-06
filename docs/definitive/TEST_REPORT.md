@@ -19,3 +19,8 @@ This report covers the current foundation, not the connected campaign deliverabl
 - Review scene cost: seven draw calls and 5,156 triangles for model plus grid; with four muzzle markers, eleven draw calls and 5,716 triangles. These are a static review scene, not combat performance.
 
 Remaining evidence: normal Earth-to-Mars play, real hero/boarding/mesh combat, transitions and checkpoint recovery in play, asset download/decode totals by scene, p50/p95/p99 combat frame times and ten-minute soak, real phone handling, all later destinations. Existing npm audit output still reports four advisories in the inherited toolchain; no unrelated package upgrade was performed in this foundation pass.
+# Compact deck and physical crew checkpoint
+
+All 43 validator scripts and TypeScript/Vite build passed locally. New checks decode the actual Mr Zamn GLB, exercise its skin and three clips, and sample 648 deck positions against the actual Warship structural shell. The hero socket test checks the animated palm against actual skinned vertices. Section test URLs accept a bounded `run` suffix without affecting the campaign save.
+
+Fresh compact-deck browser play cleared security, reached the physical Mr Zamn and completed the normal two-stage conversation. Portrait/landscape screenshots show both actors above the dialogue panel. A later engineering steering attempt returned through the doorway; the full compact deck replay remains outstanding. Earlier complete-route and touch evidence belongs to the larger mechanics prototype and must not be presented as a complete validation of this revised deck.

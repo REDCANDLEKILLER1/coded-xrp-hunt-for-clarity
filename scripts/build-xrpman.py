@@ -1,4 +1,4 @@
-"""Build an original XRPMan costume/animation derivative from pinned CC0 anatomy.
+"""Build original CODED human costumes/animations from pinned CC0 anatomy.
 
 Blender 4.3 CLI: --background --python scripts/build-xrpman.py --
   --source-dir <private MakeHuman graphical data> --master <private .blend>
@@ -21,7 +21,11 @@ p.add_argument('--master', required=True)
 p.add_argument('--output', required=True)
 p.add_argument('--render', required=True)
 p.add_argument('--skip-bake', action='store_true')
+p.add_argument('--character', choices=['xrpman', 'mr_zamn'], default='xrpman')
 args = p.parse_args(sys.argv[sys.argv.index('--') + 1:])
+crew = args.character == 'mr_zamn'
+character = 'MrZamn' if crew else 'XRPMan'
+target_height = 1.96 if crew else 1.9304
 source, master, output, render = map(pathlib.Path, [args.source_dir, args.master, args.output, args.render])
 for path in [master, output, render]:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +58,7 @@ def obj_data(path):
     return vertices, uvs, faces
 
 verts, uv, faces = obj_data(source/'base.obj')
-for filename, weight in [('caucasian-male-young.target', 1), ('universal-male-young-maxmuscle-averageweight.target', .72)]:
+for filename, weight in [('african-male-young.target' if crew else 'caucasian-male-young.target', 1), ('universal-male-young-maxmuscle-averageweight.target', 1 if crew else .72)]:
     for line in (source/filename).read_text().splitlines():
         a = line.split()
         if len(a) == 4 and a[0].isdigit(): verts[int(a[0])] += Vector(tuple(map(float, a[1:]))) * weight
@@ -78,19 +82,19 @@ def material(name, color, rough=.5, metal=0, emission=0):
         b.inputs['Emission Strength'].default_value = emission
     return m
 
-skin = material('Warm skin - pores', (.35, .18, .105), .58)
+skin = material('Warm skin - pores', (.105, .045, .026) if crew else (.35, .18, .105), .58)
 cloth = material('Black woven undersuit', (.013, .019, .026), .82)
 gloves = material('Reinforced glove leather', (.012, .014, .018), .6)
-armor = material('Graphite armor - satin metal', (.026, .033, .042), .45, .42)
+armor = material('Graphite armor - satin metal', (.026, .033, .042), .57 if crew else .45, .3 if crew else .42)
 edge = material('Armor edges - brushed steel', (.085, .105, .125), .29, .72)
-green = material('Liquidity #00FF00', (0, 1, 0), .32, .15, .65)
-darkgreen = material('Recessed green panels', (.003, .11, .008), .4, .3)
-hairmat = material('Chestnut hair', (.058, .019, .008), .52)
-hairlight = material('Chestnut highlights', (.095, .035, .012), .48)
+green = material('TruFi blue' if crew else 'Liquidity #00FF00', (.005,.16,1) if crew else (0, 1, 0), .32, .15, .65)
+darkgreen = material('Recessed faction panels', (.002,.015,.08) if crew else (.003, .11, .008), .4, .3)
+hairmat = material('Cropped black hair' if crew else 'Chestnut hair', (.008,.006,.005) if crew else (.058, .019, .008), .76 if crew else .52)
+hairlight = material('Hair highlights', (.017,.011,.008) if crew else (.095, .035, .012), .65 if crew else .48)
 white = material('Eye sclera', (.65, .68, .64), .2)
-iris = material('Green iris', (.015, .3, .035), .25)
+iris = material('Brown iris' if crew else 'Green iris', (.055,.025,.01) if crew else (.015, .3, .035), .25)
 pupil = material('Eye pupil', (.001, .002, .001), .18)
-lip = material('Natural lips', (.32, .12, .08), .53)
+lip = material('Natural lips', (.1,.032,.024) if crew else (.32, .12, .08), .53)
 
 def microtexture(mat, amount, frequency):
     n = mat.node_tree.nodes
@@ -117,10 +121,10 @@ microtexture(skin, .12, 700)
 microtexture(cloth, .27, 470)
 microtexture(gloves, .2, 380)
 
-data = bpy.data.meshes.new('XRPMan anatomical surface')
+data = bpy.data.meshes.new(character+' anatomical surface')
 data.from_pydata([points[i] for i in used], [], [[remap[item[0]] for item in face] for face in body_faces])
 data.update()
-body = bpy.data.objects.new('XRPMan_Surface', data)
+body = bpy.data.objects.new(character+'_Surface', data)
 scene.collection.objects.link(body)
 for mat in [skin, cloth, gloves, lip]: data.materials.append(mat)
 uvlayer = data.uv_layers.new(name='AnatomyUV')
@@ -133,8 +137,8 @@ for poly, face in zip(data.polygons, body_faces):
 
 rig_data = json.loads((source/'default.mhskel').read_text())
 joint = {name: sum((points[i] for i in indices), Vector())/len(indices) for name, indices in rig_data['joints'].items()}
-armdata = bpy.data.armatures.new('XRPMan skeleton')
-rig = bpy.data.objects.new('XRPMan_Rig', armdata)
+armdata = bpy.data.armatures.new(character+' skeleton')
+rig = bpy.data.objects.new(character+'_Rig', armdata)
 scene.collection.objects.link(rig)
 bpy.context.view_layer.objects.active = rig
 rig.select_set(True)
@@ -177,6 +181,7 @@ def attach(obj, old_indices=None, bone=None):
 attach(body, used)
 
 def surface(name, predicate, mat, offset=.008, bevel=.003, thickness=.004):
+    if crew and mat in [armor,edge]: offset*=1.65; thickness*=1.7
     chosen = [poly for poly in data.polygons if predicate(sum((data.vertices[i].co for i in poly.vertices), Vector())/len(poly.vertices))]
     indices = sorted({i for poly in chosen for i in poly.vertices})
     if not indices: raise RuntimeError('Empty surface '+name)
@@ -250,11 +255,15 @@ def emblem(name,center,radius,bone,reverse=False):
     sphere(name+' inset',center,(radius*1.05,.006,radius*1.05),darkgreen,bone,24,12)
     yy=y+(.009 if reverse else -.009)
     curve(name+' ring',[(x+radius*math.cos(a*math.tau/32),yy,z+radius*math.sin(a*math.tau/32)) for a in range(32)],radius*.065,green,bone,True)
-    for sign in [-1,1]:
-        curve(name+' X',[(x-radius*.51,yy,z-sign*radius*.56),(x,yy-.001,z),(x+radius*.51,yy,z+sign*radius*.56)],radius*.10,green,bone)
-emblem('Chest X',(0,-.169,1.427),.068,'spine01')
-emblem('Belt X',(0,-.145,1.032),.028,'spine04')
-emblem('Back X',(0,.128,1.412),.054,'spine01',True)
+    if crew:
+        for label,path in [('top',[(-.34,.15),(0,.72),(.34,.15)]),('lower left',[(-.4,-.02),(-.69,-.56),(-.07,-.56),(-.07,-.02)]),('lower right',[(.07,-.02),(.07,-.56),(.69,-.56),(.4,-.02)])]:
+            curve(name+' TruFi '+label,[(x+u*radius,yy,z+v*radius) for u,v in path],radius*.028,green,bone,True)
+    else:
+        for sign in [-1,1]:
+            curve(name+' X',[(x-radius*.51,yy,z-sign*radius*.56),(x,yy-.001,z),(x+radius*.51,yy,z+sign*radius*.56)],radius*.10,green,bone)
+emblem('Chest insignia',(0,-.188 if crew else -.169,1.427),.08 if crew else .068,'spine01')
+emblem('Belt insignia',(0,-.155 if crew else -.145,1.032),.028,'spine04')
+emblem('Back insignia',(0,.145 if crew else .128,1.412),.054,'spine01',True)
 for s in [-1,1]:
     curve('Chest piping',[(s*.028,-.134,1.554),(s*.1,-.157,1.529),(s*.168,-.126,1.485)],.0035,green,'spine01')
     curve('Abdominal piping',[(s*.125,-.099,1.32),(s*.117,-.113,1.23),(s*.09,-.118,1.125)],.0028,green,'spine02')
@@ -279,10 +288,13 @@ for side in [-1,1]:
     for poly in mesh.polygons: poly.use_smooth=True
     attach(obj,bone='foot.'+('L' if side>0 else 'R'))
 
-# Hair is a fitted scalp plus swept mesh locks, never a helmet or billboard.
-surface('Fitted chestnut scalp',lambda c: c.z>1.821 or (c.z>1.765 and c.y>-.047) or (c.z>1.777 and abs(c.x)>.068 and c.y>-.11),hairmat,.004,0,.002)
+# Hair is a fitted scalp; XRPMan's swept locks and Mr Zamn's beard are distinct.
+surface('Fitted scalp',lambda c: c.z>1.821 or (c.z>1.765 and c.y>-.047) or (c.z>1.777 and abs(c.x)>.068 and c.y>-.11),hairmat,.002 if crew else .004,0,.002)
+if crew:
+    surface('Sculpted close beard',lambda c: 1.63<c.z<1.735 and c.y<-.048 and abs(c.x)<.082 and not (c.z>1.682 and abs(c.x)<.031 and c.y<-.13),hairmat,.003,0,.003)
+    surface('Trimmed moustache',lambda c: 1.7<c.z<1.721 and abs(c.x)<.03 and c.y<-.12,hairmat,.002,0,.001)
 tree=BVHTree.FromPolygons([v.co for v in data.vertices],[list(p.vertices) for p in data.polygons])
-for i in range(13):
+for i in range(0 if crew else 13):
     x=-.071+i*.0115
     rise=.01+.012*math.exp(-((x+.012)/.05)**2)
     start=Vector((x,-.135+abs(x)*.15,1.826))
@@ -310,13 +322,53 @@ for s in [-1,1]:
     bone='eye.'+('L' if s>0 else 'R')
     center=joint[rig_data['bones'][bone]['head']]
     sphere('Eye white',center,(.019,.016,.013),white,bone,20,12)
-    sphere('Green iris',(center.x,center.y-.015,center.z),(.007,.0027,.007),iris,bone,16,8)
+    sphere('Iris',(center.x,center.y-.015,center.z),(.007,.0027,.007),iris,bone,16,8)
     sphere('Pupil',(center.x,center.y-.0173,center.z),(.0032,.001,.0035),pupil,bone,12,8)
     brow=[]
     for x,z in [(s*.012,1.786),(s*.033,1.792),(s*.052,1.783)]:
         hit=tree.ray_cast(Vector((x,-2,z)),Vector((0,1,0)))[0]
         brow.append((x,hit.y-.003 if hit else -.17,z))
     curve('Eyebrow',brow,.0028,hairmat,'head')
+
+if crew:
+    # Layered load-bearing plates and shield make a defense silhouette, not a hero recolor.
+    def plate(name,location,size,mat,bone,bevel=.008,direction=None):
+        bpy.ops.mesh.primitive_cube_add(size=1,location=location)
+        obj=bpy.context.object; obj.name=name; obj.scale=size
+        if direction is not None: obj.rotation_euler=Vector(direction).to_track_quat('Z','Y').to_euler()
+        bpy.ops.object.transform_apply(location=True,rotation=True,scale=True)
+        obj.data.materials.append(mat)
+        mod=obj.modifiers.new('Machined corners','BEVEL'); mod.width=bevel; mod.segments=2
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        attach(obj,bone=bone)
+        return obj
+    for s in [-1,1]:
+        suffix='.L' if s>0 else '.R'
+        for level in range(3):
+            plate('Layered pauldron',(s*(.245+level*.025),-.015,1.48-level*.043),(.13,.20,.067),armor,'upperarm01'+suffix,.016)
+        plate('Shoulder light',(s*.27,-.124,1.486),(.086,.007,.017),green,'upperarm01'+suffix,.004)
+        arm=armdata.bones['lowerarm02'+suffix]
+        center=(arm.head_local+arm.tail_local)*.5+Vector((0,-.035,0))
+        plate('Heavy gauntlet',center,(.105,.085,.15),armor,'lowerarm02'+suffix,.012,arm.tail_local-arm.head_local)
+        plate('Gauntlet inset',center+Vector((0,-.049,.02)),(.055,.014,.036),green,'lowerarm02'+suffix,.004)
+        plate('Thigh utility plate',(s*.152,-.094,.82),(.11,.07,.20),armor,'upperleg02'+suffix,.012)
+        for z in [.84,.77]: plate('Strapped pouch',(s*.176,-.133,z),(.075,.037,.052),edge,'upperleg02'+suffix,.006)
+        for x in [.055,.125]: plate('Belt pouch',(s*x,-.134,1.04),(.052,.064,.066),armor,'spine04',.007)
+    plate('Armored upper backpack',(0,.135,1.38),(.25,.09,.24),armor,'spine01',.018)
+    for s in [-1,1]: plate('Power cell',(s*.071,.191,1.39),(.025,.02,.12),green,'spine01',.005)
+    shield_center=(.46,-.12,1.05); radius=.39
+    sphere('Round shield titanium back',shield_center,(radius,.037,radius),armor,'wrist.L',32,16)
+    emblem('Defense shield',(.46,-.161,1.05),radius*.88,'wrist.L')
+    for i in range(16):
+        a=i*math.tau/16
+        sphere('Shield rim fastener',(.46+math.cos(a)*radius*.94,-.151,1.05+math.sin(a)*radius*.94),(.009,.009,.009),edge,'wrist.L',8,6)
+    font=bpy.data.curves.new('Shield TruFi lettering','FONT');font.body='TruFi';font.align_x='CENTER';font.size=.105; font.extrude=.0005
+    obj=bpy.data.objects.new('Shield TruFi lettering',font);scene.collection.objects.link(obj);obj.location=(.46,-.177,.785);obj.rotation_euler=(math.pi/2,0,0);font.materials.append(green)
+    bpy.ops.object.select_all(action='DESELECT');obj.select_set(True);bpy.context.view_layer.objects.active=obj;bpy.ops.object.convert(target='MESH');bpy.ops.object.transform_apply(location=True,rotation=True,scale=True);attach(obj,bone='wrist.L')
+    shield_offset=armdata.bones['wrist.L'].head_local+Vector((0,-.26,-.02))-Vector(shield_center)
+    for obj in objects:
+        if obj.name.startswith(('Round shield','Defense shield','Shield rim','Shield TruFi')):
+            for v in obj.data.vertices: v.co+=shield_offset
 
 # Fit arm trim to the anatomical surface and inherit local blended skin weights.
 for obj in objects:
@@ -338,33 +390,33 @@ if not args.skip_bake:
     scene.render.bake.use_pass_color=True
     for kind,label in [('DIFFUSE','Albedo'),('NORMAL','Normal'),('ROUGHNESS','Roughness')]:
         size=1024 if kind!='ROUGHNESS' else 512
-        img=bpy.data.images.new('XRPMan '+label,width=size,height=size,alpha=False)
+        img=bpy.data.images.new(character+' '+label,width=size,height=size,alpha=False)
         img.colorspace_settings.name='sRGB' if kind=='DIFFUSE' else 'Non-Color'
         for mat in data.materials:
             for node in mat.node_tree.nodes: node.select=False
             node=mat.node_tree.nodes.new('ShaderNodeTexImage'); node.image=img; node.select=True; mat.node_tree.nodes.active=node
         bpy.ops.object.bake(type=kind)
         img.pack()
-    baked=material('XRPMan skin and woven suit - baked', (1,1,1),.6)
+    baked=material(character+' skin and woven suit - baked', (1,1,1),.6)
     n=baked.node_tree.nodes; links=baked.node_tree.links; bs=n.get('Principled BSDF')
     for label,socket in [('Albedo','Base Color'),('Roughness','Roughness')]:
-        node=n.new('ShaderNodeTexImage'); node.image=bpy.data.images['XRPMan '+label]; links.new(node.outputs['Color'],bs.inputs[socket])
-    tex=n.new('ShaderNodeTexImage'); tex.image=bpy.data.images['XRPMan Normal']; normal=n.new('ShaderNodeNormalMap'); links.new(tex.outputs['Color'],normal.inputs['Color']); links.new(normal.outputs['Normal'],bs.inputs['Normal'])
+        node=n.new('ShaderNodeTexImage'); node.image=bpy.data.images[character+' '+label]; links.new(node.outputs['Color'],bs.inputs[socket])
+    tex=n.new('ShaderNodeTexImage'); tex.image=bpy.data.images[character+' Normal']; normal=n.new('ShaderNodeNormalMap'); links.new(tex.outputs['Color'],normal.inputs['Color']); links.new(normal.outputs['Normal'],bs.inputs['Normal'])
     data.materials.clear(); data.materials.append(baked)
     for poly in data.polygons: poly.material_index=0
 
 # Normalize the finished anatomical/costume master to the canon's 6 ft 4 in.
 height=max(v.co.z for obj in objects for v in obj.data.vertices)-min(v.co.z for obj in objects for v in obj.data.vertices)
-normalization=1.9304/height
+normalization=target_height/height
 for obj in objects:
     for v in obj.data.vertices: v.co*=normalization
 bpy.context.view_layer.objects.active=rig; bpy.ops.object.mode_set(mode='EDIT')
 for bone in armdata.edit_bones: bone.head*=normalization; bone.tail*=normalization
 bpy.ops.object.mode_set(mode='OBJECT')
-for name,bone,xyz in [('Hand_R','wrist.R',(-.42,-.02,1.035)),('Hand_L','wrist.L',(.42,-.02,1.035)),('Hero_Origin','root',(0,0,0))]:
+for name,bone in [('Hand_R','wrist.R'),('Hand_L','wrist.L'),('Hero_Origin','root')]:
     obj=bpy.data.objects.new(name,None); scene.collection.objects.link(obj)
     obj.parent=rig; obj.parent_type='BONE'; obj.parent_bone=bone
-    obj.matrix_world.translation=Vector(xyz)*normalization
+    obj.matrix_world.translation=armdata.bones[bone].tail_local+Vector((0,-.015,0)) if name.startswith('Hand_') else Vector((0,0,0))
 
 def world_pose(bone,axis,angle):
     basis=armdata.bones[bone].matrix_local.to_quaternion()
@@ -423,7 +475,7 @@ def make_action(name,duration,kind):
     track.mute=True
     return action
 
-actions=[make_action(name,duration,name) for name,duration in [('Idle',2.4),('Walk',1.1),('Run',.7),('AimFire',.5),('Interact',1.2),('Hit',.5),('Dodge',.7),('KnockdownRecover',2.0)]]
+actions=[make_action(name,duration,name) for name,duration in ([('Idle',2.4),('Interact',1.2),('Hit',.5)] if crew else [('Idle',2.4),('Walk',1.1),('Run',.7),('AimFire',.5),('Interact',1.2),('Hit',.5),('Dodge',.7),('KnockdownRecover',2.0)])]
 rig.animation_data.action=actions[0]
 scene.frame_set(0)
 
@@ -446,9 +498,9 @@ for index,group in enumerate(groups.values()):
     for obj in group: obj.select_set(True)
     bpy.context.view_layer.objects.active=group[0]
     if len(group)>1: bpy.ops.object.join()
-    obj=bpy.context.object; obj.name='XRPMan_Runtime_%02d'%index
-    if group[0] is not body and len(obj.data.polygons)>700:
-        decimate=obj.modifiers.new('Runtime surface reduction','DECIMATE'); decimate.ratio=.62
+    obj=bpy.context.object; obj.name=character+'_Runtime_%02d'%index
+    if (crew or group[0] is not body) and len(obj.data.polygons)>700:
+        decimate=obj.modifiers.new('Runtime surface reduction','DECIMATE'); decimate.ratio=.66 if crew else .62
         bpy.ops.object.modifier_move_up(modifier=decimate.name)
         bpy.ops.object.modifier_apply(modifier=decimate.name)
     obj.data.validate(clean_customdata=True); obj.data.update()
@@ -462,4 +514,4 @@ scene.render.filepath=str(render); bpy.ops.render.render(write_still=True)
 triangles=0
 for obj in runtime_objects:
     obj.data.calc_loop_triangles(); triangles+=len(obj.data.loop_triangles)
-print('XRPMAN_BUILT '+json.dumps({'bytes':output.stat().st_size,'triangles':triangles,'animations':[a.name for a in actions],'height_m':1.9304,'mesh_objects':len(runtime_objects),'bone_count':len(armdata.bones),'baked':not args.skip_bake}))
+print('CHARACTER_BUILT '+json.dumps({'character':args.character,'bytes':output.stat().st_size,'triangles':triangles,'animations':[a.name for a in actions],'height_m':target_height,'mesh_objects':len(runtime_objects),'bone_count':len(armdata.bones),'baked':not args.skip_bake}))

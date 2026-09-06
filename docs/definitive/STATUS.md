@@ -1,5 +1,9 @@
 # Status
 
+Current local checkpoint: physical Mr Zamn, compact hull-fitted boarding rooms and corrected XRPMan palm sockets. All 43 validators and TypeScript/Vite build pass. The deck validator samples 648 positions against the actual Warship shell; this is sampled clearance, not full interior collision certification. Fresh compact-deck play reaches security clear and the physical Mr Zamn conversation. The earlier larger prototype was played through bridge/cache; the compact replacement still needs a complete replay.
+
+Owner steering: continue the current Blender/Three.js build. Aim for believable modern materials, detailed geometry and lighting; the present models are production foundations and do not yet meet the requested realism. Consider browser and downloadable editions later. Unreal was discussed, then explicitly deferred by the owner; no engine port or installation is underway.
+
 Boarding mechanics checkpoint: the actual 3D room consumer at ?review=boarding has been played from bay through bridge capture, purchases, departure briefing and return to the optional cache. Portrait and landscape simultaneous touch movement/fire/release/cancel pass in desktop emulation. All 41 validators and build pass. See BOARDING_PROTOTYPE.md for evidence and limits. The normal chapter connection, landing, physical Mr Zamn, environment art and mesh-space departure remain unfinished.
 
 Character foundation: XRPMan has a real skinned GLB review at ?review=character, 46,725 triangles, ten surfaces, eight prototype clips and three embedded texture maps; 3,597,232 bytes. Browser review, deformation tests and Blender roundtrip pass. The private editable v04 master was reopened in Blender 4.3.2 and retains all eight clips and three attachments.
