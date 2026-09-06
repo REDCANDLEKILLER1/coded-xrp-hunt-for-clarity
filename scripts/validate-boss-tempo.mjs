@@ -167,6 +167,26 @@ for (const boss of scripted) {
     const second = g.drones.filter((d) => d.escort).length;
     check(second <= 3, `a second launch stacked to ${second} escorts instead of refilling to the cap of 3`);
 
+    // Killing SOME of the screen has to buy time off it. Killing ALL of it
+    // ends the screen through the "none left" exit whatever the cut is worth,
+    // so the partial case is the only one that can see SCREEN_KILL_CUT -- and
+    // deleting the cut entirely survived every other check in this file.
+    g.drones = g.drones.filter((drone) => !drone.escort);
+    g.screenClock = 0;
+    g.screenCooldown = 0;
+    g.launchEscorts(g.boss);
+    const escorts = g.drones.filter((d) => d.escort);
+    check(escorts.length >= 2, `need at least two escorts to test a partial clear; got ${escorts.length}`);
+    if (escorts.length >= 2) {
+      const before = g.screenClock;
+      g.registerKill(escorts[0]);
+      const cut = before - g.screenClock;
+      check(cut > 0.5,
+        `killing one of ${escorts.length} escorts cut ${cut.toFixed(2)}s off the screen -- clearing part of it has to shorten it`);
+      check(g.screenClock > 0,
+        'one kill out of several should shorten the screen, not end it outright');
+    }
+
     // Clear the screen, then try to relaunch inside the cooldown.
     for (const drone of g.drones) if (drone.escort) drone.hp = 0;
     g.drones = g.drones.filter((drone) => (drone.hp ?? 0) > 0);
@@ -175,6 +195,59 @@ for (const boss of scripted) {
     g.launchEscorts(g.boss);
     check(g.drones.filter((d) => d.escort).length === 0,
       'a screen relaunched inside its cooldown -- the beat can outrun the player again');
+  }
+}
+
+// ---- the overload: a screen the player CANNOT clear ---------------------
+//
+// This is the branch the played-fight metric cannot reach. In a real fight the
+// player kills the escorts, so the screen ends through the "all dead" exit and
+// the clock's length never matters -- which is exactly why a mutation setting
+// SCREEN_SECONDS to 600 sailed past every other check in this file.
+//
+// The promise the design makes is that a screen ALWAYS ends in a punish
+// window, including for the player who could not clear it. That promise only
+// exists if the clock expires on its own, so it is asserted on its own.
+{
+  const g = new Game2A(stubCanvas());
+  g.deployTestMode();
+  g.reset();
+  const key = scripted[0].key;
+  g.wave = BOSSES[key].triggerWave;
+  g.completedBosses = new Set(Object.keys(BOSSES).filter((k) => k !== key));
+  g.startBossIfReady();
+  check(!!g.boss, 'could not spawn a boss for the overload check');
+  if (g.boss) {
+    g.launchEscorts(g.boss);
+    const launched = g.drones.filter((d) => d.escort).length;
+    check(launched > 0, 'no escorts launched, so there is no screen to overload');
+    // The shield must actually be up first, or "it opened" proves nothing.
+    check(g.bossShielded(), 'the screen did not raise a shield');
+
+    const dt = 1 / 60;
+    // Generous against SCREEN_SECONDS (6) and far short of a mutated 600.
+    const patience = 20;
+    let waited = 0;
+    let openedAt = -1;
+    while (waited < patience) {
+      g.updateScreen(g.boss, dt);
+      waited += dt;
+      // Nothing is killed: the escorts sit there and the player is not clearing.
+      if (openedAt < 0 && !g.bossShielded()) { openedAt = waited; break; }
+    }
+    check(openedAt >= 0,
+      `the screen never expired on its own after ${patience}s with every escort still alive -- a player who cannot clear it is stuck behind it forever`);
+    if (openedAt >= 0) {
+      check(g.drones.every((drone) => !drone.escort),
+        'overload must stop the survivors screening; they still carry the escort flag');
+      check(g.boss.attackState === 'recover',
+        `overload must force a punish window; the boss is in '${g.boss.attackState}'`);
+      check(g.boss.attackClock > 0,
+        'the forced punish window has no time on it');
+      check(g.screenCooldown > 0,
+        'an overloaded screen must start its cooldown, or it can relaunch immediately');
+      console.log(`  overload                fired at ${openedAt.toFixed(1)}s with ${launched} escorts still alive`);
+    }
   }
 }
 
