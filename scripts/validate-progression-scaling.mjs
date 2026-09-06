@@ -127,8 +127,35 @@ capped.deployTestMode();
 capped.reset();
 capped.wave = 40;
 capped.clock = 3600;
-const toughest = Object.values(ENEMIES).reduce((worst, def) => Math.max(worst, capped.enemyHp(def)), 0);
-check(toughest <= 6, `the toughest drone reaches ${toughest} health at the pressure cap, which is a sponge`);
+// A sponge is a TIME, not a health number, and once the roster has size
+// classes a single HP ceiling cannot express it: a heavy is SUPPOSED to carry
+// more than a light, so `toughest <= 6` fails the moment a hierarchy exists --
+// not because anything is spongy but because the bar was written for a roster
+// where every ship was the same size.
+//
+// So this measures what the player feels. Time to kill is taken against the
+// WORST gun in the game -- BB SHOT with no barrels, the loadout a player can
+// still be holding -- at the pressure cap, using the shipped playerDps() and
+// enemyHp() rather than a copy of either formula. If a class exceeds its
+// bound with that gun, it is a sponge for everyone.
+//
+// Measured at the cap with BB SHOT: light 0.3s, medium 1.1s, heavy 2.7s.
+const TTK_BOUND = { light: 1, medium: 2, heavy: 4 };
+const baseline = new Game2A(stubCanvas());
+baseline.deployTestMode();
+baseline.reset();
+const baseDps = baseline.playerDps();
+check(baseDps > 0, 'the baseline gun does no damage -- every time below would be Infinity and this check would be meaningless');
+for (const def of Object.values(ENEMIES)) {
+  const seconds = capped.enemyHp(def) / baseDps;
+  const bound = TTK_BOUND[def.hull];
+  check(seconds <= bound,
+    `${def.key} (${def.hull}) takes ${seconds.toFixed(1)}s to kill with the starting gun at the pressure cap, past the ${bound}s a ${def.hull} may take -- that is a sponge`);
+}
+// Trash still has to read as trash: whatever the hierarchy does above it, a
+// light must stay something a starting gun deletes on contact.
+const heaviestLight = Object.values(ENEMIES).filter((def) => def.hull === 'light').reduce((worst, def) => Math.max(worst, capped.enemyHp(def)), 0);
+check(heaviestLight <= 6, `the toughest LIGHT reaches ${heaviestLight} health at the pressure cap, which is a sponge`);
 const cappedHazard = Object.values(HAZARDS).reduce((worst, def) => Math.max(worst, capped.hazardHp(def)), 0);
 check(cappedHazard <= 16, `the toughest hazard reaches ${cappedHazard} health at the pressure cap`);
 check(late.enemyHp(ENEMIES.regulator_drone) > early.enemyHp(ENEMIES.regulator_drone)
