@@ -5,6 +5,7 @@ import { sfx } from '../audio/Sfx';
 import { debugLog } from '../core/DebugLog';
 import { Cockpit, type CockpitButtonId, type CockpitContact, type CockpitLock, type CockpitState } from './Cockpit';
 import { TiltSource } from './Tilt';
+import { BATTERY_PAIRS, batteryShot, hitsWarship, WARSHIP_ASSET, WARSHIP_FRAME_WIDTH, WARSHIP_FRAME_HEIGHT, WARSHIP_FRAMES, WARSHIP_REVEAL_SECONDS } from './Warship';
 import {
   DEFAULT_SETTINGS,
   TILT_SCALE_BY_SENSITIVITY,
@@ -192,12 +193,6 @@ const PLAYER_HP = 8;
  * boss time-to-kill validator is computed from it.
  */
 const SHOT_INTERVAL = 0.17;
-/** Heat per second of held fire, and how fast it bleeds off. */
-const HEAT_PER_SECOND = 0.34;
-const HEAT_COOL_PER_SECOND = 0.46;
-/** Above this the guns slow down. They never cut out -- see fireGuns(). */
-const HEAT_SOFT_LIMIT = 0.75;
-const HEAT_MAX_SLOWDOWN = 2.1;
 /** Seconds to refill the missile. */
 const MISSILE_CHARGE_SECONDS = 7;
 const MISSILE_SPEED = 1150;
@@ -223,8 +218,6 @@ const SEEKER_LIFE = 16;
 const SEEKER_HP = 1;
 /** How near a bolt must pass to kill it. Generous: it is a small, fast target. */
 const SEEKER_HIT_RADIUS = 62;
-/** How close it gets before the warhead goes off. */
-const SEEKER_ARM_RANGE = 60;
 /** Killing one is worth something -- it was going to cost you a hull point. */
 const SEEKER_SCORE = 45;
 /** Range a stand-off ship must be inside before it will spend a seeker. */
@@ -508,7 +501,11 @@ export class Space3DGame {
   private lastTapAt = -1;
   private readonly keys = new Set<string>();
 
-  private gunHeat = 0;
+  private batteryPair = 0;
+  private lastStep = 1 / 60;
+  private batteryCounts = { Muzzle_FL: 0, Muzzle_FR: 0, Muzzle_L: 0, Muzzle_R: 0 };
+  private renderTimes: number[] = [];
+  private readonly warshipDebug = new URLSearchParams(location.search).has('warshipdebug');
   private gunClock = 0;
   private warpHeat = 0;
   /** Latched when the coil maxes: blocks re-engaging until it has cooled. */
@@ -629,7 +626,9 @@ export class Space3DGame {
     this.flareCooldown = 0;
     this.inbound = 0;
     this.bursts = [];
-    this.gunHeat = 0;
+    this.batteryPair = 0;
+    this.batteryCounts = { Muzzle_FL: 0, Muzzle_FR: 0, Muzzle_L: 0, Muzzle_R: 0 };
+    this.renderTimes = [];
     this.gunClock = 0;
     this.warpHeat = 0;
     this.warpLocked = false;
@@ -975,6 +974,7 @@ export class Space3DGame {
   // ---- frame ------------------------------------------------------------
 
   private tick(dt: number): void {
+    this.lastStep = dt;
     if (!this.visible) return;
     this.clock += dt;
     if (this.bannerClock > 0) this.bannerClock = Math.max(0, this.bannerClock - dt);
@@ -1816,37 +1816,23 @@ export class Space3DGame {
   }
 
   /**
-   * Held-trigger guns.
-   *
-   * Firing used to be automatic, and the validator used to assert that it must
-   * be, on the reasoning that a fire button costs the thumb flying the ship.
-   * That reasoning was correct right up until tilt started flying the ship;
-   * now the thumb is free and a trigger is what makes shooting a decision.
-   *
-   * Heat slows the cadence but never stops it. A gun that cuts out entirely
-   * would take the fight away from the player at the exact moment they most
-   * need it, which reads as the game breaking rather than as a limit.
+   * Held-trigger capital battery: alternating pairs converge on the nose's
+   * forward aim point at fixed cadence. Steering retains its own pointer.
    */
   private fireGuns(dt: number): void {
     const firing = this.gunsHeld;
-    this.gunHeat = clamp(
-      this.gunHeat + (firing ? HEAT_PER_SECOND : -HEAT_COOL_PER_SECOND) * dt,
-      0,
-      1,
-    );
     this.gunClock -= dt;
     if (!firing || this.gunClock > 0) return;
-
-    const over = Math.max(0, this.gunHeat - HEAT_SOFT_LIMIT) / (1 - HEAT_SOFT_LIMIT);
-    this.gunClock = SHOT_INTERVAL * (1 + over * (HEAT_MAX_SLOWDOWN - 1));
-
-    const dir = forward(this.camera);
-    const right = normalise({ x: dir.z, y: 0, z: -dir.x });
-    for (const side of [-1, 1]) {
+    this.gunClock = SHOT_INTERVAL;
+    // Paired cadence preserves the existing two-bolt throughput, distributing
+    // successive volleys over all four real v03 origins. No primary heat/charge.
+    for (const hardpoint of BATTERY_PAIRS[this.batteryPair]) {
+      const { origin, direction: dir } = batteryShot(this.camera, hardpoint);
+      this.batteryCounts[hardpoint] += 1;
       this.bolts.push({
-        x: this.camera.x + right.x * side * 30 + dir.x * MUZZLE_AHEAD,
-        y: this.camera.y + right.y * side * 30 + dir.y * MUZZLE_AHEAD + 18,
-        z: this.camera.z + right.z * side * 30 + dir.z * MUZZLE_AHEAD,
+        x: origin.x,
+        y: origin.y,
+        z: origin.z,
         vx: dir.x * BOLT_SPEED,
         vy: dir.y * BOLT_SPEED,
         vz: dir.z * BOLT_SPEED,
@@ -1855,6 +1841,7 @@ export class Space3DGame {
         life: 2.2,
       });
     }
+    this.batteryPair = (this.batteryPair + 1) % BATTERY_PAIRS.length;
     sfx.play('shoot');
   }
 
@@ -2312,8 +2299,8 @@ export class Space3DGame {
       // the ship -- so its course still runs close by. It has lost you: letting
       // it detonate on the way past would make the dispenser a coin flip.
       if (!missile.hostile || missile.life <= 0 || missile.decoy) continue;
-      const range = Math.hypot(missile.x - this.camera.x, missile.y - this.camera.y, missile.z - this.camera.z);
-      if (range > SEEKER_ARM_RANGE) continue;
+      const from = { x: missile.x-missile.vx*this.lastStep, y: missile.y-missile.vy*this.lastStep, z: missile.z-missile.vz*this.lastStep };
+      if (!hitsWarship(this.camera, from, missile, 10)) continue;
       missile.life = 0;
       this.burst(missile.x, missile.y, missile.z);
       sfx.play('bigExplode');
@@ -2323,8 +2310,8 @@ export class Space3DGame {
 
     for (const bolt of this.bolts) {
       if (!bolt.hostile || bolt.life <= 0) continue;
-      const range = Math.hypot(bolt.x - this.camera.x, bolt.y - this.camera.y, bolt.z - this.camera.z);
-      if (range > 46) continue;
+      const from = { x: bolt.x-bolt.vx*this.lastStep, y: bolt.y-bolt.vy*this.lastStep, z: bolt.z-bolt.vz*this.lastStep };
+      if (!hitsWarship(this.camera, from, bolt)) continue;
       bolt.life = 0;
       // Trace back along the bolt's own travel to find which side it came from.
       this.takeHitFrom(bolt.x - bolt.vx, bolt.y - bolt.vy, bolt.z - bolt.vz);
@@ -2332,8 +2319,7 @@ export class Space3DGame {
     }
 
     for (const contact of this.contacts) {
-      const range = Math.hypot(contact.x - this.camera.x, contact.y - this.camera.y, contact.z - this.camera.z);
-      if (range > contact.size * 0.5 + 44) continue;
+      if (!hitsWarship(this.camera, contact, contact, contact.size * 0.5)) continue;
       contact.hp = 0;
       this.burst(contact.x, contact.y, contact.z);
       this.takeHitFrom(contact.x, contact.y, contact.z);
@@ -2446,6 +2432,7 @@ export class Space3DGame {
   // ---- render -----------------------------------------------------------
 
   private render(): void {
+    const started = performance.now();
     const { ctx } = this;
     const w = this.viewW;
     const h = this.viewH;
@@ -2485,7 +2472,8 @@ export class Space3DGame {
     for (const item of sortByDepth(drawables)) item.paint();
 
     if (this.mode === 'arrival') this.drawWarpTunnel(w, h);
-    this.drawReticle();
+    if (this.mode === 'arrival') this.drawCapturedWarship(w, h);
+    if (!(this.mode === 'arrival' && this.arrivalClock < WARSHIP_REVEAL_SECONDS)) this.drawReticle();
     this.drawLockCursor();
     if (this.graceClock > 0) this.drawDamageFlash(w, h);
 
@@ -2503,6 +2491,34 @@ export class Space3DGame {
     this.drawSettingsButton(w, h);
     if (this.settingsOpen) this.drawSettings(w, h);
     if (this.settingsToast > 0) this.drawToast(w, h);
+    // Read-only browser-test telemetry; absent from normal player sessions.
+    if (this.warshipDebug) {
+      this.renderTimes.push(performance.now() - started);
+      if (this.renderTimes.length > 240) this.renderTimes.shift();
+      const sorted = [...this.renderTimes].sort((a,b)=>a-b);
+      this.canvas.dataset.warship = JSON.stringify({ mode:this.mode, counts:this.batteryCounts, yaw:this.camera.yaw, pitch:this.camera.pitch, held:this.gunsHeld, bolts:this.bolts.length, hp:this.hp, assets:this.assets.counts(), renderP95:sorted[Math.floor(sorted.length*.95)], width:w, height:h });
+    }
+  }
+
+  /** Presentation only: the existing capture handoff's arrival names its vessel. */
+  private drawCapturedWarship(w: number, h: number): void {
+    const t = this.arrivalClock / WARSHIP_REVEAL_SECONDS;
+    if (t >= 1) return;
+    const image = this.assets.getImage('ships', WARSHIP_ASSET);
+    if (!image) return;
+    const { ctx } = this;
+    const aperture = this.cockpit.layout(w, h).aperture;
+    const width = Math.min(aperture.w * .88, aperture.h * 1.45);
+    const height = width * WARSHIP_FRAME_HEIGHT / WARSHIP_FRAME_WIDTH;
+    const x = aperture.x + (aperture.w-width)/2, y = aperture.y+(aperture.h-height)/2;
+    const phase = t * WARSHIP_FRAMES;
+    const frame = Math.min(WARSHIP_FRAMES-1, Math.floor(phase));
+    ctx.save(); ctx.globalAlpha = Math.min(1,t*7,(1-t)*7);
+    ctx.drawImage(image,frame*WARSHIP_FRAME_WIDTH,0,WARSHIP_FRAME_WIDTH,WARSHIP_FRAME_HEIGHT,x,y,width,height);
+    ctx.globalAlpha = Math.min(1,(1-t)*7); ctx.textAlign='center';
+    ctx.font=`600 ${Math.max(12,Math.min(18,w*.035))}px monospace`;
+    ctx.fillStyle='#00ff00';ctx.fillText('REGULATORY WARSHIP · CAPTURED',aperture.x+aperture.w/2,y+height*.92);
+    ctx.restore();
   }
 
   /**
@@ -2513,6 +2529,7 @@ export class Space3DGame {
    * told which one it is.
    */
   private tiltReadout(): string {
+    if (!TILT_STEERING) return 'DRAG';
     switch (this.tilt.status) {
       case 'ready': return 'READY';
       case 'calibrating': return 'CALIBRATING';
@@ -2568,8 +2585,8 @@ export class Space3DGame {
       hullMax: PLAYER_HP,
       shieldFore: this.shieldFore,
       shieldAft: this.shieldAft,
-      gunHeat: this.gunHeat,
       gunsFiring: this.gunsHeld,
+      captureReveal: this.mode === 'arrival' && this.arrivalClock < WARSHIP_REVEAL_SECONDS,
       missileCharge: this.missileCharge,
       warpHeat: this.warpHeat,
       warpEngaged: this.warpHeld,

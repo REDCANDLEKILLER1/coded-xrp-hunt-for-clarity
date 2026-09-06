@@ -162,9 +162,8 @@ export interface CockpitState {
   shieldFore: number;
   /** Aft shield bank, 0..1. Being tailed is what drains this one. */
   shieldAft: number;
-  /** 0..1; at 1 the guns have slowed themselves down. */
-  gunHeat: number;
   gunsFiring: boolean;
+  captureReveal?: boolean;
   /** 0..1 charge on the missile. */
   missileCharge: number;
   /** 0..1 warp coil heat. At 1 the drive cuts out until it cools. */
@@ -387,7 +386,7 @@ export class Cockpit {
       const down = held.has(button.id);
       // The missile needs BOTH charge and a lock, so the button says both.
       const ready = isGuns ? true : isWarp ? state.warpReady : (state.missileCharge >= 1 && state.lock !== null);
-      const fill = isGuns ? state.gunHeat : isWarp ? state.warpHeat : state.missileCharge;
+      const fill = isGuns ? (state.gunsFiring ? 1 : .2) : isWarp ? state.warpHeat : state.missileCharge;
 
       ctx.save();
       ctx.translate(button.cx, button.cy);
@@ -408,11 +407,10 @@ export class Cockpit {
       ctx.arc(0, 0, button.r * 0.93, 0, Math.PI * 2);
       ctx.stroke();
 
-      // The ring IS the readout: heat climbing on the guns, charge filling on
-      // the missile. A separate gauge would be one more thing to look away at.
+      // Primary ring indicates ready/firing; missile charge and warp remain independent.
       if (fill > 0.01) {
         ctx.strokeStyle = isGuns
-          ? (state.gunHeat > 0.75 ? RED : AMBER)
+          ? (state.gunsFiring ? '#00ff00' : AMBER)
           : isWarp
             ? (state.warpHeat > 0.75 ? RED : '#a97bff')
             : (ready ? '#4fd8ff' : 'rgba(79,216,255,0.55)');
@@ -459,7 +457,7 @@ export class Cockpit {
     // is measured off the artwork's alpha hole, the console's is the whole
     // area above the band. Keying it off `art` instead would put it on the
     // panel in one orientation and nowhere in the other.
-    this.drawAttitude(frame, state);
+    if (!state.captureReveal) this.drawAttitude(frame, state);
     this.drawInbound(frame, state);
   }
 
@@ -817,7 +815,7 @@ export class Cockpit {
     } else {
       ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
       ctx.font = `${label}px "Courier New", monospace`;
-      ctx.fillText(`TILT ${state.tiltStatus}`, x + w * 0.07, y + h * 0.24);
+      ctx.fillText(state.tiltStatus === 'DRAG' ? 'DRAG TO FLY' : `TILT ${state.tiltStatus}`, x + w * 0.07, y + h * 0.24);
     }
 
     // Throttle: the control the whole rescale exists to make worth having.
