@@ -18,7 +18,7 @@ import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
+import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HullClass, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -131,6 +131,30 @@ const ENEMY_TACTICS: Record<EnemyDef['behavior'], {
   zigzag: { sway: 74, swaySpeed: 2.6, dive: 0.22, burst: 1, spread: 0, firesAtRest: true },
   dive: { sway: 34, swaySpeed: 1.0, dive: 0.62, burst: 3, spread: 0.2, firesAtRest: false },
 };
+/**
+ * What a size class is worth, beyond looking bigger.
+ *
+ * Size alone would be a lie: a 46px ship that dies to one bb and flies like a
+ * 20px one is a big sprite, not a heavy. These are the numbers that make the
+ * silhouette a promise.
+ *
+ * `slots` is the compositional half. The arena cap used to count SHIPS, so a
+ * screen could fill with heavies and become a wall. Counting slots instead
+ * means one heavy costs what four lights cost, which produces the shape the
+ * bigger playfield wants: a few large ships with a wing around them rather
+ * than a swarm of large ships.
+ *
+ * `hp` and `speed` multiply the authored numbers rather than replacing them,
+ * so per-ship tuning in the registry still means something.
+ */
+const HULL_COMBAT: Record<HullClass, { hp: number; speed: number; slots: number; label: string }> = {
+  light: { hp: 1, speed: 1, slots: 1, label: 'LIGHT' },
+  medium: { hp: 2.2, speed: 0.86, slots: 2, label: 'MEDIUM' },
+  heavy: { hp: 5, speed: 0.62, slots: 4, label: 'HEAVY' },
+};
+/** Lights that come up alongside a heavy, so it arrives as a formation. */
+const HEAVY_WING = 2;
+
 const ENEMY_DODGE_RANGE = 92;        // px ahead of a bolt an enemy reacts to
 const ENEMY_DODGE_COOLDOWN = 0.55;
 const ENEMY_ESCAPE_PENALTY = 40;     // score lost when one gets away
@@ -1221,7 +1245,7 @@ export class Game2A {
 
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
-    if (this.droneClock <= 0 && this.drones.length < this.arenaEnemyCap()) {
+    if (this.droneClock <= 0 && this.arenaLoad() < this.arenaEnemyCap()) {
       const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
       const def = this.enemyDef(enemyKey);
       const x = 30 + Math.random() * Math.max(1, this.w - 60);
@@ -1249,6 +1273,11 @@ export class Game2A {
         atRest: false,
         escort: false,
       });
+      // A heavy arrives as a formation, not as one big ship on its own. The
+      // wing is what makes the size read compositionally: small hulls beside a
+      // large one give the eye the comparison, and give the player a reason to
+      // choose a target.
+      if (def.hull === 'heavy') this.spawnHeavyWing(x);
     }
     this.moveDrones(dt);
     this.wave = 1 + Math.floor(this.score / 500);
@@ -1388,6 +1417,57 @@ export class Game2A {
     // clears a screen fast, so it should have more screen to clear.
     const forFirepower = Math.floor(this.firepowerScale() / 2);
     return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forFirepower);
+  }
+
+  /**
+   * What the field currently costs, counting size rather than heads.
+   *
+   * One heavy occupies four lights' worth of room. Without this the cap counts
+   * ships, so a run that starts rolling heavies fills the screen with them and
+   * the hierarchy stops meaning anything -- everything is big, so nothing is.
+   */
+  /**
+   * The lights that come up beside a heavy.
+   *
+   * Deliberately the lightest hull available rather than a random pick: the
+   * point is the size contrast, and a wing of mediums would blur it.
+   */
+  private spawnHeavyWing(centreX: number): void {
+    const lights = availableEnemyKeys(ENEMIES, this.wave).filter((key) => ENEMIES[key].hull === 'light');
+    const key = lights[0];
+    if (!key) return;
+    const def = this.enemyDef(key);
+    for (let i = 0; i < HEAVY_WING; i += 1) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const x = clamp(centreX + side * (46 + Math.random() * 22), 26, this.w - 26);
+      this.drones.push({
+        x,
+        y: -35 - (i + 1) * 18,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: this.enemySpeed(def),
+        hp: this.enemyHp(def),
+        enemyKey: key,
+        age: 0,
+        anchorX: x,
+        phase: Math.random() * Math.PI * 2,
+        direction: side as -1 | 1,
+        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+        stance: 'entering',
+        stationX: x,
+        stationY: this.pickStationY(),
+        stanceClock: 0,
+        patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+        dodgeCooldown: 0,
+        atRest: false,
+        escort: false,
+      });
+    }
+  }
+
+  private arenaLoad(): number {
+    return this.drones.reduce((load, drone) => load + HULL_COMBAT[this.enemyDef(drone.enemyKey).hull].slots, 0);
   }
 
   /** Station-keeping drift so a held position still reads as flying, not parking. */
@@ -2447,9 +2527,54 @@ export class Game2A {
     this.ctx.stroke();
   }
 
+  /**
+   * The mini-destroyer treatment.
+   *
+   * `enemies/whale_scout` is a near-duplicate of `enemies/fast_scout`: the same
+   * swept hull, the same green-and-red panelling, differing mainly in width.
+   * Rendered at 46px next to a 20px light that reads as "the same ship, but
+   * bigger", which is not a class -- it is a zoom.
+   *
+   * So the heavy's silhouette is authored here rather than waiting on art: a
+   * blunt armour shoulder line across the hull and four gun hardpoints at the
+   * corners, which is the shape a destroyer has and a fighter does not.
+   * Outline only -- nothing is filled over the hull, so the sprite underneath
+   * stays the thing you are shooting at.
+   *
+   * Reversible: when a distinct Whale hull arrives (requested through the
+   * asset channel), drop this and the class keeps working on size alone.
+   */
+  private drawHeavyHull(drone: EnemyActor, def: EnemyDef): void {
+    const c = this.ctx;
+    const w = def.draw.w;
+    const h = def.draw.h;
+    c.save();
+    c.translate(drone.x, drone.y);
+    c.strokeStyle = def.accent;
+    c.globalAlpha = 0.85;
+    c.lineWidth = 2;
+    // The shoulder: a wide flat prow, the read that says "this one is armoured".
+    c.beginPath();
+    c.moveTo(-w * 0.46, -h * 0.06);
+    c.lineTo(-w * 0.3, -h * 0.3);
+    c.lineTo(w * 0.3, -h * 0.3);
+    c.lineTo(w * 0.46, -h * 0.06);
+    c.stroke();
+    // Four hardpoints, because a destroyer's guns are where you can see them.
+    c.lineWidth = 3;
+    for (const [hx, hy] of [[-0.42, -0.02], [0.42, -0.02], [-0.3, 0.28], [0.3, 0.28]]) {
+      c.beginPath();
+      c.moveTo(w * hx, h * hy);
+      c.lineTo(w * hx, h * (hy - 0.16));
+      c.stroke();
+    }
+    c.restore();
+  }
+
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
     const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    if (def.hull === 'heavy') this.drawHeavyHull(drone, def);
     if (!drawn) {
       this.ctx.save();
       this.ctx.translate(drone.x, drone.y);
@@ -4115,7 +4240,8 @@ export class Game2A {
    * arriving faster.
    */
   private enemyHp(def: EnemyDef): number {
-    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    const scaled = def.hp * HULL_COMBAT[def.hull].hp
+      * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
     return Math.max(1, Math.round(scaled));
   }
 
@@ -4127,7 +4253,8 @@ export class Game2A {
 
   /** A drone's speed, which climbs with the wave and with the gun facing it. */
   private enemySpeed(def: EnemyDef): number {
-    return def.baseSpeed + this.wave * 7 + (this.firepowerScale() - 1) * ENEMY_SPEED_PER_SCALE;
+    const base = def.baseSpeed * HULL_COMBAT[def.hull].speed;
+    return base + this.wave * 7 + (this.firepowerScale() - 1) * ENEMY_SPEED_PER_SCALE;
   }
 
   /** Sustained damage per second this loadout puts out. */

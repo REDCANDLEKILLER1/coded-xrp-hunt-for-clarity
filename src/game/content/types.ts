@@ -76,7 +76,31 @@ export interface EnemyDef {
   projectileSpeed?: number;
   /** Visual identifier used while enemy variants share a temporary sprite. */
   accent: string;
+  /**
+   * How big this ship is, and therefore how much punishment it carries.
+   *
+   * Every enemy drew at 19-23px -- within four pixels of each other -- so a
+   * roster of five ships had no battlefield hierarchy at all: nothing on
+   * screen told you which contact was the dangerous one.
+   *
+   * The class scales the DRAW BOX AND THE HITBOX TOGETHER, in `scaleCombatants`,
+   * which is the only place either is computed, so they cannot drift apart and
+   * leave a ship hit by shots that visibly missed it.
+   *
+   * A heavy is NOT a boss. No health bar, no phases, no attack script, no
+   * capture logic -- a regular hull that happens to be big.
+   */
+  hull: HullClass;
 }
+
+/**
+ * Size class for a regular 2D enemy hull.
+ *
+ * Deliberately not the same vocabulary as the 3D leg's `ShipClassKey`
+ * (chaff / missile_boat / heavy_fighter / interceptor / gunboat), which
+ * describes a ROLE. This describes a SIZE: a light can be a missile boat.
+ */
+export type HullClass = 'light' | 'medium' | 'heavy';
 
 export interface ProjectileDef {
   key: string;
