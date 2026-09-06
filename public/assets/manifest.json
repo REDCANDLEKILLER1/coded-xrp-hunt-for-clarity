@@ -633,6 +633,17 @@
       "bytes": 396960,
       "sha256": "b98ed0d1ab9c3851f4c18f9ae9fdc472afb6a19a9b9e82e1bebfdfbf2f5b79cb",
       "notes": "Astra v03 LOD2 runtime derivative; six joined material surfaces, 5156 triangles, all nine attachment nodes; provisional materials. Actual consumer: definitive ModelAssets / MeshRuntime model review."
+    },
+    "xrpman": {
+      "src": "/assets/models/xrpman.glb",
+      "type": "model",
+      "scenes": [
+        "character_review",
+        "boarding",
+        "hub"
+      ],
+      "bytes": 3597232,
+      "sha256": "0f95e53d9beaaa7ff3f909a597723487f8508bfaa77ccbcc9e62681bb6daddea"
     }
   },
   "audio": {

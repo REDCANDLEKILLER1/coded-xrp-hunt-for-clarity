@@ -749,4 +749,13 @@ canvas {
 .mesh-hud { position: absolute; inset: 64px 20px auto; pointer-events: none; color: #d4e6ed; font: 600 12px/1.6 ui-sans-serif, system-ui; }
 .mesh-hud p { white-space: pre-line; text-shadow: 0 2px 6px #000; }
 .mesh-controls { pointer-events: auto; display: flex; flex-wrap: wrap; gap: 6px; }
-.mesh-controls button { padding: 9px 12px; margin: 3px; color: #d4e6ed; background: #13212be6; border: 1px solid #304956; border-radius: 6px; cursor: pointer; }
+.mesh-controls button, .mesh-controls select { padding: 9px 12px; margin: 3px; color: #d4e6ed; background: #13212be6; border: 1px solid #304956; border-radius: 6px; cursor: pointer; }
+.mesh-runtime[data-review="character"] .mesh-controls { position: fixed; left: 17px; top: 145px; width: 170px; }
+.mesh-runtime[data-review="character"] .mesh-controls > div { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+.mesh-runtime[data-review="character"] .mesh-controls select, .mesh-runtime[data-review="character"] .mesh-controls button:last-child { grid-column: 1 / -1; }
+@media (orientation: portrait) {
+  .mesh-runtime[data-review="character"] .mesh-controls { top: auto; bottom: 54px; width: calc(100% - 34px); }
+  .mesh-runtime[data-review="character"] .mesh-controls > div { grid-template-columns: 1fr 1fr 1fr; }
+  .mesh-runtime[data-review="character"] .mesh-controls select { grid-column: 1 / 3; }
+  .mesh-runtime[data-review="character"] .mesh-controls button:last-child { grid-column: 3; }
+}

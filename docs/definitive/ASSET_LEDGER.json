@@ -12,6 +12,29 @@
       "source": "Astra-created v03 LOD2",
       "consumer": "MeshRuntime.showModel via ModelAssets.loadModel",
       "status": "runtime model review; provisional materials"
+    },
+    {
+      "id": "models:xrpman",
+      "path": "public/assets/models/xrpman.glb",
+      "bytes": 3597232,
+      "sha256": "0f95e53d9beaaa7ff3f909a597723487f8508bfaa77ccbcc9e62681bb6daddea",
+      "triangles": 46725,
+      "materialGroups": 10,
+      "bones": 163,
+      "animations": [
+        "Idle",
+        "Walk",
+        "Run",
+        "AimFire",
+        "Interact",
+        "Hit",
+        "Dodge",
+        "KnockdownRecover"
+      ],
+      "textures": "1024 albedo, 1024 normal, 512 roughness; all embedded",
+      "consumer": "MeshRuntime.showModel(xrpman) at ?review=character",
+      "source": "CC0 MakeHuman anatomy plus original XRPMan armor, hair, emblems, texture maps and animation",
+      "status": "Skinned runtime foundation, browser-reviewed; further character art refinement remains possible during boarding production"
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

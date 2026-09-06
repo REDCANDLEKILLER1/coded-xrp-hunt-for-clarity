@@ -1,4 +1,4 @@
-import { ACESFilmicToneMapping, AmbientLight, Box3, Color, DirectionalLight, GridHelper, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry, SRGBColorSpace, Vector3, WebGLRenderer, PMREMGenerator } from 'three';
+import { ACESFilmicToneMapping, AmbientLight, AnimationMixer, Box3, Color, DirectionalLight, GridHelper, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry, SRGBColorSpace, Vector3, WebGLRenderer, PMREMGenerator } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject, loadModel } from './ModelAssets';
@@ -40,16 +40,20 @@ export class MeshRuntime {
     this.resize();
   }
 
-  async showModel(): Promise<void> {
+  async showModel(assetId: 'regulatory_warship' | 'xrpman' = 'regulatory_warship'): Promise<void> {
+    const character = assetId === 'xrpman';
+    this.root.dataset.review = character ? 'character' : 'warship';
     this.root.hidden = false;
     this.resize();
-    this.status.textContent = 'Loading Warship model…';
+    this.status.textContent = character ? 'Loading XRPMan…' : 'Loading Warship model…';
     this.controls.replaceChildren();
     this.startLoop();
     const loaded = await this.controller.change(async (signal) => {
-      const gltf = await loadModel('regulatory_warship', signal);
+      const gltf = await loadModel(assetId, signal);
       const ship = gltf.scene;
-      for (const name of WARSHIP_ATTACHMENTS) if (!ship.getObjectByName(name)) { disposeObject(ship); throw new Error(`Missing Warship attachment: ${name}`); }
+      const attachments = character ? ['Hero_Origin', 'Hand_R', 'Hand_L'] : WARSHIP_ATTACHMENTS;
+      for (const name of attachments) if (!ship.getObjectByName(name)) { disposeObject(ship); throw new Error(`Missing attachment: ${name}`); }
+      if (character && !gltf.animations.length) { disposeObject(ship); throw new Error('XRPMan has no animation clips'); }
       const scene = new Scene();
       scene.background = new Color('#050b12');
       scene.environment = this.environment.texture;
@@ -60,13 +64,13 @@ export class MeshRuntime {
       const rim = new DirectionalLight(0xff6535, 2.5);
       rim.position.set(100, 40, -80);
       scene.add(key, rim);
-      const grid = new GridHelper(240, 24, 0x294456, 0x101e2c);
-      grid.position.y = -15;
+      const grid = new GridHelper(character ? 6 : 240, 24, 0x294456, 0x101e2c);
+      grid.position.y = character ? -.015 : -15;
       scene.add(grid);
       const markers = new Group();
       const markerGeometry = new SphereGeometry(1.2, 10, 8);
       const markerMaterial = new MeshBasicMaterial({ color: '#00FF00', toneMapped: false });
-      for (const name of WARSHIP_ATTACHMENTS.filter((name) => name.startsWith('Muzzle_'))) {
+      for (const name of attachments.filter((name) => name.startsWith('Muzzle_'))) {
         const marker = new Mesh(markerGeometry, markerMaterial);
         ship.getObjectByName(name)!.getWorldPosition(marker.position);
         markers.add(marker);
@@ -74,12 +78,12 @@ export class MeshRuntime {
       markers.visible = false;
       scene.add(markers);
       const camera = new PerspectiveCamera(42, 1, .1, 2000);
-      camera.position.set(125, 100, 155);
+      camera.position.set(character ? 1.1 : 125, character ? 1.5 : 100, character ? 4 : 155);
       const orbit = new OrbitControls(camera, this.renderer.domElement);
       orbit.enableDamping = true;
-      orbit.minDistance = 45;
-      orbit.maxDistance = 1000;
-      orbit.target.set(0, 0, 0);
+      orbit.minDistance = character ? .4 : 45;
+      orbit.maxDistance = character ? 12 : 1000;
+      orbit.target.set(0, character ? .98 : 0, 0);
       orbit.update();
       let active = false;
       let clock = 0;
@@ -89,7 +93,9 @@ export class MeshRuntime {
         const aspect = this.root.clientWidth / Math.max(1, this.root.clientHeight);
         const verticalHalfAngle = camera.fov * Math.PI / 360;
         const halfAngle = Math.min(verticalHalfAngle, Math.atan(Math.tan(verticalHalfAngle) * aspect));
-        const distance = box.length() * .5 / Math.sin(halfAngle) * 1.12;
+        const distance = character
+          ? Math.max(box.y * .5 / Math.tan(verticalHalfAngle) * this.root.clientHeight / Math.max(150, this.root.clientHeight - (aspect > 1 ? 90 : 260)), box.x * .65 / (Math.tan(verticalHalfAngle) * aspect)) * 1.08
+          : box.length() * .5 / Math.sin(halfAngle) * 1.12;
         camera.position.sub(orbit.target).normalize().multiplyScalar(distance).add(orbit.target);
         orbit.update();
       };
@@ -99,10 +105,14 @@ export class MeshRuntime {
         button.type = 'button'; button.textContent = label; button.addEventListener('click', run); buttons.appendChild(button);
         return button;
       };
-      action('Front', () => { camera.position.set(0, 40, 190); fitCamera(); });
-      action('Rear', () => { camera.position.set(0, 45, -190); fitCamera(); });
-      action('Top', () => { camera.position.set(0, 230, .1); fitCamera(); });
+      action('Front', () => { orbit.target.set(0, character ? .98 : 0, 0); camera.position.set(0, character ? 1.05 : 40, character ? 4 : 190); fitCamera(); });
+      action('Rear', () => { orbit.target.set(0, character ? .98 : 0, 0); camera.position.set(0, character ? 1.05 : 45, character ? -4 : -190); fitCamera(); });
+      action(character ? 'Face' : 'Top', () => {
+        if (character) { orbit.target.set(0, 1.75, 0); camera.position.set(.12, 1.79, 1.1); orbit.update(); }
+        else { camera.position.set(0, 230, .1); fitCamera(); }
+      });
       const nodes = action('Show muzzles', () => { markers.visible = !markers.visible; nodes.textContent = markers.visible ? 'Hide muzzles' : 'Show muzzles'; });
+      nodes.hidden = character;
       let captured = false;
       const hostileMaterials: { material: MeshStandardMaterial; color: Color; emissive: Color; intensity: number; toneMapped: boolean }[] = [];
       ship.traverse((object) => {
@@ -122,9 +132,34 @@ export class MeshRuntime {
         }
         faction.textContent = captured ? 'Hostile lights' : 'Captured lights';
       });
+      faction.hidden = character;
+      const mixer = character ? new AnimationMixer(ship) : null;
+      let playing = true;
+      let clipName = '';
+      const play = (name: string): void => {
+        const clip = gltf.animations.find((entry) => entry.name === name);
+        if (!clip || !mixer) return;
+        mixer.stopAllAction(); mixer.clipAction(clip).reset().play(); clipName = name;
+      };
+      if (character) {
+        ship.traverse((object) => {
+          if (!(object instanceof Mesh)) return;
+          for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
+            if (material instanceof MeshStandardMaterial && material.name.startsWith('Liquidity')) {
+              material.toneMapped = false; material.needsUpdate = true;
+            }
+          }
+        });
+        const selector = document.createElement('select'); selector.setAttribute('aria-label', 'Animation');
+        for (const clip of gltf.animations) { const option = document.createElement('option'); option.value = clip.name; option.textContent = clip.name; selector.appendChild(option); }
+        selector.value = gltf.animations.some((clip) => clip.name === 'Idle') ? 'Idle' : gltf.animations[0].name;
+        selector.addEventListener('change', () => play(selector.value)); buttons.appendChild(selector);
+        play(selector.value);
+        const pause = action('Pause animation', () => { playing = !playing; pause.textContent = playing ? 'Pause animation' : 'Play animation'; });
+      }
       const managed: ManagedScene = {
         setActive: (value) => { active = value; orbit.enabled = value; if (value) this.controls.replaceChildren(buttons); },
-        update: (dt) => { if (active) { clock += dt; orbit.update(); } },
+        update: (dt) => { if (active) { clock += dt; orbit.update(); if (playing) mixer?.update(dt); } },
         render: () => {
           camera.aspect = this.root.clientWidth / Math.max(1, this.root.clientHeight);
           if (camera.aspect !== previousAspect) { fitCamera(); previousAspect = camera.aspect; }
@@ -132,17 +167,19 @@ export class MeshRuntime {
           this.renderer.render(scene, camera);
           if (clock > .3) {
             const info = this.renderer.info.render;
-            this.status.textContent = `WARSHIP · MODEL REVIEW · Provisional materials\n${box.z.toFixed(1)} m long · ${box.x.toFixed(1)} m span · ${box.y.toFixed(1)} m high\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls · 9 attachments`;
+            this.status.textContent = character
+              ? `XRPMAN · CHARACTER REVIEW · ${clipName}\n${box.y.toFixed(3)} m · ${gltf.animations.length} animations\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls`
+              : `WARSHIP · MODEL REVIEW · Provisional materials\n${box.z.toFixed(1)} m long · ${box.x.toFixed(1)} m span · ${box.y.toFixed(1)} m high\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls · 9 attachments`;
             clock = 0;
           }
         },
-        dispose: () => { active = false; orbit.dispose(); disposeObject(scene); buttons.remove(); },
+        dispose: () => { active = false; mixer?.stopAllAction(); mixer?.uncacheRoot(ship); orbit.dispose(); disposeObject(scene); buttons.remove(); },
       };
       return managed;
     });
     if (!loaded && this.controller.lastError) {
       this.status.textContent = `Unable to load model: ${this.controller.lastError}`;
-      const retry = document.createElement('button'); retry.textContent = 'Retry'; retry.addEventListener('click', () => void this.showModel()); this.controls.replaceChildren(retry);
+      const retry = document.createElement('button'); retry.textContent = 'Retry'; retry.addEventListener('click', () => void this.showModel(assetId)); this.controls.replaceChildren(retry);
     }
   }
 

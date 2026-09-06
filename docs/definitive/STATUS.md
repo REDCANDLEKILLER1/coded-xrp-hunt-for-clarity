@@ -1,5 +1,7 @@
 # Status
 
+Character foundation: XRPMan now has a real skinned GLB review at ?review=character, 46,725 triangles, ten surfaces, eight prototype clips and three embedded texture maps; 3,597,232 bytes. Browser review, deformation tests and Blender roundtrip pass. Forty regression validators and build pass. Boarding quest/dialogue transaction modules are being implemented next; the actual 3D room consumer is not connected yet.
+
 Draft combined preview: PR125, https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app . Independent build passed at 4bf7dc8. PR121 milestone posted. Shared catalog now owns all image/model/audio paths, defers eleven old interior images, and passes all 39 validators plus build. Local browser network inspection confirms no interior images, GLB, or MP3 downloads on initial flight load.
 
 Implemented: production authorization/worktree; attributed compatible combat contributions; four combined escort fixes; isolated definitive save adapter with atomic rewards/purchases; cancellable 3D scene controller; pinned Three.js/types; actual optimized Warship GLB and responsive model review at ?review=model.
