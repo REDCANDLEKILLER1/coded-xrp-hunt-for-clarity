@@ -1,9 +1,11 @@
-import { ACESFilmicToneMapping, AmbientLight, AnimationMixer, Box3, Color, DirectionalLight, GridHelper, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry, SRGBColorSpace, Vector3, WebGLRenderer, PMREMGenerator } from 'three';
+import { ACESFilmicToneMapping, AmbientLight, AnimationMixer, Box3, Color, DirectionalLight, GridHelper, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry, SRGBColorSpace, Vector3, WebGLRenderer, PMREMGenerator, PCFSoftShadowMap } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject, loadModel, loadModels } from './ModelAssets';
 import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
+import { LandingScene } from './LandingScene';
+import { fighterModel } from './LandingPlan';
 import { BoardingQuest } from './BoardingQuest';
 import type { CampaignSave } from './CampaignSave';
 
@@ -26,7 +28,8 @@ export class MeshRuntime {
     this.root.hidden = true;
     this.renderer.outputColorSpace = SRGBColorSpace;
     this.renderer.toneMapping = ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.enabled=true; this.renderer.shadowMap.type=PCFSoftShadowMap;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
     const generator = new PMREMGenerator(this.renderer);
     const studio = new RoomEnvironment();
@@ -123,7 +126,7 @@ export class MeshRuntime {
       ship.traverse((object) => {
         if (!(object instanceof Mesh)) return;
         for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
-          if (material instanceof MeshStandardMaterial && /Hostile|Engine_Proxy/.test(material.name) && !hostileMaterials.some((entry) => entry.material === material)) hostileMaterials.push({ material, color: material.color.clone(), emissive: material.emissive.clone(), intensity: material.emissiveIntensity, toneMapped: material.toneMapped });
+          if (material instanceof MeshStandardMaterial && /Hostile|Engine/.test(material.name) && !hostileMaterials.some((entry) => entry.material === material)) hostileMaterials.push({ material, color: material.color.clone(), emissive: material.emissive.clone(), intensity: material.emissiveIntensity, toneMapped: material.toneMapped });
         }
       });
       const faction = action('Captured lights', () => {
@@ -174,7 +177,7 @@ export class MeshRuntime {
             const info = this.renderer.info.render;
             this.status.textContent = character
               ? `${characterName} · CHARACTER REVIEW · ${clipName}\n${box.y.toFixed(3)} m · ${gltf.animations.length} animations\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls`
-              : `WARSHIP · MODEL REVIEW · Provisional materials\n${box.z.toFixed(1)} m long · ${box.x.toFixed(1)} m span · ${box.y.toFixed(1)} m high\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls · 9 attachments`;
+              : `WARSHIP · MATERIAL REVIEW\n${box.z.toFixed(1)} m long · ${box.x.toFixed(1)} m span · ${box.y.toFixed(1)} m high\n${info.triangles.toLocaleString()} visible triangles · ${info.calls} draw calls · 9 attachments`;
             clock = 0;
           }
         },
@@ -188,6 +191,22 @@ export class MeshRuntime {
     }
   }
 
+  async showLanding(save: CampaignSave): Promise<void> {
+    if(save.snapshot.warshipOwned||save.snapshot.quests.includes('boarding.landed'))return this.showBoarding(save);
+    this.root.dataset.review='landing';this.root.hidden=false;this.hud.hidden=false;
+    this.status.textContent='Approaching the disabled Warship…';this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const [warship,fighter]=await loadModels(['regulatory_warship_open',fighterModel(save.snapshot.fighterShipKey)],signal);
+      try{return new LandingScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,warship,fighter,onDock:()=>void this.showBoarding(save)});}
+      catch(error){disposeObject(warship.scene);disposeObject(fighter.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;
+    else if(this.controller.lastError){
+      this.status.textContent=`Arrival could not load: ${this.controller.lastError}. Your checkpoint is retained.`;
+      const retry=document.createElement('button');retry.textContent='Retry arrival';retry.addEventListener('click',()=>void this.showLanding(save));this.controls.replaceChildren(retry);
+    }
+  }
+
   async showBoarding(save: CampaignSave): Promise<void> {
     this.root.dataset.review = 'boarding'; this.root.hidden = false; this.hud.hidden = false;
     this.status.textContent = 'Entering the Warship…'; this.controls.replaceChildren(); this.resize(); this.startLoop();
@@ -195,9 +214,9 @@ export class MeshRuntime {
     const begin = quest.begin(save.snapshot.fighterShipKey);
     if (!begin.ok) { this.status.textContent = 'The boarding checkpoint could not be saved. Return to the map and retry.'; return; }
     const loaded = await this.controller.change(async signal => {
-      const [hero,crew] = await loadModels(['xrpman','mr_zamn'], signal);
-      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, onDeparture: () => {} }); }
-      catch (error) { disposeObject(hero.scene); disposeObject(crew.scene); throw error; }
+      const [hero,crew,fighter,deck] = await loadModels(['xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
+      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, onDeparture: () => {} }); }
+      catch (error) { disposeObject(hero.scene); disposeObject(crew.scene); disposeObject(fighter.scene); disposeObject(deck.scene); throw error; }
     });
     if (loaded) this.hud.hidden = true;
     else if (this.controller.lastError) {

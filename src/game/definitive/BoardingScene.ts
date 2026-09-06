@@ -7,14 +7,16 @@ import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
 import { coreExposure, selectBoardingTarget } from './BoardingCombat';
+import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; clock: number; charge: number; target: Vector3; base: Vector3; kind: 'guard' | 'relay' | 'core' }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; hostile: boolean; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; onDeparture: () => void }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; onDeparture: () => void }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
   private readonly scene = new Scene();
+  private readonly keyLight = new DirectionalLight(0xc4d9e7,2);
   private readonly camera = new PerspectiveCamera(43, 1, .1, 220);
   private readonly ui = document.createElement('div');
   private readonly status = document.createElement('div');
@@ -69,7 +71,6 @@ export class BoardingScene implements ManagedScene {
   private readonly box = new BoxGeometry(1,1,1);
   private readonly boltGeometry = new SphereGeometry(.09,8,6);
   private readonly metal = new MeshStandardMaterial({ color:0x25303c, roughness:.58, metalness:.68 });
-  private readonly floor = new MeshStandardMaterial({ color:0x111923, roughness:.7, metalness:.32 });
   private readonly trim = new MeshStandardMaterial({ color:0x56616c, roughness:.4, metalness:.7 });
   private readonly red = new MeshBasicMaterial({ color:0xff351e, toneMapped:false });
   private readonly green = new MeshBasicMaterial({ color:0x00ff00, toneMapped:false });
@@ -89,17 +90,34 @@ export class BoardingScene implements ManagedScene {
     this.room = host.quest.checkpoint;
     const start=deckRoom(this.room);
     this.hero.position.set(start.x,0,start.z-(this.room==='hangar'?5:start.depth*.3));
-    this.scene.background=new Color(0x040911); this.scene.environment=host.environment; this.scene.environmentIntensity=.55;
-    this.scene.add(this.hero,new AmbientLight(0xaec4db,1.3));
+    const fighter=host.fighter.scene;
+    fighter.position.set(DECK_LAYOUT.landing.center[0],PARKED_HEIGHT,DECK_LAYOUT.landing.center[1]);
+    const canopy=fighter.getObjectByName('Canopy_Hinge');if(canopy)canopy.rotation.x=-1.15;
+    fighter.updateMatrixWorld(true);this.scene.add(fighter);
+    if(this.room==='hangar'){
+      const exit=fighter.getObjectByName('Pilot_Exit');if(exit)exit.getWorldPosition(this.hero.position);
+      this.hero.position.y=0;
+    }
+    fighter.traverse(o=>{if(o instanceof Mesh)for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.name.startsWith('Liquidity'))m.toneMapped=false;});
+    this.obstacles.push({x:0,z:-28,w:1.85,d:8.8},{x:0,z:-30.4,w:7.1,d:2.8});
+    this.scene.background=new Color(0x040911); this.scene.environment=host.environment; this.scene.environmentIntensity=.35;
+    this.scene.add(this.hero,new AmbientLight(0xaec4db,.4));
     this.heroShield.scale.set(.78,1.1,.78);this.heroShield.visible=false;this.scene.add(this.heroShield);
     this.exitField.position.set(0,.025,DECK_LAYOUT.core.exitFieldZ);this.exitField.scale.set(9,.025,.45);this.scene.add(this.exitField);
-    const key=new DirectionalLight(0xb9d9ff,2.3);key.position.set(-12,22,-8);this.scene.add(key);
-    const rim=new DirectionalLight(0xff7955,1);rim.position.set(10,8,15);this.scene.add(rim);
+    const key=this.keyLight;key.castShadow=true;key.shadow.mapSize.set(1024,1024);
+    Object.assign(key.shadow.camera,{left:-14,right:14,top:14,bottom:-14,near:1,far:55});key.shadow.bias=-.0002;key.shadow.normalBias=.025;
+    key.shadow.camera.updateProjectionMatrix();
+    this.scene.add(key,key.target);
+    const rim=new DirectionalLight(0x6c91b9,.7);rim.position.set(10,8,15);this.scene.add(rim);
     this.hero.traverse(obj=>{
       if(!(obj instanceof Mesh))return;
       for(const material of Array.isArray(obj.material)?obj.material:[obj.material]) if(material.name.startsWith('Liquidity'))material.toneMapped=false;
     });
     this.buildDeck(); this.buildUI(); this.bindInput(); this.spawnRoom(this.room);
+    this.scene.traverse(object=>{if(object instanceof Mesh&&!(object.material instanceof MeshBasicMaterial)){object.castShadow=true;object.receiveShadow=true;}});
+    // Flat plates and trim receive contact shadows; only the pressure walls need
+    // to cast them. This avoids redrawing the entire deck into the shadow map.
+    host.deck.scene.traverse(object=>{if(object instanceof Mesh)object.castShadow=object.material instanceof MeshStandardMaterial&&object.material.name==='Deck carbon ceramic';});
     this.camera.position.copy(this.hero.position).add(new Vector3(10,15,-14));this.camera.lookAt(this.hero.position);
     this.play('Idle');
     if(!host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.threshold.id))this.conversation(BOARDING_DIALOGUE.threshold);
@@ -107,30 +125,14 @@ export class BoardingScene implements ManagedScene {
 
   setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; this.clearInput(); }
   private part(parent:Object3D,pos:[number,number,number],size:[number,number,number],material:MeshStandardMaterial|MeshBasicMaterial=this.metal):Mesh {
-    const mesh=new Mesh(this.box,material);mesh.position.set(...pos);mesh.scale.set(...size);parent.add(mesh);return mesh;
+    const mesh=new Mesh(this.box,material);mesh.position.set(...pos);mesh.scale.set(...size);mesh.castShadow=material instanceof MeshStandardMaterial;mesh.receiveShadow=mesh.castShadow;parent.add(mesh);return mesh;
   }
   private buildDeck():void {
+    this.scene.add(this.host.deck.scene);
     for(const room of DECK){
-      const group=new Group();this.roomGroups.set(room.id,group);this.scene.add(group);
-      const nx=Math.floor(room.width/2),nz=Math.floor(room.depth/2);
-      const tiles=new InstancedMesh(this.box,this.floor,nx*nz);const matrix=new Matrix4();let i=0;
-      for(let x=0;x<nx;x++)for(let z=0;z<nz;z++){
-        matrix.makeScale(1.965,.18,1.965);matrix.setPosition(room.x-room.width/2+1+x*2,-.1,room.z-room.depth/2+1+z*2);tiles.setMatrixAt(i++,matrix);
-      }group.add(tiles);
-      // Low cutaway walls preserve sight of the hero; door lintels show full height.
-      const blocks:{position:Vector3;scale:Vector3}[]=[];
-      for(const axis of ['x','z'] as const)for(const sign of [-1,1]){
-        const along=axis==='x'?room.depth:room.width;const fixed=(axis==='x'?room.x:room.z)+sign*(axis==='x'?room.width:room.depth)/2;
-        for(let j=-along/2+.5;j<along/2;j+=1){
-          const x=axis==='x'?fixed:room.x+j,z=axis==='z'?fixed:room.z+j;
-          if(DECK_DOORS.some(d=>(d.a===room.id||d.b===room.id)&&Math.hypot(x-d.x,z-d.z)<d.width*.6))continue;
-          blocks.push({position:new Vector3(x,.6,z),scale:new Vector3(axis==='x'?.25:.99,1.2,axis==='z'?.25:.99)});
-        }
-      }
-      const walls=new InstancedMesh(this.box,this.metal,blocks.length);
-      blocks.forEach((block,index)=>{matrix.makeScale(...block.scale.toArray() as [number,number,number]);matrix.setPosition(block.position);walls.setMatrixAt(index,matrix);});group.add(walls);
-      const stripe=new InstancedMesh(this.box,this.trim,4);
-      [[room.x-room.width/2+.7,room.z,.07,room.depth-1.4],[room.x+room.width/2-.7,room.z,.07,room.depth-1.4],[room.x,room.z-room.depth/2+.7,room.width-1.4,.07],[room.x,room.z+room.depth/2-.7,room.width-1.4,.07]].forEach(([x,z,w,d],index)=>{matrix.makeScale(w,.015,d);matrix.setPosition(x,.006,z);stripe.setMatrixAt(index,matrix);});group.add(stripe);
+      const group=this.host.deck.scene.getObjectByName('Deck_'+room.id) as Group;
+      if(!group)throw new Error('Missing architecture room: '+room.id);
+      this.roomGroups.set(room.id,group);
       const [x,z]=room.terminal;this.part(group,[x,.6,z],[1.3,1.2,.85]);
       this.obstacles.push({x,z,w:1.3,d:.85});
       const terminal=this.part(group,[x,1.23,z],[1.1,.08,.7],this.green);this.terminals.set(room.id,terminal);
@@ -150,11 +152,13 @@ export class BoardingScene implements ManagedScene {
       }
       if(room.id==='hangar')for(const x of [-5,5])this.part(group,[x,.02,-29],[.12,.03,11],this.green);
     }
+    const frames=new InstancedMesh(this.box,this.trim,DECK_DOORS.length*3);const matrix=new Matrix4();let frameIndex=0;this.scene.add(frames);
     for(const door of DECK_DOORS){
       const frame=new Group();this.scene.add(frame);
-      for(const sign of [-1,1])this.part(frame,[door.x+(door.axis==='z'?sign*2:0),1.7,door.z+(door.axis==='x'?sign*2:0)],[.35,3.4,.35],this.trim);
-      this.part(frame,[door.x,3.3,door.z],[door.axis==='z'?4.4:.4,.25,door.axis==='x'?4.4:.4],this.trim);
-      const panel=this.part(frame,[door.x,1.45,door.z],[door.axis==='z'?door.width:.1,2.9,door.axis==='x'?door.width:.1],this.red);
+      for(const sign of [-1,1]){matrix.makeScale(.35,3.4,.35);matrix.setPosition(door.x+(door.axis==='z'?sign*2:0),1.7,door.z+(door.axis==='x'?sign*2:0));frames.setMatrixAt(frameIndex++,matrix);}
+      matrix.makeScale(door.axis==='z'?4.4:.4,.25,door.axis==='x'?4.4:.4);matrix.setPosition(door.x,3.3,door.z);frames.setMatrixAt(frameIndex++,matrix);
+      const panel=this.part(frame,[door.x,1.45,door.z],[door.axis==='z'?door.width:.16,2.9,door.axis==='x'?door.width:.16],this.metal);
+      const indicator=new Mesh(this.box,this.red);indicator.scale.set(door.axis==='z'?.82:1.2,.025,door.axis==='x'?.82:1.2);indicator.position.y=.4;panel.add(indicator);
       this.doorPanels.push({door,mesh:panel});
     }
   }
@@ -420,7 +424,10 @@ export class BoardingScene implements ManagedScene {
   }
   private coreExposed():boolean{return coreExposure(this.enemies.some(e=>e.room==='core'&&e.kind==='relay'&&e.hp>0),this.clock);}
   private onScreen(position:Vector3):boolean{const p=position.clone().project(this.camera);return Math.abs(p.x)<.92&&Math.abs(p.y)<.8&&p.z>-1&&p.z<1;}
-  render():void {this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?49:43;this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);}
+  render():void {
+    this.keyLight.position.copy(this.hero.position).add(new Vector3(-8,18,-10));this.keyLight.target.position.copy(this.hero.position);
+    this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?49:43;this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);
+  }
   dispose():void {
     this.active=false;this.clearInput();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
     // Include pooled/dead objects so shared GPU resources are released exactly once.

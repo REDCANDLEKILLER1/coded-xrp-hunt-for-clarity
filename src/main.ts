@@ -233,12 +233,17 @@ watchForUpdates(import.meta.url);
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
 
-  if (['model', 'character', 'crew', 'boarding'].includes(params.get('review') ?? '') || params.has('model')) {
+  if (['model', 'character', 'crew', 'boarding', 'landing'].includes(params.get('review') ?? '') || params.has('model')) {
     map.hide(); game.suspend(); onFoot.hide(); space.hide();
     gameShell.hidden = false; canvas.style.visibility = 'hidden';
     void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
       meshRuntime ??= new MeshRuntime(gameShell);
-      if (params.get('review') === 'boarding') await meshRuntime.showBoarding(definitiveSave);
+      if(params.get('review')==='landing'){
+        const fighter=params.get('fighter');
+        if(definitiveSave.testSlot&&definitiveSave.snapshot.location.mode==='earth'&&fighter&&['player','xrpl_striker','ledger_warden'].includes(fighter))definitiveSave.update(draft=>{draft.fighterShipKey=fighter;});
+        await meshRuntime.showLanding(definitiveSave);
+      }
+      else if (params.get('review') === 'boarding') await meshRuntime.showBoarding(definitiveSave);
       else await meshRuntime.showModel(params.get('review') === 'crew' ? 'mr_zamn' : params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
     }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });
     return;

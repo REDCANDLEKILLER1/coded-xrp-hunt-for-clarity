@@ -4,11 +4,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DoubleSide, Raycaster, Vector3 } from 'three';
 const layout=JSON.parse(readFileSync('src/game/definitive/boarding-deck.json','utf8'));
 const bytes=readFileSync('public/assets/models/regulatory_warship.glb');
+globalThis.self=globalThis;globalThis.createImageBitmap=async()=>({width:1024,height:1024,close(){}});
 const gltf=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'');
 gltf.scene.updateMatrixWorld(true);
 const hull=[];
 gltf.scene.traverse(object=>{
-  if(object.isMesh&&['Armor_Gunmetal_PROXY','Armor_Plane_PROXY','Door_Neutral_PROXY'].includes(object.material.name)){
+  if(object.isMesh&&/^(Armor|Door)/.test(object.material.name)){
     object.material.side=DoubleSide;hull.push(object);
   }
 });

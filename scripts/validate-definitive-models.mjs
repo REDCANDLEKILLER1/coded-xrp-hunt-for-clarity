@@ -14,7 +14,9 @@ assert.equal(bytes.readUInt32LE(8), bytes.length);
 const doc = JSON.parse(bytes.subarray(20, 20 + bytes.readUInt32LE(12)).toString());
 assert.ok(!doc.buffers.some((buffer) => buffer.uri), 'runtime GLB must be self-contained');
 assert.equal(doc.meshes.length, 6);
-assert.ok(bytes.length < 500_000);
+assert.ok(bytes.length < 2_000_000, 'LOD0 geometry, per-face UVs and three maps remain below 2 MB');
+assert.equal(doc.images.length,3,'albedo, micro normal and packed roughness/metal maps');
+assert.ok(doc.images.every(image=>!image.uri&&Number.isInteger(image.bufferView)),'textures are embedded without external URI fallbacks');
 for (const filename of readdirSync('public/assets/models')) assert.ok(Object.values(manifest.models).some((entry) => entry.src.endsWith(`/${filename}`)), `orphan model: ${filename}`);
 const names = ['Ship_Origin', 'Muzzle_FL', 'Muzzle_FR', 'Muzzle_L', 'Muzzle_R', 'Engine_L', 'Engine_R', 'Camera_Chase', 'Camera_Cockpit_Forward'];
 for (const name of names) assert.equal(doc.nodes.filter((node) => node.name === name).length, 1, `unique attachment: ${name}`);
@@ -24,6 +26,8 @@ const load = async (entry) => {
   return import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
 };
 let wrongLength = false;
+globalThis.self=globalThis;
+globalThis.createImageBitmap=async()=>({width:1024,height:1024,close(){}});
 globalThis.fetch = async (url) => new Response(String(url).endsWith('/manifest.json') ? JSON.stringify(manifest) : wrongLength ? bytes.subarray(0, 30) : bytes);
 const { loadModel, disposeObject } = await load('src/game/definitive/ModelAssets.ts');
 const gltf = await loadModel('regulatory_warship', new AbortController().signal);
@@ -36,7 +40,7 @@ gltf.scene.traverse((object) => {
     object.geometry.addEventListener('dispose', () => disposed++);
   }
 });
-assert.equal(triangles, 5156, 'real GLTFLoader decodes every triangle');
+assert.equal(triangles, 19250, 'real GLTFLoader decodes the production LOD0 derivative');
 const muzzlePositions = names.filter((name) => name.startsWith('Muzzle')).map((name) => {
   const node = gltf.scene.getObjectByName(name);
   const elements = node.matrixWorld.elements;
@@ -52,6 +56,12 @@ wrongLength = false;
 const aborted = new AbortController(); aborted.abort();
 await assert.rejects(loadModel('regulatory_warship', aborted.signal), /cancelled/);
 
+// A decoder failure must not produce a white, falsely successful model review.
+globalThis.createImageBitmap=async()=>{throw new Error('image decode failed');};
+const logError=console.error;console.error=()=>{};
+try{await assert.rejects(loadModel('regulatory_warship',new AbortController().signal),/texture could not load/);}
+finally{console.error=logError;globalThis.createImageBitmap=async()=>({width:1024,height:1024,close(){}});}
+
 // The existing 2D loader must never try to decode a mesh or audio as an image.
 const imageSources = [];
 globalThis.Image = class { set src(value) { imageSources.push(value); queueMicrotask(() => this.onload()); } };
@@ -62,4 +72,4 @@ await images.loadManifest();
 assert.ok(imageSources.length > 0);
 assert.ok(imageSources.every((src) => !/\.(glb|gltf|mp3)$/.test(src)));
 assert.equal(images.counts().missing, 0);
-console.log(`definitive-models: OK — actual GLB decode, ${bytes.length} bytes, 5156 triangles, six surfaces, nine nodes, four distinct muzzles, disposal, failed/cancelled load, typed 2D exclusion.`);
+console.log(`definitive-models: OK — actual GLB decode, ${bytes.length} bytes, ${triangles} triangles, three maps, six surfaces, nine nodes, four distinct muzzles, disposal, failed/cancelled load, typed 2D exclusion.`);

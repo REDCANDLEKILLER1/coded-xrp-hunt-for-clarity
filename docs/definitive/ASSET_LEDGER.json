@@ -2,18 +2,6 @@
   "stage": "foundation in progress",
   "assets": [
     {
-      "id": "models:regulatory_warship",
-      "path": "public/assets/models/regulatory_warship.glb",
-      "bytes": 396960,
-      "sha256": "b98ed0d1ab9c3851f4c18f9ae9fdc472afb6a19a9b9e82e1bebfdfbf2f5b79cb",
-      "triangles": 5156,
-      "materialGroups": 6,
-      "nodes": 9,
-      "source": "Astra-created v03 LOD2",
-      "consumer": "MeshRuntime.showModel via ModelAssets.loadModel",
-      "status": "runtime model review; provisional materials"
-    },
-    {
       "id": "models:xrpman",
       "path": "public/assets/models/xrpman.glb",
       "bytes": 3597232,
@@ -53,6 +41,78 @@
       "consumer": "Crew review and BoardingScene rescue/hub NPC",
       "source": "Pinned CC0 MakeHuman anatomy and original blue armor/shield/animation",
       "status": "Physical crew foundation, private master v03; realism refinement remains"
+    },
+    {
+      "id": "models:fighter_player",
+      "path": "public/assets/models/fighter_player.glb",
+      "bytes": 360680,
+      "sha256": "49b78ed1cdc029c1d902353781460891dcd0c5cf28f46ec1c702ed823b515c6b",
+      "triangles": 6776,
+      "materialGroups": 7,
+      "nodes": 8,
+      "consumer": "landing, boarding, hub",
+      "source": "Original Blender derivative of the selected fighter; canopy pivot, landing gear and pilot exit. LandingScene / BoardingScene consumer.",
+      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+    },
+    {
+      "id": "models:fighter_xrpl_striker",
+      "path": "public/assets/models/fighter_xrpl_striker.glb",
+      "bytes": 372640,
+      "sha256": "80cb43c0501b491ee2b4c248b11ca55b7a95aa686e50b2874c5ffbe97bf0bdc1",
+      "triangles": 6984,
+      "materialGroups": 7,
+      "nodes": 8,
+      "consumer": "landing, boarding, hub",
+      "source": "Original Blender derivative of the selected fighter; canopy pivot, landing gear and pilot exit. LandingScene / BoardingScene consumer.",
+      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+    },
+    {
+      "id": "models:boarding_deck",
+      "path": "public/assets/models/boarding_deck.glb",
+      "bytes": 4046020,
+      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
+      "triangles": 48924,
+      "materialGroups": 32,
+      "nodes": 8,
+      "consumer": "boarding, hub",
+      "source": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer.",
+      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+    },
+    {
+      "id": "models:fighter_ledger_warden",
+      "path": "public/assets/models/fighter_ledger_warden.glb",
+      "bytes": 372648,
+      "sha256": "207c4a023aff57e9d539f7cb0e10b151b7f1fb8772c091dd09392f9143d040c8",
+      "triangles": 6984,
+      "materialGroups": 7,
+      "nodes": 8,
+      "consumer": "landing, boarding, hub",
+      "source": "Original Blender derivative of the selected fighter; canopy pivot, landing gear and pilot exit. LandingScene / BoardingScene consumer.",
+      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+    },
+    {
+      "id": "models:regulatory_warship_open",
+      "path": "public/assets/models/regulatory_warship_open.glb",
+      "bytes": 1254520,
+      "sha256": "2a4e6e831e74319506405ac826aaf4d4fb337f39910b67ff52bc7938815e1cd4",
+      "triangles": 19326,
+      "materialGroups": 6,
+      "nodes": 9,
+      "consumer": "landing",
+      "source": "v03 LOD0 geometry with v04 generated albedo, authored micro normal and roughness/metal maps; six surfaces, all nine nodes. Private masters preserved.",
+      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+    },
+    {
+      "id": "models:regulatory_warship",
+      "path": "public/assets/models/regulatory_warship.glb",
+      "bytes": 1726968,
+      "sha256": "e2762930ff378b993b749fb9c02a02267fd81296133939f8a55d3063af4e626e",
+      "triangles": 19250,
+      "materialGroups": 6,
+      "nodes": 9,
+      "consumer": "model_review",
+      "source": "v03 LOD0 geometry with v04 generated albedo, authored micro normal and roughness/metal maps; six surfaces, all nine nodes. Private masters preserved.",
+      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

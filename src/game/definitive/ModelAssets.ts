@@ -10,7 +10,16 @@ export async function loadModel(id: string, signal: AbortSignal): Promise<GLTF> 
   if (!file.ok) throw new Error(`Model unavailable (${file.status})`);
   const bytes = await file.arrayBuffer();
   if (entry.bytes !== bytes.byteLength) throw new Error(`Model download is incomplete: ${id}`);
+  const view=new DataView(bytes);
+  if(bytes.byteLength<20||view.getUint32(0,true)!==0x46546c67||view.getUint32(8,true)!==bytes.byteLength)throw new Error(`Invalid model container: ${id}`);
+  const document=JSON.parse(new TextDecoder().decode(bytes.slice(20,20+view.getUint32(12,true)))) as {buffers?:{uri?:string}[];images?:{uri?:string;bufferView?:number}[];textures?:unknown[]};
+  if(document.buffers?.some(buffer=>buffer.uri)||document.images?.some(image=>image.uri||!Number.isInteger(image.bufferView)))throw new Error(`Model textures must be embedded: ${id}`);
   const gltf = await new GLTFLoader().parseAsync(bytes, entry.src.slice(0, entry.src.lastIndexOf('/') + 1));
+  // GLTFLoader can otherwise return a white, partly loaded model after image errors.
+  try{
+    const textures=await Promise.all((document.textures??[]).map((_,index)=>gltf.parser.getDependency('texture',index)));
+    if(textures.some(texture=>!texture))throw new Error(`Model texture could not load: ${id}`);
+  }catch(error){disposeObject(gltf.scene);throw error;}
   if (signal.aborted) { disposeObject(gltf.scene); throw new DOMException('Scene load cancelled', 'AbortError'); }
   return gltf;
 }
@@ -28,7 +37,8 @@ export function disposeObject(root: Object3D): void {
   const resources = new Set<BufferGeometry | Material | Texture>();
   const skeletons = new Set<Skeleton>();
   root.traverse((object) => {
-    const drawable = object as Object3D & { geometry?: BufferGeometry; material?: Material | Material[]; skeleton?: Skeleton };
+    const drawable = object as Object3D & { geometry?: BufferGeometry; material?: Material | Material[]; skeleton?: Skeleton; shadow?: {dispose:()=>void} };
+    drawable.shadow?.dispose();
     if (drawable.skeleton) skeletons.add(drawable.skeleton);
     if (drawable.geometry) resources.add(drawable.geometry);
     for (const material of drawable.material ? Array.isArray(drawable.material) ? drawable.material : [drawable.material] : []) {

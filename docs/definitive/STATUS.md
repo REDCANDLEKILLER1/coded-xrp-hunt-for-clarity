@@ -1,5 +1,7 @@
 # Status
 
+Latest checkpoint: actual selected-fighter landing, textured LOD0 Warship, authored Blender boarding architecture and contact shadows. Forty-five checks and final build pass. Revised boarding route reaches captured bridge, purchases and retained reload state. See LANDING_MATERIAL_CHECKPOINT.md for exact costs, played scope and remaining work. Next is real mesh departure/space and the normal chapter connection.
+
 Current local checkpoint: physical Mr Zamn, compact hull-fitted boarding rooms and corrected XRPMan palm sockets. All 43 validators and TypeScript/Vite build pass. The deck validator samples 648 positions against the actual Warship shell; this is sampled clearance, not full interior collision certification. Fresh compact-deck play reaches security clear and the physical Mr Zamn conversation. The earlier larger prototype was played through bridge/cache; the compact replacement still needs a complete replay.
 
 Owner steering: continue the current Blender/Three.js build. Aim for believable modern materials, detailed geometry and lighting; the present models are production foundations and do not yet meet the requested realism. Consider browser and downloadable editions later. Unreal was discussed, then explicitly deferred by the owner; no engine port or installation is underway.
