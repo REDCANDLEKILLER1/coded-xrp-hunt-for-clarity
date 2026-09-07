@@ -243,6 +243,26 @@
       "decodedBytes": 147456,
       "source": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained",
       "consumer": "Game2A GroundDefense pivoted gun rendering"
+    },
+    {
+      "id": "models:corn",
+      "path": "public/assets/models/corn.glb",
+      "bytes": 4922264,
+      "sha256": "6a020e9c97e0ba84bdbcb5043a47f9477c8fb298f7dab9224210956e30a54183",
+      "triangles": 43681,
+      "consumer": "MarsSurfaceScene",
+      "source": "Original provisional Corn modeling study: corn head, sunglasses, leaf features and gold/green field armor on pinned CC0 anatomy. Six embedded maps and three clips. Private source art was unavailable; this is not a verified canon turnaround.",
+      "status": "Playable relief opening; actual-model, browser and controlled soak checks pass. Further art refinement remains."
+    },
+    {
+      "id": "models:mars_relief",
+      "path": "public/assets/models/mars_relief.glb",
+      "bytes": 2071716,
+      "sha256": "fc13359abc2ef74901130cdb75e7d0bfa25174d1dccbcca651285f24d6fb4a9f",
+      "triangles": 28528,
+      "consumer": "MarsSurfaceScene",
+      "source": "Original Blender relief site, generated regolith color map and existing authored manufactured plate maps; private editable masters retained.",
+      "status": "Playable relief opening; actual-model, browser and controlled soak checks pass. Further art refinement remains."
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

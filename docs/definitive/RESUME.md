@@ -1,6 +1,30 @@
 # Exact resume state — connected chapter / neon faction pass
 
+## Latest in-progress checkpoint — Mars relief site
+
+Read MARS_RELIEF_CHECKPOINT.md. The Mars surface scene, physical Corn, guarded orbit/descent route, three pump objectives, field repair, native touch handling and low-detail graphics toggle are implemented locally. No new commit yet: HEAD/remote remain4822c0e on astra/definitive-review, PR125 draft. The working tree contains the Mars/Corn code, two runtime GLBs, build/optimization scripts, manifest/ledger and documentation changes. Main and other workers are untouched.
+
+Final runtime assets: Corn4,922,264bytes/43,681tri, terrain2,071,716bytes/28,528tri. Total scene models11,668,088bytes plus900,000 reserved renderer bytes passes12MiB. Corn runtime_v03 is a texture-size optimization of private corn_master_v02; Blender roundtrip_v03 passes3clips/6images/3sockets. Private terrain is worlds/mars/relief_v02; v01 is preserved. Original Corn study and Mars ground generation are complete; no image-generation job is running.
+
+The isolated relief1 test finished all three pumps, Corn recruitment/field repair and reload. mars-relief-journey-report.json records the ordinary-input run; the earlier controller range failures were corrected without changing reward grants. Its current scene has all pumps restored, and mobile tests passed independent native pointers/cancel/orientation and full/low graphics. Browser helpers are in the parent definitive-authorization folder. mars-mobile-report.json and screenshots are complete. They are desktop emulation, not physical-phone acceptance.
+
+The original earned journey1 save now resides on the actual Mars surface at the landing checkpoint. fly-earned-mars-landing.cjs completed real bridge-terminal departure, approximately4.3km flown approach, range-gated descent, fighter animation and reload. Evidence: mars-earned-landing-report.json and own-game screenshots. No grant was injected into this saved campaign. neon-play remains the separate earned fighter-to-boarding run.
+
+All Mars browser helpers, Blender jobs and image jobs have completed. The 600.47-second controlled soak passed, along with six space/surface resource cycles, native touch/orientation tests and the earned flight-to-surface transition. The soak page was an isolated in-memory study; its runtime object was not a deployed debug API or campaign grant. Evidence is in the parent definitive-authorization folder; see MARS_RELIEF_CHECKPOINT.md.
+
+The original Vite session36789 was stopped to release a locked Windows Rollup library during the final clean install. npm ci then passed; all 50 validators and the build passed. The replacement Vite is still http://127.0.0.1:5184, session59626. Browser/CDP is unchanged. The collision1 explicit test save is paused beside the actual fighter wing after a visual walking check; earned journey1 remains on the Mars surface and relief1 retains the completed relief site. No active pilot or pending permission.
+
+A post-soak navigation correction derives each fighter's convex walking footprint from its actual model instead of a guessed/mirrored wing box. All three model vertex sets, rear wings and nose-side routes pass the validator, followed by browser inspection. Corn has a physical collision radius. This does not change the rendered soak assets.
+
+Next: finish the bounded Mars documentation/commit/push; verify draft PR125 exact-head Build/Vercel through REST (GraphQL quota exhausted), update its stale description and post a meaningful text-only PR121 milestone. Then continue character/environment art, animation and opening refinement before later-world expansion. The full approved campaign remains the objective; do not stop at this checkpoint. HEAD/remote still4822c0e until the pending commit is created.
+
+Older sections below are historical; their claims that no Corn model or Mars surface exists are superseded by this section.
+
 ## Latest checkpoint — fighter families (supersedes older next-step notes below)
+
+Fighter checkpoint4822c0eebfb7472233fca04056c9e04d1cbe50bc is pushed. Exact-head REST API independently confirmed draft/open PR125, successful build check and Vercel. PR121 text-only milestone: https://github.com/REDCANDLEKILLER1/coded-xrp-hunt-for-clarity/pull/121#issuecomment-5565601534. GitHub GraphQL quota is exhausted; use ordinary gh api REST for necessary reads/authorized comments, not gh pr view. No approval blocker.
+
+Corn source audit: sources/pa6tew.jpg is XRPMan portrait; 1ttmwo.jpg is Mr Zamn/XRPMan/Blue Umbrella banner; the long file_00000000ba4871fdbff678ce2302c42e.png is XRPMan's sheet. No standalone Corn-named file exists in the six outer archives. Part2 contains a nested 7,810,012byte Images for coded(2).zip with a readable central directory but missing/unusable image data (prefix is not PK; all111 anonymous PNG reads fail). .NET rejects it as split/spanned; Python enumerates but cannot read those images. Do not claim Corn's actual sheet was inspected. Approved MASTER_PLAN text specifies corn head, sunglasses, leaf features and yellow/gold/green field identity; it supports an explicitly provisional original modeling study while the supplied image remains unavailable. Sources were only read, never modified or extracted into runtime. No Corn model or new image has been produced yet.
 
 Read FIGHTER_CHECKPOINT.md first. Ground checkpoint5b7e07d was pushed and exact-head Build/Vercel passed; PR125 remains draft. Ground PR121 milestone: https://github.com/REDCANDLEKILLER1/coded-xrp-hunt-for-clarity/pull/121#issuecomment-5565256957. The next fighter checkpoint adds FighterWeapons.ts, FighterArmoryRuntime.ts, Game2A integration and validate-fighter-armory.mjs. All49 tests and build pass after plasma III/group and legacy quad migration corrections. Initial292.24kB/86.49gzip; lazy3D734.06kB/191.88gzip. No dependency/lockfile or runtime asset changes.
 

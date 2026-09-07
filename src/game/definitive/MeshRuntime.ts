@@ -6,10 +6,14 @@ import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
 import { LandingScene } from './LandingScene';
 import { SpaceScene } from './SpaceScene';
+import {MarsSurfaceScene} from './MarsSurfaceScene';
+import {beginMarsRelief} from './MarsRelief';
 import { SPACE_MODELS, startTransit } from './SpaceProgress';
+import {initialSpaceCheckpoint} from './SpaceCheckpoint';
 import { fighterModel } from './LandingPlan';
 import { BoardingQuest } from './BoardingQuest';
 import type { CampaignSave } from './CampaignSave';
+import {applyGraphicsQuality,GRAPHICS_QUALITY_KEY,type GraphicsQuality} from './GraphicsQuality';
 
 export const WARSHIP_ATTACHMENTS = ['Ship_Origin', 'Muzzle_FL', 'Muzzle_FR', 'Muzzle_L', 'Muzzle_R', 'Engine_L', 'Engine_R', 'Camera_Chase', 'Camera_Cockpit_Forward'] as const;
 
@@ -21,6 +25,8 @@ export class MeshRuntime {
   private readonly hud = document.createElement('div');
   private readonly status = document.createElement('p');
   private readonly controls = document.createElement('div');
+  private readonly qualityButton=document.createElement('button');
+  private quality:GraphicsQuality='full';
   private frameId = 0;
   private previousTime = 0;
   private readonly environment;
@@ -32,7 +38,9 @@ export class MeshRuntime {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled=true; this.renderer.shadowMap.type=PCFSoftShadowMap;
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+    try{if(localStorage.getItem(GRAPHICS_QUALITY_KEY)==='low')this.quality='low';}catch{/* A display preference must not block play. */}
+    this.qualityButton.type='button';this.qualityButton.className='mesh-quality';this.qualityButton.title='Low detail reduces shadows and pixel density for smoother play';
+    this.qualityButton.addEventListener('click',()=>{this.quality=this.quality==='full'?'low':'full';try{localStorage.setItem(GRAPHICS_QUALITY_KEY,this.quality);}catch{/* Session preference remains usable. */}this.applyQuality();this.resize();});this.applyQuality();
     const generator = new PMREMGenerator(this.renderer);
     const studio = new RoomEnvironment();
     this.environment = generator.fromScene(studio, .04);
@@ -41,7 +49,7 @@ export class MeshRuntime {
     this.hud.className = 'mesh-hud';
     this.controls.className = 'mesh-controls';
     this.hud.append(this.status, this.controls);
-    this.root.append(this.renderer.domElement, this.hud);
+    this.root.append(this.renderer.domElement, this.hud,this.qualityButton);
     parent.appendChild(this.root);
     window.addEventListener('resize', this.resize);
     this.renderer.domElement.addEventListener('webglcontextlost', this.contextLost);
@@ -232,13 +240,32 @@ export class MeshRuntime {
     this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
     const loaded=await this.controller.change(async signal=>{
       const models=await loadModels(SPACE_MODELS,signal);
+      let scene:SpaceScene|undefined;
       try{
+        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,checkpoint:save.snapshot.transit??initialSpaceCheckpoint(),onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void this.showMars(save)});
+        if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         const started=startTransit(save);if(!started.ok)throw new Error('Departure requires a captured bridge and saved departure briefing');
-        return new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save)});
-      }catch(error){for(const model of models)disposeObject(model.scene);throw error;}
+        return scene;
+      }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
     });
     if(loaded)this.hud.hidden=true;
     else if(this.controller.lastError){this.status.textContent=`Departure could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save));this.controls.replaceChildren(retry);}
+  }
+
+  async showMars(save:CampaignSave):Promise<void>{
+    this.root.dataset.review='mars';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing the Mars relief landing…';this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const models=await loadModels(['xrpman','corn',fighterModel(save.snapshot.fighterShipKey),'mars_relief','space_regulator_drone'],signal);
+      let scene:MarsSurfaceScene|undefined;
+      try{
+        scene=new MarsSurfaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,arrival:!save.snapshot.quests.includes('mars.relief_landed'),onOrbit:()=>void this.showSpace(save),onRetry:()=>void this.showMars(save)});
+        if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
+        const started=beginMarsRelief(save);if(!started.ok)throw new Error('The relief landing requires a saved approach checkpoint. Return near the Mars beacon and retry.');
+        return scene;
+      }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;
+    else if(this.controller.lastError){this.status.textContent=`Relief site could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry relief site';retry.addEventListener('click',()=>void this.showMars(save));this.controls.replaceChildren(retry);}
   }
 
   hide(): boolean { if(!this.controller.saveBeforeLeave())return false;this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0;return true; }
@@ -251,6 +278,7 @@ export class MeshRuntime {
   }
   private readonly contextLost = (event: Event): void => { event.preventDefault(); this.controller.clear(); this.hud.hidden=false; this.status.textContent = 'Graphics were interrupted. Reload to continue from your checkpoint.'; };
   private readonly resize = (): void => { this.renderer.setSize(this.root.clientWidth || innerWidth, this.root.clientHeight || innerHeight, false); };
+  private applyQuality():void{applyGraphicsQuality(this.renderer,this.quality,devicePixelRatio||1);this.root.dataset.quality=this.quality;this.qualityButton.textContent=this.quality==='low'?'DETAIL: LOW':'DETAIL: FULL';this.qualityButton.setAttribute('aria-pressed',String(this.quality==='low'));}
   private startLoop(): void {
     if (this.frameId) return;
     this.previousTime = performance.now();

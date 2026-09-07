@@ -741,7 +741,8 @@
       "scenes": [
         "character_review",
         "boarding",
-        "hub"
+        "hub",
+        "mars_surface"
       ],
       "bytes": 3597232,
       "sha256": "aaac2c935fe4b248a2faf872b33609c3ac5e65c626550b3ea0c0bfd90cfad20b"
@@ -764,7 +765,8 @@
       "scenes": [
         "landing",
         "boarding",
-        "hub"
+        "hub",
+        "mars_surface"
       ],
       "bytes": 360680,
       "sha256": "49b78ed1cdc029c1d902353781460891dcd0c5cf28f46ec1c702ed823b515c6b",
@@ -776,7 +778,8 @@
       "scenes": [
         "landing",
         "boarding",
-        "hub"
+        "hub",
+        "mars_surface"
       ],
       "bytes": 372640,
       "sha256": "80cb43c0501b491ee2b4c248b11ca55b7a95aa686e50b2874c5ffbe97bf0bdc1",
@@ -788,7 +791,8 @@
       "scenes": [
         "landing",
         "boarding",
-        "hub"
+        "hub",
+        "mars_surface"
       ],
       "bytes": 372648,
       "sha256": "207c4a023aff57e9d539f7cb0e10b151b7f1fb8772c091dd09392f9143d040c8",
@@ -819,7 +823,8 @@
       "src": "/assets/models/space_regulator_drone.glb",
       "type": "model",
       "scenes": [
-        "space"
+        "space",
+        "mars_surface"
       ],
       "bytes": 704228,
       "sha256": "92846736a970669232b6b678b06f2a51fb8b31ef43ed3995da1a1f35f3196209",
@@ -884,6 +889,26 @@
       "bytes": 326696,
       "sha256": "c82d8a650643dec1fe5f9e3a45073a700221892bdd0528c4068c984ad86fe1c9",
       "notes": "World-space sphere; 1024x512 NASA surface map. See docs/definitive/SPACE_ASSET_CREDITS.md. SpaceScene consumer."
+    },
+    "corn": {
+      "src": "/assets/models/corn.glb",
+      "type": "model",
+      "scenes": [
+        "mars_surface"
+      ],
+      "bytes": 4922264,
+      "sha256": "6a020e9c97e0ba84bdbcb5043a47f9477c8fb298f7dab9224210956e30a54183",
+      "notes": "Original provisional Corn modeling study: corn head, sunglasses, leaf features and gold/green field armor on pinned CC0 anatomy. Six embedded maps and three clips. Private source art was unavailable; this is not a verified canon turnaround."
+    },
+    "mars_relief": {
+      "src": "/assets/models/mars_relief.glb",
+      "type": "model",
+      "scenes": [
+        "mars_surface"
+      ],
+      "bytes": 2071716,
+      "sha256": "fc13359abc2ef74901130cdb75e7d0bfa25174d1dccbcca651285f24d6fb4a9f",
+      "notes": "Original Blender relief site with three pressure plants, canopy, crop beds and generated regolith albedo. Editable master and original image remain private."
     }
   },
   "audio": {

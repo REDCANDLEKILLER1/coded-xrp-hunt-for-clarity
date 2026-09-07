@@ -1,5 +1,9 @@
 # Production decisions
 
+- Mars opens with a relief-site landing and physical Corn meeting before its larger route/boss. Existing space flight supplies the actual approach pose; the selected fighter supplies the descent mesh. Eight finite seizure drones gate three non-destructive valve captures, followed by Corn's persistent field-repair upgrade. The whole Mars world remains unfinished.
+- Corn's inaccessible archive image is not treated as inspected canon. An original provisional study follows the approved written corn/sunglasses/leaves/gold-and-green identity, with a rigged Blender derivative and private provenance. Raw studies and all master references stay local.
+- The mobile low-detail option reduces pixel density and disables dynamic shadow passes. It does not recolor factions, change geometry contracts or simplify combat. Desktop emulation and controlled soak results remain distinct from owner phone acceptance.
+
 - Owner's live flight review clarified the dominant faction language: neon #00FF00 for the good side and red for enemies, echoing green/red charts. Increase visible green on owned ships, liquidity effects, restored infrastructure and navigation. TruFi and Blue Umbrella are explicitly friendly; retain their recognizable blue and blue/gold uniforms while using green friendly markers and shared liquidity systems.
 
 - Active plan CODED-DEFINITIVE-20260906-v1, PR124 head 90bb4a9d3cfc96a4d4715abb44aeec74f4e1e46e; original plan copies verified by Git blob SHA.

@@ -124,7 +124,7 @@ map = new CampaignMap(
     if(chapterLaunchBlock(definitiveSave,planet.key))return;
     const saved=savedChapterScene(definitiveSave);
     if(planet.key==='ledger_prime'&&saved!=='earth'){void showChapter(saved);return;}
-    if(planet.key==='mars'&&definitiveSave.snapshot.warshipOwned){void showChapter(definitiveSave.snapshot.quests.includes('boarding.departure_ready')?'space':'boarding');return;}
+    if(planet.key==='mars'&&definitiveSave.snapshot.warshipOwned){void showChapter(saved==='mars'?'mars':definitiveSave.snapshot.quests.includes('boarding.departure_ready')?'space':'boarding');return;}
     if(meshRuntime&&!meshRuntime.hide())return;
     onFoot.hide();
     space.hide();
@@ -152,7 +152,7 @@ map = new CampaignMap(
   planetKey=>{
     const state=definitiveSave.snapshot,saved=savedChapterScene(definitiveSave);
     if(planetKey==='ledger_prime'&&saved!=='earth')return saved==='space'?'CONTINUE FLIGHT':saved==='landing'?'CONTINUE ARRIVAL':'RETURN TO SHIP';
-    if(planetKey==='mars'&&state.warshipOwned)return state.transit?.phase==='mars'?'CONTINUE MARS ORBIT':'FLY TO MARS';
+    if(planetKey==='mars'&&state.warshipOwned)return saved==='mars'?'CONTINUE RELIEF SITE':state.transit?.phase==='mars'?'CONTINUE MARS ORBIT':'FLY TO MARS';
     return null;
   },
   planetKey=>chapterLaunchBlock(definitiveSave,planetKey),
@@ -163,11 +163,11 @@ function recoverChapter(message:string,retry:()=>void):void{
   chapterRecovery.replaceChildren();chapterRecovery.hidden=false;const text=document.createElement('p');text.textContent=message;
   const button=document.createElement('button');button.textContent='RETRY';button.addEventListener('click',()=>{chapterRecovery.hidden=true;retry();});chapterRecovery.append(text,button);
 }
-async function showChapter(scene:'landing'|'boarding'|'space'):Promise<void>{
+async function showChapter(scene:'landing'|'boarding'|'space'|'mars'):Promise<void>{
   map.hide();game.suspend();boarding.setEnabled(false);onFoot.hide();space.hide();gameShell!.hidden=false;canvas!.style.visibility='hidden';chapterRecovery.hidden=true;
   try{
     const {MeshRuntime}=await import('./game/definitive/MeshRuntime');meshRuntime??=new MeshRuntime(gameShell!);
-    if(scene==='landing')await meshRuntime.showLanding(definitiveSave);else if(scene==='boarding')await meshRuntime.showBoarding(definitiveSave);else await meshRuntime.showSpace(definitiveSave);
+    if(scene==='landing')await meshRuntime.showLanding(definitiveSave);else if(scene==='boarding')await meshRuntime.showBoarding(definitiveSave);else if(scene==='mars')await meshRuntime.showMars(definitiveSave);else await meshRuntime.showSpace(definitiveSave);
   }catch(error){recoverChapter(`The next section could not load. Your checkpoint is retained. ${error instanceof Error?error.message:''}`,()=>void showChapter(scene));}
 }
 
@@ -256,7 +256,7 @@ watchForUpdates(import.meta.url);
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
 
-  if (['model', 'character', 'crew', 'boarding', 'landing', 'space'].includes(params.get('review') ?? '') || params.has('model')) {
+  if (['model', 'character', 'crew', 'boarding', 'landing', 'space', 'mars'].includes(params.get('review') ?? '') || params.has('model')) {
     map.hide(); game.suspend(); boarding.setEnabled(false); onFoot.hide(); space.hide();
     gameShell.hidden = false; canvas.style.visibility = 'hidden';
     void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
@@ -267,6 +267,7 @@ void game.start().then(() => {
         await meshRuntime.showLanding(definitiveSave);
       }
       else if (params.get('review') === 'space') {const {prepareSpaceReview}=await import('./game/definitive/SpaceProgress');prepareSpaceReview(definitiveSave);await meshRuntime.showSpace(definitiveSave);}
+      else if (params.get('review') === 'mars') {const {prepareMarsReliefReview}=await import('./game/definitive/MarsRelief');const ready=prepareMarsReliefReview(definitiveSave);if(!ready.ok)throw new Error('The isolated Mars section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
       else if (params.get('review') === 'boarding') {if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showBoarding(definitiveSave);}
       else await meshRuntime.showModel(params.get('review') === 'crew' ? 'mr_zamn' : params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
     }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });

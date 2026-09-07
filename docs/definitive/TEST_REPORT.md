@@ -1,3 +1,13 @@
+# Latest verification — Mars relief opening
+
+Clean npm ci, all 50 validators, TypeScript/Vite production build and diff whitespace checks pass. The first clean-install attempt encountered the running Vite process holding a Windows Rollup library; stopping that local server and repeating the install succeeded. No dependency versions or lockfile changed in this checkpoint. The inherited four dependency advisories remain.
+
+The earned journey1 save flew from its actual Mars orbit pose to the approach beacon, used the real fighter descent and reloaded on the surface. The separate relief1 ordinary-input run completed all three pump captures and Corn recruitment/field repair, then retained them on reload. Native desktop touch tests covered independent pointers, release/cancel, rotation and HUD bounds at 390×844, 844×390 and 360×740. Neither result is physical-phone acceptance.
+
+A 600.47-second controlled combat soak recorded 78,863 frames with no browser errors or resource growth. Full detail rAF p50/p95/p99: 7.2/13.7/17.2 ms; low: 7.0/10.5/13.4 ms. Six space/surface reload cycles returned stable resource counts. This in-memory fixture replenished enemy HP and hero vitals; it is performance evidence, not normal-play pacing. The subsequent parked-fighter walking-proxy correction passed all three actual model outlines and a browser collision check. See MARS_RELIEF_CHECKPOINT.md for costs and measurement limits.
+
+Local evidence: mars-earned-landing-report.json, mars-relief-journey-report.json, mars-mobile-report.json, mars-soak-report.json, gate logs and original gameplay screenshots in the parent evidence directory. Earlier sections below are historical checkpoints.
+
 # Foundation verification â€” 2026-09-06
 
 Boarding follow-up: all 41 validators and build pass. The prototype was played through ordinary controls from bay to bridge, including an actual failed Core attempt/retry, both shop purchases and a return to the optional cache. Two-pointer movement/fire/release/cancel passes in both portrait and landscape desktop touch emulation. See BOARDING_PROTOTYPE.md for exact evidence, costs and unfinished scope. No physical-phone or complete-chapter result is claimed.

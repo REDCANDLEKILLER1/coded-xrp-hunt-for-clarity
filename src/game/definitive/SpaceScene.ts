@@ -13,7 +13,7 @@ import {sfx} from '../audio/Sfx';
 import {applyCapturedLivery} from './FactionAppearance';
 import { arriveMars, checkpointTransit, clearSpaceWave, finishDeparture, PORTAL_POSITION, SPACE_ENEMIES, SPACE_WAVES, type SpaceEnemyKey } from './SpaceProgress';
 
-interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];onHub:()=>void;onRetry:()=>void}
+interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];checkpoint?:SpaceCheckpoint;onHub:()=>void;onRetry:()=>void;onSurface:()=>void}
 interface Enemy {key:SpaceEnemyKey;pose:Group;sweep:HullSweep;hp:number;slot:number;age:number;nextShot:number;tell:number;velocity:Vector3;retreat:number;approach:Quaternion}
 interface Bolt {position:Vector3;previous:Vector3;velocity:Vector3;age:number;kind:'primary'|'hostile'|'missile';damage:number}
 const PROFILE:Record<SpaceEnemyKey,{hp:number;speed:number;period:number;weight:number}>={
@@ -33,6 +33,7 @@ export class SpaceScene implements ManagedScene {
   private readonly nav=document.createElement('span');
   private readonly contacts=document.createElement('div');
   private readonly pauseButton=document.createElement('button');
+  private descendButton:HTMLButtonElement|null=null;
   private readonly lifetime=new AbortController();
   private readonly input=new SpaceInput();
   private readonly comms:CommsPanel;
@@ -72,7 +73,7 @@ export class SpaceScene implements ManagedScene {
   private hitFlash=0;
 
   constructor(private readonly host:Host){
-    const saved=host.save.snapshot.transit;if(!saved)throw new Error('Departure checkpoint is missing');this.state=structuredClone(saved);
+    const saved=host.checkpoint??host.save.snapshot.transit;if(!saved)throw new Error('Departure checkpoint is missing');this.state=structuredClone(saved);
     this.paused=host.save.testSlot;this.ship=flightHull(host.models[0].scene);this.ship.position.fromArray(saved.position);this.ship.quaternion.fromArray(saved.orientation);
     this.scene.add(this.ship);this.hull=new HullSweep(this.ship);
     this.scene.background=new Color(0x01030a);this.scene.environment=host.environment;this.scene.environmentIntensity=.4;
@@ -119,6 +120,12 @@ export class SpaceScene implements ManagedScene {
     const camera=button('COCKPIT',()=>{this.cockpit=!this.cockpit;camera.textContent=this.cockpit?'CHASE':'COCKPIT';this.updateCamera(true);});
     button('LOG',()=>{if(this.comms.active)return;const seen=this.host.save.snapshot.dialogueSeen;if(seen.includes(PORTAL_COMMS.id)){this.input.clear();this.comms.open(PORTAL_COMMS,()=>true);}else this.say('No completed flight conversations yet.');});
     button('BRIDGE',()=>{if(this.state.phase!=='mars'&&this.enemies.length){this.say('Clear the active patrol before returning to the bridge.');return;}if(this.persist())this.host.onHub();});
+    this.descendButton=button('DESCEND',()=>{
+      if(!this.active||this.dead||this.comms.active||this.state.phase!=='mars')return;
+      if(this.ship.position.distanceTo(MARS_APPROACH)>480){this.say('Fly within 480 m of the relief approach beacon.');return;}
+      if(this.speed>80){this.say('Release BOOST and slow to approach speed.');return;}
+      if(this.persist()){this.input.clear();this.host.onSurface();}
+    });
     const bottom=document.createElement('div');bottom.className='space-mesh-bottom';
     const hint=document.createElement('span');hint.textContent='DRAG TO STEER · HOLD GUNS';bottom.appendChild(hint);
     for(const [label,action] of [['BOOST','boost'],['GUNS','guns']] as const){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;bottom.appendChild(b);}
@@ -288,7 +295,7 @@ export class SpaceScene implements ManagedScene {
         this.updateEnemies(dt);this.updateBolts(dt);
         if(!this.comms.active&&this.ship.position.distanceTo(PORTAL)<140&&this.state.wave===SPACE_WAVES.length&&!this.portalCrossing){
           const direction=FORWARD.clone().applyQuaternion(this.ship.quaternion);if(direction.z<-.35){
-            const result=arriveMars(this.host.save,this.snapshot());if(result.ok){this.state.phase='mars';this.portalCrossing=true;this.bolts.length=0;this.applyPhase();this.say('MARS · Relief beacon acquired. Return to the bridge to review the surface approach.');}else{this.paused=true;this.say('Portal arrival could not save. Resume to retry.');}
+            const result=arriveMars(this.host.save,this.snapshot());if(result.ok){this.state.phase='mars';this.portalCrossing=true;this.bolts.length=0;this.applyPhase();this.say('MARS · Follow the relief beacon. Slow within 480 m and select DESCEND.');}else{this.paused=true;this.say('Portal arrival could not save. Resume to retry.');}
           }
         }
         if(this.ship.position.z<-24500&&this.state.wave<4)this.say('The portal is sealed by the remaining patrols. Follow the red contacts.');
@@ -324,6 +331,7 @@ export class SpaceScene implements ManagedScene {
     }
     if(closest)this.hud.textContent+=`\n${closest.key.replace(/_/g,' ').toUpperCase()} · ${Math.round(closest.pose.position.distanceTo(this.ship.position))} m · ${Math.max(0,Math.ceil(closest.hp))} ARMOR`;
     this.ui.style.boxShadow=this.hitFlash>0?'inset 0 0 70px #ff200060':'none';
+    if(this.descendButton){this.descendButton.hidden=this.state.phase!=='mars';this.descendButton.title=this.ship.position.distanceTo(MARS_APPROACH)<=480?'Transfer to your fighter and land at the relief site':'Approach the relief beacon within 480 m';}
     if(this.host.save.testSlot){const data=this.ui.dataset;data.phase=this.state.phase;data.seconds=this.state.seconds.toFixed(2);data.wave=String(this.state.wave);data.enemies=String(this.enemies.length);data.position=JSON.stringify(this.ship.position.toArray());data.orientation=JSON.stringify(this.ship.quaternion.toArray());data.volleys=String(this.volleys);data.bolts=String(this.fired);data.hits=String(this.hits);data.incomingHits=String(this.incomingHits);data.paused=String(this.paused);data.hull=String(this.state.hull);data.firing=String(this.input.firing);data.yaw=String(this.input.x);data.pitch=String(this.input.y);data.camera=this.cockpit?'cockpit':'chase';}
   }
   render():void{

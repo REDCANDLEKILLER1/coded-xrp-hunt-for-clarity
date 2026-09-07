@@ -1,7 +1,7 @@
 """Read a runtime GLB through Blender, re-export privately and compare contracts."""
 import argparse,json,pathlib,struct,sys
 import bpy
-p=argparse.ArgumentParser();p.add_argument('--source',required=True);p.add_argument('--output',required=True)
+p=argparse.ArgumentParser();p.add_argument('--source',required=True);p.add_argument('--output',required=True);p.add_argument('--expected-images',type=int,default=3)
 a=p.parse_args(sys.argv[sys.argv.index('--')+1:]);source=pathlib.Path(a.source);target=pathlib.Path(a.output)
 if source.resolve()==target.resolve():raise RuntimeError('Roundtrip must not overwrite runtime source')
 def document(path):
@@ -13,7 +13,7 @@ target.parent.mkdir(parents=True,exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=str(target),export_format='GLB',export_animations=True,export_animation_mode='ACTIONS')
 restored=document(target)
 assert {a['name'] for a in original['animations']}=={a['name'] for a in restored['animations']}
-assert len(restored['images'])==3 and len(restored['skins'])==1
+assert len(original['images'])==a.expected_images and len(restored['images'])==a.expected_images and len(restored['skins'])==1
 bpy.ops.wm.read_factory_settings(use_empty=True);bpy.ops.import_scene.gltf(filepath=str(target))
 for name,xyz in before.items():
     assert all(abs(bpy.data.objects[name].matrix_world.translation[i]-xyz[i])<.0001 for i in range(3)),name
