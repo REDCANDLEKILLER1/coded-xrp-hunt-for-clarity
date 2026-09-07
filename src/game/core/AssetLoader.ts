@@ -1,4 +1,5 @@
 import type { AssetDefinition, AssetDiagnostic, AssetManifest, SpriteSheetMeta } from './Types';
+import { loadAssetCatalog } from './AssetCatalog';
 
 type ResolvedAsset = {
   id: string;
@@ -15,15 +16,13 @@ export class AssetLoader {
   diagnostics: AssetDiagnostic[] = [];
   manifestError: string | null = null;
 
-  async loadManifest(): Promise<void> {
+  async loadManifest(scene = 'flight'): Promise<void> {
     this.diagnostics = [];
     this.manifestError = null;
 
     try {
-      const response = await fetch('/assets/manifest.json', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-      this.manifest = (await response.json()) as AssetManifest;
-      await this.preloadImages();
+      this.manifest = await loadAssetCatalog();
+      await this.preloadImages(scene);
       this.reportToConsole();
     } catch (error) {
       this.manifest = null;
@@ -53,17 +52,18 @@ export class AssetLoader {
     return this.diagnostics.filter((item) => item.status !== 'loaded');
   }
 
-  private async preloadImages(): Promise<void> {
+  private async preloadImages(scene: string): Promise<void> {
     if (!this.manifest) return;
-    const assets = this.flattenManifest(this.manifest);
+    const assets = this.flattenManifest(this.manifest, scene);
     await Promise.all(assets.map((asset) => this.loadImage(asset)));
   }
 
-  private flattenManifest(manifest: AssetManifest): ResolvedAsset[] {
+  private flattenManifest(manifest: AssetManifest, scene: string): ResolvedAsset[] {
     const assets: ResolvedAsset[] = [];
 
     for (const [category, entries] of Object.entries(manifest)) {
       for (const [id, definition] of Object.entries(entries)) {
+        if (typeof definition !== 'string' && definition.scenes && !definition.scenes.includes(scene)) continue;
         const resolved = this.resolveDefinition(category, id, definition);
         if (resolved) assets.push(resolved);
       }
@@ -76,6 +76,8 @@ export class AssetLoader {
     if (typeof definition === 'string') {
       return { id, category, src: definition, type: 'image' };
     }
+
+    if (definition?.type === 'model' || definition?.type === 'audio') return null;
 
     if (!definition?.src) {
       this.diagnostics.push({ id, category, src: '', status: 'error', type: 'image' });

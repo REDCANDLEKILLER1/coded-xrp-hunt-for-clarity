@@ -1,0 +1,25 @@
+{
+  "frame": { "units": "metres", "up": "+Y", "forward": "+Z", "floorInShip": -4.5 },
+  "rooms": [
+    { "id":"hangar", "title":"01 · ARRIVAL BAY", "x":0, "z":-28, "width":14, "depth":18, "terminal":[4,-23], "enemies":[] },
+    { "id":"security", "title":"02 · SECURITY RELAY", "x":0, "z":-14, "width":12, "depth":10, "terminal":[-3,-11], "enemies":[[-3,-16],[3,-14],[0,-11]] },
+    { "id":"rescue", "title":"03 · CREW JUNCTION", "x":0, "z":0, "width":22, "depth":18, "terminal":[5,2], "enemies":[] },
+    { "id":"engineering", "title":"04 · ENGINEERING", "x":-18, "z":0, "width":14, "depth":12, "terminal":[-21,3.8], "enemies":[[-16,-4],[-20,-4],[-18,4],[-15,3]] },
+    { "id":"cache", "title":"05 · SHIELD CACHE", "x":18, "z":0, "width":14, "depth":12, "terminal":[22,0], "enemies":[] },
+    { "id":"command", "title":"06 · COMMAND ACCESS", "x":0, "z":14, "width":16, "depth":10, "terminal":[-4,16], "enemies":[] },
+    { "id":"core", "title":"07 · LEDGER DEFENSE CORE", "x":0, "z":27, "width":14, "depth":16, "terminal":[0,32.8], "enemies":[] },
+    { "id":"bridge", "title":"08 · CAPTURED BRIDGE", "x":0, "z":40, "width":10, "depth":10, "terminal":[0,42], "enemies":[] }
+  ],
+  "doors": [
+    { "a":"hangar", "b":"security", "x":0, "z":-19, "axis":"z", "width":3.6 },
+    { "a":"security", "b":"rescue", "x":0, "z":-9, "axis":"z", "width":3.6 },
+    { "a":"rescue", "b":"engineering", "x":-11, "z":0, "axis":"x", "width":3.6 },
+    { "a":"rescue", "b":"cache", "x":11, "z":0, "axis":"x", "width":3.6 },
+    { "a":"rescue", "b":"command", "x":0, "z":9, "axis":"z", "width":3.6 },
+    { "a":"command", "b":"core", "x":0, "z":19, "axis":"z", "width":3.6 },
+    { "a":"core", "b":"bridge", "x":0, "z":35, "axis":"z", "width":3.6 }
+  ],
+  "core": { "center":[0,30], "relays":[[-4,26],[4,26]], "exitFieldZ":36 },
+  "landing": { "center":[0,-28], "fighterLength":9, "rampWidth":8, "entryInShip":[0,-8,-28] },
+  "crew": { "rescue":[3,-3], "hub":[3,39] }
+}

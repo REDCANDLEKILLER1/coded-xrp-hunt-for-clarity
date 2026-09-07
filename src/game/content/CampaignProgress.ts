@@ -53,6 +53,14 @@ export const CAMPAIGN_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v3';
 export const LEGACY_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v2';
 export const LEGACY_V1_PROGRESS_STORAGE_KEY = 'coded-xrp-campaign-progress-v1';
 
+type CampaignPersistence = { load: () => CampaignProgress; save: (progress: CampaignProgress) => void };
+let campaignPersistence: CampaignPersistence | null = null;
+
+/** The definitive preview installs its isolated store before any game is created. */
+export function configureCampaignPersistence(persistence: CampaignPersistence): void {
+  campaignPersistence = persistence;
+}
+
 export const EMPTY_PROGRESS: CampaignProgress = {
   highScore: 0,
   highestWave: 1,
@@ -73,12 +81,14 @@ export function parseCampaignProgress(raw: string | null): CampaignProgress {
   if (!raw) return freshEmptyProgress();
   try {
     const value = JSON.parse(raw) as Partial<CampaignProgress>;
+    const discovered=ensureFirstPlanet(safeKeys(value.discoveredPlanets));
+    if(safeKeys(value.clearedPlanets).includes('ledger_prime')&&!discovered.includes('mars'))discovered.push('mars');
     return {
       highScore: safeCount(value.highScore, 0),
       highestWave: safeCount(value.highestWave, 1),
       victories: safeCount(value.victories, 0),
       currentPlanet: safeKey(value.currentPlanet, EMPTY_PROGRESS.currentPlanet),
-      discoveredPlanets: ensureFirstPlanet(safeKeys(value.discoveredPlanets)),
+      discoveredPlanets: discovered,
       clearedPlanets: safeKeys(value.clearedPlanets),
       defeatedGuardians: safeKeys(value.defeatedGuardians),
       defeatedSurfaceBosses: safeKeys(value.defeatedSurfaceBosses),
@@ -189,6 +199,7 @@ export function recordPlanetCleared(current: CampaignProgress, planetKey: string
 }
 
 export function loadCampaignProgress(): CampaignProgress {
+  if (campaignPersistence) return campaignPersistence.load();
   try {
     return parseCampaignProgress(
       localStorage.getItem(CAMPAIGN_PROGRESS_STORAGE_KEY)
@@ -201,6 +212,7 @@ export function loadCampaignProgress(): CampaignProgress {
 }
 
 export function saveCampaignProgress(progress: CampaignProgress): void {
+  if (campaignPersistence) { campaignPersistence.save(progress); return; }
   try {
     localStorage.setItem(CAMPAIGN_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
   } catch {

@@ -574,7 +574,7 @@ export class Space3DGame {
   async show(leg: SpaceLeg = LEDGER_TRANSIT, straightToBoss = false): Promise<void> {
     this.leg = leg;
     if (!this.assetsReady) {
-      await this.assets.loadManifest();
+      await this.assets.loadManifest('legacy_space');
       this.assetsReady = true;
     }
     this.visible = true;

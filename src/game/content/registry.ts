@@ -106,6 +106,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 2.6,
     projectileSpeed: 210,
     accent: '#ff3355',
+    doctrine: 'pressure',
   },
   fog_raider: {
     key: 'fog_raider',
@@ -123,6 +124,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 2.2,
     projectileSpeed: 240,
     accent: '#b56cff',
+    doctrine: 'burst',
   },
   whale_scout: {
     key: 'whale_scout',
@@ -140,6 +142,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 3.0,
     projectileSpeed: 195,
     accent: '#36a3ff',
+    doctrine: 'salvo',
   },
   rug_fighter: {
     key: 'rug_fighter',
@@ -157,6 +160,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 1.9,
     projectileSpeed: 265,
     accent: '#ffd24a',
+    doctrine: 'broadside',
   },
 });
 
@@ -220,9 +224,15 @@ export const WEAPONS: Record<string, WeaponDef> = {
     projectileKey: 'bb_shot',
     fireRate: 0.13,
     damage: 1,
+    // +/-6, not +/-9. An even gun has no beam on the centreline, so the gap
+    // between its inner pair is a hole a target can sit in -- and at +/-9 that
+    // hole was 18px against enemies 15-19px wide. Measured, TWIN BEAM did
+    // 0.80 dps to a drone dead ahead while the ONE-beam BB SHOT below it did
+    // 1.52: the second rung of the ladder was a downgrade from the first. At
+    // +/-6 the gap is 12px and nothing in the game can hide inside it.
     shots: [
-      { offsetX: -9, angle: 0 },
-      { offsetX: 9, angle: 0 },
+      { offsetX: -6, angle: 0 },
+      { offsetX: 6, angle: 0 },
     ],
   },
   // NOTHING IN THE LADDER FANS.

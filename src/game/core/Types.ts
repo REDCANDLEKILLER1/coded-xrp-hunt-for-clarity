@@ -21,9 +21,12 @@ export type AssetDefinition =
   | string
   | {
       src: string;
-      type?: 'image' | 'spritesheet';
+      type?: 'image' | 'spritesheet' | 'model' | 'audio';
       sheet?: SpriteSheetMeta;
       notes?: string;
+      scenes?: string[];
+      bytes?: number;
+      sha256?: string;
     };
 
 export type AssetManifest = Record<string, Record<string, AssetDefinition>>;

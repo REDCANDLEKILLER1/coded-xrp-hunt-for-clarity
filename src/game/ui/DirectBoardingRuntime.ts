@@ -30,6 +30,8 @@ export class DirectBoardingRuntime {
   private completedForCurrentWarship = false;
   private lastTime = performance.now();
   private completionClock = 0;
+  private enabled=true;
+  private frameId=0;
 
   constructor(private readonly game: Game2A, private readonly shell: HTMLElement) {
     this.overlay = document.createElement('canvas');
@@ -53,7 +55,7 @@ export class DirectBoardingRuntime {
     this.shell.appendChild(this.overlay);
     this.resize();
     window.addEventListener('resize', () => this.resize());
-    requestAnimationFrame((time) => this.frame(time));
+    this.schedule();
   }
 
   /**
@@ -67,6 +69,7 @@ export class DirectBoardingRuntime {
    * explicitly, before the restore runs.
    */
   resetForRetry(): void {
+    this.setEnabled(true);
     this.active = false;
     this.completedForCurrentWarship = false;
     this.completionClock = 0;
@@ -74,7 +77,15 @@ export class DirectBoardingRuntime {
     this.clear();
   }
 
+  setEnabled(value:boolean):void {
+    if(this.enabled===value)return;this.enabled=value;
+    if(value){this.lastTime=performance.now();this.schedule();}
+    else{cancelAnimationFrame(this.frameId);this.frameId=0;this.clear();}
+  }
+  private schedule():void {if(this.enabled)this.frameId=requestAnimationFrame(time=>this.frame(time));}
+
   private frame(time: number): void {
+    if(!this.enabled)return;
     const dt = Math.min(0.05, Math.max(0, (time - this.lastTime) / 1000));
     this.lastTime = time;
     const snapshot = this.game as unknown as BoardingReadableGame;
@@ -87,7 +98,7 @@ export class DirectBoardingRuntime {
       this.completionClock = 0;
       this.director.reset();
       this.clear();
-      requestAnimationFrame((next) => this.frame(next));
+      this.schedule();
       return;
     }
 
@@ -126,7 +137,7 @@ export class DirectBoardingRuntime {
       }
     }
 
-    requestAnimationFrame((next) => this.frame(next));
+    this.schedule();
   }
 
   /**

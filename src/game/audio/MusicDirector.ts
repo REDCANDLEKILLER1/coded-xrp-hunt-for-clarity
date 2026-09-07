@@ -1,16 +1,6 @@
 import { debugLog } from '../core/DebugLog';
-
-interface TrackDef {
-  src: string;
-  title: string;
-  loop: boolean;
-  gain: number;
-}
-
-interface AudioManifest {
-  tracks: Record<string, TrackDef>;
-  cues: Record<string, string | null>;
-}
+import { loadAssetCatalog } from '../core/AssetCatalog';
+import { resolveMusicCatalog, type AudioManifest, type MusicConfig, type TrackDef } from './MusicCatalog';
 
 const MANIFEST_URL = '/assets/audio/manifest.json';
 const MUTE_STORAGE_KEY = 'coded.music.muted';
@@ -109,7 +99,7 @@ export class MusicDirector {
     try {
       const response = await fetch(MANIFEST_URL, { cache: 'no-store' });
       if (!response.ok) throw new Error(`audio manifest HTTP ${response.status}`);
-      this.manifest = (await response.json()) as AudioManifest;
+      this.manifest = resolveMusicCatalog(await response.json() as MusicConfig, await loadAssetCatalog());
       // A cue may have fired while the manifest was in flight.
       const cue = this.pendingCue;
       if (cue && this.unlocked) {

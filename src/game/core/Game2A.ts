@@ -11,14 +11,16 @@ import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMi
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
-import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, hasFogBreaker } from '../content/EarthBossFlow';
+import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
+import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
 import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
 import { REGULATORY_WARSHIP, RegulatoryWarshipDirector } from '../content/RegulatoryWarship';
 import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { missionForPlanet } from '../content/missions';
+import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
+import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -44,7 +46,17 @@ type EnemyActor = Actor & {
   escort: boolean;
 };
 type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
-type HostileProjectile = Actor & { damage: number; color: string; projectileKey: string };
+type HostileProjectile = Actor & {
+  damage: number;
+  color: string;
+  projectileKey: string;
+  /** Radians per second this round may steer toward the player. Salvo only. */
+  homing?: number;
+  /** Seconds of steering left before it commits to its heading. */
+  track?: number;
+  /** Drawn size, so a heavy round reads as heavy without new art. */
+  size?: number;
+};
 type BossActor = Actor & {
   bossKey: string;
   state: 'intro' | 'fight';
@@ -131,6 +143,47 @@ const ENEMY_TACTICS: Record<EnemyDef['behavior'], {
   zigzag: { sway: 74, swaySpeed: 2.6, dive: 0.22, burst: 1, spread: 0, firesAtRest: true },
   dive: { sway: 34, swaySpeed: 1.0, dive: 0.62, burst: 3, spread: 0.2, firesAtRest: false },
 };
+/**
+ * What each doctrine actually fires.
+ *
+ * Before this table every armed enemy pushed one aimed `enemy_missile` at
+ * `def.projectileSpeed`, so six ships with six silhouettes and six accent
+ * colours all played identically: one bullet, straight at you, on a timer.
+ * Cadence was the only difference, and cadence is not a weapon.
+ *
+ * `speed` and `interval` MULTIPLY the enemy's own numbers rather than
+ * replacing them, so the per-ship tuning already in the registry still means
+ * something and a doctrine cannot silently make a slow ship fast.
+ *
+ * `damage` stays 1 everywhere on purpose. This PR gives the roster different
+ * weapons, not more teeth -- difficulty is the pressure curve's job, and a
+ * doctrine that also raised damage would smuggle a balance change in behind a
+ * readability change.
+ */
+const ENEMY_DOCTRINES: Record<EnemyDoctrine, {
+  /** Rounds per volley. */
+  shots: number;
+  /** Radians between them. */
+  spread: number;
+  /** Multiplier on the enemy's own projectileSpeed. */
+  speed: number;
+  /** Multiplier on the enemy's own fireRate. Below 1 is faster. */
+  interval: number;
+  projectileKey: string;
+  /** Drawn size, so a heavy round reads as heavy at 20px. */
+  size: number;
+  /** Steers toward the player. Only the salvo does. */
+  homing?: number;
+  label: string;
+}> = {
+  pressure: { shots: 1, spread: 0, speed: 1.15, interval: 0.55, projectileKey: 'enemy_red_bullet', size: 7, label: 'RAPID' },
+  burst: { shots: 3, spread: 0.11, speed: 1.0, interval: 1.15, projectileKey: 'enemy_red_bullet', size: 8, label: 'BURST' },
+  salvo: { shots: 1, spread: 0, speed: 0.62, interval: 1.5, projectileKey: 'enemy_missile', size: 13, homing: 1.5, label: 'SEEKER' },
+  broadside: { shots: 5, spread: 0.26, speed: 0.9, interval: 1.35, projectileKey: 'enemy_red_bullet', size: 8, label: 'BROADSIDE' },
+};
+/** How long a tracking missile keeps steering before it goes ballistic. */
+const SALVO_TRACK_SECONDS = 2.4;
+
 const ENEMY_DODGE_RANGE = 92;        // px ahead of a bolt an enemy reacts to
 const ENEMY_DODGE_COOLDOWN = 0.55;
 const ENEMY_ESCAPE_PENALTY = 40;     // score lost when one gets away
@@ -194,6 +247,13 @@ const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
 // keep their nose on each other, and the player's guns fire along that heading
 // instead of straight up. Flanking a boss should mean shooting sideways at it,
 // not shooting past it.
+/**
+ * Top of the fighter's band in ordinary flight, as a fraction of screen height.
+ *
+ * Shallow enough to reach ENEMY_STATION_TOP, so every enemy that holds station
+ * can be flown up to and flanked rather than only shot at from below.
+ */
+const FLIGHT_LANE_TOP = 0.12;
 const DUEL_LANE_TOP = 0.06;
 /** How fast a nose swings onto its target, in radians per second. */
 const DUEL_TURN = 7.5;
@@ -262,8 +322,46 @@ const ALL_MAXED_SCORE = 250;
  * BASE is BB SHOT with no barrels -- the loadout every other number was tuned
  * against, so scale 1 leaves the early game exactly as it was.
  */
+/**
+ * Two scales, and the difference between them is the whole point.
+ *
+ * `loadoutScale()` is sampled ONCE, when a boss spawns, so a boss fight lasts
+ * about the same time whatever gun turned up. It is a snapshot.
+ *
+ * `pressureScale()` is continuous, and it is what everything on screen reads.
+ *
+ * They used to be one function. `firepowerScale()` was a LIVE read of the
+ * current gun -- volley length * damage / fireRate over a BB SHOT baseline --
+ * and drone health, hazard health, enemy speed and the arena cap all called it
+ * every frame. So catching an UPGRADE CRATE mid-wave turned every 1hp
+ * regulator already on screen into a 3hp regulator, instantly, before a shot
+ * was fired with the new gun. That is the exact thing the owner ruled out:
+ * "player upgrade = small difficulty adjustment after time/waves, NOT
+ * immediate weapon pickup. A player upgrade must feel like a reward."
+ *
+ * So the continuous half is now the run itself. `wave` is already that signal
+ * -- the mission act index in the campaign, score/500 in the arcade -- and
+ * `clock` is the run timer. Neither can be moved by a pickup.
+ *
+ * The boss snapshot stays, and that is deliberate rather than an oversight.
+ * Measured against the shipped ladder, a decoupled boss health cannot hold a
+ * fight length: the ladder spans 11.3x in dps (BB SHOT 7.1 to CLARITY LANCE
+ * with three barrels 80.8), so any single curve either gives a maxed gun a
+ * 3-second story boss or a starter gun a 100-second slog. A snapshot at spawn
+ * is not the reported bug -- it cannot be moved by a pickup once the fight has
+ * started -- and compressing that spread is PR4's job, not this one.
+ */
 const BASE_PLAYER_DPS = 1 / 0.14;
 const FIREPOWER_CAP = 9;
+/**
+ * The continuous curve.
+ *
+ * Rises with waves and with time on the clock, capped so a long run does not
+ * become a wall. Read every frame by everything except the boss snapshot.
+ */
+const PRESSURE_PER_WAVE = 0.16;
+const PRESSURE_PER_MINUTE = 0.07;
+const PRESSURE_CAP = 3;
 /**
  * Trash does not scale all the way.
  *
@@ -288,6 +386,50 @@ const BOMB_HINT_LIFE = 9;
 const SHIELD_PICKUP_EVERY_KILLS = 9;
 /** Half speed, so the pre-boss resupply is still on screen when you go for it. */
 const BOSS_RESUPPLY_DRIFT = 0.5;
+
+/**
+ * Reading a ship against black.
+ *
+ * Every hull carried an always-on ring at 0.58x its size in the hull's accent
+ * colour, and the escort shield was a disc filled at up to half opacity across
+ * 0.86x the boss. At the sizes this game actually draws -- enemies land at
+ * 19-23px on a phone -- a ring that big and that bright IS the sprite: what
+ * you see is a circle, and the ship is whatever is inside it. Playtest, in as
+ * many words: the ships look like floating circles.
+ *
+ * Three rules replace it.
+ *
+ * Nothing is ever filled over a hull. A shield is an outline, and it moves --
+ * a still ring reads as a lid welded to the ship, a ripple reads as a field
+ * that is holding. And the only always-on light is a rim: a soft wash that
+ * peaks at the silhouette's edge and falls away to nothing both inward and
+ * outward, so it lifts the ship off the background without painting over it
+ * or drawing a disc around it.
+ *
+ * The colours are the sides. Green is yours; red is theirs. The player ring
+ * used to take the hull accent, which meant it was only green on the default
+ * hull and turned into whatever the ship you picked happened to be.
+ */
+const PLAYER_SHIELD_COLOR = '#00FF00';
+const ENEMY_SHIELD_COLOR = '#ff3355';
+/** Peak opacity of a rim light. Low enough that the sprite still wins. */
+const RIM_GLOW_ALPHA = 0.2;
+/** Rim radius as a fraction of the hull's larger side. */
+const RIM_GLOW_SCALE = 0.86;
+/** Where in that radius the light peaks -- roughly the silhouette's edge. */
+const RIM_GLOW_EDGE = 0.6;
+/** A shield outline is hairline on purpose: the hull has to stay the subject. */
+const SHIELD_RING_WIDTH = 1.5;
+/** Ring radius as a fraction of the hull's larger side. */
+const SHIELD_RING_SCALE = 0.72;
+/** How far the ring breathes, as a fraction of its radius. */
+const SHIELD_RIPPLE = 0.07;
+/** Radians per second the bright arc travels around the ring. */
+const SHIELD_SWEEP_RATE = 2.2;
+/** Length of that arc. */
+const SHIELD_SWEEP_ARC = Math.PI * 0.55;
+/** How far outside the ring the arc rides, as a multiple of the radius. */
+const SHIELD_SWEEP_OFFSET = 1.12;
 
 /**
  * The boss attack table.
@@ -328,8 +470,36 @@ const RADIAL_SHOTS = 14;
 const RADIAL_GAP = 3;
 const BOSS_CHARGE_SPEED = 430;
 /** Escorts launched by a screen attack, and how long before they break off. */
-const ESCORT_COUNT = 4;
+/**
+ * The escort screen, as a clock rather than a wall.
+ *
+ * It used to be uncapped and untimed: every `escort_screen` beat pushed four
+ * more escorts with no check for the ones already alive, and the shield held
+ * until every one of them was dead. In Behemoth phase 2 that beat lands every
+ * 3.92s while each escort lives 16s, so four launches overlap into twenty
+ * frozen ships and the boss takes no damage at all. That is Ryan's 87-second
+ * fight, and it is arithmetic, not tuning.
+ *
+ * Now: a launch REFILLS to the cap instead of adding to it, the screen has its
+ * own life, every kill cuts that life, and a spent screen cannot come back for
+ * a while. Worst case with the player killing nothing is SCREEN_SECONDS shielded
+ * out of SCREEN_SECONDS + SCREEN_COOLDOWN, so the boss is exposed at least
+ * 67% of the fight by construction rather than by hope.
+ */
+const ESCORT_COUNT = 3;
 const ESCORT_PATIENCE = 16;
+/** How long a fresh screen holds on its own. */
+const SCREEN_SECONDS = 6;
+/** Seconds cut from that life per escort destroyed. */
+const SCREEN_KILL_CUT = 2;
+/** How long after a screen ends before another may launch. */
+const SCREEN_COOLDOWN = 12;
+/**
+ * When the clock runs out with escorts still flying, the shield OVERLOADS: the
+ * survivors stop screening and the boss is forced open. Every screen therefore
+ * ends in a punish window, so the clock is a promise rather than a timeout.
+ */
+const SCREEN_OVERLOAD_RECOVER = 2;
 /**
  * Pressure kept on during a boss fight.
  *
@@ -399,6 +569,10 @@ export class Game2A {
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
   private bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+  /** Seconds of screen left. Zero means the boss is open. */
+  private screenClock = 0;
+  /** Seconds before another screen may launch. */
+  private screenCooldown = 0;
   private warshipLaunchClock = WARSHIP_LAUNCH_INTERVAL;
   /** Cleared once the player has actually double-tapped, so the nudge stops. */
   private bombHintShown = false;
@@ -444,6 +618,8 @@ export class Game2A {
   /** Counts up while a fog gate or shield cover is being cut automatically. */
   private fogCutClock = 0;
   private shieldCutClock = 0;
+  /** Rim-light gradients, keyed by colour and radius. See drawRimGlow. */
+  private readonly rimGlows = new Map<string, CanvasGradient>();
   private progress: CampaignProgress = this.loadProgress();
   private activePlanetKey: string | null = null;
   private activePlanetLabel: string | null = null;
@@ -480,6 +656,7 @@ export class Game2A {
   }
 
   deployFromMap(planetKey: string, planetLabel: string, checkpoint?: MissionCheckpointSnapshot): void {
+    this.input.setActive(true);this.loop.start();
     this.progress = this.loadProgress();
     this.activePlanetKey = planetKey;
     this.activePlanetLabel = planetLabel;
@@ -513,6 +690,7 @@ export class Game2A {
   }
 
   deployTestMode(): void {
+    this.input.setActive(true);this.loop.start();
     this.activePlanetKey = null;
     this.activePlanetLabel = null;
     this.missionDirector.clear();
@@ -529,8 +707,11 @@ export class Game2A {
 
   suspend(): void {
     this.paused = true;
+    this.input.setActive(false);this.loop.stop();
     this.cueMusic('silence');
   }
+
+  get boardingFighterKey():string{return this.selectedShipKey;}
 
   private resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -649,6 +830,13 @@ export class Game2A {
       this.startBossIfReady();
       if (this.boss) {
         this.updateBoss(dt);
+        // Escorts were frozen for the whole fight: moveDrones is the only
+        // place stance, fire, dodge and patience advance, and it was reached
+        // only through updateDrones, which this branch skips. So the screen
+        // never flew, never shot, and never broke off -- and ESCORT_PATIENCE,
+        // the thing the code claimed made a deadlock impossible, was never
+        // decremented at all. This is the missing call.
+        this.moveDrones(dt);
       } else if (this.victoryPendingClock <= 0) {
         this.updateDrones(dt);
         this.updateHazards(dt);
@@ -708,9 +896,16 @@ export class Game2A {
     const act = this.missionDirector.currentAct;
     if (!act) return;
 
-    if (act.key === GARY_FOG_GUARDIAN_PLAN.actKey) {
-      if (!this.boss) this.startGaryFogGuardian();
+    // Three guardian acts now, not one. This used to compare against
+    // GARY_FOG_GUARDIAN_PLAN.actKey directly, which is fine with a single boss
+    // and silently fatal with three: an act that no branch recognises spawns
+    // nothing, and a boss act that spawns nothing never completes, so the level
+    // stops dead on it with an empty sky.
+    const guardian = guardianPlanFor(act.key);
+    if (guardian) {
+      if (!this.boss) this.startGuardian(guardian);
       this.updateBoss(dt);
+      this.moveDrones(dt);
       return;
     }
 
@@ -742,15 +937,17 @@ export class Game2A {
     if (this.boss) this.updateBoss(dt);
   }
 
-  private startGaryFogGuardian(): void {
-    const def = this.bossDef(GARY_FOG_GUARDIAN_PLAN.bossKey);
+  private startGuardian(plan: GuardianEncounterPlan): void {
+    this.screenClock = 0;
+    this.screenCooldown = 0;
+    const def = this.bossDef(plan.bossKey);
     this.drones = [];
     this.hazards = [];
     this.hostileShots = [];
     this.bolts = [];
     this.dropBossResupply();
-    this.cueMusic(GARY_FOG_GUARDIAN_PLAN.musicCueKey);
-    this.missionBannerText = 'GUARDIAN SIGNAL // GARY FOG APPROACHING';
+    this.cueMusic(plan.musicCueKey);
+    this.missionBannerText = plan.approachBanner;
     this.missionBannerClock = 2.8;
     this.boss = {
       x: this.w / 2,
@@ -759,11 +956,11 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.firepowerScale()),
-      maxHp: Math.round(def.hp * this.firepowerScale()),
+      hp: Math.round(def.hp * this.loadoutScale()),
+      maxHp: Math.round(def.hp * this.loadoutScale()),
       bossKey: def.key,
       state: 'intro',
-      age: -GARY_FOG_REVEAL.musicLead,
+      age: -plan.musicLeadSeconds,
       fireClock: def.phases[0].fireRate,
       contactClock: 0,
       phaseIndex: 0,
@@ -980,6 +1177,41 @@ export class Game2A {
     });
   }
 
+  /**
+   * Banks the checkpoint that resumes into whichever act is current.
+   *
+   * Shared by the two paths that finish an act, rather than written twice:
+   * a flight act records the act it is about to enter, and a guardian act
+   * records the one it has just entered. Both mean "if you die now, come back
+   * here", and duplicating that would be one snapshot field away from a resume
+   * that silently loses a rank or a barrel.
+   *
+   * Returns the checkpoint banked, or null when the act has none -- the
+   * opening cinematic and the closing beat deliberately do not.
+   */
+  private recordCheckpointForCurrentAct(): MissionCheckpointDef | null {
+    const mission = this.missionDirector.activeMission;
+    const act = this.missionDirector.currentAct;
+    if (!mission || !act || !this.activePlanetKey) return null;
+    const checkpoint = mission.checkpoints.find((item) => item.resumeActKey === act.key);
+    if (!checkpoint) return null;
+    this.progress = recordMissionCheckpoint(this.progress, {
+      planetKey: this.activePlanetKey,
+      missionKey: mission.key,
+      checkpointKey: checkpoint.key,
+      checkpointLabel: checkpoint.label,
+      resumeActKey: checkpoint.resumeActKey,
+      shipKey: this.selectedShipKey,
+      weaponTier: this.weaponTier(),
+      bombs: this.bombs,
+      score: this.score,
+      savedAt: Date.now(),
+      ...this.upgradeSnapshot(),
+    });
+    this.saveProgress();
+    return checkpoint;
+  }
+
   private completeMissionFlightAct(): void {
     const mission = this.missionDirector.activeMission;
     const act = this.missionDirector.currentAct;
@@ -1033,7 +1265,13 @@ export class Game2A {
     // Ask where the gesture STARTED, not where the finger is now. Testing the
     // live position turned every button into a wall the fighter could not be
     // dragged across -- you cannot lift a thumb over an obstacle mid-drag.
-    const usingPointer = Boolean(pointer && origin && !this.inControls(origin.x, origin.y));
+    // ...unless the finger has actually travelled, in which case it is a drag
+    // and steers whatever it started on. The bottom-right pad is where a thumb
+    // rests on a phone; without this, planting it there and pulling down moved
+    // the fighter not at all.
+    const usingPointer = Boolean(
+      pointer && origin && (!this.inControls(origin.x, origin.y) || this.input.dragged),
+    );
     if (usingPointer && pointer) {
       this.player.x += (pointer.x - this.player.x) * Math.min(1, dt * 14);
       this.player.y += (pointer.y - this.player.y) * Math.min(1, dt * 14);
@@ -1061,17 +1299,22 @@ export class Game2A {
   /**
    * Vertical band the fighter may occupy.
    *
-   * The portrait margin of 34% of the screen leaves almost nothing on a
-   * landscape phone: at 274px tall it allowed 85px of travel for a 48px ship,
-   * so the fighter sat pinned against the bottom clamp and forward/back tilt
-   * felt dead. Landscape gets a much shallower top margin; the bottom keeps
-   * clearance for the on-canvas pause/bomb/pulse controls.
+   * Portrait used to reserve the top 34%. On a 393x793 phone that is a hard,
+   * invisible wall at y=270: drag a thumb to the top of the screen and the ship
+   * stops dead underneath it with no feedback of any kind, which is what
+   * "I can't move my ship up" turned out to mean. Landscape had long since been
+   * cut to 12% for its own reasons, so the same game rotated obeyed a different
+   * rule -- and 34% put more than half the enemy station band (14% to 52%) in a
+   * place the player could never fly.
+   *
+   * Both orientations now use the same shallow margin, which reaches the top of
+   * the formation. The bottom keeps clearance for nothing: the fighter must be
+   * able to sit at the very bottom edge.
    */
   private playerLane(): { top: number; bottom: number } {
-    const landscape = this.w > this.h;
-    // A duel opens the arena: you have to be able to get above a boss to flank
-    // it, which the normal flight lane forbids.
-    const top = this.h * (this.duelling() ? DUEL_LANE_TOP : landscape ? 0.12 : 0.34);
+    // A duel opens the arena further still: you have to be able to get above a
+    // boss to flank it.
+    const top = this.h * (this.duelling() ? DUEL_LANE_TOP : FLIGHT_LANE_TOP);
     // The fighter must be able to sit at the very bottom edge. Reserving room
     // for the on-canvas controls left it stranded a ship-height up.
     const bottom = this.h - 22;
@@ -1354,7 +1597,8 @@ export class Game2A {
       drone.fireClock = 0.12;
       return;
     }
-    drone.fireClock = def.fireRate + Math.random() * ENEMY_FIRE_JITTER;
+    const doctrine = ENEMY_DOCTRINES[def.doctrine ?? 'pressure'];
+    drone.fireClock = def.fireRate * doctrine.interval + Math.random() * ENEMY_FIRE_JITTER;
 
     const dx = this.player.x - drone.x;
     const dy = this.player.y - drone.y;
@@ -1363,19 +1607,27 @@ export class Game2A {
     if (dy / length < ENEMY_FIRE_ARC) return;
 
     const aim = Math.atan2(dy, dx);
-    const middle = (tactics.burst - 1) / 2;
-    for (let i = 0; i < tactics.burst; i += 1) {
-      const angle = aim + (i - middle) * tactics.spread;
+    const speed = def.projectileSpeed * doctrine.speed;
+    // The doctrine's own fan, widened by the movement tactic's spread only
+    // where the tactic already had one. A dive-bomber's shots stay looser than
+    // a station-keeper's, which is the read the movement was already teaching.
+    const spread = doctrine.spread + tactics.spread * 0.5;
+    const middle = (doctrine.shots - 1) / 2;
+    for (let i = 0; i < doctrine.shots; i += 1) {
+      const angle = aim + (i - middle) * spread;
       this.hostileShots.push({
         x: drone.x,
         y: drone.y + drone.h * 0.4,
-        w: 8,
-        h: 8,
-        vx: Math.cos(angle) * def.projectileSpeed,
-        vy: Math.sin(angle) * def.projectileSpeed,
+        w: doctrine.size,
+        h: doctrine.size,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
         damage: 1,
         color: def.accent,
-        projectileKey: 'enemy_missile',
+        projectileKey: doctrine.projectileKey,
+        size: doctrine.size,
+        homing: doctrine.homing,
+        track: doctrine.homing ? SALVO_TRACK_SECONDS : undefined,
       });
     }
     sfx.play('enemyShoot');
@@ -1384,10 +1636,10 @@ export class Game2A {
 
   /** How many enemies may share the arena at once, by wave. */
   private arenaEnemyCap(): number {
-    // Numbers are the other half of the answer to a big gun: a maxed loadout
-    // clears a screen fast, so it should have more screen to clear.
-    const forFirepower = Math.floor(this.firepowerScale() / 2);
-    return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forFirepower);
+    // Numbers are the other half of the pressure curve: a run that has been
+    // going a while should have more screen to clear, whatever gun turned up.
+    const forPressure = Math.floor(this.pressureScale() / 2);
+    return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forPressure);
   }
 
   /** Station-keeping drift so a held position still reads as flying, not parking. */
@@ -1515,6 +1767,20 @@ export class Game2A {
 
   private updateHostileShots(dt: number): void {
     for (const shot of this.hostileShots) {
+      // A salvo round steers for a couple of seconds, then commits. The timer
+      // is what makes it dodgeable: a missile that tracked forever would be an
+      // unavoidable hit rather than a threat you have to break away from, and
+      // the whole point of the Whale Scout is that it is worth killing first.
+      if (shot.homing && (shot.track ?? 0) > 0) {
+        shot.track = (shot.track ?? 0) - dt;
+        const speed = Math.hypot(shot.vx, shot.vy);
+        const want = Math.atan2(this.player.y - shot.y, this.player.x - shot.x);
+        // turnToward already crosses the -PI/+PI seam correctly; the boss duel
+        // leans on it for the same reason.
+        const angle = turnToward(Math.atan2(shot.vy, shot.vx), want, shot.homing * dt);
+        shot.vx = Math.cos(angle) * speed;
+        shot.vy = Math.sin(angle) * speed;
+      }
       shot.x += shot.vx * dt;
       shot.y += shot.vy * dt;
     }
@@ -1527,6 +1793,8 @@ export class Game2A {
     if (this.boss || this.missionDirector.activeMission) return;
     const bossKey = nextBossKey(BOSSES, this.wave, this.completedBosses);
     if (!bossKey) return;
+    this.screenClock = 0;
+    this.screenCooldown = 0;
     const def = this.bossDef(bossKey);
     this.drones = [];
     this.hazards = [];
@@ -1542,8 +1810,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.firepowerScale()),
-      maxHp: Math.round(def.hp * this.firepowerScale()),
+      hp: Math.round(def.hp * this.loadoutScale()),
+      maxHp: Math.round(def.hp * this.loadoutScale()),
       bossKey,
       state: 'intro',
       age: 0,
@@ -1578,22 +1846,31 @@ export class Game2A {
   private updateBoss(dt: number): void {
     const boss = this.boss;
     if (!boss) return;
+    this.updateScreen(boss, dt);
     const def = this.bossDef(boss.bossKey);
     boss.age += dt;
     boss.contactClock = Math.max(0, boss.contactClock - dt);
 
     if (boss.state === 'intro') {
-      const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
-      if (missionGary) {
+      // The creeping entrance belongs to every guardian, not only to Gary.
+      //
+      // This was the third place keyed to 'gary_fog' by hand. Leaving it would
+      // have been the subtlest of the three failures: the new bosses would
+      // still spawn and still fight, but they would snap into frame on the
+      // 1.45s wave-boss path below instead of creeping in under their own
+      // music -- landing as ordinary spawns, which is precisely the thing the
+      // placement exists to avoid.
+      const guardian = guardianPlanFor(this.missionDirector.currentAct?.key);
+      if (guardian && guardian.bossKey === boss.bossKey) {
         if (boss.age < 0) return;
-        const t = clamp(boss.age / GARY_FOG_REVEAL.entranceDuration, 0, 1);
+        const t = clamp(boss.age / guardian.creepSeconds, 0, 1);
         const eased = 1 - Math.pow(1 - t, 3);
         boss.y = -def.draw.h + (this.bossRestY() + def.draw.h) * eased;
-        if (boss.age >= GARY_FOG_REVEAL.entranceDuration + GARY_FOG_REVEAL.combatDelay) {
+        if (boss.age >= guardian.creepSeconds + guardian.postEntranceHoldSeconds) {
           boss.state = 'fight';
           boss.y = this.bossRestY();
           boss.age = 0;
-          this.missionBannerText = 'GARY FOG // ENGAGE';
+          this.missionBannerText = `${def.label} // ENGAGE`;
           this.missionBannerClock = 2.2;
         }
         return;
@@ -1816,10 +2093,20 @@ export class Game2A {
    * that drifted somewhere awkward.
    */
   private launchEscorts(boss: BossActor): void {
-    const key = availableEnemyKeys(ENEMIES, this.wave)[0] ?? 'regulator_drone';
+    // A spent screen has to cool down first, so the beat cannot outrun the
+    // player's ability to clear it.
+    if (this.screenCooldown > 0 || this.screenClock > 0) return;
+    // REFILL to the cap, never add to it. The old loop pushed a full set every
+    // time the script came round, which is how four launches became twenty
+    // live escorts.
+    const alive = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
+    const wanted = Math.max(0, ESCORT_COUNT - alive);
+    if (wanted === 0) return;
+    this.screenClock = SCREEN_SECONDS;
+    const key = this.escortKeyFor(boss);
     const def = this.enemyDef(key);
-    for (let i = 0; i < ESCORT_COUNT; i += 1) {
-      const spread = (i - (ESCORT_COUNT - 1) / 2) * 46;
+    for (let i = 0; i < wanted; i += 1) {
+      const spread = (i - (wanted - 1) / 2) * 46;
       const x = clamp(boss.x + spread, 26, this.w - 26);
       this.drones.push({
         x,
@@ -1833,7 +2120,7 @@ export class Game2A {
         age: 0,
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
-        direction: i < ESCORT_COUNT / 2 ? -1 : 1,
+        direction: i < wanted / 2 ? -1 : 1,
         fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
         stance: 'entering',
         stationX: x,
@@ -1852,7 +2139,66 @@ export class Game2A {
 
   /** True while any launched escort is still fighting. */
   private bossShielded(): boolean {
+    if (this.screenClock <= 0) return false;
     return this.drones.some((drone) => drone.escort && drone.stance !== 'fleeing');
+  }
+
+  /**
+   * Who a boss sends up.
+   *
+   * Every screen used to be `availableEnemyKeys(...)[0]`, i.e. regulator
+   * drones, whatever the boss and whatever the wave -- so all four bosses
+   * screened themselves with the same 1hp weaver.
+   */
+  private escortKeyFor(boss: BossActor): string {
+    const byBoss: Record<string, string> = {
+      gary_fog: 'fog_raider',
+      regulatory_behemoth: 'regulator_drone',
+      clarity_destroyer: 'whale_scout',
+      final_clarity: 'rug_fighter',
+    };
+    const key = byBoss[boss.bossKey];
+    if (key && ENEMIES[key]) return key;
+    return availableEnemyKeys(ENEMIES, this.wave)[0] ?? 'regulator_drone';
+  }
+
+  /**
+   * Runs the screen clock, and ends it the way it has to end.
+   *
+   * Three exits, and all three open the boss. Every escort dead: the screen is
+   * cleared early, which is the skilful one. The clock expires with escorts
+   * still flying: OVERLOAD -- the survivors stop screening and the boss is
+   * forced into a recover window, so the player who could not clear it still
+   * gets the punish. Or the boss dies first.
+   */
+  private updateScreen(boss: BossActor, dt: number): void {
+    if (this.screenCooldown > 0) this.screenCooldown = Math.max(0, this.screenCooldown - dt);
+    // An escort that has broken off is not screening any more, so it stops
+    // being an escort. Without this it keeps the flag while no longer counting
+    // toward the cap, and a refill can put more than ESCORT_COUNT of them on
+    // the field -- which is the stacking this whole change exists to stop.
+    for (const drone of this.drones) if (drone.escort && drone.stance === 'fleeing') drone.escort = false;
+    if (this.screenClock <= 0) return;
+    const alive = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
+    if (alive === 0) {
+      this.endScreen(boss, false);
+      return;
+    }
+    this.screenClock -= dt;
+    if (this.screenClock > 0) return;
+    this.endScreen(boss, true);
+  }
+
+  /** Every exit starts the same exposure window, including a rapid full clear. */
+  private endScreen(boss: BossActor, overloaded: boolean): void {
+    this.screenClock = 0;
+    this.screenCooldown = SCREEN_COOLDOWN;
+    for (const drone of this.drones) if (drone.escort) drone.escort = false;
+    boss.attackState = 'recover';
+    boss.attackClock = SCREEN_OVERLOAD_RECOVER;
+    this.missionBannerText = overloaded ? 'SHIELD OVERLOAD // BOSS EXPOSED' : 'SCREEN CLEARED // BOSS EXPOSED';
+    this.missionBannerClock = 1.8;
+    sfx.play('deny');
   }
 
   private pushBossShot(x: number, y: number, angle: number, speed: number, color: string): void {
@@ -2421,8 +2767,80 @@ export class Game2A {
     return drawn;
   }
 
+  /**
+   * A rim light: one soft wash that peaks at the silhouette's edge.
+   *
+   * Transparent in the middle and transparent again outside, so it never lies
+   * over the sprite and never closes into a disc. It goes down BEFORE the hull
+   * for the same reason.
+   *
+   * The gradient is built at the origin and cached per colour and radius --
+   * there are only a handful of distinct pairs, and a fresh gradient per ship
+   * per frame is a few thousand allocations a second for a halo.
+   */
+  private drawRimGlow(x: number, y: number, size: number, color: string): void {
+    const radius = size * RIM_GLOW_SCALE;
+    if (radius <= 0) return;
+    const key = `${color}:${radius.toFixed(1)}`;
+    let glow = this.rimGlows.get(key);
+    if (!glow) {
+      glow = this.ctx.createRadialGradient(0, 0, 0, 0, 0, radius);
+      glow.addColorStop(0, 'transparent');
+      glow.addColorStop(RIM_GLOW_EDGE, color);
+      glow.addColorStop(1, 'transparent');
+      this.rimGlows.set(key, glow);
+    }
+    const c = this.ctx;
+    c.save();
+    c.translate(x, y);
+    c.globalAlpha = RIM_GLOW_ALPHA;
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(0, 0, radius, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+
+  /**
+   * A shield, drawn as an outline that is doing something.
+   *
+   * A hairline ring that breathes, plus one brighter arc travelling around it.
+   * No fill at any opacity: the hull underneath is the thing the player is
+   * aiming at and steering, and covering it is what made the old bubble read
+   * as a bug rather than as a shield.
+   *
+   * `strength` (0..1) only moves the opacity. A shield down to its last
+   * segment should look thin, not smaller -- the radius is where the hull is.
+   */
+  private drawShieldField(x: number, y: number, radius: number, color: string, strength: number): void {
+    if (radius <= 0) return;
+    const held = clamp(strength, 0, 1);
+    // Offset by position so two ships side by side do not pulse in lockstep.
+    const live = radius * (1 + SHIELD_RIPPLE * Math.sin(this.clock * 5 + x * 0.05 + y * 0.03));
+    const c = this.ctx;
+    c.save();
+    c.strokeStyle = color;
+    c.lineWidth = SHIELD_RING_WIDTH;
+    c.globalAlpha = 0.3 + 0.35 * held;
+    c.beginPath();
+    c.arc(x, y, live, 0, Math.PI * 2);
+    c.stroke();
+    // The travelling arc sits just outside the ring rather than on top of it,
+    // so what you see is two lines and one of them is moving. Painted at the
+    // same radius it only brightened a quarter of a solid ring, which still
+    // read as a lid.
+    const sweep = this.clock * SHIELD_SWEEP_RATE;
+    c.globalAlpha = 0.55 + 0.4 * held;
+    c.beginPath();
+    c.arc(x, y, live * SHIELD_SWEEP_OFFSET, sweep, sweep + SHIELD_SWEEP_ARC);
+    c.stroke();
+    c.restore();
+  }
+
   private drawPlayer(): void {
     const def = this.playerDef();
+    const size = Math.max(def.draw.w, def.draw.h);
+    this.drawRimGlow(this.player.x, this.player.y, size, def.accent);
     const drawn = this.drawFacing(def.sprite, this.player.x, this.player.y, def.draw.w, def.draw.h, this.playerFacing);
     if (!drawn) {
       this.ctx.save();
@@ -2440,15 +2858,24 @@ export class Game2A {
       this.ctx.stroke();
       this.ctx.restore();
     }
-    this.ctx.strokeStyle = def.accent;
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.arc(this.player.x, this.player.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
-    this.ctx.stroke();
+    // The ring that used to live here was unconditional and took the hull's
+    // accent, so it was on when there was no shield to show and green only if
+    // you happened to be flying the default ship. It is the shield now, in the
+    // one colour, and only when there is one.
+    if (this.shield > 0) {
+      this.drawShieldField(
+        this.player.x,
+        this.player.y,
+        size * SHIELD_RING_SCALE,
+        PLAYER_SHIELD_COLOR,
+        this.shield / Math.max(1, this.shieldMax),
+      );
+    }
   }
 
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
+    this.drawRimGlow(drone.x, drone.y, Math.max(def.draw.w, def.draw.h), def.accent);
     const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
     if (!drawn) {
       this.ctx.save();
@@ -2466,13 +2893,19 @@ export class Game2A {
       this.ctx.restore();
     }
 
-    this.ctx.save();
-    this.ctx.strokeStyle = def.accent;
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.arc(drone.x, drone.y, Math.max(def.draw.w, def.draw.h) * 0.58, 0, Math.PI * 2);
-    this.ctx.stroke();
-    this.ctx.restore();
+    // An escort is the only enemy carrying a shield, and it is carrying the
+    // BOSS's -- so it gets the outline while the screen is up. That is worth
+    // showing: it names the four ships you have to clear, instead of leaving
+    // the player to work out which drones the bubble is counting.
+    if (drone.escort && this.bossShielded()) {
+      this.drawShieldField(
+        drone.x,
+        drone.y,
+        Math.max(def.draw.w, def.draw.h) * SHIELD_RING_SCALE,
+        ENEMY_SHIELD_COLOR,
+        1,
+      );
+    }
   }
 
   private drawBolt(bolt: ProjectileActor): void {
@@ -2624,28 +3057,32 @@ export class Game2A {
   /**
    * The escort shield.
    *
-   * Drawn as a bubble with a live count, because a boss that simply stops
-   * taking damage looks broken. The count is the instruction: it says what to
-   * shoot instead.
+   * A boss that simply stops taking damage looks broken, so the shield has to
+   * be visible and the count has to say what to shoot instead. What it must
+   * NOT do is hide the boss: it was a #36a3ff disc filled at 0.34-0.50 across
+   * 0.86x the largest boss on the field, which is most of the screen during
+   * the phase where reading the attack tell matters most. It is the same
+   * outline every shield uses now, in the enemy colour -- and blue is the
+   * player's own HUD shield bar, which was a second reason it read wrong.
    */
   private drawBossShield(boss: BossActor): void {
     const remaining = this.drones.filter((drone) => drone.escort && drone.stance !== 'fleeing').length;
-    const radius = Math.max(boss.w, boss.h) * 0.86;
+    // Sized off the DRAWN silhouette, not the hitbox. `boss.w/h` is the
+    // collision box, which after scaling is about a quarter smaller than the
+    // art: Gary Fog collides at 59x54 and draws at 76x81. The old 0.86x
+    // hitbox radius does clear all four bosses as they are drawn today, but
+    // only by coincidence -- it tracks a number the player cannot see. This
+    // one tracks the one they can, so it keeps clearing the ship if either
+    // is retuned.
+    const def = this.bossDef(boss.bossKey);
+    const radius = Math.max(def.draw.w, def.draw.h) * SHIELD_RING_SCALE;
+    this.drawShieldField(boss.x, boss.y, radius, ENEMY_SHIELD_COLOR, 1);
     const c = this.ctx;
     c.save();
-    c.globalAlpha = 0.34 + 0.16 * Math.sin(this.clock * 6);
-    c.fillStyle = '#36a3ff';
-    c.beginPath();
-    c.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
-    c.fill();
-    c.globalAlpha = 0.95;
-    c.lineWidth = 3;
-    c.strokeStyle = '#8dcfff';
-    c.stroke();
     c.fillStyle = '#d8ffe8';
     c.textAlign = 'center';
     c.font = '900 10px ui-sans-serif, system-ui';
-    // Above the bubble, but never up in the HUD strip and never down in the
+    // Above the field, but never up in the HUD strip and never down in the
     // bottom row of buttons -- both of which it landed in on the first try.
     c.fillText(
       `SHIELDED • CLEAR ${remaining} ESCORT${remaining === 1 ? '' : 'S'}`,
@@ -3451,7 +3888,8 @@ export class Game2A {
     sfx.play('bigExplode');
 
     const def = this.bossDef(boss.bossKey);
-    const missionGary = this.missionDirector.currentAct?.key === 'gary_fog' && boss.bossKey === 'gary_fog';
+    const guardian = guardianPlanFor(this.missionDirector.currentAct?.key);
+    const missionGuardian = guardian && guardian.bossKey === boss.bossKey ? guardian : null;
     this.completedBosses.add(boss.bossKey);
     this.score += def.score;
     this.special = 100;
@@ -3464,19 +3902,38 @@ export class Game2A {
     this.hostileShots = [];
     this.boss = null;
 
-    if (missionGary) {
-      const alreadyOwned = hasFogBreaker(this.progress);
-      this.progress = awardGaryFogVictory(this.progress);
-      this.saveProgress();
+    // A GUARDIAN ACT MUST ADVANCE THE MISSION, or the level stops on it.
+    //
+    // Only Gary did. Every other boss fell through to `bossClearClock` below,
+    // which is right for the wave ladder -- there is no act to finish out there
+    // -- and fatal for a boss that IS an act: the Behemoth would die, the sky
+    // would empty, and the mission would sit on a completed act forever with
+    // nothing left to kill.
+    if (missionGuardian) {
+      const isGary = missionGuardian.rewardTechKey !== null;
+      let banner = missionGuardian.defeatBanner;
+      if (isGary) {
+        // Guarded against checkpoint-reload farming inside recordGuardianDefeated.
+        const alreadyOwned = hasFogBreaker(this.progress);
+        this.progress = awardGaryFogVictory(this.progress);
+        this.saveProgress();
+        this.fogGateActive = true;
+        banner = alreadyOwned
+          ? 'GARY FOG DEFEATED // FOG BREAKER READY'
+          : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
+      }
+
       const entered = this.missionDirector.advance();
       this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
       this.earthEncounterDirector.clear();
-      this.fogGateActive = true;
       this.cueMusic('level1');
-      this.missionBannerText = alreadyOwned
-        ? 'GARY FOG DEFEATED // FOG BREAKER READY'
-        : 'BOSS TECH ACQUIRED // FOG BREAKER PULSE';
+      this.missionBannerText = banner;
       this.missionBannerClock = 2.8;
+      // Bank the act we just moved into, so dying to what follows a guardian
+      // does not replay the guardian. Flight acts get this from
+      // completeMissionFlightAct; a boss act never reaches that path.
+      this.recordCheckpointForCurrentAct();
+      // final_assault runs on the fog gate rather than on authored spawns.
       if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
       return;
     }
@@ -3553,6 +4010,14 @@ export class Game2A {
   }
 
   private registerKill(drone: EnemyActor): void {
+    // Clearing the screen is the skilful way out of it, so every escort taken
+    // down buys real time off the shield rather than only counting down a
+    // label. Three kills at SCREEN_KILL_CUT each ends a SCREEN_SECONDS screen
+    // outright, which is the promise the "CLEAR N ESCORTS" prompt makes.
+    if (drone.escort && this.screenClock > 0) {
+      this.screenClock = Math.max(0, this.screenClock - SCREEN_KILL_CUT);
+      if (this.screenClock === 0 && this.boss) this.endScreen(this.boss, false);
+    }
     const def = this.enemyDef(drone.enemyKey);
     this.score += def.score;
     this.killedThisWave += 1;
@@ -3733,8 +4198,20 @@ export class Game2A {
       // them all would trap the player behind an overlay with no way out. In
       // that case any tap banks the level and closes.
       if (!this.allUpgradesMaxed()) return void sfx.play('deny');
-      this.score += ALL_MAXED_SCORE;
-      this.missionBannerText = `ALL SYSTEMS MAX // +${ALL_MAXED_SCORE}`;
+      // Pay for EVERY rank being closed out, not just the one on screen.
+      //
+      // awardXp loops -- a single boss kill can cross two thresholds at once --
+      // so pendingUpgrades is regularly greater than 1, and this used to add a
+      // flat ALL_MAXED_SCORE and then set pendingUpgrades to 0. Two ranks
+      // banked together paid 250 instead of 500 and the second one vanished
+      // with no message. It is worst exactly where it is most likely: late in a
+      // run, with every track full, killing something big.
+      const banked = Math.max(1, this.pendingUpgrades);
+      const reward = ALL_MAXED_SCORE * banked;
+      this.score += reward;
+      this.missionBannerText = banked > 1
+        ? `ALL SYSTEMS MAX // ${banked} RANKS +${reward}`
+        : `ALL SYSTEMS MAX // +${reward}`;
       this.missionBannerClock = 2.4;
       this.pendingUpgrades = 0;
       this.upgradeOffer = [];
@@ -3883,6 +4360,8 @@ export class Game2A {
     this.seekers = [];
     this.seekerClock = SEEKER_INTERVAL;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+    this.screenClock = 0;
+    this.screenCooldown = 0;
     this.warshipLaunchClock = WARSHIP_LAUNCH_INTERVAL;
     // Restart the nudge each run: a player who has never dropped a bomb still
     // has not been taught, and the timer would otherwise be spent already.
@@ -4115,19 +4594,33 @@ export class Game2A {
    * arriving faster.
    */
   private enemyHp(def: EnemyDef): number {
-    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
     return Math.max(1, Math.round(scaled));
   }
 
   /** Mines and turrets are shot at too, so they ride the same curve. */
   private hazardHp(def: HazardDef): number {
-    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.firepowerScale());
+    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
     return Math.max(1, Math.round(scaled));
   }
 
   /** A drone's speed, which climbs with the wave and with the gun facing it. */
   private enemySpeed(def: EnemyDef): number {
-    return def.baseSpeed + this.wave * 7 + (this.firepowerScale() - 1) * ENEMY_SPEED_PER_SCALE;
+    return def.baseSpeed + this.wave * 7 + (this.pressureScale() - 1) * ENEMY_SPEED_PER_SCALE;
+  }
+
+  /**
+   * How hard the game is pushing right now, on a 1..PRESSURE_CAP curve.
+   *
+   * Reads the RUN and nothing else. It must never consult the weapon, the
+   * volley, the barrel count or any pickup -- that coupling is the bug this
+   * replaced, and validate-difficulty fails if any of those names appear in
+   * this method.
+   */
+  private pressureScale(): number {
+    const fromWaves = (this.wave - 1) * PRESSURE_PER_WAVE;
+    const fromTime = (this.clock / 60) * PRESSURE_PER_MINUTE;
+    return clamp(1 + fromWaves + fromTime, 1, PRESSURE_CAP);
   }
 
   /** Sustained damage per second this loadout puts out. */
@@ -4137,12 +4630,13 @@ export class Game2A {
   }
 
   /**
-   * How much tougher everything has to be for this loadout to be a fight.
+   * The boss snapshot. Sampled at spawn and never again.
    *
-   * 1 at the starting gun, rising with the volley and the weapon's own damage.
-   * Capped, because past a point a longer fight stops being a better one.
+   * Only `startBossIfReady` and the Gary Fog entrance may call this. Anything
+   * that reads it per-frame is back to handing the player's upgrade straight
+   * back as hit points.
    */
-  private firepowerScale(): number {
+  private loadoutScale(): number {
     return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
   }
 
@@ -4151,7 +4645,28 @@ export class Game2A {
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
-    for (let pair = 1; pair <= this.barrels; pair += 1) {
+
+    // On an even gun the FIRST barrel goes down the middle; the rest go on in
+    // pairs.
+    //
+    // "When you get 5 the sixth makes the auto cannon split into 2 rows of 3.
+    // It loses power and doesn't hit anything in the middle of the fire
+    // pattern." Both halves were true and they were one fault. Pairs-only kept
+    // the gun symmetric but could never fill the centre, so a four-beam gun
+    // plus a barrel fired -26,-17,-6,6,17,26: three each side, and the widest
+    // gap in the whole pattern sitting exactly where you are aiming.
+    //
+    // It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
+    // pairs move in twos, so QUAD stopped at six and the seventh slot was
+    // unreachable -- measured, its second and third barrel pickups bought
+    // nothing at all. The centre beam is what makes that last slot spendable,
+    // which is why one rule fixes the hole and the dead pickups together.
+    let pairs = this.barrels;
+    if (!weapon.shots.some((shot) => shot.offsetX === 0) && shots.length < MAX_VOLLEY) {
+      shots.push({ offsetX: 0, angle: 0 });
+      pairs -= 1;
+    }
+    for (let pair = 1; pair <= pairs; pair += 1) {
       // A pair goes on together or not at all, so the gun stays symmetric.
       if (shots.length + 2 > MAX_VOLLEY) break;
       // Parallel, not fanned. Barrels used to angle outward 0.045rad per pair,
@@ -4191,7 +4706,19 @@ export class Game2A {
   private currentStage(): StageDef {
     const missionStageKey = this.earthEncounterDirector.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
-    if (this.missionDirector.activeMission && this.missionDirector.currentAct?.key === 'gary_fog') return STAGES.ledger_city;
+    // A guardian act has no authored encounter, so it reaches here with no
+    // stageKey. Falling on through lands it on the WAVE ladder, which put the
+    // Behemoth and the Destroyer in `data_canyon` -- a location Level 1 never
+    // visits -- for the length of each fight.
+    //
+    // This replaces a hand-written `gary_fog` branch rather than adding two
+    // more beside it. Every guardian carries the stage of the act it follows,
+    // Gary's included, so his behaviour is unchanged and the next act inserted
+    // without a stage is a gate failure instead of a silent wrong background.
+    if (this.missionDirector.activeMission) {
+      const guardianStage = guardianPlanFor(this.missionDirector.currentAct?.key)?.stageKey;
+      if (guardianStage && STAGES[guardianStage]) return STAGES[guardianStage];
+    }
     if (this.missionDirector.activeMission && ['regulatory_warship', 'boarding'].includes(this.missionDirector.currentAct?.key ?? '')) return STAGES.regulatory_outpost;
     for (let index = STAGE_LADDER.length - 1; index >= 0; index -= 1) {
       if (STAGE_LADDER[index].minWave <= this.wave) return STAGE_LADDER[index];

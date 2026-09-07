@@ -1,0 +1,22 @@
+.space-mesh-ui{position:absolute;inset:0;pointer-events:none;color:#e6eef6;font:500 12px/1.45 system-ui;z-index:5;touch-action:none}
+.space-mesh-ui button{pointer-events:auto;touch-action:none;border:1px solid #47616a;background:#091820df;color:#d8ffe8;padding:10px 12px;border-radius:6px;font:700 11px system-ui;min-height:42px}
+.space-mesh-ui button:active{background:#184d28}
+.space-mesh-status{position:absolute;top:calc(env(safe-area-inset-top) + 18px);left:16px;white-space:pre-line;margin:0;text-shadow:0 2px 4px #000;font-variant-numeric:tabular-nums}
+.space-mesh-top{position:absolute;right:12px;top:calc(env(safe-area-inset-top) + 14px);display:flex;gap:6px}
+.space-mesh-bottom{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 32px);left:18px;right:18px;display:flex;align-items:center;gap:12px}
+.space-mesh-bottom span{margin-right:auto;max-width:110px;color:#95acb9;font-size:10px}
+.space-mesh-bottom button{min-width:72px;min-height:66px;border-color:#258d42}
+.space-mesh-bottom button[data-action=guns]{min-width:94px;color:#00ff00}
+.space-mesh-message{position:absolute;left:10%;right:10%;bottom:130px;text-align:center;text-shadow:0 2px 5px #000;background:#05101bbd;border-radius:6px;padding:8px;white-space:pre-line}
+.space-mesh-message:empty{display:none}
+.space-mesh-reticle,.space-mesh-nav,.space-mesh-contact{position:absolute;transform:translate(-50%,-50%);text-shadow:0 1px 4px #000;white-space:nowrap}
+.space-mesh-reticle{font:200 28px system-ui;color:#00ff00;width:28px;height:28px;text-align:center;line-height:25px;border:1px solid #00ff0066;border-radius:50%}
+.space-mesh-nav{color:#79edac;font-size:10px;margin-top:-26px}
+.space-mesh-contact{color:#ff8f79;font-size:19px;line-height:20px}
+.space-mesh-lead{position:absolute;transform:translate(-50%,-50%);color:#ffb784;border:1px dashed #ffb78488;border-radius:50%;width:12px;height:12px;line-height:7px;text-align:center;font-size:18px}
+.space-mesh-contact[data-warning=true]{color:#ff3010;font-weight:900}
+.space-mesh-contact[data-behind=true]::before{content:'↶ REAR · '}
+.space-mesh-defeat{position:absolute;inset:25% 8%;background:#08121bef;padding:24px;text-align:center;border:1px solid #954935;pointer-events:auto}
+.space-comms{pointer-events:auto;z-index:20}
+@media(orientation:portrait){.space-mesh-top{top:calc(env(safe-area-inset-top) + 102px);left:16px;right:auto}.space-mesh-status{font-size:11px}}
+@media(orientation:landscape){.space-mesh-status{top:12px;font-size:10px}.space-mesh-top{top:12px}.space-mesh-bottom{bottom:18px}.space-mesh-bottom button{min-height:50px}.space-mesh-message{bottom:78px;left:20%;right:20%;font-size:11px}}

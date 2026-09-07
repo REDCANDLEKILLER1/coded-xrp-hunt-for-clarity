@@ -13,7 +13,7 @@
  * is a no-op while muted or before the first gesture — never an exception.
  */
 
-type Voice = 'shoot' | 'enemyShoot' | 'hit' | 'explode' | 'bigExplode' | 'pickup' | 'levelUp' | 'bomb' | 'pulse' | 'hurt' | 'deny';
+type Voice = 'shoot' | 'capitalShoot' | 'enemyShoot' | 'hit' | 'explode' | 'bigExplode' | 'pickup' | 'levelUp' | 'bomb' | 'pulse' | 'hurt' | 'deny';
 
 const MUTE_STORAGE_KEY = 'coded.sfx.muted';
 /** Cheap guard against the same sound stacking into a wall of noise. */
@@ -64,6 +64,11 @@ class Sfx {
     switch (voice) {
       case 'shoot':
         this.laser(t);
+        break;
+      case 'capitalShoot':
+        this.burst(t,.16,1800,.15);
+        this.blip(t,'sawtooth',140,40,.18,.12);
+        this.blip(t,'sine',70,25,.2,.2);
         break;
       case 'enemyShoot':
         this.blip(t, 'sawtooth', 420, 170, 0.09, 0.1);

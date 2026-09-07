@@ -42,6 +42,8 @@ const down = (x, y, at) => {
   now = at;
   listeners.get('pointerdown')({ preventDefault() {}, clientX: x, clientY: y });
 };
+const up = () => listeners.get('pointerup')({ preventDefault() {} });
+const move = (x, y) => listeners.get('pointermove')({ preventDefault() {}, clientX: x, clientY: y });
 
 // Two quick taps in the same spot are a double.
 down(200, 200, 0);
@@ -72,7 +74,33 @@ check(input.consumeDoubleTap() === null, 'triple tap: the third tap must not fir
 // The steering contract still holds: a double-tap is also a pointer-down, so
 // the finger that fired keeps flying the ship.
 check(input.pointerOrigin !== null, 'a double-tap must still begin a steering gesture');
-check(input.consumeTap() !== null, 'a double-tap must still deliver its ordinary tap');
+
+// The bomb still fires on the second DOWN -- that responsiveness is the whole
+// reason the gesture exists -- but the ordinary tap now arrives on RELEASE, so
+// that a press which turns into a drag can steer instead of pressing a button.
+check(input.consumeTap() === null, 'a tap must not be delivered before the finger lifts');
+up();
+check(input.consumeTap() !== null, 'a double-tap must still deliver its ordinary tap, on release');
+
+// And a press that travels is a drag: no tap at all, and it cannot seed the
+// next double-tap either.
+now = 4000;
+down(200, 300, 4000);
+move(200, 380);
+check(input.dragged === true, 'a finger that has travelled 80px is a drag');
+up();
+check(input.consumeTap() === null, 'a drag must not fire the button it started on');
+down(200, 300, 4100);
+check(input.consumeDoubleTap() === null, 'a drag must not count as the first half of a double-tap');
+up();
+check(input.dragged === false, 'the drag flag must clear when the finger lifts');
+
+// A press that barely moves is still a press. Thumbs wobble.
+down(500, 200, 5000);
+move(505, 204);
+check(input.dragged === false, 'a 6px wobble is not a drag');
+up();
+check(input.consumeTap() !== null, 'a press that only wobbled must still fire its button');
 
 // ---- source: routing, guards, and the on-screen teaching ----------------
 const game = readFileSync('src/game/core/Game2A.ts', 'utf8');

@@ -105,6 +105,7 @@ export class OnFootGame {
   private pendingRoomIndex: number | null = null;
   private pointerMove = 0;
   private pointerMoveId: number | null = null;
+  private artRequested = false;
 
   constructor(private readonly shell: HTMLElement) {
     this.canvas = document.createElement('canvas');
@@ -122,20 +123,6 @@ export class OnFootGame {
     const ctx = this.canvas.getContext('2d');
     if (!ctx) throw new Error('On-foot canvas unavailable.');
     this.ctx = ctx;
-    this.sprite.src = '/assets/characters/xrpman_onfoot_proto_sheet.png';
-    for (const key of Object.keys(this.anims) as AnimKey[]) {
-      this.anims[key].src = `/assets/characters/xrpman_${key}.png`;
-    }
-    this.enemySprite.src = '/assets/enemies/regulator_drone.webp';
-    // Only rooms that actually have art request it. A room without a
-    // backgroundSrc draws its procedural interior by design, and asking the
-    // network for a file nobody made would just be a 404 per room per load.
-    for (const room of REGULATORY_INTERIOR_ROOMS) {
-      if (!room.backgroundSrc) continue;
-      const image = new Image();
-      image.src = room.backgroundSrc;
-      this.backgrounds.set(room.key, image);
-    }
     this.shell.appendChild(this.canvas);
     this.bindInput();
     this.resize();
@@ -148,11 +135,26 @@ export class OnFootGame {
    *   warship starts where it left off rather than at the docking bay.
    */
   show(startRoom = 0): void {
+    this.requestArt();
     this.resetRun(startRoom);
     this.visible = true;
     this.canvas.style.display = 'block';
     this.introClock = 0.82;
     window.dispatchEvent(new CustomEvent('coded:music-cue', { detail: { cue: 'warship_interior' } }));
+  }
+
+  private requestArt(): void {
+    if (this.artRequested) return;
+    this.artRequested = true;
+    this.sprite.src = '/assets/characters/xrpman_onfoot_proto_sheet.png';
+    for (const key of Object.keys(this.anims) as AnimKey[]) this.anims[key].src = `/assets/characters/xrpman_${key}.png`;
+    this.enemySprite.src = '/assets/enemies/regulator_drone.webp';
+    for (const room of REGULATORY_INTERIOR_ROOMS) {
+      if (!room.backgroundSrc) continue;
+      const image = new Image();
+      image.src = room.backgroundSrc;
+      this.backgrounds.set(room.key, image);
+    }
   }
 
   hide(): void {

@@ -23,6 +23,7 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 1.7,
     projectileSpeed: 285,
     accent: '#ff5ce1',
+    doctrine: 'pressure',
   },
 });
 

@@ -76,7 +76,29 @@ export interface EnemyDef {
   projectileSpeed?: number;
   /** Visual identifier used while enemy variants share a temporary sprite. */
   accent: string;
+  /**
+   * How this ship fights.
+   *
+   * Every armed enemy used to fire the same thing: one aimed `enemy_missile`,
+   * differing only in cadence and accent colour, so a roster that reads as six
+   * ships played as one. The doctrine names the weapon; the table that gives
+   * it shots, spread, speed and a projectile lives in the engine beside the
+   * movement tactics it has to agree with.
+   *
+   * Omit for an unarmed hull.
+   */
+  doctrine?: EnemyDoctrine;
 }
+
+/**
+ * The five things an enemy can be holding.
+ *
+ * - `pressure`  fast single shots that make you keep moving.
+ * - `burst`     a tight three-round fan; accurate, forces a dodge.
+ * - `salvo`     one slow tracking missile. Priority target.
+ * - `broadside` a wide five-round fan for area denial.
+ */
+export type EnemyDoctrine = 'pressure' | 'burst' | 'salvo' | 'broadside';
 
 export interface ProjectileDef {
   key: string;

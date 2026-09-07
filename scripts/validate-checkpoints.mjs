@@ -52,21 +52,19 @@ check(/room: this\.roomIndex \+ 1/.test(advance), 'the room event should report 
 
 check(/coded:onfoot-room/.test(main), 'nothing listens for the room event');
 check(/interiorRoom: room/.test(main), 'the room must be written into the stored checkpoint');
-// Boarding no longer opens the interior at all: flying into the portal hands
-// you the captured warship's cockpit and the transit level begins. The room
-// checkpoint machinery is kept and still honoured by the ?onfoot route, which
-// is the only way in now -- so the resume is still pinned, just where it lives.
+// Preserve the legacy section checkpoint while the definitive route banks the
+// selected fighter and enters real recovery/boarding before capital departure.
 check(
   /savedInteriorRoom\(\)/.test(main),
   'the saved interior room must still be honoured wherever the interior is entered',
 );
 check(
-  /void space\.show\(\);/.test(main.slice(main.indexOf("'coded:boarding-complete'"), main.indexOf("'coded:space-complete'"))),
-  'flying into the portal must hand off to the transit cockpit',
+  /enterWarship\(definitiveSave,entry\)/.test(main.slice(main.indexOf("'coded:boarding-complete'"), main.indexOf("'coded:space-complete'")))&&/showChapter/.test(main.slice(main.indexOf("'coded:boarding-complete'"), main.indexOf("'coded:space-complete'"))),
+  'actual aperture entry must bank the fighter and hand off to the saved 3D chapter',
 );
 check(
   !/onFoot\.show\(/.test(main.slice(main.indexOf("'coded:boarding-complete'"), main.indexOf("'coded:space-complete'"))),
-  'boarding must not open the on-foot interior any more',
+  'the definitive entry must not accidentally start the legacy side-view interior',
 );
 
 // Resuming has to be bounded to real rooms even if a save says otherwise.

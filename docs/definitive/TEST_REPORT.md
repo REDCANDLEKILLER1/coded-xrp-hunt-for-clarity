@@ -1,0 +1,26 @@
+# Foundation verification — 2026-09-06
+
+Boarding follow-up: all 41 validators and build pass. The prototype was played through ordinary controls from bay to bridge, including an actual failed Core attempt/retry, both shop purchases and a return to the optional cache. Two-pointer movement/fire/release/cancel passes in both portrait and landscape desktop touch emulation. See BOARDING_PROTOTYPE.md for exact evidence, costs and unfinished scope. No physical-phone or complete-chapter result is claimed.
+
+Character follow-up: all 40 validators and build pass. Hero checks exercise actual skinned geometry across eight clips, normalized weights, forward hand travel and bounded attachments; Blender roundtrip retains eight clips, three maps and three nodes. Browser portrait/landscape review confirms real rendering, animation changes and camera controls; subsequent boarding game posing can still be refined. Current build: 251.52 KB initial JS (74.02 KB gzip); 655.10 KB lazy mesh JS (168.15 KB gzip). Hero GLB 3,597,232 bytes, 46,725 triangles; static review eleven draw calls including grid. These are not combat frame-time measurements.
+
+Asset catalog follow-up: all 39 validators and TypeScript/Vite build pass. Audio tests execute the actual metadata/catalog resolver, reject mistyped and orphan tracks, and retain user-gesture/mute/cue checks. Actual local browser resource entries show 47 flight images and no legacy interior character/room images, GLB or MP3 on first load. Initial JS 251.44 KB (73.98 KB gzip); lazy mesh chunk 639.30 KB (163.58 KB gzip). These are build artifact sizes, not total session transfer or frame-time measurements.
+
+This report covers the current foundation, not the connected campaign deliverable.
+
+- Ordinary `npm ci`: pass after recording the missing, exact-version optional Windows Rollup component in the project lockfile.
+- `npm test`: all 39 validator scripts pass, including preserved controls/content/flight tests and new save, scene and GLB checks.
+- `npm run build`: pass. Initial application JS 250.14 kB (73.50 kB gzip); lazily requested mesh-review chunk approximately 639.25 kB (163.54 kB gzip). Vite reports its advisory 500 kB chunk warning for this deferred chunk. No threshold was raised to hide it.
+- Save behavior: legacy source bytes unchanged; section slots isolated; atomic reward/ownership/recruit/quest/checkpoint updates; reload deduplication; insufficient funds and repeated purchases; quota failure retry; conflicting tabs; malformed/future record protection; actual existing 2D load/save adapter.
+- Scene behavior: only one scene owns input, loading pauses simulation, stale asynchronous loads dispose, failed loads restore the prior scene, closing is idempotent. Full legacy-to-new scene transitions remain to be implemented.
+- GLB: 396,960 bytes, SHA in the authoritative asset manifest. Real GLTFLoader parses 5,156 triangles in six surfaces, nine uniquely named attachments and four distinct finite muzzle origins. Tests cover truncated download, cancelled parse and geometry disposal. Blender independently re-imported the derivative and checked each attachment transform.
+- Escort regression mutations: frozen campaign escorts; ambient pressure cancelling cooldown; full clear skipping cooldown; repeat launch replenishing a partial screen. Each mutation failed the specific behavioral check; original source bytes were restored.
+- Browser visual checks: model renders, no recorded page errors or Vite overlay, portrait 390x844 and landscape 844x390. Fixed portrait cropping and a covered return button. Clicked muzzle toggle, captured lighting and return to map. These are desktop viewport checks, not physical phone tests.
+- Review scene cost: seven draw calls and 5,156 triangles for model plus grid; with four muzzle markers, eleven draw calls and 5,716 triangles. These are a static review scene, not combat performance.
+
+Remaining evidence: normal Earth-to-Mars play, real hero/boarding/mesh combat, transitions and checkpoint recovery in play, asset download/decode totals by scene, p50/p95/p99 combat frame times and ten-minute soak, real phone handling, all later destinations. Existing npm audit output still reports four advisories in the inherited toolchain; no unrelated package upgrade was performed in this foundation pass.
+# Compact deck and physical crew checkpoint
+
+All 43 validator scripts and TypeScript/Vite build passed locally. New checks decode the actual Mr Zamn GLB, exercise its skin and three clips, and sample 648 deck positions against the actual Warship structural shell. The hero socket test checks the animated palm against actual skinned vertices. Section test URLs accept a bounded `run` suffix without affecting the campaign save.
+
+Fresh compact-deck browser play cleared security, reached the physical Mr Zamn and completed the normal two-stage conversation. Portrait/landscape screenshots show both actors above the dialogue panel. A later engineering steering attempt returned through the doorway; the full compact deck replay remains outstanding. Earlier complete-route and touch evidence belongs to the larger mechanics prototype and must not be presented as a complete validation of this revised deck.

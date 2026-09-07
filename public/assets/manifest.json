@@ -3,17 +3,32 @@
     "player": {
       "src": "/assets/ships/player.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: player_clarity_interceptor"
+      "notes": "Phase O optimized v16 canon master: player_clarity_interceptor",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "xrpl_striker": {
       "src": "/assets/ships/xrpl_striker.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: player_xrpl_striker"
+      "notes": "Phase O optimized v16 canon master: player_xrpl_striker",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "ledger_warden": {
       "src": "/assets/ships/ledger_warden.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: player_infinity_warden used for Ledger Warden"
+      "notes": "Phase O optimized v16 canon master: player_infinity_warden used for Ledger Warden",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "characters": {
@@ -26,7 +41,10 @@
         "frames": 6,
         "fps": 8
       },
-      "notes": "L1-H1 simplified 64px gameplay prototype derived from canonical XRPMan reference; frame order front/back/left/right/side-idle/side-fire; primary #00FF00 with electric-blue secondary accents"
+      "notes": "L1-H1 simplified 64px gameplay prototype derived from canonical XRPMan reference; frame order front/back/left/right/side-idle/side-fire; primary #00FF00 with electric-blue secondary accents",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "xrpman_idle": {
       "src": "/assets/characters/xrpman_idle.png",
@@ -37,7 +55,10 @@
         "frames": 6,
         "fps": 6
       },
-      "notes": "6 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+      "notes": "6 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "xrpman_run": {
       "src": "/assets/characters/xrpman_run.png",
@@ -48,7 +69,10 @@
         "frames": 8,
         "fps": 14
       },
-      "notes": "8 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+      "notes": "8 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "xrpman_jump": {
       "src": "/assets/characters/xrpman_jump.png",
@@ -59,7 +83,10 @@
         "frames": 8,
         "fps": 10
       },
-      "notes": "8 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+      "notes": "8 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "xrpman_fire": {
       "src": "/assets/characters/xrpman_fire.png",
@@ -70,66 +97,124 @@
         "frames": 7,
         "fps": 16
       },
-      "notes": "7 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames"
+      "notes": "7 frames cut from the uploaded XRPMan character sheets: grey card keyed by a border flood, ground shadows removed by a neutral-grey pass, each pose masked to its own connected component and scaled by one shared factor so the character does not change size between frames",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     }
   },
   "enemies": {
     "regulator_drone": {
       "src": "/assets/enemies/regulator_drone.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: enemy_regulator_drone"
+      "notes": "Phase O optimized v16 canon master: enemy_regulator_drone",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "fog_raider": {
       "src": "/assets/enemies/fog_raider.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: enemy_fog_raider"
+      "notes": "Phase O optimized v16 canon master: enemy_fog_raider",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "whale_scout": {
       "src": "/assets/enemies/whale_scout.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: enemy_whale_scout"
+      "notes": "Phase O optimized v16 canon master: enemy_whale_scout",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "rug_fighter": {
       "src": "/assets/enemies/rug_fighter.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: enemy_rug_fighter"
+      "notes": "Phase O optimized v16 canon master: enemy_rug_fighter",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "fast_scout": {
       "src": "/assets/enemies/fast_scout.webp",
       "type": "image",
-      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_fast_scout master"
+      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_fast_scout master",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "bosses": {
     "gary_fog_phase1": {
       "src": "/assets/bosses/gary_fog_phase1.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: boss_gary_fog_phase1"
+      "notes": "Phase O optimized v16 canon master: boss_gary_fog_phase1",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "regulatory_behemoth_phase2": {
       "src": "/assets/bosses/regulatory_behemoth_phase2.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: boss_regulatory_behemoth_phase2"
+      "notes": "Phase O optimized v16 canon master: boss_regulatory_behemoth_phase2",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "clarity_destroyer_phase3": {
       "src": "/assets/bosses/clarity_destroyer_phase3.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: boss_clarity_destroyer_phase3"
+      "notes": "Phase O optimized v16 canon master: boss_clarity_destroyer_phase3",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "final_clarity": {
       "src": "/assets/bosses/final_clarity.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: boss_final_clarity"
+      "notes": "Phase O optimized v16 canon master: boss_final_clarity",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "regulatory_warship": {
       "src": "/assets/bosses/regulatory_warship.webp",
       "type": "image",
-      "notes": "L1-F1 optimized 512x458 transparent runtime crop from supplied boss_regulatory_warship master"
+      "notes": "L1-F1 optimized 512x458 transparent runtime crop from supplied boss_regulatory_warship master",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "cyber_battleship": {
       "src": "/assets/bosses/cyber_battleship.webp",
       "type": "image",
-      "notes": "Guardian Protocol, the transit-leg boss. Keyed from the approved 1254x1254 RGB render: background flooded from the borders so the dark armour panels stay solid, with a 7px luminance feather on the neon falloff. Squared, trimmed and resampled to 640."
+      "notes": "Guardian Protocol, the transit-leg boss. Keyed from the approved 1254x1254 RGB render: background flooded from the borders so the dark armour panels stay solid, with a 7px luminance feather on the neon falloff. Squared, trimmed and resampled to 640.",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "weapons": {},
@@ -137,34 +222,64 @@
     "bb_shot": {
       "src": "/assets/projectiles/bb_shot.webp",
       "type": "image",
-      "notes": "Phase Q optimized v16 canon master: projectile_player_bb"
+      "notes": "Phase Q optimized v16 canon master: projectile_player_bb",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "enemy_red_bullet": {
       "src": "/assets/projectiles/enemy_red_bullet.webp",
       "type": "image",
-      "notes": "Phase Q optimized v16 canon master: projectile_enemy_red_bullet"
+      "notes": "Phase Q optimized v16 canon master: projectile_enemy_red_bullet",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "enemy_missile": {
       "src": "/assets/projectiles/enemy_missile.webp",
       "type": "image",
-      "notes": "Phase Q optimized v16 canon master: projectile_enemy_missile"
+      "notes": "Phase Q optimized v16 canon master: projectile_enemy_missile",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "clarity_beam": {
       "src": "/assets/projectiles/clarity_beam.png",
       "type": "image",
-      "notes": "From Coded_1 pack: compliance_breaker_beam_projectile, impact end cropped off, rotated nose-up, scaled to 18x54"
+      "notes": "From Coded_1 pack: compliance_breaker_beam_projectile, impact end cropped off, rotated nose-up, scaled to 18x54",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "seeker_missile": {
       "src": "/assets/projectiles/seeker_missile.png",
       "type": "image",
-      "notes": "From futuristic_rocket_with_neon_glow.png: keyed off its black background, trimmed and scaled to 15x43"
+      "notes": "From futuristic_rocket_with_neon_glow.png: keyed off its black background, trimmed and scaled to 15x43",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "vfx": {
     "burst_ring": {
       "src": "/assets/vfx/burst_ring.webp",
       "type": "image",
-      "notes": "Phase Q optimized v16 canon master: fx_explosion_impact"
+      "notes": "Phase Q optimized v16 canon master: fx_explosion_impact",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "hit_spark": {
       "src": "/assets/vfx/hit_spark.png",
@@ -175,174 +290,322 @@
         "frameHeight": 96,
         "fps": 13
       },
-      "notes": "From Coded_1 pack: special_weapon_hit_spark_6frame, keyed off black and boxed to 6x96px frames"
+      "notes": "From Coded_1 pack: special_weapon_hit_spark_6frame, keyed off black and boxed to 6x96px frames",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "ui": {
     "regulatory_warship_cockpit": {
       "src": "/assets/ui/cockpit/regulatory_warship_cockpit_overlay.webp",
       "type": "image",
-      "notes": "Stolen Regulatory Warship canopy. Alpha aperture is the forward view: safe rect x 0.20-0.80, y 0.03-0.57, vanishing point at (0.50, 0.30). Optimized from the 1672x941 approved PNG at q0.86; alpha is bit-identical to the source."
+      "notes": "Stolen Regulatory Warship canopy. Alpha aperture is the forward view: safe rect x 0.20-0.80, y 0.03-0.57, vanishing point at (0.50, 0.30). Optimized from the 1672x941 approved PNG at q0.86; alpha is bit-identical to the source.",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "backgrounds": {
     "ledger_city": {
       "src": "/assets/backgrounds/ledger_city.webp",
       "type": "image",
-      "notes": "Original-build master: bg_space_city_tunnel_vertical"
+      "notes": "Original-build master: bg_space_city_tunnel_vertical",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "data_canyon": {
       "src": "/assets/backgrounds/data_canyon.webp",
       "type": "image",
-      "notes": "Original-build master: bg_neon_data_tunnel_vertical"
+      "notes": "Original-build master: bg_neon_data_tunnel_vertical",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "regulatory_outpost": {
       "src": "/assets/backgrounds/regulatory_outpost.webp",
       "type": "image",
-      "notes": "Original-build master: bg_regulatory_fortress_approach_vertical"
+      "notes": "Original-build master: bg_regulatory_fortress_approach_vertical",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "deep_space_lane": {
       "src": "/assets/backgrounds/deep_space_lane.webp",
       "type": "image",
-      "notes": "Phase T optimized original-build master: bg_deep_space_lane_vertical"
+      "notes": "Phase T optimized original-build master: bg_deep_space_lane_vertical",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "boss_arena": {
       "src": "/assets/backgrounds/boss_arena.webp",
       "type": "image",
-      "notes": "Original-build master: bg_boss_arena_vertical"
+      "notes": "Original-build master: bg_boss_arena_vertical",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "interior": {
     "regulatory_docking_bay": {
       "src": "/assets/interior/regulatory_docking_bay.webp",
       "type": "image",
-      "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch"
+      "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "regulatory_security_checkpoint": {
       "src": "/assets/interior/regulatory_security_checkpoint.webp",
       "type": "image",
-      "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch"
+      "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "regulatory_access_corridor": {
       "src": "/assets/interior/regulatory_access_corridor.webp",
       "type": "image",
-      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "regulatory_maintenance_shaft": {
       "src": "/assets/interior/regulatory_maintenance_shaft.webp",
       "type": "image",
-      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "regulatory_field_control": {
       "src": "/assets/interior/regulatory_field_control.webp",
       "type": "image",
-      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     },
     "regulatory_defense_deck": {
       "src": "/assets/interior/regulatory_defense_deck.webp",
       "type": "image",
-      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install"
+      "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
+      "scenes": [
+        "legacy_onfoot"
+      ]
     }
   },
   "hazards": {
     "defense_turret": {
       "src": "/assets/hazards/defense_turret.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: ground_basic_turret"
+      "notes": "Phase O optimized v16 canon master: ground_basic_turret",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "basic_turret": {
       "src": "/assets/hazards/basic_turret.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: ground_basic_turret"
+      "notes": "Phase R optimized original-build master: ground_basic_turret",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "cannon_turret": {
       "src": "/assets/hazards/cannon_turret.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: ground_cannon_turret"
+      "notes": "Phase R optimized original-build master: ground_cannon_turret",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "cannon_tower": {
       "src": "/assets/hazards/cannon_tower.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: ground_cannon_tower"
+      "notes": "Phase R optimized original-build master: ground_cannon_tower",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "laser_tower": {
       "src": "/assets/hazards/laser_tower.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: ground_laser_tower"
+      "notes": "Phase R optimized original-build master: ground_laser_tower",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "missile_silo": {
       "src": "/assets/hazards/missile_silo.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: ground_missile_silo"
+      "notes": "Phase R optimized original-build master: ground_missile_silo",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "plasma_turret": {
       "src": "/assets/hazards/plasma_turret.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: ground_plasma_turret"
+      "notes": "Phase R optimized original-build master: ground_plasma_turret",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "armored_space_mine": {
       "src": "/assets/hazards/armored_space_mine.webp",
       "type": "image",
-      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_armored_space_mine master"
+      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_armored_space_mine master",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "environment": {
     "mega_tower": {
       "src": "/assets/environment/mega_tower.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_mega_tower"
+      "notes": "Phase R optimized original-build master: env_mega_tower",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "data_spire": {
       "src": "/assets/environment/data_spire.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_data_spire"
+      "notes": "Phase R optimized original-build master: env_data_spire",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "energy_barrier": {
       "src": "/assets/environment/energy_barrier.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_energy_barrier"
+      "notes": "Phase R optimized original-build master: env_energy_barrier",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "regulatory_outpost": {
       "src": "/assets/environment/regulatory_outpost.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_regulatory_outpost"
+      "notes": "Phase R optimized original-build master: env_regulatory_outpost",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "xrp_billboard": {
       "src": "/assets/environment/xrp_billboard.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_xrp_billboard"
+      "notes": "Phase R optimized original-build master: env_xrp_billboard",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "defense_turret": {
       "src": "/assets/environment/defense_turret.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_defense_turret"
+      "notes": "Phase R optimized original-build master: env_defense_turret",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "asteroid": {
       "src": "/assets/environment/asteroid.webp",
       "type": "image",
-      "notes": "Phase R optimized original-build master: env_asteroid"
+      "notes": "Phase R optimized original-build master: env_asteroid",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "pickups": {
     "weapon_upgrade": {
       "src": "/assets/pickups/weapon_upgrade.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: pickup_weapon_upgrade"
+      "notes": "Phase O optimized v16 canon master: pickup_weapon_upgrade",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "bomb": {
       "src": "/assets/pickups/bomb.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: pickup_pulse_weapon used for Clarity Bomb"
+      "notes": "Phase O optimized v16 canon master: pickup_pulse_weapon used for Clarity Bomb",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "repair": {
       "src": "/assets/pickups/repair.webp",
       "type": "image",
-      "notes": "Phase O optimized v16 canon master: pickup_repair"
+      "notes": "Phase O optimized v16 canon master: pickup_repair",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     },
     "shield_cell": {
       "src": "/assets/pickups/shield_cell.png",
       "type": "image",
-      "notes": "From the Images_for_coded pack: pickup_shield, caption cropped off and boxed to 44x44"
+      "notes": "From the Images_for_coded pack: pickup_shield, caption cropped off and boxed to 44x44",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "objectives": {},
@@ -350,9 +613,224 @@
     "clarity_pulse": {
       "src": "/assets/special/clarity_pulse.webp",
       "type": "image",
-      "notes": "Phase 2B Batch 0 optimized curated crop: pickup_clarity; Phase A still renders pulse procedurally"
+      "notes": "Phase 2B Batch 0 optimized curated crop: pickup_clarity; Phase A still renders pulse procedurally",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "base": {},
-  "campaign": {}
+  "campaign": {},
+  "models": {
+    "regulatory_warship": {
+      "src": "/assets/models/regulatory_warship.glb",
+      "type": "model",
+      "scenes": [
+        "model_review",
+        "space"
+      ],
+      "bytes": 1726968,
+      "sha256": "e2762930ff378b993b749fb9c02a02267fd81296133939f8a55d3063af4e626e",
+      "notes": "v03 LOD0 geometry with v04 generated albedo, authored micro normal and roughness/metal maps; six surfaces, all nine nodes. Private masters preserved."
+    },
+    "xrpman": {
+      "src": "/assets/models/xrpman.glb",
+      "type": "model",
+      "scenes": [
+        "character_review",
+        "boarding",
+        "hub"
+      ],
+      "bytes": 3597232,
+      "sha256": "aaac2c935fe4b248a2faf872b33609c3ac5e65c626550b3ea0c0bfd90cfad20b"
+    },
+    "mr_zamn": {
+      "src": "/assets/models/mr_zamn.glb",
+      "notes": "Original blue heavy armor, shield, fitted beard and three clips on pinned CC0 anatomy. Private master remains outside repository.",
+      "bytes": 3435044,
+      "type": "model",
+      "scenes": [
+        "boarding",
+        "hub",
+        "crew_review"
+      ],
+      "sha256": "e84bd48c4855e9766508f84a76a0b2204deb3d659e9b1b18f53310fb295e2c7f"
+    },
+    "fighter_player": {
+      "src": "/assets/models/fighter_player.glb",
+      "type": "model",
+      "scenes": [
+        "landing",
+        "boarding",
+        "hub"
+      ],
+      "bytes": 360680,
+      "sha256": "49b78ed1cdc029c1d902353781460891dcd0c5cf28f46ec1c702ed823b515c6b",
+      "notes": "Original Blender derivative of the selected fighter; canopy pivot, landing gear and pilot exit. LandingScene / BoardingScene consumer."
+    },
+    "fighter_xrpl_striker": {
+      "src": "/assets/models/fighter_xrpl_striker.glb",
+      "type": "model",
+      "scenes": [
+        "landing",
+        "boarding",
+        "hub"
+      ],
+      "bytes": 372640,
+      "sha256": "80cb43c0501b491ee2b4c248b11ca55b7a95aa686e50b2874c5ffbe97bf0bdc1",
+      "notes": "Original Blender derivative of the selected fighter; canopy pivot, landing gear and pilot exit. LandingScene / BoardingScene consumer."
+    },
+    "fighter_ledger_warden": {
+      "src": "/assets/models/fighter_ledger_warden.glb",
+      "type": "model",
+      "scenes": [
+        "landing",
+        "boarding",
+        "hub"
+      ],
+      "bytes": 372648,
+      "sha256": "207c4a023aff57e9d539f7cb0e10b151b7f1fb8772c091dd09392f9143d040c8",
+      "notes": "Original Blender derivative of the selected fighter; canopy pivot, landing gear and pilot exit. LandingScene / BoardingScene consumer."
+    },
+    "regulatory_warship_open": {
+      "src": "/assets/models/regulatory_warship_open.glb",
+      "type": "model",
+      "scenes": [
+        "landing"
+      ],
+      "bytes": 1254520,
+      "sha256": "2a4e6e831e74319506405ac826aaf4d4fb337f39910b67ff52bc7938815e1cd4",
+      "notes": "v03 LOD0 geometry with v04 generated albedo, authored micro normal and roughness/metal maps; six surfaces, all nine nodes. Private masters preserved."
+    },
+    "boarding_deck": {
+      "src": "/assets/models/boarding_deck.glb",
+      "type": "model",
+      "scenes": [
+        "boarding",
+        "hub"
+      ],
+      "bytes": 4046020,
+      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
+      "notes": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer."
+    },
+    "space_regulator_drone": {
+      "src": "/assets/models/space_regulator_drone.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 704228,
+      "sha256": "92846736a970669232b6b678b06f2a51fb8b31ef43ed3995da1a1f35f3196209",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene regulator_drone doctrine consumer. Private editable master retained."
+    },
+    "space_fast_scout": {
+      "src": "/assets/models/space_fast_scout.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 688908,
+      "sha256": "0877a025128d7e41138d49d353c7ca7fce04e71877f5a447358c86bbcced7f51",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene fast_scout doctrine consumer. Private editable master retained."
+    },
+    "space_fog_raider": {
+      "src": "/assets/models/space_fog_raider.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 653320,
+      "sha256": "0e01645aa4762ec1e5db2330862d033be1db3dc7cfcfd0b14a7c1264509954da",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene fog_raider doctrine consumer. Private editable master retained."
+    },
+    "space_rug_fighter": {
+      "src": "/assets/models/space_rug_fighter.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 667460,
+      "sha256": "b7d3d1f66a3b6b383e10e2fe2dea7292434ac5ee1657600e037e8a5247a1e35f",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene rug_fighter doctrine consumer. Private editable master retained."
+    },
+    "space_whale_scout": {
+      "src": "/assets/models/space_whale_scout.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 944808,
+      "sha256": "7cf9bc05b9532b45f9b12ee3178d33f9f91f0c13e6447404aa8aa105a0fbc3e3",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene whale_scout doctrine consumer. Private editable master retained."
+    },
+    "planet_earth": {
+      "src": "/assets/models/planet_earth.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 305480,
+      "sha256": "d29fb68ce5ec63a536c0b2c90e3b4e46cb7b8b7efef45ed046fb37daaa7d9450",
+      "notes": "World-space sphere; 1024x512 NASA surface map. See docs/definitive/SPACE_ASSET_CREDITS.md. SpaceScene consumer."
+    },
+    "planet_mars": {
+      "src": "/assets/models/planet_mars.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 326696,
+      "sha256": "c82d8a650643dec1fe5f9e3a45073a700221892bdd0528c4068c984ad86fe1c9",
+      "notes": "World-space sphere; 1024x512 NASA surface map. See docs/definitive/SPACE_ASSET_CREDITS.md. SpaceScene consumer."
+    }
+  },
+  "audio": {
+    "theme": {
+      "src": "/assets/audio/theme.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 3565203,
+      "sha256": "2a0860dbdacc012954bff31c2123b2be168345bcb45bdff10118dc17ef2e67b6"
+    },
+    "level_one": {
+      "src": "/assets/audio/level_one.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 3652031,
+      "sha256": "8b9baef762e4cb7bb7a89a3210896835e0cddb0bfee874c92628922e2d504ad0"
+    },
+    "boss_fight": {
+      "src": "/assets/audio/boss_fight.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 4397977,
+      "sha256": "eb30d072fbf33bc5852d222f7079530026f4179d09ea6f37110b8648d03db3fc"
+    },
+    "transit": {
+      "src": "/assets/audio/transit.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 1191048,
+      "sha256": "9b23b21a923b6cba9b53eb2e9db4694e65c36b0efe85d835293659eb57ec1996"
+    },
+    "guardian_protocol": {
+      "src": "/assets/audio/guardian_protocol.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 4015790,
+      "sha256": "298eb9ccddb763a56f31a2af8d79d9367512712eee0b0693350d21749009dc41"
+    }
+  }
 }
