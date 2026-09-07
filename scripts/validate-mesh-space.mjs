@@ -7,6 +7,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 const load=async path=>{const out=await build({entryPoints:[path],bundle:true,write:false,format:'esm',logLevel:'silent'});return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);};
 const {capitalVolley,flightHull,HullSweep,turnFlight}=await load('src/game/definitive/SpaceGeometry.ts');
 const {SpaceInput}=await load('src/game/definitive/SpaceInput.ts');
+const {applyCapturedLivery}=await load('src/game/definitive/FactionAppearance.ts');
 const {CampaignSave,parseDefinitiveSave}=await load('src/game/definitive/CampaignSave.ts');
 const {prepareSpaceReview,startTransit,checkpointTransit,finishDeparture,clearSpaceWave,arriveMars,SPACE_MODELS,SPACE_WAVES}=await load('src/game/definitive/SpaceProgress.ts');
 globalThis.self=globalThis;globalThis.createImageBitmap=async()=>({width:1024,height:1024,close(){}});
@@ -21,6 +22,18 @@ for(const id of SPACE_MODELS){
 }
 assert.ok(total+900000<12*1024*1024,'space bundle fits reserved renderer plus models');
 const originalSize=new Box3().setFromObject(parsed.get('regulatory_warship'),true).getSize(new Vector3());
+const captured=parsed.get('regulatory_warship');
+applyCapturedLivery(captured);
+let greenPaint=0,greenSystems=0;
+captured.traverse(o=>{if(o.isMesh)for(const m of Array.isArray(o.material)?o.material:[o.material]){
+  if(m.name==='Armor_Plane'){assert.ok(m.color.g>m.color.r*4&&m.color.g>m.color.b*4);greenPaint++;}
+  if(/Hostile|Engine/.test(m.name)){assert.equal(m.emissive.getHexString(),'00ff00');assert.equal(m.toneMapped,false);greenSystems++;}
+}});
+assert.ok(greenPaint>0&&greenSystems>=2,'owned hull and power systems visibly carry the green faction');
+for(const key of ['space_regulator_drone','space_fast_scout','space_whale_scout']){
+  let red=0;parsed.get(key).traverse(o=>{if(o.isMesh)for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.emissive&&m.emissive.r>m.emissive.g*3&&m.emissive.r>.2)red++;});
+  assert.ok(red>0,`${key}: captured livery must not repaint enemy assets`);
+}
 const ship=flightHull(parsed.get('regulatory_warship')),hull=new HullSweep(ship),size=new Box3().setFromObject(ship,true).getSize(new Vector3());
 assert.ok(size.distanceTo(originalSize)<.001&&Math.abs(size.z-120)<.01,`single metre adapter preserves actual v03 dimensions: ${size.toArray()}`);
 console.log(`v03 precise bounds: ${size.toArray().map(n=>n.toFixed(3)).join(' x ')} metres (X,Y,Z)`);

@@ -22,7 +22,7 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     behavior: 'zigzag',
     fireRate: 1.7,
     projectileSpeed: 285,
-    accent: '#ff5ce1',
+    accent: '#ff3030',
     doctrine: 'pressure',
   },
 });

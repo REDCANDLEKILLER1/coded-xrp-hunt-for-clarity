@@ -360,6 +360,26 @@
         "legacy_space",
         "legacy_onfoot"
       ]
+    },
+    "earth_orbit_neon_v2": {
+      "src": "/assets/backgrounds/earth_orbit_neon_v2.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 72252,
+      "sha256": "516dc535c206c9f2ce835fcce072ea39af2e6c42fc6118f19efd8b3821ccb104",
+      "notes": "Original built-in image generation; neon edit of original v01 environment; private prompt and raw master retained"
+    },
+    "ledger_ground_neon_v2": {
+      "src": "/assets/backgrounds/ledger_ground_neon_v2.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 110934,
+      "sha256": "b78b8958b08df20e0e74d630d97dfc381d9d05a00273d7f0bf2e33beb33a2f5a",
+      "notes": "Original built-in image generation; neon edit of original v01 environment; private prompt and raw master retained"
     }
   },
   "interior": {

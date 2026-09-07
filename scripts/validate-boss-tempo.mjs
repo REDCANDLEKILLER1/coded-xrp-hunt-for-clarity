@@ -311,6 +311,69 @@ for (const boss of scripted) {
   check(g.bossShielded(), 'the next screen may launch after its cooldown expires');
 }
 
+// A real chapter run exposed a final-hit divergence: seekers disabled the
+// director but left the actor fighting. Exercise the actual collision/bomb
+// entry points, with hazards already threatening the fighter on that frame.
+{
+  const { EARTH_LEDGER_PRIME_MISSION: mission } = await load('src/game/content/missions/ledgerPrime.ts');
+  const prepare = () => {
+    const g = new Game2A(stubCanvas());
+    g.deployFromMap('ledger_prime', 'EARTH'); g.reset(); g.launchClock = 0;
+    g.missionDirector.startAtAct(mission, 'regulatory_warship');
+    g.warship = null;
+    g.updateMission(1 / 60); g.warship.state = 'fight'; g.warship.y = 132;
+    for (let phase = 0; phase < 5 && g.warshipDirector.phase !== 'hangar'; phase++) {
+      if (g.warshipDirector.shieldCovered) g.warshipDirector.exposeShieldRelay();
+      for (const s of g.warshipDirector.targetableSystems) g.warshipDirector.hit(s.key, 99);
+    }
+    if (g.warshipDirector.phase !== 'hangar') throw Error('Warship fixture did not expose the hangar');
+    g.warshipDirector.hit('hangar_defense', 17);
+    return g;
+  };
+  for (const weapon of ['bolt', 'seeker', 'bomb']) {
+    const g = prepare(), system = g.warshipDirector.targetableSystems[0];
+    const point = g.warshipSystemCenter(system);
+    g.playerHitClock = 0; g.shield = 0; g.player.hp = 5;
+    g.hazards = [{ ...g.player, hazardKey:'basic_turret', hp:5, fireClock:1, side:1 }];
+    g.warshipLaunchClock = 0; g.warshipDefenders(.016);
+    g.hostileShots = [{ ...g.player, damage:1, color:'#ff0000', projectileKey:'enemy_red_bullet' }];
+    const shot = { ...point, w:8, h:8, vx:0, vy:0, damage:1, life:2, pierce:0 };
+    if (weapon === 'bolt') g.bolts = [shot];
+    if (weapon === 'seeker') g.seekers = [shot];
+    if (weapon === 'bomb') { g.bombs = 1; g.useBomb(); }
+    g.collisions();
+    check(g.warship.state === 'disabled', `${weapon}: final hit must disable the actor on the same frame`);
+    check(g.missionDirector.currentAct.key === 'boarding', `${weapon}: final hit must immediately open boarding`);
+    check(g.player.hp === 5, `${weapon}: residual fire must not damage the fighter after the encounter ends`);
+    check([g.drones,g.hazards,g.hostileShots,g.bolts,g.seekers].every(a => a.length === 0), `${weapon}: boarding approach must be clear of residual combat`);
+    check(g.progress.missionCheckpoints.ledger_prime?.resumeActKey === 'boarding', `${weapon}: real boarding checkpoint must be saved`);
+    const score = g.score;
+    g.completeRegulatoryWarship(); g.collisions();
+    check(g.score === score, `${weapon}: repeated completion must not duplicate score`);
+    for (let i = 0; i < 120; i++) g.update(1 / 60);
+    check(g.player.hp === 5 && g.drones.length === 0 && g.hostileShots.length === 0, `${weapon}: safe approach must stay safe while controls remain live`);
+  }
+  const g = prepare(); g.warshipLaunchClock = 0; g.warshipDefenders(.016);
+  const defender = g.drones[0], before = {x:defender.x,y:defender.y,age:defender.age};
+  g.updateMission(.05);
+  check(defender.age > before.age && (defender.x !== before.x || defender.y !== before.y), 'capital-ship defenders must actually fly and age in campaign mode');
+  console.log('  Warship final hits       bolt / seeker / bomb: safe, saved, one-time boarding; defenders move');
+}
+
+// Test the actual background draw selection, not only inherited stage metadata.
+{
+  const {EARTH_LEDGER_PRIME_MISSION:mission}=await load('src/game/content/missions/ledgerPrime.ts');
+  const {groundTiles}=await load('src/game/content/EarthEnvironment.ts');
+  for(const [act,expected] of [['regulatory_behemoth','earth_orbit_neon_v2'],['clarity_destroyer','ledger_ground_neon_v2'],['regulatory_warship','ledger_ground_neon_v2']]){
+    const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset();g.earthEncounterDirector.clear();g.missionDirector.startAtAct(mission,act);
+    const refs=[];g.assets.getImage=(category,id)=>{refs.push(id);return{width:1024,height:683};};
+    g.drawStageBackdrop(g.currentStage());check(refs.length===1&&refs[0]===expected,`${act}: actual draw must inherit the chapter environment`);
+    const travel=g.groundTravel;g.paused=true;g.update(10);check(g.groundTravel===travel,'paused ground does not slide under frozen threats');
+  }
+  const before=groundTiles(599.9,844,600),after=groundTiles(600.1,844,600);
+  for(const tile of before){const next=after.find(t=>t.id===tile.id);if(next){check(Math.abs(next.y-tile.y-.2)<1e-8,'ground tiles must not jump at wrap');check(next.mirror===tile.mirror,'tile identity and orientation survive offset wrap');}}
+}
+
 if (failures.length) {
   console.error('boss-tempo: FAIL');
   for (const failure of failures) console.error(`  - ${failure}`);

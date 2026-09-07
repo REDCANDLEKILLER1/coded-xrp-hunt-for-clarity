@@ -11,6 +11,7 @@ import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMi
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
+import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
 import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
@@ -716,6 +717,7 @@ export class Game2A {
 
   private readonly reviewTelemetry=typeof location!=='undefined'&&new URLSearchParams(location.search).get('review')==='earth';
   private reviewSampleAt=-1;
+  private groundTravel=0;
   /** Copied observations only: the section test offers no state setters. */
   private sampleEarthReview():void {
     if(!this.reviewTelemetry||this.clock-this.reviewSampleAt<.15)return;
@@ -847,6 +849,7 @@ export class Game2A {
     }
 
     this.movePlayer(dt);
+    this.groundTravel += this.currentStage().scrollSpeed * dt;
     this.updateFacing(dt);
     this.updateBolts(dt);
     this.updateSeekers(dt);
@@ -958,6 +961,7 @@ export class Game2A {
     if (act.key === 'regulatory_warship') {
       if (!this.warship) this.startRegulatoryWarship();
       this.updateRegulatoryWarship(dt);
+      this.moveDrones(dt);
       return;
     }
 
@@ -2308,16 +2312,7 @@ export class Game2A {
         for (const system of this.warshipDirector.targetableSystems) {
           if (!overlap(box(bolt, 0.65), this.warshipSystemBox(system))) continue;
           bolt.life = 0;
-          const before = this.warshipDirector.phase;
-          const hit = this.warshipDirector.hit(system.key, bolt.damage);
-          this.ring(this.warshipSystemCenter(system).x, this.warshipSystemCenter(system).y);
-          if (hit.destroyedNow) this.special = Math.min(100, this.special + 24);
-          if (this.warshipDirector.phase !== before) {
-            this.hostileShots = [];
-            this.missionBannerText = this.warshipDirector.objective;
-            this.missionBannerClock = 2.8;
-          }
-          if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
+          this.damageWarshipSystem(system, bolt.damage);
           break;
         }
       }
@@ -2359,7 +2354,7 @@ export class Game2A {
       if (!spent && this.warship?.state === 'fight') {
         for (const system of this.warshipDirector.targetableSystems) {
           if (!overlap(box(seeker, 0.8), this.warshipSystemBox(system))) continue;
-          this.warshipDirector.hit(system.key, seeker.damage);
+          this.damageWarshipSystem(system, seeker.damage);
           spent = true;
           break;
         }
@@ -2427,6 +2422,22 @@ export class Game2A {
     return { x: center.x - system.w / 2, y: center.y - system.h / 2, w: system.w, h: system.h };
   }
 
+  private damageWarshipSystem(system: WarshipSystemState, damage: number): void {
+    if (this.warship?.state !== 'fight') return;
+    const before = this.warshipDirector.phase;
+    const hit = this.warshipDirector.hit(system.key, damage);
+    if (!hit.accepted) return;
+    const center = this.warshipSystemCenter(system);
+    this.ring(center.x, center.y);
+    if (hit.destroyedNow) this.special = Math.min(100, this.special + 24);
+    if (this.warshipDirector.phase !== before) {
+      this.hostileShots = [];
+      this.missionBannerText = this.warshipDirector.objective;
+      this.missionBannerClock = 2.8;
+    }
+    if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
+  }
+
   private completeRegulatoryWarship(): void {
     const warship = this.warship;
     const mission = this.missionDirector.activeMission;
@@ -2436,6 +2447,9 @@ export class Game2A {
     this.score += REGULATORY_WARSHIP.score;
     this.hostileShots = [];
     this.bolts = [];
+    this.seekers = [];
+    this.drones = [];
+    this.hazards = [];
     this.special = 100;
 
     const boarding = mission.checkpoints.find((checkpoint) => checkpoint.resumeActKey === 'boarding');
@@ -2522,10 +2536,12 @@ export class Game2A {
     this.ctx.fillStyle = sky;
     this.ctx.fillRect(0, 0, this.w, this.h);
     const illustrated = this.drawStageBackdrop(stage);
-    this.ctx.strokeStyle = `${stage.accent}${illustrated ? '0c' : '18'}`;
-    const gridOffset = (this.clock * stage.scrollSpeed) % 46;
-    for (let y = gridOffset - 46; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
-    for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
+    if (!this.missionDirector.activeMission) {
+      this.ctx.strokeStyle = `${stage.accent}${illustrated ? '0c' : '18'}`;
+      const gridOffset = (this.clock * stage.scrollSpeed) % 46;
+      for (let y = gridOffset - 46; y < this.h; y += 46) line(this.ctx, 0, y, this.w, y);
+      for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
+    }
     if (!illustrated) this.drawStageStructures(stage);
     this.drawStageProps(stage);
   }
@@ -2534,14 +2550,14 @@ export class Game2A {
     const props = Object.values(ENVIRONMENT_PROPS).filter((prop) => prop.stages.includes(stage.key));
     if (props.length === 0) return;
     const spacing = 168;
-    const travel = this.clock * stage.scrollSpeed * 0.72;
+    const travel = this.missionDirector.activeMission ? this.groundTravel : this.clock * stage.scrollSpeed * 0.72;
     const base = Math.floor(travel / spacing);
     const offset = travel % spacing;
 
     this.ctx.save();
     this.ctx.globalAlpha = 0.62;
     for (let row = -1; row <= Math.ceil(this.h / spacing) + 1; row += 1) {
-      const index = base + row;
+      const index = row - base;
       const prop = props[Math.abs(index) % props.length];
       const y = row * spacing + offset;
       const side = index % 2 === 0 ? -1 : 1;
@@ -2553,9 +2569,31 @@ export class Game2A {
   }
 
   private drawStageBackdrop(stage: StageDef): boolean {
-    const ref = this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
+    const earth=!!this.missionDirector.activeMission;
+    const ref = earth ? EARTH_BACKDROPS[stage.key] ?? stage.background : this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
     const image = this.assets.getImage(ref.category, ref.id);
     if (!image || image.width <= 0 || image.height <= 0) return false;
+
+    if(earth){
+      this.ctx.save();
+      if(stage.key==='deep_space_lane'){
+        // A single orbital horizon, never a repeated stack of Earths.
+        const scale=Math.max(this.w/image.width,this.h/image.height)*1.035;
+        const width=image.width*scale,height=image.height*scale;
+        const drift=Math.sin(this.groundTravel*.0002)*this.w*.01;
+        this.ctx.drawImage(image,(this.w-width)/2+drift,(this.h-height)/2,width,height);
+      }else{
+        const height=image.height*this.w/image.width;
+        for(const tile of groundTiles(this.groundTravel,this.h,height)){
+          this.ctx.save();this.ctx.translate(0,tile.y+(tile.mirror?height:0));
+          if(tile.mirror)this.ctx.scale(1,-1);
+          this.ctx.drawImage(image,0,0,this.w,height);this.ctx.restore();
+        }
+      }
+      const shade=this.ctx.createLinearGradient(0,0,0,this.h);
+      shade.addColorStop(0,'rgba(0,4,2,.06)');shade.addColorStop(1,'rgba(0,4,2,.2)');
+      this.ctx.fillStyle=shade;this.ctx.fillRect(0,0,this.w,this.h);this.ctx.restore();return true;
+    }
 
     const scale = Math.max(this.w / image.width, this.h / image.height);
     const drawWidth = image.width * scale;
@@ -2603,13 +2641,13 @@ export class Game2A {
 
   private title(): void {
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff88';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '700 28px ui-sans-serif, system-ui';
     this.ctx.fillText('CODED: XRP', this.w / 2, this.h * 0.34);
-    this.ctx.fillStyle = '#36a3ff';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '600 16px ui-sans-serif, system-ui';
     this.ctx.fillText('THE HUNT FOR CLARITY', this.w / 2, this.h * 0.39);
-    this.ctx.strokeStyle = '#00ff88';
+    this.ctx.strokeStyle = '#00ff00';
     this.ctx.strokeRect(this.w / 2 - 78, this.h * 0.54 - 24, 156, 48);
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '700 18px ui-sans-serif, system-ui';
@@ -2632,10 +2670,10 @@ export class Game2A {
     const save = this.resumeCheckpoint();
     const buttons = this.resultsButtons();
     if (save) {
-      this.button(buttons.primary, `CONTINUE // ${save.checkpointLabel}`, '#00ff88');
+      this.button(buttons.primary, `CONTINUE // ${save.checkpointLabel}`, '#00ff00');
       this.button(buttons.secondary, 'RESTART MISSION', 'rgba(216,255,232,0.5)');
     } else {
-      this.button(buttons.primary, 'RESTART', '#00ff88');
+      this.button(buttons.primary, 'RESTART', '#00ff00');
     }
   }
 
@@ -2664,17 +2702,17 @@ export class Game2A {
 
   private victory(): void {
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff88';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '900 28px ui-sans-serif, system-ui';
     this.ctx.fillText('CLARITY RESTORED', this.w / 2, this.h * 0.32);
-    this.ctx.fillStyle = '#36a3ff';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '700 17px ui-sans-serif, system-ui';
     this.ctx.fillText('THE LEDGER IS CLEAR', this.w / 2, this.h * 0.38);
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '600 15px ui-sans-serif, system-ui';
     this.ctx.fillText(`FINAL SCORE ${this.score}`, this.w / 2, this.h * 0.47);
     this.ctx.fillText(`CAMPAIGN VICTORIES ${this.progress.victories}`, this.w / 2, this.h * 0.52);
-    this.ctx.strokeStyle = '#00ff88';
+    this.ctx.strokeStyle = '#00ff00';
     this.ctx.strokeRect(this.w / 2 - 92, this.h * 0.62 - 24, 184, 48);
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '800 15px ui-sans-serif, system-ui';
@@ -2687,7 +2725,7 @@ export class Game2A {
     this.ctx.font = '700 22px ui-sans-serif, system-ui';
     this.ctx.fillText('SELECT YOUR SHIP', this.w / 2, 54);
     if (this.activePlanetLabel) {
-      this.ctx.fillStyle = '#36a3ff';
+      this.ctx.fillStyle = '#00ff00';
       this.ctx.font = '700 11px ui-sans-serif, system-ui';
       this.ctx.fillText(`DESTINATION // ${this.activePlanetLabel}`, this.w / 2, 73);
     }
@@ -2775,7 +2813,7 @@ export class Game2A {
         : 'DEFEND EARTH';
     this.ctx.save();
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff88';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '900 20px ui-sans-serif, system-ui';
     this.ctx.fillText(label, this.w / 2, this.h * 0.25);
     this.ctx.restore();
@@ -2943,7 +2981,7 @@ export class Game2A {
     // heading rather than always pointing up.
     const facing = Math.atan2(bolt.vy, bolt.vx);
     if (this.drawFacing(projectile.sprite, bolt.x, bolt.y, projectile.draw.w, projectile.draw.h, facing)) return;
-    this.ctx.strokeStyle = '#00ff88';
+    this.ctx.strokeStyle = '#00ff00';
     this.ctx.lineWidth = 3;
     line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);
   }
@@ -3009,13 +3047,13 @@ export class Game2A {
       const t = clamp(boss.attackClock / Math.max(0.01, timing.recover), 0, 1);
       c.save();
       c.globalAlpha = 0.3 + 0.35 * t;
-      c.strokeStyle = '#00ff88';
+      c.strokeStyle = '#00ff00';
       c.lineWidth = 3;
       c.beginPath();
       c.arc(boss.x, boss.y, Math.max(boss.w, boss.h) * 0.72, 0, Math.PI * 2);
       c.stroke();
       c.globalAlpha = 0.85;
-      c.fillStyle = '#00ff88';
+      c.fillStyle = '#00ff00';
       c.textAlign = 'center';
       c.font = '900 10px ui-sans-serif, system-ui';
       c.fillText('OPEN', boss.x, boss.y - Math.max(boss.w, boss.h) * 0.72 - 6);
@@ -3166,8 +3204,10 @@ export class Game2A {
     if (boss.state === 'intro') {
       this.ctx.textAlign = 'center';
       this.ctx.fillStyle = phase.accent;
+      this.ctx.font = '700 12px ui-sans-serif, system-ui';
+      this.ctx.fillText(boss.age < 0 ? 'GUARDIAN SIGNAL' : 'WARNING', this.w / 2, this.h * 0.52 - 17);
       this.ctx.font = '800 20px ui-sans-serif, system-ui';
-      this.ctx.fillText(boss.age < 0 ? `GUARDIAN SIGNAL • ${def.label}` : `WARNING • ${def.label}`, this.w / 2, this.h * 0.52);
+      this.ctx.fillText(def.label, this.w / 2, this.h * 0.52 + 9, this.w - 36);
     }
   }
 
@@ -3234,7 +3274,7 @@ export class Game2A {
     this.ctx.rotate(seeker.angle + Math.PI / 2);
     const flicker = 0.6 + 0.4 * Math.sin(this.clock * 30 + seeker.age * 12);
     this.ctx.globalAlpha = flicker;
-    this.ctx.fillStyle = '#ffd24a';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.beginPath();
     this.ctx.moveTo(0, 14);
     this.ctx.lineTo(-4, 4);
@@ -3249,7 +3289,7 @@ export class Game2A {
     this.ctx.lineTo(-5, 6);
     this.ctx.closePath();
     this.ctx.fill();
-    this.ctx.strokeStyle = '#36a3ff';
+    this.ctx.strokeStyle = '#00ff00';
     this.ctx.lineWidth = 1.5;
     this.ctx.stroke();
     this.ctx.restore();
@@ -3375,7 +3415,7 @@ export class Game2A {
     this.ctx.fillRect(0, 0, this.w, this.h);
 
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff88';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '900 15px ui-sans-serif, system-ui';
     // "RANK", to match the HUD and to stay out of the way of "Level 1".
     this.ctx.font = '900 19px ui-sans-serif, system-ui';
@@ -3429,14 +3469,14 @@ export class Game2A {
           title: 'BARREL PAIR',
           detail: '+2 SHOTS • BOTH SIDES',
           current: `NOW: ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`,
-          accent: '#00ff88',
+          accent: '#00ff00',
         };
       case 'shield':
         return {
           title: 'SHIELD PLATING',
           detail: '+1 SEGMENT • REFILLS',
           current: `NOW: ${this.shieldMax} SEGMENTS`,
-          accent: '#36a3ff',
+          accent: '#00ff00',
         };
       case 'bomb':
         return {
@@ -3525,10 +3565,10 @@ export class Game2A {
     bar(this.ctx, 14, 21, 72, 3, (this.player.hp ?? 0) / ship.hp, ship.accent);
     let barY = 26;
     if (this.shieldMax > 0) {
-      bar(this.ctx, 14, barY, 72, 3, this.shield / this.shieldMax, '#36a3ff');
+      bar(this.ctx, 14, barY, 72, 3, this.shield / this.shieldMax, '#00ff00');
       barY += 5;
     }
-    bar(this.ctx, 14, barY, 72, 2, this.xp / this.xpForNextLevel(), '#00ff88');
+    bar(this.ctx, 14, barY, 72, 2, this.xp / this.xpForNextLevel(), '#00ff00');
     this.ctx.font = '800 8px ui-sans-serif, system-ui';
     this.ctx.fillStyle = 'rgba(0,255,136,0.8)';
     // "RANK", not "LV". Playtesters read `LV 4` on a level called Level 1 and
@@ -3594,9 +3634,9 @@ export class Game2A {
     }
     this.ctx.restore();
 
-    this.padButton(this.zone.pause, this.paused ? '▶' : '❚❚', '#00ff88');
+    this.padButton(this.zone.pause, this.paused ? '▶' : '❚❚', '#00ff00');
     if (this.diagnostics) this.padButton(this.zone.assets, 'D', 'rgba(255,210,74,0.75)');
-    this.padButton(this.zone.bomb, 'BOMB', this.bombs > 0 ? '#ffd24a' : 'rgba(255,210,74,0.35)', {
+    this.padButton(this.zone.bomb, 'BOMB', this.bombs > 0 ? '#00ff00' : 'rgba(0,255,0,0.35)', {
       badge: String(this.bombs),
       // The button stays, but it says out loud that you never have to reach
       // for it: the same bomb is two taps under the thumb already steering.
@@ -3610,7 +3650,7 @@ export class Game2A {
     this.ctx.save();
     this.ctx.globalAlpha = Math.max(0, alpha);
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff88';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '900 24px ui-sans-serif, system-ui';
     this.ctx.fillText('CLARITY GATE RESTORED', this.w / 2, this.h * 0.43);
     this.ctx.restore();
@@ -3693,7 +3733,7 @@ export class Game2A {
     const charge = this.special / 100;
 
     if (!blocked) {
-      this.padButton(circle, label, ready ? '#36a3ff' : 'rgba(54,163,255,0.5)', { ring: charge });
+      this.padButton(circle, label, ready ? '#00ff00' : 'rgba(0,255,0,0.5)', { ring: charge });
       return;
     }
 
@@ -3802,7 +3842,7 @@ export class Game2A {
     const y = 84;
     const w = Math.min(this.w - 24, 430);
     this.ctx.fillStyle = 'rgba(2,6,11,0.86)';
-    this.ctx.strokeStyle = counts.missing || counts.error ? '#ffd24a' : '#00ff88';
+    this.ctx.strokeStyle = counts.missing || counts.error ? '#ffd24a' : '#00ff00';
     this.ctx.fillRect(x, y, w, h);
     this.ctx.strokeRect(x, y, w, h);
     this.ctx.textAlign = 'left';
@@ -3821,7 +3861,7 @@ export class Game2A {
     this.ctx.fillStyle = 'rgba(2,6,11,0.72)';
     this.ctx.fillRect(0, 0, this.w, this.h);
     this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#36a3ff';
+    this.ctx.fillStyle = '#00ff00';
     this.ctx.font = '700 28px ui-sans-serif, system-ui';
     this.ctx.fillText('PAUSED', this.w / 2, this.h / 2);
   }
@@ -3876,11 +3916,8 @@ export class Game2A {
     }
     if (this.warship?.state === 'fight') {
       for (const system of this.warshipDirector.targetableSystems) {
-        this.warshipDirector.hit(system.key, 2);
-        const center = this.warshipSystemCenter(system);
-        this.ring(center.x, center.y);
+        this.damageWarshipSystem(system, 2);
       }
-      if (this.warshipDirector.phase === 'disabled') this.completeRegulatoryWarship();
     }
   }
 
@@ -4413,6 +4450,7 @@ export class Game2A {
     this.missionBannerText = '';
     this.launchClock = 0;
     this.launchTotal = 0;
+    this.groundTravel = 0;
     this.fogGateActive = false;
     this.fogCutClock = 0;
     this.shieldCutClock = 0;

@@ -107,7 +107,7 @@ for (const [key, effect] of Object.entries(expected)) {
   if (tint) tints.set(key, tint[1].toLowerCase());
   if (tag) tags.set(key, tag[1]);
 }
-check(new Set(tints.values()).size === tints.size, `pickup tints collide: ${[...tints].map(([k, v]) => `${k}=${v}`).join(', ')}`);
+check(tints.size===4&&[...tints.values()].every(tint=>tint==='#00ff00'), 'all four friendly supply indicators must use liquidity green; tags and glyphs distinguish effects');
 check(new Set(tags.values()).size === tags.size, `pickup tags collide: ${[...tags].map(([k, v]) => `${k}=${v}`).join(', ')}`);
 
 check(/tint: string;/.test(types) && /tag: string;/.test(types), 'PickupDef must declare tint and tag');
@@ -138,4 +138,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log('pickup wiring OK: 4 pickups, distinct tint + tag, no field drop touches the gun');
+console.log('pickup wiring OK: 4 friendly-green supplies with distinct tags/icons, no field drop touches the gun');

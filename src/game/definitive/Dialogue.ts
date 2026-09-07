@@ -1,4 +1,4 @@
-export interface DialogueLine { speaker: string; text: string }
+export interface DialogueLine { speaker: string; text: string; allegiance?: 'friendly'|'hostile' }
 export interface DialogueScene { id: string; lines: readonly DialogueLine[] }
 
 /** Two-stage advance. The UI invokes press only on a fresh down/key edge. */
@@ -11,6 +11,7 @@ export class Dialogue {
   failed = false;
   get active(): boolean { return this.scene !== null; }
   get speaker(): string { return this.scene?.lines[this.lineIndex].speaker ?? ''; }
+  get allegiance(): 'friendly'|'hostile' { return this.scene?.lines[this.lineIndex].allegiance ?? 'friendly'; }
   get text(): string { return (this.scene?.lines[this.lineIndex].text ?? '').slice(0, Math.floor(this.revealed)); }
   get fullText(): string { return this.scene?.lines[this.lineIndex].text ?? ''; }
   get page(): string { return this.scene ? `${this.lineIndex + 1} / ${this.scene.lines.length}` : ''; }
@@ -54,9 +55,9 @@ export const BOARDING_DIALOGUE = {
     { speaker: 'XRPMAN', text: "The crew needs the hangar. We'll take the harder corridor." },
   ] },
   core: { id: 'story.earth.core', lines: [
-    { speaker: 'LEDGER DEFENSE CORE', text: 'Authority transfer denied. Liquidity is under protective custody.' },
+    { speaker: 'LEDGER DEFENSE CORE', allegiance:'hostile', text: 'Authority transfer denied. Liquidity is under protective custody.' },
     { speaker: 'XRPMAN', text: "Protection doesn't look like this." },
-    { speaker: 'LEDGER DEFENSE CORE', text: 'Withdrawal prohibited.' },
+    { speaker: 'LEDGER DEFENSE CORE', allegiance:'hostile', text: 'Withdrawal prohibited.' },
     { speaker: 'MR ZAMN · COMMS', text: 'Then stop asking it nicely.' },
   ] },
   secured: { id: 'story.earth.command_secured', lines: [

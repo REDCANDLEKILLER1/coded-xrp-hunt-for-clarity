@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {build} from 'esbuild';
-import {Box3,DoubleSide,Raycaster,Vector3} from 'three';
+import {Box3,DoubleSide,PerspectiveCamera,Raycaster,Vector3} from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 const load=async path=>{const result=await build({entryPoints:[path],bundle:true,write:false,format:'esm',logLevel:'silent'});return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);};
 const {FIGHTER_MODELS,landingPose,LANDING_DURATION,PARKED_HEIGHT,dockFighter}=await load('src/game/definitive/LandingPlan.ts');
@@ -20,6 +20,18 @@ const ship=(await parse('regulatory_warship_open')).scene;ship.updateMatrixWorld
 const hull=[];ship.traverse(o=>{if(o.isMesh){o.material.side=DoubleSide;hull.push(o);}});
 for(const name of ['Ship_Origin','Muzzle_FL','Muzzle_FR','Muzzle_L','Muzzle_R','Engine_L','Engine_R','Camera_Chase','Camera_Cockpit_Forward'])assert.ok(ship.getObjectByName(name),name);
 const ray=new Raycaster();let samples=0;
+for(const aspect of [390/844,844/390]){
+  const pose=landingPose(0,aspect),camera=new PerspectiveCamera(aspect<1?67:48,aspect,.1,2000);
+  camera.position.copy(pose.camera);camera.lookAt(pose.target);camera.updateMatrixWorld(true);
+  let maxX=0,maxY=0;
+  for(const mesh of hull){const vertices=mesh.geometry.getAttribute('position');for(let i=0;i<vertices.count;i++){
+    const point=new Vector3().fromBufferAttribute(vertices,i).applyMatrix4(mesh.matrixWorld).project(camera);
+    maxX=Math.max(maxX,Math.abs(point.x));maxY=Math.max(maxY,Math.abs(point.y));
+  }}
+  assert.ok(maxX<.95&&maxY<.95,`opening shot fits the full actual Warship at aspect ${aspect}: ${maxX},${maxY}`);
+  assert.ok(landingPose(10,aspect).fighter.distanceTo(landingPose(10).fighter)<1e-9,'camera framing cannot move the fighter trajectory');
+  console.log(`  landing frame ${aspect.toFixed(3)}: full-hull NDC ${maxX.toFixed(3)} / ${maxY.toFixed(3)}`);
+}
 for(const id of Object.values(FIGHTER_MODELS)){
   const fighter=(await parse(id)).scene;fighter.updateMatrixWorld(true);
   const box=new Box3().setFromObject(fighter),size=box.getSize(new Vector3());

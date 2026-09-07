@@ -17,10 +17,12 @@ export function dockFighter(save:CampaignSave):SaveResult {
 const smooth=(t:number):number=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 
 /** One measured trajectory is shared by the cinematic and shell-clearance test. */
-export function landingPose(seconds:number):{fighter:Vector3;camera:Vector3;target:Vector3;lift:number;stage:'approach'|'recovery'|'docked'} {
+export function landingPose(seconds:number,aspect=1):{fighter:Vector3;camera:Vector3;target:Vector3;lift:number;stage:'approach'|'recovery'|'docked'} {
   const approach=smooth(seconds/10),lift=smooth((seconds-10)/7);
   const fighter=new Vector3(0,-18+(deck.frame.floorInShip+PARKED_HEIGHT+18)*lift,-90+62*approach);
   const camera=new Vector3(72,-52,-132).lerp(new Vector3(10,-13,-46),smooth(seconds/13));
   const target=new Vector3(0,-2,-16).lerp(fighter,smooth(seconds/8)*.7);
+  const widen=Math.max(1,Math.min(2,.85/Math.max(.25,aspect)));
+  camera.sub(target).multiplyScalar(1+(widen-1)*(1-smooth(seconds/10))).add(target);
   return {fighter,camera,target,lift,stage:seconds<10?'approach':seconds<17?'recovery':'docked'};
 }

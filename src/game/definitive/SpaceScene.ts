@@ -10,6 +10,7 @@ import { SpaceInput } from './SpaceInput';
 import { constrainPlanetApproach, EARTH_FLIGHT, MARS_FLIGHT, MARS_APPROACH } from './PlanetApproach';
 import {CommsPanel,PORTAL_COMMS} from './CommsPanel';
 import {sfx} from '../audio/Sfx';
+import {applyCapturedLivery} from './FactionAppearance';
 import { arriveMars, checkpointTransit, clearSpaceWave, finishDeparture, PORTAL_POSITION, SPACE_ENEMIES, SPACE_WAVES, type SpaceEnemyKey } from './SpaceProgress';
 
 interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];onHub:()=>void;onRetry:()=>void}
@@ -76,7 +77,7 @@ export class SpaceScene implements ManagedScene {
     this.scene.add(this.ship);this.hull=new HullSweep(this.ship);
     this.scene.background=new Color(0x01030a);this.scene.environment=host.environment;this.scene.environmentIntensity=.4;
     this.scene.add(new AmbientLight(0x506789,.5));this.sun.position.set(-20000,15000,-8000);this.scene.add(this.sun);
-    this.ship.traverse(o=>{if(o instanceof Mesh)for(const m of Array.isArray(o.material)?o.material:[o.material])if(m instanceof MeshStandardMaterial&&/Hostile|Engine/.test(m.name)){m.color.set('#003800');m.emissive.set('#00FF00');m.emissiveIntensity=1;m.toneMapped=false;}});
+    applyCapturedLivery(this.ship);
     for(const name of ['Camera_Chase','Camera_Cockpit_Forward','Engine_L','Engine_R'])if(!this.ship.getObjectByName(name))throw new Error(`Missing flight attachment ${name}`);
     const engineMat=new MeshBasicMaterial({color:0x00ff00,transparent:true,opacity:.6,toneMapped:false,depthWrite:false});
     for(const name of ['Engine_L','Engine_R']){
@@ -88,7 +89,7 @@ export class SpaceScene implements ManagedScene {
     SPACE_ENEMIES.forEach((key,index)=>{const template=flightHull(host.models[index+1].scene);library.add(template);this.templates.set(key,template);});
     this.earth=host.models[6].scene;this.earth.scale.setScalar(6200);this.earth.position.fromArray(EARTH_FLIGHT.center);this.earth.rotation.set(0,1.7,.4);this.scene.add(this.earth);
     this.mars=host.models[7].scene;this.mars.scale.setScalar(MARS_FLIGHT.radius);this.scene.add(this.mars);
-    const atmosphere=new Mesh(new SphereGeometry(1.014,64,32),new ShaderMaterial({transparent:true,depthWrite:false,side:BackSide,uniforms:{},vertexShader:'varying vec3 n; varying vec3 v; void main(){vec4 p=modelViewMatrix*vec4(position,1.0);n=normalize(normalMatrix*normal);v=normalize(-p.xyz);gl_Position=projectionMatrix*p;}',fragmentShader:'varying vec3 n; varying vec3 v; void main(){float rim=pow(1.0-abs(dot(normalize(n),normalize(v))),3.0);gl_FragColor=vec4(0.08,0.32,0.8,rim*0.48);}'}));this.earth.add(atmosphere);
+    const atmosphere=new Mesh(new SphereGeometry(1.014,64,32),new ShaderMaterial({transparent:true,depthWrite:false,side:BackSide,uniforms:{},vertexShader:'varying vec3 n; varying vec3 v; void main(){vec4 p=modelViewMatrix*vec4(position,1.0);n=normalize(normalMatrix*normal);v=normalize(-p.xyz);gl_Position=projectionMatrix*p;}',fragmentShader:'varying vec3 n; varying vec3 v; void main(){float rim=pow(1.0-abs(dot(normalize(n),normalize(v))),3.0);gl_FragColor=vec4(0.0,1.0,0.0,rim*0.48);}'}));this.earth.add(atmosphere);
     let seed=812;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};const coordinates=[];
     for(let i=0;i<1100;i++){const y=rand()*2-1,a=rand()*Math.PI*2,r=38000;coordinates.push(r*Math.sqrt(1-y*y)*Math.cos(a),r*y,r*Math.sqrt(1-y*y)*Math.sin(a));}
     const starGeometry=new BufferGeometry();starGeometry.setAttribute('position',new Float32BufferAttribute(coordinates,3));

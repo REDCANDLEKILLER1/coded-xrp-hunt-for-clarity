@@ -193,10 +193,15 @@ check(
 // The old ring took `def.accent`, so it was green only on the default ship.
 const registryBundle = await build({ entryPoints: ['src/game/content/registry.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
 const { SHIPS: shipKeys, BOSSES: bossDefs } = await import(`data:text/javascript;base64,${Buffer.from(registryBundle.outputFiles[0].text).toString('base64')}`);
-const accents = new Set(Object.values(shipKeys).map((s) => hex(s.accent)));
-check(accents.size > 1, 'the ship roster should have more than one accent colour, or this check proves nothing');
+check(Object.values(shipKeys).every(s=>isGreen(s.accent)), 'owned fighter indicators share the green friendly faction');
+const actualPlayerDef=game.playerDef;
+let variedAccent=0;
 for (const key of Object.keys(shipKeys)) {
   game.selectedShipKey = key;
+  // Deliberately varied test uniforms still prove shield independence. Real
+  // TruFi/Blue Umbrella allies can be blue without changing friendly signals.
+  const accent=['#36a3ff','#ffd24a','#b56cff'][variedAccent++%3];
+  game.playerDef=()=>({...actualPlayerDef.call(game),accent});
   game.clock = 1;
   rec.reset();
   game.drawPlayer();
@@ -204,6 +209,7 @@ for (const key of Object.keys(shipKeys)) {
   check(hullRings.length > 0, `${key}: no shield ring drawn`);
   check(hullRings.every((c) => isGreen(c.state.strokeStyle)), `${key}: the shield took the hull accent instead of #00FF00`);
 }
+game.playerDef=actualPlayerDef;
 game.selectedShipKey = Object.keys(shipKeys)[0];
 
 // ---- 5. the rim light is a rim, and it is dim ----------------------------

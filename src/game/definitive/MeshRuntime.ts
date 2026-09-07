@@ -242,10 +242,12 @@ export class MeshRuntime {
   }
 
   hide(): boolean { if(!this.controller.saveBeforeLeave())return false;this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0;return true; }
-  dispose(): void {
-    this.hide(); window.removeEventListener('resize', this.resize);
+  dispose(): boolean {
+    if (!this.hide()) return false;
+    window.removeEventListener('resize', this.resize);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.contextLost);
     this.environment.dispose(); this.renderer.dispose(); this.renderer.forceContextLoss(); this.root.remove();
+    return true;
   }
   private readonly contextLost = (event: Event): void => { event.preventDefault(); this.controller.clear(); this.hud.hidden=false; this.status.textContent = 'Graphics were interrupted. Reload to continue from your checkpoint.'; };
   private readonly resize = (): void => { this.renderer.setSize(this.root.clientWidth || innerWidth, this.root.clientHeight || innerHeight, false); };

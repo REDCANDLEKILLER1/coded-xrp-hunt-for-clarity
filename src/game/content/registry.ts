@@ -62,7 +62,7 @@ export const SHIPS: Record<string, ShipDef> = scaleCombatants({
   xrpl_striker: {
     key: 'xrpl_striker',
     label: 'XRPL STRIKER',
-    accent: '#36a3ff',
+    accent: '#00ff00',
     sprite: { category: 'ships', id: 'xrpl_striker' },
     draw: { w: 23, h: 28 },
     hitbox: { w: 21, h: 24 },
@@ -76,7 +76,7 @@ export const SHIPS: Record<string, ShipDef> = scaleCombatants({
   ledger_warden: {
     key: 'ledger_warden',
     label: 'LEDGER WARDEN',
-    accent: '#ffd24a',
+    accent: '#00ff00',
     sprite: { category: 'ships', id: 'ledger_warden' },
     draw: { w: 28, h: 33 },
     hitbox: { w: 25, h: 29 },
@@ -105,7 +105,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     behavior: 'sine',
     fireRate: 2.6,
     projectileSpeed: 210,
-    accent: '#ff3355',
+    accent: '#ff3030',
     doctrine: 'pressure',
   },
   fog_raider: {
@@ -123,7 +123,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     behavior: 'straight',
     fireRate: 2.2,
     projectileSpeed: 240,
-    accent: '#b56cff',
+    accent: '#ff3030',
     doctrine: 'burst',
   },
   whale_scout: {
@@ -141,7 +141,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     behavior: 'zigzag',
     fireRate: 3.0,
     projectileSpeed: 195,
-    accent: '#36a3ff',
+    accent: '#ff3030',
     doctrine: 'salvo',
   },
   rug_fighter: {
@@ -159,7 +159,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     behavior: 'dive',
     fireRate: 1.9,
     projectileSpeed: 265,
-    accent: '#ffd24a',
+    accent: '#ff3030',
     doctrine: 'broadside',
   },
 });
@@ -306,7 +306,7 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 17, h: 17 },
     driftSpeed: 88,
     effect: 'shield',
-    tint: '#36a3ff',
+    tint: '#00ff00',
     tag: 'SHLD',
   },
   weapon_upgrade: {
@@ -317,7 +317,7 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 17, h: 17 },
     driftSpeed: 92,
     effect: 'weapon_upgrade',
-    tint: '#00ff6a',
+    tint: '#00ff00',
     tag: 'UP',
   },
   bomb: {
@@ -328,7 +328,7 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 18, h: 18 },
     driftSpeed: 84,
     effect: 'bomb',
-    tint: '#ffb020',
+    tint: '#00ff00',
     tag: 'BOMB',
   },
   repair: {
@@ -339,7 +339,7 @@ export const PICKUPS: Record<string, PickupDef> = {
     hitbox: { w: 17, h: 17 },
     driftSpeed: 88,
     effect: 'repair',
-    tint: '#ff4d7a',
+    tint: '#00ff00',
     tag: 'HULL',
   },
 };
@@ -381,7 +381,7 @@ export const STAGES: Record<string, StageDef> = {
     background: { category: 'backgrounds', id: 'deep_space_lane' },
     minWave: 11,
     sky: '#01030a',
-    accent: '#7d7cff',
+    accent: '#00ff00',
     structure: '#0b0b24',
     scrollSpeed: 86,
   },
@@ -432,13 +432,13 @@ export const HAZARDS: Record<string, HazardDef> = scaleCombatants({
   missile_silo: {
     key: 'missile_silo', label: 'MISSILE SILO', sprite: { category: 'hazards', id: 'missile_silo' },
     draw: { w: 42, h: 46 }, hitbox: { w: 33, h: 36 }, hp: 7, minWave: 9,
-    spawnRate: 4.8, fireRate: 1.8, projectileSpeed: 190, score: 700, accent: '#ffd24a',
+    spawnRate: 4.8, fireRate: 1.8, projectileSpeed: 190, score: 700, accent: '#ff3030',
     spawnWeight: 3, placement: 'edge', fires: true,
   },
   plasma_turret: {
     key: 'plasma_turret', label: 'PLASMA TURRET', sprite: { category: 'hazards', id: 'plasma_turret' },
     draw: { w: 40, h: 40 }, hitbox: { w: 32, h: 32 }, hp: 6, minWave: 11,
-    spawnRate: 4.0, fireRate: 0.78, projectileSpeed: 270, score: 800, accent: '#b56cff',
+    spawnRate: 4.0, fireRate: 0.78, projectileSpeed: 270, score: 800, accent: '#ff3030',
     spawnWeight: 3, placement: 'edge', fires: true,
   },
 });
@@ -496,18 +496,18 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
     phases: [
       {
         hpThreshold: 1, moveSpeed: 72, fireRate: 1.05, projectileSpeed: 205, projectileCount: 3, spread: 0.2,
-        pattern: 'spread', accent: '#b56cff', attacks: ['aimed_volley', 'fog_wall'],
+        pattern: 'spread', accent: '#ff3030', attacks: ['aimed_volley', 'fog_wall'],
       },
       {
         hpThreshold: 0.62, moveSpeed: 96, fireRate: 0.82, projectileSpeed: 225, projectileCount: 4, spread: 0.22,
-        pattern: 'spread', accent: '#d06cff', attacks: ['aimed_volley', 'fog_wall', 'charge'],
+        pattern: 'spread', accent: '#ff3030', attacks: ['aimed_volley', 'fog_wall', 'charge'],
       },
       {
         // The screen opens the last phase: he hides behind his escorts before
         // he shows you anything else, so the phase starts as a fight you
         // cannot win by holding fire on him.
         hpThreshold: 0.28, moveSpeed: 124, fireRate: 0.58, projectileSpeed: 250, projectileCount: 5, spread: 0.19,
-        pattern: 'burst', accent: '#ff5ce1',
+        pattern: 'burst', accent: '#ff3030',
         attacks: ['escort_screen', 'radial', 'charge', 'fog_wall', 'sweep_beam'],
       },
     ],
@@ -524,16 +524,16 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
     phases: [
       {
         hpThreshold: 1, moveSpeed: 58, fireRate: 0.9, projectileSpeed: 220, projectileCount: 3, spread: 0.2,
-        pattern: 'spread', accent: '#ff8a3d', attacks: ['aimed_volley', 'sweep_beam'],
+        pattern: 'spread', accent: '#ff3030', attacks: ['aimed_volley', 'sweep_beam'],
       },
       {
         // Halfway down it starts launching fighters to defend it.
         hpThreshold: 0.58, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18,
-        pattern: 'sweep', accent: '#ff5b3d', attacks: ['escort_screen', 'fog_wall', 'aimed_volley'],
+        pattern: 'sweep', accent: '#ff3030', attacks: ['escort_screen', 'fog_wall', 'aimed_volley'],
       },
       {
         hpThreshold: 0.24, moveSpeed: 105, fireRate: 0.48, projectileSpeed: 270, projectileCount: 6, spread: 0.16,
-        pattern: 'burst', accent: '#ff3355',
+        pattern: 'burst', accent: '#ff3030',
         attacks: ['escort_screen', 'radial', 'charge', 'sweep_beam'],
       },
     ],
@@ -548,9 +548,9 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
     triggerWave: 13,
     score: 1200,
     phases: [
-      { hpThreshold: 1, moveSpeed: 70, fireRate: 0.78, projectileSpeed: 245, projectileCount: 4, spread: 0.2, pattern: 'sweep', accent: '#36a3ff' },
-      { hpThreshold: 0.6, moveSpeed: 98, fireRate: 0.56, projectileSpeed: 275, projectileCount: 5, spread: 0.17, pattern: 'spread', accent: '#1ee7ff' },
-      { hpThreshold: 0.22, moveSpeed: 132, fireRate: 0.4, projectileSpeed: 305, projectileCount: 7, spread: 0.14, pattern: 'burst', accent: '#00ff88' },
+      { hpThreshold: 1, moveSpeed: 70, fireRate: 0.78, projectileSpeed: 245, projectileCount: 4, spread: 0.2, pattern: 'sweep', accent: '#ff3030' },
+      { hpThreshold: 0.6, moveSpeed: 98, fireRate: 0.56, projectileSpeed: 275, projectileCount: 5, spread: 0.17, pattern: 'spread', accent: '#ff3030' },
+      { hpThreshold: 0.22, moveSpeed: 132, fireRate: 0.4, projectileSpeed: 305, projectileCount: 7, spread: 0.14, pattern: 'burst', accent: '#ff3030' },
     ],
   },
   final_clarity: {
@@ -563,9 +563,9 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
     triggerWave: 17,
     score: 2000,
     phases: [
-      { hpThreshold: 1, moveSpeed: 82, fireRate: 0.66, projectileSpeed: 270, projectileCount: 5, spread: 0.17, pattern: 'aimed', accent: '#ffd24a' },
-      { hpThreshold: 0.55, moveSpeed: 112, fireRate: 0.46, projectileSpeed: 305, projectileCount: 7, spread: 0.14, pattern: 'sweep', accent: '#ff8a3d' },
-      { hpThreshold: 0.2, moveSpeed: 148, fireRate: 0.32, projectileSpeed: 340, projectileCount: 9, spread: 0.12, pattern: 'burst', accent: '#ff3355' },
+      { hpThreshold: 1, moveSpeed: 82, fireRate: 0.66, projectileSpeed: 270, projectileCount: 5, spread: 0.17, pattern: 'aimed', accent: '#ff3030' },
+      { hpThreshold: 0.55, moveSpeed: 112, fireRate: 0.46, projectileSpeed: 305, projectileCount: 7, spread: 0.14, pattern: 'sweep', accent: '#ff3030' },
+      { hpThreshold: 0.2, moveSpeed: 148, fireRate: 0.32, projectileSpeed: 340, projectileCount: 9, spread: 0.12, pattern: 'burst', accent: '#ff3030' },
     ],
   },
 });
@@ -672,11 +672,13 @@ export function validateContent(): string[] {
     if (!/^#[0-9a-f]{6}$/i.test(def.tint)) errors.push(`pickups.${key}: tint must be a #rrggbb colour`);
     if (!/^[A-Z]{2,4}$/.test(def.tag)) errors.push(`pickups.${key}: tag must be 2-4 upper-case letters`);
   }
-  // Two pickups that read the same are the bug this data exists to prevent.
+  // Friendly supplies share the owner's green faction color. Unique tags and
+  // icons identify their effects without borrowing hostile red or ally uniforms.
   const pickupTints = Object.values(PICKUPS).map((def) => def.tint.toLowerCase());
   const pickupTags = Object.values(PICKUPS).map((def) => def.tag);
-  if (new Set(pickupTints).size !== pickupTints.length) errors.push('pickups: every tint must be unique');
+  if (pickupTints.some(tint => tint !== '#00ff00')) errors.push('pickups: friendly supply markers must be liquidity green');
   if (new Set(pickupTags).size !== pickupTags.length) errors.push('pickups: every tag must be unique');
+  if (new Set(Object.values(PICKUPS).map(def=>def.sprite.id)).size !== pickupTags.length) errors.push('pickups: every effect needs its own icon');
 
   const stageWaves = Object.values(STAGES).map((stage) => stage.minWave).sort((a, b) => a - b);
   for (const [key, def] of Object.entries(STAGES)) {

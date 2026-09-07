@@ -113,6 +113,32 @@
       "consumer": "model_review",
       "source": "v03 LOD0 geometry with v04 generated albedo, authored micro normal and roughness/metal maps; six surfaces, all nine nodes. Private masters preserved.",
       "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+    },
+    {
+      "id": "backgrounds:earth_orbit_neon_v2",
+      "path": "public/assets/backgrounds/earth_orbit_neon_v2.webp",
+      "bytes": 72252,
+      "sha256": "516dc535c206c9f2ce835fcce072ea39af2e6c42fc6118f19efd8b3821ccb104",
+      "size": [
+        1024,
+        683
+      ],
+      "decodedBytes": 2797568,
+      "source": "Original built-in image generation; neon edit of original v01 environment; private prompt and raw master retained",
+      "consumer": "Game2A Earth environment backdrop"
+    },
+    {
+      "id": "backgrounds:ledger_ground_neon_v2",
+      "path": "public/assets/backgrounds/ledger_ground_neon_v2.webp",
+      "bytes": 110934,
+      "sha256": "b78b8958b08df20e0e74d630d97dfc381d9d05a00273d7f0bf2e33beb33a2f5a",
+      "size": [
+        768,
+        1152
+      ],
+      "decodedBytes": 3538944,
+      "source": "Original built-in image generation; neon edit of original v01 environment; private prompt and raw master retained",
+      "consumer": "Game2A Earth environment backdrop"
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

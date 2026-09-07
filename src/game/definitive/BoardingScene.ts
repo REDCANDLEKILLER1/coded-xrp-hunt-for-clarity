@@ -1,4 +1,4 @@
-import { AmbientLight, AnimationMixer, BoxGeometry, Color, CylinderGeometry, DirectionalLight, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, Plane, Raycaster, Scene, SphereGeometry, Texture, Vector2, Vector3, WebGLRenderer } from 'three';
+import { AmbientLight, AnimationMixer, BoxGeometry, Color, CylinderGeometry, DirectionalLight, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, Plane, PointLight, Raycaster, Scene, SphereGeometry, Texture, Vector2, Vector3, WebGLRenderer } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
@@ -35,6 +35,8 @@ export class BoardingScene implements ManagedScene {
   private readonly crewMixer: AnimationMixer;
   private readonly crewMarker: Mesh;
   private readonly roomGroups = new Map<BoardingRoom, Group>();
+  private readonly roomLights = new Map<BoardingRoom, Mesh[]>();
+  private factionRevision = -1;
   private readonly terminals = new Map<BoardingRoom, Mesh>();
   private readonly doorPanels: { door: typeof DECK_DOORS[number]; mesh: Mesh }[] = [];
   private readonly enemies: Enemy[] = [];
@@ -84,7 +86,7 @@ export class BoardingScene implements ManagedScene {
     this.hero = host.hero.scene; this.mixer = new AnimationMixer(this.hero);
     this.crew=host.crew.scene;this.crewMixer=new AnimationMixer(this.crew);
     const idle=host.crew.animations.find(clip=>clip.name==='Idle');if(idle)this.crewMixer.clipAction(idle).play();
-    this.crewMarker=new Mesh(new CylinderGeometry(0,.13,.26,4),this.blue);this.scene.add(this.crewMarker);
+    this.crewMarker=new Mesh(new CylinderGeometry(0,.13,.26,4),this.green);this.scene.add(this.crewMarker);
     this.scene.add(this.crew);
     this.crew.traverse(object=>{if(object instanceof Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])if(material.name==='TruFi blue')material.toneMapped=false;});
     this.room = host.quest.checkpoint;
@@ -102,6 +104,7 @@ export class BoardingScene implements ManagedScene {
     this.obstacles.push({x:0,z:-28,w:1.85,d:8.8},{x:0,z:-30.4,w:7.1,d:2.8});
     this.scene.background=new Color(0x040911); this.scene.environment=host.environment; this.scene.environmentIntensity=.35;
     this.scene.add(this.hero,new AmbientLight(0xaec4db,.4));
+    const liquidityLight=new PointLight(0x00ff00,7,7,2);liquidityLight.position.set(0,1.2,.25);this.hero.add(liquidityLight);
     this.heroShield.scale.set(.78,1.1,.78);this.heroShield.visible=false;this.scene.add(this.heroShield);
     this.exitField.position.set(0,.025,DECK_LAYOUT.core.exitFieldZ);this.exitField.scale.set(9,.025,.45);this.scene.add(this.exitField);
     const key=this.keyLight;key.castShadow=true;key.shadow.mapSize.set(1024,1024);
@@ -129,10 +132,14 @@ export class BoardingScene implements ManagedScene {
   }
   private buildDeck():void {
     this.scene.add(this.host.deck.scene);
+    const replacedLights = new Set<MeshStandardMaterial>();
     for(const room of DECK){
       const group=this.host.deck.scene.getObjectByName('Deck_'+room.id) as Group;
       if(!group)throw new Error('Missing architecture room: '+room.id);
       this.roomGroups.set(room.id,group);
+      const serviceLights:Mesh[]=[];
+      group.traverse(object=>{if(object instanceof Mesh&&object.material instanceof MeshStandardMaterial&&object.material.name==='Deck warm working light'){replacedLights.add(object.material);object.material=this.red;serviceLights.push(object);}});
+      this.roomLights.set(room.id,serviceLights);
       const [x,z]=room.terminal;this.part(group,[x,.6,z],[1.3,1.2,.85]);
       this.obstacles.push({x,z,w:1.3,d:.85});
       const terminal=this.part(group,[x,1.23,z],[1.1,.08,.7],this.green);this.terminals.set(room.id,terminal);
@@ -147,11 +154,13 @@ export class BoardingScene implements ManagedScene {
         this.obstacles.push({x:6,z:-3,w:4,d:1.7});
       }
       if(room.id==='bridge')for(const x of [-3.5,3.5]){
-        this.part(group,[x,.7,43],[1.6,1.4,1]);this.part(group,[x,1.42,43],[1.4,.04,.8],this.blue);
+        this.part(group,[x,.7,43],[1.6,1.4,1]);this.part(group,[x,1.42,43],[1.4,.04,.8],this.green);
         this.obstacles.push({x,z:43,w:1.6,d:1});
       }
       if(room.id==='hangar')for(const x of [-5,5])this.part(group,[x,.02,-29],[.12,.03,11],this.green);
     }
+    for(const material of replacedLights)material.dispose();
+    this.refreshFactionLighting();
     const frames=new InstancedMesh(this.box,this.trim,DECK_DOORS.length*3);const matrix=new Matrix4();let frameIndex=0;this.scene.add(frames);
     for(const door of DECK_DOORS){
       const frame=new Group();this.scene.add(frame);
@@ -162,6 +171,17 @@ export class BoardingScene implements ManagedScene {
       this.doorPanels.push({door,mesh:panel});
     }
   }
+  private refreshFactionLighting():void {
+    const save=this.host.quest.save.snapshot;
+    if(save.revision===this.factionRevision)return;
+    this.factionRevision=save.revision;
+    const steps:Partial<Record<BoardingRoom,BoardingStep>>={hangar:'hangar_safe',security:'security_relay',rescue:'rescue_junction',engineering:'engineering_power',command:'command_access',core:'core_defeated',bridge:'bridge_secured'};
+    for(const [room,lights] of this.roomLights){
+      const friendly=save.warshipOwned||!!steps[room]&&save.quests.includes('boarding.'+steps[room]);
+      for(const light of lights)light.material=friendly?this.green:this.red;
+    }
+  }
+
   private buildUI():void {
     this.ui.className='boarding-ui';this.status.className='boarding-status';this.health.className='boarding-health';this.hint.className='boarding-hint';
     this.status.append(this.health,this.hint);this.map.width=130;this.map.height=170;this.map.className='boarding-map';this.map.setAttribute('aria-label','Warship deck map');
@@ -311,13 +331,15 @@ export class BoardingScene implements ManagedScene {
   }
   update(dt:number):void {
     if(!this.active)return;this.dialog.update(dt);
+    this.refreshFactionLighting();
     this.dialoguePanel.hidden=!this.dialog.active;this.dialogueSpeaker.textContent=this.dialog.speaker;
+    this.dialoguePanel.dataset.allegiance=this.dialog.allegiance;
     this.ui.classList.toggle('is-conversation',this.dialog.active);
     this.dialogueText.textContent=this.dialog.text;this.dialoguePage.textContent=this.dialog.failed?'Save failed. Retry CONTINUE or SKIP.':this.dialog.page;
     const crewInHub=this.host.quest.has('bridge_secured');
     const crewPosition=crewInHub?DECK_LAYOUT.crew.hub:DECK_LAYOUT.crew.rescue;
     this.crew.position.set(crewPosition[0],0,crewPosition[1]);this.crew.visible=this.room===(crewInHub?'bridge':'rescue');
-    this.crewMarker.visible=this.crew.visible&&!this.host.quest.has('rescue_junction');this.crewMarker.position.copy(this.crew.position).y=2.4;
+    this.crewMarker.visible=this.crew.visible;this.crewMarker.position.copy(this.crew.position).y=2.4;
     if(this.dialog.active){
       this.mixer.update(dt);this.crewMixer.update(dt);
       const focus=this.hero.position.clone();if(this.crew.visible&&focus.distanceTo(this.crew.position)<6)focus.lerp(this.crew.position,.5);

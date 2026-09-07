@@ -51,7 +51,7 @@ export class LandingScene implements ManagedScene {
     if(this.host.save.testSlot){this.ui.dataset.seconds=this.elapsed.toFixed(3);this.ui.dataset.stage=landingPose(this.elapsed).stage;this.ui.dataset.fighter=this.host.save.snapshot.fighterShipKey;this.ui.dataset.paused=String(this.paused);}
   }
   private applyPose():void{
-    const pose=landingPose(this.elapsed);this.host.fighter.scene.position.copy(pose.fighter);
+    const pose=landingPose(this.elapsed,this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight));this.host.fighter.scene.position.copy(pose.fighter);
     this.camera.position.copy(pose.camera);this.camera.lookAt(pose.target);
     this.lift.visible=this.elapsed>=10;this.lift.position.y=pose.fighter.y-PARKED_HEIGHT;
   }
@@ -63,6 +63,6 @@ export class LandingScene implements ManagedScene {
     if(!result.ok){this.paused=true;this.paint();this.text.textContent='Docking is safe, but the checkpoint could not be saved. Resume to retry.';return;}
     this.finishing=true;this.host.onDock();
   }
-  render():void{this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?67:48;this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);}
+  render():void{this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?67:48;this.camera.updateProjectionMatrix();this.applyPose();this.host.renderer.render(this.scene,this.camera);}
   dispose():void{this.active=false;this.lifetime.abort();this.ui.remove();disposeObject(this.scene);}
 }

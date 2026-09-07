@@ -25,6 +25,7 @@ export class CommsPanel {
   update(dt:number):void{if(this.enabled){this.dialogue.update(dt);this.paint();}}
   private paint():void{
     this.panel.hidden=!this.enabled||!this.active;this.speaker.textContent=this.dialogue.speaker;this.text.textContent=this.dialogue.text;
+    this.panel.dataset.allegiance=this.dialogue.allegiance;
     this.page.textContent=this.dialogue.failed?'Save unavailable. Continue to retry.':this.dialogue.page;
   }
   dispose():void{this.dialogue.closeWithoutEffects();this.lifetime.abort();this.panel.remove();}

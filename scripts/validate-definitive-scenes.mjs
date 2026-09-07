@@ -42,3 +42,16 @@ assert.equal(active.size, 0);
 controller.clear();
 assert.equal(boarding.log.disposed, 1, 'repeated exit is idempotent');
 console.log('definitive-scenes: OK — one input owner, paused loads, stale load cancellation/disposal, recovery after errors, idempotent exit.');
+
+// A refused checkpoint must also refuse destruction of the live graphics host.
+const runtimeBuild = await build({entryPoints:['src/game/definitive/MeshRuntime.ts'],bundle:true,format:'esm',write:false,logLevel:'silent',loader:{'.css':'empty'}});
+const {MeshRuntime} = await import(`data:text/javascript;base64,${Buffer.from(runtimeBuild.outputFiles[0].text).toString('base64')}`);
+let disposed=0, saved=false;
+globalThis.window={removeEventListener(){}};
+const host={hide:()=>saved,environment:{dispose(){disposed++;}},renderer:{domElement:{removeEventListener(){}},dispose(){disposed++;},forceContextLoss(){disposed++;}},root:{remove(){disposed++;}}};
+assert.equal(MeshRuntime.prototype.dispose.call(host),false);
+assert.equal(disposed,0,'save refusal must retain renderer, environment and UI for retry');
+saved=true;
+assert.equal(MeshRuntime.prototype.dispose.call(host),true);
+assert.equal(disposed,4,'successful save permits complete teardown');
+console.log('definitive-scenes: save-failure teardown refusal and subsequent successful retry pass.');
