@@ -1,4 +1,5 @@
 import { CampaignSave, type DefinitiveSave, type SaveResult } from './CampaignSave';
+import {recordPlanetCleared} from '../content/CampaignProgress';
 
 export const BOARDING_STEPS = ['hangar_safe', 'security_relay', 'rescue_junction', 'engineering_power', 'command_access', 'core_defeated', 'bridge_secured', 'departure_ready'] as const;
 export type BoardingStep = typeof BOARDING_STEPS[number];
@@ -36,7 +37,7 @@ export class BoardingQuest {
     if (blocked) return { ok: false, reason: 'condition' };
     return this.save.update(draft => {
       add(draft.visitedRooms, roomFlag(room));
-      draft.location = { mode: draft.warshipOwned ? 'hub' : 'boarding', world: 'ledger_prime', checkpoint: roomFlag(room) };
+      draft.location = { mode: draft.warshipOwned ? 'hub' : 'boarding', world: draft.warshipOwned?draft.location.world:'ledger_prime', checkpoint: roomFlag(room) };
     });
   }
 
@@ -44,7 +45,7 @@ export class BoardingQuest {
     return this.save.update(draft => {
       // Re-entry/reload preserves earned room checkpoints and the original fighter.
       if (draft.location.mode === 'boarding' || draft.location.mode === 'hub') return;
-      if (draft.warshipOwned) { draft.location = { mode: 'hub', world: 'ledger_prime', checkpoint: 'boarding.bridge' }; return; }
+      if (draft.warshipOwned) { draft.location = { mode: 'hub', world: draft.location.world, checkpoint: 'boarding.bridge' }; return; }
       draft.fighterShipKey = fighterShipKey;
       draft.location = { mode: 'boarding', world: 'ledger_prime', checkpoint: 'boarding.hangar' };
       add(draft.visitedRooms, 'boarding.hangar');
@@ -82,6 +83,7 @@ export class BoardingQuest {
       }
       if (step === 'bridge_secured') {
         draft.warshipOwned = true;
+        draft.earth=recordPlanetCleared(draft.earth,'ledger_prime',0);
         add(draft.recruits, 'mr_zamn'); add(draft.quests, 'earth.routes_restored');
         draft.credits += 300;
         draft.location = { mode: 'hub', world: 'ledger_prime', checkpoint: 'boarding.bridge' };

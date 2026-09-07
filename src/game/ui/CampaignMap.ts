@@ -19,6 +19,7 @@ export class CampaignMap {
     private readonly root: HTMLElement,
     private readonly onLaunch: (planet: PlanetDef, checkpoint?: MissionCheckpointSnapshot) => void,
     private readonly onTestMode: () => void,
+    private readonly chapterLabel?: (planetKey:string)=>string|null,
   ) {
     if (!this.isAvailable(this.selectedKey)) this.selectedKey = PLANETS[0].key;
     this.render();
@@ -49,7 +50,8 @@ export class CampaignMap {
       return `<line class="map-route ${active ? 'is-open' : ''}" x1="${from.x}%" y1="${from.y}%" x2="${to.x}%" y2="${to.y}%" />`;
     }).join('');
 
-    const launchButtons = selectedState === 'locked'
+    const chapterLabel=this.chapterLabel?.(selected.key);
+    const launchButtons = chapterLabel?`<button class="deploy-button" type="button" data-action="deploy">${chapterLabel}</button>`:selectedState === 'locked'
       ? '<button class="deploy-button" type="button" data-action="deploy" disabled>ROUTE LOCKED</button>'
       : checkpoint
         ? `<button class="deploy-button" type="button" data-action="resume">RESUME FROM ${checkpoint.checkpointLabel}</button>
@@ -66,7 +68,7 @@ export class CampaignMap {
         <div class="campaign-record" aria-label="Campaign record">
           <span>BEST <strong>${this.progress.highScore.toLocaleString()}</strong></span>
           <span>UPGRADES <strong>${this.progress.upgradePoints}</strong></span>
-          <span>CLEARED <strong>${this.progress.clearedPlanets.length}/10</strong></span>
+          <span>CLEARED <strong>${this.progress.clearedPlanets.length}/${PLANETS.length}</strong></span>
         </div>
       </header>
       <main class="campaign-layout">

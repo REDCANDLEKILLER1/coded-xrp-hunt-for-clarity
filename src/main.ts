@@ -12,6 +12,7 @@ import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
 import { showDebugLogView } from './game/ui/DebugLogView';
 import { CampaignSave, reviewSaveSlot } from './game/definitive/CampaignSave';
+import {enterWarship,savedChapterScene} from './game/definitive/ChapterTransitions';
 import {
   configureCampaignPersistence,
   loadCampaignProgress,
@@ -116,6 +117,10 @@ let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
   (planet, checkpoint?: MissionCheckpointSnapshot) => {
+    const saved=savedChapterScene(definitiveSave);
+    if(planet.key==='ledger_prime'&&saved!=='earth'){void showChapter(saved);return;}
+    if(planet.key==='mars'&&definitiveSave.snapshot.warshipOwned){void showChapter(definitiveSave.snapshot.quests.includes('boarding.departure_ready')?'space':'boarding');return;}
+    if(meshRuntime&&!meshRuntime.hide())return;
     onFoot.hide();
     space.hide();
     canvas.style.visibility = 'visible';
@@ -131,6 +136,7 @@ map = new CampaignMap(
     game.deployFromMap(planet.key, planet.label, checkpoint);
   },
   () => {
+    if(meshRuntime&&!meshRuntime.hide())return;boarding.setEnabled(false);
     onFoot.hide();
     space.hide();
     canvas.style.visibility = 'visible';
@@ -138,30 +144,41 @@ map = new CampaignMap(
     gameShell.hidden = false;
     game.deployTestMode();
   },
+  planetKey=>{
+    const state=definitiveSave.snapshot,saved=savedChapterScene(definitiveSave);
+    if(planetKey==='ledger_prime'&&saved!=='earth')return saved==='space'?'CONTINUE FLIGHT':saved==='landing'?'CONTINUE ARRIVAL':'RETURN TO SHIP';
+    if(planetKey==='mars'&&state.warshipOwned)return state.transit?.phase==='mars'?'CONTINUE MARS ORBIT':'FLY TO MARS';
+    return null;
+  },
 );
+
+const chapterRecovery=document.createElement('section');chapterRecovery.className='boarding-shop';chapterRecovery.hidden=true;gameShell.appendChild(chapterRecovery);
+function recoverChapter(message:string,retry:()=>void):void{
+  chapterRecovery.replaceChildren();chapterRecovery.hidden=false;const text=document.createElement('p');text.textContent=message;
+  const button=document.createElement('button');button.textContent='RETRY';button.addEventListener('click',()=>{chapterRecovery.hidden=true;retry();});chapterRecovery.append(text,button);
+}
+async function showChapter(scene:'landing'|'boarding'|'space'):Promise<void>{
+  map.hide();game.suspend();boarding.setEnabled(false);onFoot.hide();space.hide();gameShell!.hidden=false;canvas!.style.visibility='hidden';chapterRecovery.hidden=true;
+  try{
+    const {MeshRuntime}=await import('./game/definitive/MeshRuntime');meshRuntime??=new MeshRuntime(gameShell!);
+    if(scene==='landing')await meshRuntime.showLanding(definitiveSave);else if(scene==='boarding')await meshRuntime.showBoarding(definitiveSave);else await meshRuntime.showSpace(definitiveSave);
+  }catch(error){recoverChapter(`The next section could not load. Your checkpoint is retained. ${error instanceof Error?error.message:''}`,()=>void showChapter(scene));}
+}
 
 /** Where the stored checkpoint says the interior run had reached. */
 function savedInteriorRoom(): number {
   return missionCheckpointFor(loadCampaignProgress(), 'ledger_prime')?.interiorRoom ?? 0;
 }
 
-/**
- * Flying into the portal puts you in the captured warship's cockpit.
- *
- * It used to hand off to the on-foot interior: XRPMan walking the corridors of
- * the ship he had just boarded. That section is not in the mission flow any
- * more -- platforming with a thumb did not work on a phone, and the fiction
- * settled somewhere better anyway. You take the ship and you fly it.
- *
- * The interior code and its art are left in the repository and still reachable
- * on ?onfoot. Nothing is deleted; it is unhooked.
- */
-window.addEventListener('coded:boarding-complete', () => {
-  debugLog.log('mission', 'portal entered -> transit cockpit');
-  onFoot.hide();
-  game.suspend();
-  canvas.style.visibility = 'hidden';
-  void space.show();
+/** Actual 2D aperture entry banks the selected fighter before loading recovery. */
+window.addEventListener('coded:boarding-complete', (event) => {
+  const detail=(event as CustomEvent<{planetKey:string;checkpointKey:string}>).detail;
+  const entry={planetKey:detail?.planetKey,checkpointKey:detail?.checkpointKey,fighterShipKey:game.boardingFighterKey};
+  const begin=()=>{
+    const result=enterWarship(definitiveSave,entry);
+    if(!result.ok){recoverChapter('The arrival checkpoint could not save. Retry when storage is available.',begin);return;}
+    debugLog.log('mission','disabled Warship entered -> 3D fighter recovery');void showChapter(savedChapterScene(definitiveSave)==='space'?'space':'landing');
+  };boarding.setEnabled(false);begin();
 });
 
 /** Clearing the transit returns you to the star map with the leg banked. */
@@ -217,7 +234,7 @@ window.addEventListener('coded:onfoot-defeat', () => {
 });
 
 returnMap.addEventListener('click', () => {
-  meshRuntime?.hide();
+  if(meshRuntime&&!meshRuntime.hide())return;boarding.setEnabled(false);chapterRecovery.hidden=true;
   onFoot.hide();
   space.hide();
   canvas.style.visibility = 'visible';
@@ -233,8 +250,8 @@ watchForUpdates(import.meta.url);
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
 
-  if (['model', 'character', 'crew', 'boarding', 'landing'].includes(params.get('review') ?? '') || params.has('model')) {
-    map.hide(); game.suspend(); onFoot.hide(); space.hide();
+  if (['model', 'character', 'crew', 'boarding', 'landing', 'space'].includes(params.get('review') ?? '') || params.has('model')) {
+    map.hide(); game.suspend(); boarding.setEnabled(false); onFoot.hide(); space.hide();
     gameShell.hidden = false; canvas.style.visibility = 'hidden';
     void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
       meshRuntime ??= new MeshRuntime(gameShell);
@@ -243,7 +260,8 @@ void game.start().then(() => {
         if(definitiveSave.testSlot&&definitiveSave.snapshot.location.mode==='earth'&&fighter&&['player','xrpl_striker','ledger_warden'].includes(fighter))definitiveSave.update(draft=>{draft.fighterShipKey=fighter;});
         await meshRuntime.showLanding(definitiveSave);
       }
-      else if (params.get('review') === 'boarding') await meshRuntime.showBoarding(definitiveSave);
+      else if (params.get('review') === 'space') {const {prepareSpaceReview}=await import('./game/definitive/SpaceProgress');prepareSpaceReview(definitiveSave);await meshRuntime.showSpace(definitiveSave);}
+      else if (params.get('review') === 'boarding') {if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showBoarding(definitiveSave);}
       else await meshRuntime.showModel(params.get('review') === 'crew' ? 'mr_zamn' : params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
     }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });
     return;
@@ -277,7 +295,7 @@ void game.start().then(() => {
     return;
   }
 
-  if (!params.has('onfoot')) return;
+  if (!params.has('onfoot')) {const saved=savedChapterScene(definitiveSave);if(saved!=='earth')void showChapter(saved);else{game.suspend();boarding.setEnabled(false);}return;}
   map.hide();
   game.suspend();
   space.hide();

@@ -37,6 +37,7 @@ const DRAG_SLOP = 16;
  * for keyboard play.
  */
 export class Input {
+  private enabled=true;
   private keys = new Set<string>();
   pointer: Vec2 | null = null;
   /**
@@ -77,6 +78,11 @@ export class Input {
    */
   get dragged(): boolean {
     return this.dragging;
+  }
+
+  setActive(enabled:boolean):void {
+    this.enabled=enabled;this.keys.clear();this.endGesture();this.tap=this.doubleTap=this.lastTapPoint=null;
+    this.lastTapAt=0;this.fireSpecial=this.pausePressed=this.diagnosticsPressed=this.bombPressed=false;
   }
 
   consumeTap(): Vec2 | null {
@@ -132,6 +138,7 @@ export class Input {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if(!this.enabled)return;
     this.keys.add(event.key.toLowerCase());
     if (event.code === 'Space') this.fireSpecial = true;
     if (event.key.toLowerCase() === 'p') this.pausePressed = true;
@@ -145,6 +152,7 @@ export class Input {
   };
 
   private readonly onPointerDown = (event: PointerEvent): void => {
+    if(!this.enabled)return;
     event.preventDefault();
     const point = this.toCanvasPoint(event);
     this.pointer = point;
@@ -169,6 +177,7 @@ export class Input {
   };
 
   private readonly onPointerMove = (event: PointerEvent): void => {
+    if(!this.enabled)return;
     event.preventDefault();
     if (!this.pointer) return;
     const point = this.toCanvasPoint(event);

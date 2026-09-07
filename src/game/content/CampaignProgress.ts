@@ -81,12 +81,14 @@ export function parseCampaignProgress(raw: string | null): CampaignProgress {
   if (!raw) return freshEmptyProgress();
   try {
     const value = JSON.parse(raw) as Partial<CampaignProgress>;
+    const discovered=ensureFirstPlanet(safeKeys(value.discoveredPlanets));
+    if(safeKeys(value.clearedPlanets).includes('ledger_prime')&&!discovered.includes('mars'))discovered.push('mars');
     return {
       highScore: safeCount(value.highScore, 0),
       highestWave: safeCount(value.highestWave, 1),
       victories: safeCount(value.victories, 0),
       currentPlanet: safeKey(value.currentPlanet, EMPTY_PROGRESS.currentPlanet),
-      discoveredPlanets: ensureFirstPlanet(safeKeys(value.discoveredPlanets)),
+      discoveredPlanets: discovered,
       clearedPlanets: safeKeys(value.clearedPlanets),
       defeatedGuardians: safeKeys(value.defeatedGuardians),
       defeatedSurfaceBosses: safeKeys(value.defeatedSurfaceBosses),

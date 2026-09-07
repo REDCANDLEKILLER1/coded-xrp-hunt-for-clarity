@@ -3,6 +3,7 @@ export interface ManagedScene {
   update(dt: number): void;
   render(): void;
   dispose(): void;
+  saveBeforeLeave?():boolean;
 }
 
 /** Serial ownership of simulation/input; a failed load resumes the previous scene. */
@@ -13,6 +14,7 @@ export class SceneController {
   lastError: string | null = null;
 
   get loading(): boolean { return this.pending !== null; }
+  saveBeforeLeave():boolean{return this.current?.saveBeforeLeave?.()??true;}
 
   async change(prepare: (signal: AbortSignal) => Promise<ManagedScene>): Promise<boolean> {
     const generation = ++this.generation;

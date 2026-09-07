@@ -123,7 +123,7 @@ if (progress.missionCheckpointFor(withoutCheckpoint, 'ledger_prime')) {
 const cleared = progress.recordPlanetCleared(withCheckpoint, 'ledger_prime', 3);
 if (
   !cleared.clearedPlanets.includes('ledger_prime')
-  || !cleared.discoveredPlanets.includes('fog_moon')
+  || !cleared.discoveredPlanets.includes('mars')
   || cleared.upgradePoints !== 3
   || progress.missionCheckpointFor(cleared, 'ledger_prime')
 ) {
@@ -151,8 +151,9 @@ if (campaignErrors.length > 0) {
   for (const e of campaignErrors) console.error('  - ' + e);
   process.exit(1);
 }
-if (campaign.PLANETS.length !== 10 || campaign.CAMPAIGN_ROUTES.length < 9) {
-  console.error('Planet campaign validation FAILED: expected ten routed worlds.');
+const preservedWorlds=['ledger_prime','mars','fog_moon','bullion_reach','rugfall','sec_outpost','whale_haven','liquidity_depths','court_nexus','regulatory_crown','clarity_zero'];
+if (preservedWorlds.some(key=>!campaign.PLANET_BY_KEY[key]) || campaign.CAMPAIGN_ROUTES.length < preservedWorlds.length-1) {
+  console.error('Planet campaign validation FAILED: original worlds and the added Mars route must remain connected.');
   process.exit(1);
 }
 if (campaign.PLANET_BY_KEY.ledger_prime?.label !== 'EARTH') {
@@ -160,7 +161,9 @@ if (campaign.PLANET_BY_KEY.ledger_prime?.label !== 'EARTH') {
   process.exit(1);
 }
 
-console.log('Planet campaign validation OK — ten routed worlds are registered.');
+const migrated=progress.parseCampaignProgress(JSON.stringify({discoveredPlanets:['ledger_prime','fog_moon','rugfall'],clearedPlanets:['ledger_prime']}));
+if(!['mars','fog_moon','rugfall'].every(key=>migrated.discoveredPlanets.includes(key)))throw Error('Mars insertion must preserve old unlocks');
+console.log('Planet campaign validation OK — preserved worlds, Mars insertion and additive unlock migration.');
 
 const missionResult = await build({
   entryPoints: ['src/game/content/missions/index.ts'],
@@ -274,7 +277,7 @@ for (const checkpoint of earthMission.checkpoints) {
   if (!/coded:boarding-complete/.test(boarding)) fail('the boarding runtime no longer announces completion — nothing would enter the 3D transit');
   if (!/warship\.state !== 'disabled'/.test(boarding)) fail('boarding must gate on the warship actually being disabled');
   if (!/coded:boarding-complete/.test(main)) fail('main.ts no longer listens for boarding completion');
-  if (!/space\.show\(\)/.test(main)) fail('boarding completion must hand off to the 3D transit');
+  if (!/enterWarship\(definitiveSave,entry\)/.test(main)||!/meshRuntime\.showLanding\(definitiveSave\)/.test(main)||!/meshRuntime\.showSpace\(definitiveSave\)/.test(main)) fail('actual entry must bank the selected fighter and connect 3D landing through captured-hull space');
   for (const act of ['regulatory_warship', 'boarding']) {
     if (!earthMission.acts.some((a) => a.key === act)) fail(`the "${act}" act is gone — the capture route into 3D is broken`);
   }

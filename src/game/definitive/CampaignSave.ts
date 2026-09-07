@@ -1,4 +1,5 @@
 import { CAMPAIGN_PROGRESS_STORAGE_KEY, LEGACY_PROGRESS_STORAGE_KEY, LEGACY_V1_PROGRESS_STORAGE_KEY, parseCampaignProgress, type CampaignProgress } from '../content/CampaignProgress';
+import { validSpaceCheckpoint, type SpaceCheckpoint } from './SpaceCheckpoint';
 
 export const SAVE_VERSION = 1;
 export const SAVE_PREFIX = 'coded-xrp-definitive-v1';
@@ -26,6 +27,7 @@ export interface DefinitiveSave {
   fighterUpgrades: Record<string, number>;
   heroUpgrades: Record<string, number>;
   capitalUpgrades: Record<string, number>;
+  transit: SpaceCheckpoint | null;
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -41,7 +43,7 @@ export function newDefinitiveSave(earth = parseCampaignProgress(null)): Definiti
     location: { mode: 'earth', world: 'ledger_prime', checkpoint: 'earth.launch' },
     credits: 0, quests: [], visitedRooms: [], clearedRooms: [], recruits: [], rewards: [], dialogueSeen: [],
     warshipOwned: false, fighterShipKey: earth.missionCheckpoints.ledger_prime?.shipKey ?? 'player',
-    fighterUpgrades: {}, heroUpgrades: {}, capitalUpgrades: {},
+    fighterUpgrades: {}, heroUpgrades: {}, capitalUpgrades: {}, transit:null,
   };
 }
 
@@ -56,6 +58,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
     for (const key of ['quests', 'visitedRooms', 'clearedRooms', 'recruits', 'rewards', 'dialogueSeen']) if (!ids(value[key])) return null;
     if (!count(value.credits) || typeof value.warshipOwned !== 'boolean' || !id(value.fighterShipKey)) return null;
     if (!upgrades(value.fighterUpgrades) || !upgrades(value.heroUpgrades) || !upgrades(value.capitalUpgrades)) return null;
+    if(value.transit!==undefined&&value.transit!==null&&!validSpaceCheckpoint(value.transit))return null;
     // Copy only declared fields: imported data cannot inject executable state.
     return {
       version: SAVE_VERSION, revision: value.revision as number, updatedAt: Number(value.updatedAt),
@@ -65,6 +68,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
       quests: [...value.quests as string[]], visitedRooms: [...value.visitedRooms as string[]], clearedRooms: [...value.clearedRooms as string[]],
       recruits: [...value.recruits as string[]], rewards: [...value.rewards as string[]], dialogueSeen: [...value.dialogueSeen as string[]],
       fighterUpgrades: { ...value.fighterUpgrades }, heroUpgrades: { ...value.heroUpgrades }, capitalUpgrades: { ...value.capitalUpgrades },
+      transit:value.transit?clone(value.transit as SpaceCheckpoint):null,
     };
   } catch { return null; }
 }

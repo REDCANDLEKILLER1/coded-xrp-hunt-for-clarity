@@ -628,7 +628,8 @@
       "src": "/assets/models/regulatory_warship.glb",
       "type": "model",
       "scenes": [
-        "model_review"
+        "model_review",
+        "space"
       ],
       "bytes": 1726968,
       "sha256": "e2762930ff378b993b749fb9c02a02267fd81296133939f8a55d3063af4e626e",
@@ -713,6 +714,76 @@
       "bytes": 4046020,
       "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
       "notes": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer."
+    },
+    "space_regulator_drone": {
+      "src": "/assets/models/space_regulator_drone.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 704228,
+      "sha256": "92846736a970669232b6b678b06f2a51fb8b31ef43ed3995da1a1f35f3196209",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene regulator_drone doctrine consumer. Private editable master retained."
+    },
+    "space_fast_scout": {
+      "src": "/assets/models/space_fast_scout.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 688908,
+      "sha256": "0877a025128d7e41138d49d353c7ca7fce04e71877f5a447358c86bbcced7f51",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene fast_scout doctrine consumer. Private editable master retained."
+    },
+    "space_fog_raider": {
+      "src": "/assets/models/space_fog_raider.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 653320,
+      "sha256": "0e01645aa4762ec1e5db2330862d033be1db3dc7cfcfd0b14a7c1264509954da",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene fog_raider doctrine consumer. Private editable master retained."
+    },
+    "space_rug_fighter": {
+      "src": "/assets/models/space_rug_fighter.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 667460,
+      "sha256": "b7d3d1f66a3b6b383e10e2fe2dea7292434ac5ee1657600e037e8a5247a1e35f",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene rug_fighter doctrine consumer. Private editable master retained."
+    },
+    "space_whale_scout": {
+      "src": "/assets/models/space_whale_scout.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 944808,
+      "sha256": "7cf9bc05b9532b45f9b12ee3178d33f9f91f0c13e6447404aa8aa105a0fbc3e3",
+      "notes": "Original textured Blender mesh; five attachment nodes. SpaceScene whale_scout doctrine consumer. Private editable master retained."
+    },
+    "planet_earth": {
+      "src": "/assets/models/planet_earth.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 305480,
+      "sha256": "d29fb68ce5ec63a536c0b2c90e3b4e46cb7b8b7efef45ed046fb37daaa7d9450",
+      "notes": "World-space sphere; 1024x512 NASA surface map. See docs/definitive/SPACE_ASSET_CREDITS.md. SpaceScene consumer."
+    },
+    "planet_mars": {
+      "src": "/assets/models/planet_mars.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 326696,
+      "sha256": "c82d8a650643dec1fe5f9e3a45073a700221892bdd0528c4068c984ad86fe1c9",
+      "notes": "World-space sphere; 1024x512 NASA surface map. See docs/definitive/SPACE_ASSET_CREDITS.md. SpaceScene consumer."
     }
   },
   "audio": {

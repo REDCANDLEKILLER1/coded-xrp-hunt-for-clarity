@@ -656,6 +656,7 @@ export class Game2A {
   }
 
   deployFromMap(planetKey: string, planetLabel: string, checkpoint?: MissionCheckpointSnapshot): void {
+    this.input.setActive(true);this.loop.start();
     this.progress = this.loadProgress();
     this.activePlanetKey = planetKey;
     this.activePlanetLabel = planetLabel;
@@ -689,6 +690,7 @@ export class Game2A {
   }
 
   deployTestMode(): void {
+    this.input.setActive(true);this.loop.start();
     this.activePlanetKey = null;
     this.activePlanetLabel = null;
     this.missionDirector.clear();
@@ -705,8 +707,11 @@ export class Game2A {
 
   suspend(): void {
     this.paused = true;
+    this.input.setActive(false);this.loop.stop();
     this.cueMusic('silence');
   }
+
+  get boardingFighterKey():string{return this.selectedShipKey;}
 
   private resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);

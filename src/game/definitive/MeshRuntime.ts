@@ -5,6 +5,8 @@ import { disposeObject, loadModel, loadModels } from './ModelAssets';
 import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
 import { LandingScene } from './LandingScene';
+import { SpaceScene } from './SpaceScene';
+import { SPACE_MODELS, startTransit } from './SpaceProgress';
 import { fighterModel } from './LandingPlan';
 import { BoardingQuest } from './BoardingQuest';
 import type { CampaignSave } from './CampaignSave';
@@ -192,6 +194,7 @@ export class MeshRuntime {
   }
 
   async showLanding(save: CampaignSave): Promise<void> {
+    if(save.snapshot.location.mode==='space'&&save.snapshot.transit)return this.showSpace(save);
     if(save.snapshot.warshipOwned||save.snapshot.quests.includes('boarding.landed'))return this.showBoarding(save);
     this.root.dataset.review='landing';this.root.hidden=false;this.hud.hidden=false;
     this.status.textContent='Approaching the disabled Warship…';this.controls.replaceChildren();this.resize();this.startLoop();
@@ -215,7 +218,7 @@ export class MeshRuntime {
     if (!begin.ok) { this.status.textContent = 'The boarding checkpoint could not be saved. Return to the map and retry.'; return; }
     const loaded = await this.controller.change(async signal => {
       const [hero,crew,fighter,deck] = await loadModels(['xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
-      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, onDeparture: () => {} }); }
+      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, onDeparture: () => void this.showSpace(save) }); }
       catch (error) { disposeObject(hero.scene); disposeObject(crew.scene); disposeObject(fighter.scene); disposeObject(deck.scene); throw error; }
     });
     if (loaded) this.hud.hidden = true;
@@ -225,7 +228,20 @@ export class MeshRuntime {
     }
   }
 
-  hide(): void { this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0; }
+  async showSpace(save:CampaignSave):Promise<void>{
+    this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const models=await loadModels(SPACE_MODELS,signal);
+      try{
+        const started=startTransit(save);if(!started.ok)throw new Error('Departure requires a captured bridge and saved departure briefing');
+        return new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save)});
+      }catch(error){for(const model of models)disposeObject(model.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;
+    else if(this.controller.lastError){this.status.textContent=`Departure could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save));this.controls.replaceChildren(retry);}
+  }
+
+  hide(): boolean { if(!this.controller.saveBeforeLeave())return false;this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0;return true; }
   dispose(): void {
     this.hide(); window.removeEventListener('resize', this.resize);
     this.renderer.domElement.removeEventListener('webglcontextlost', this.contextLost);

@@ -257,7 +257,7 @@ export class BoardingScene implements ManagedScene {
     for(const [label,item] of [['Repair hull · 50','repair'],['Shield capacity · 150','shield_module']] as const){
       const b=document.createElement('button');b.textContent=label;b.addEventListener('click',()=>{const result=this.host.quest.purchase(item);if(result.ok){this.say('Installed on the capital ship.');paint();b.disabled=true;}else this.say('Already installed or insufficient salvage.');});panel.appendChild(b);
     }
-    const depart=document.createElement('button');depart.textContent='PREPARE DEPARTURE';depart.addEventListener('click',()=>{panel.remove();this.paused=false;this.conversation(BOARDING_DIALOGUE.outbound,'departure_ready');});panel.appendChild(depart);
+    const depart=document.createElement('button');depart.textContent=this.host.quest.has('departure_ready')?'DEPART WARSHIP':'PREPARE DEPARTURE';depart.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();if(this.host.quest.has('departure_ready'))this.host.onDeparture();else this.conversation(BOARDING_DIALOGUE.outbound,'departure_ready');});panel.appendChild(depart);
     const close=document.createElement('button');close.textContent='BACK';close.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();});panel.appendChild(close);
     this.ui.appendChild(panel);this.paused=true;this.clearInput();
   }

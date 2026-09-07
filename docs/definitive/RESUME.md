@@ -1,5 +1,19 @@
 # Exact resume state
 
+LATEST VERIFIED GATES: all47 validators and final build pass. Native CDP touch tests PASS at390×844 and844×390: simultaneous steer/fire, release either finger independently, and cancellation stop new volleys. Reports/screenshots are saved in root definitive-authorization. The initial touch-helper failure was duplicate cleanup after a successful cancellation; cleanup was corrected and both sizes passed. Current browser is paused in touch2, landscape. Commit/push is the immediate next operation.
+
+CURRENT FLIGHT CHECKPOINT (supersedes archived state below): the newer work is intact and is being committed on astra/definitive-review / draft PR125. See SPACE_CHECKPOINT.md and root SPACE_PRODUCTION.md. The user asked whether work was lost; the local preview/test-browser processes had ended, but files, private Blender masters and on-disk play reports remain. Restarted Vite is session36789 / port5184. Restarted test-browser CDP: ws://127.0.0.1:54024/devtools/browser/369e784f-50c9-48f9-b433-b9413f68e738 . Current route ?review=space&run=touch2.
+
+Implemented actual textured captured-hull flight, four simultaneous loaded-node guns, gun-deck convergence/rangefinding without aim snapping, independent touch steering/fire, five enemy meshes with approach/attack/extend behavior, fore/aft shields, swept mesh collision, real Earth/portal/Mars, atomic patrol rewards/arrival, retry and bridge return. Successful ordinary-control mesh4 section play reached Mars in188.4s with four patrols clear, 596 bolts, 78 hits, eight incoming hits,100 hull and no browser errors. Afterward, normal 2D aperture entry was connected through selected-fighter recovery/boarding/departure, loops/input relinquish ownership, two-stage portal comms were added, and Mars entered the route registry with additive old-unlock migration. These final connection changes still need a complete browser replay.
+
+All47 validators and the final TypeScript/Vite build PASS. Final build initialJS257.56KB/75.84gzip; lazy3D736.14KB/192.40gzip. Space models6,017,868B; seven new Blender roundtrips pass. Dependency versions remain unchanged from prior npmci. Native touch helper is running/finishing in session24053; inspect its result and save report before claiming that coverage. Old Vite68613 and CDP63994 are closed. Current test browser may not retain the earlier browser's saves.
+
+Do next: secure this checkpoint with a normal commit/push and verify remote status; notify the owner work is safe. Then continue the full authorized build: final portal/dialogue/reload/failure tests, arrival/boarding/space connection, ordinary full Earth-to-Mars play, planet-approach safeguards and Mars relief-site handoff, definitive Earth ground/doctrines/five-family weapon progression, realistic art refinement, ten-minute soak/physical-phone gate, and later planets only after the opening passes. No merge or release. Do not stop after this checkpoint.
+
+The route helper's report has correct mesh4 UI/flight evidence but an incorrectly hardcoded mesh3 save-field read. Fix the helper to derive the save key from the URL; do not cite that field as mesh4 persistence proof. PR121 latest posted milestone is now issuecomment-5563064776 (130690f boarding checkpoint); the new flight milestone has not yet been posted.
+
+## Archived boarding checkpoint
+
 Active plan: CODED-DEFINITIVE-20260906-v1, PR124. Owner authorization is in AGENTS.md / OWNER_AUTHORIZATION.md. Continue production through the connected opening; no merge or release. User most recently said to keep building. Unreal discussion is deferred; retain the requested modern realism target.
 
 Worktree: C:/Users/Michael/.codex/.chatgpt-projects/g-p-6a3c21de469081919a358bece0b459b2/coded-definitive
