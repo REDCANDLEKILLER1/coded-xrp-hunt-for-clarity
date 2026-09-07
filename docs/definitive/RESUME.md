@@ -1,8 +1,16 @@
+## Current follow-up — conversation and motion refinement
+
+Read MOTION_CHECKPOINT.md. Conversation framing, blurred-close camera recovery, relaxed XRPMan/Corn/Mr Zamn clips, Corn gesture, split Mars cap normals and real crop leaves are implemented. All50 validators and production build pass; all three exact character GLBs pass Blender roundtrip. New character files preserve geometry/maps/skins/sockets and combat clips byte-for-byte; unused animation data is removed. Mars asset set11,082,856bytes; terrain31,264tri. Private masters hero v06, Corn v03/runtimev04, Mr Zamn v04, terrain relief_v03; previous versions preserved. All Blender jobs and test helpers have finished.
+
+Current Vite remains5184/session59626; CDP unchanged. relief1 is paused on the completed site after normal conversation/input tests; original earned journey1 still retains its actual landing checkpoint, and neon-play remains the independent boarding run. No campaign grants were injected. Local evidence: motion-preservation-report.json, mars-conversation-report.json, motion-full-tests.log, motion-build.log, three motion-roundtrip logs. Prior600.47second soak is explicitly the prior workload; physical-phone acceptance remains unverified.
+
+The next authorized work is the Mars excavation route and Margin Warden boss, with Corn's repaired relief site as its prerequisite. First write the bounded encounter/transition design, then implement and play it. Do not stop at this art checkpoint. Main stays untouched and PR125 stays draft.
+
 # Exact resume state — connected chapter / neon faction pass
 
 ## Latest in-progress checkpoint — Mars relief site
 
-Read MARS_RELIEF_CHECKPOINT.md. The Mars surface scene, physical Corn, guarded orbit/descent route, three pump objectives, field repair, native touch handling and low-detail graphics toggle are implemented locally. No new commit yet: HEAD/remote remain4822c0e on astra/definitive-review, PR125 draft. The working tree contains the Mars/Corn code, two runtime GLBs, build/optimization scripts, manifest/ledger and documentation changes. Main and other workers are untouched.
+Read MARS_RELIEF_CHECKPOINT.md. The Mars surface scene, physical Corn, guarded orbit/descent route, three pump objectives, field repair, native touch handling and low-detail graphics toggle are implemented locally. Mars checkpoint24417d0306a322dc9896cd58795d46c3d01ca4e5 is pushed on astra/definitive-review. PR125 remains draft/open, and exact-head REST checks confirm Build and Vercel success. The working tree contains the Mars/Corn code, two runtime GLBs, build/optimization scripts, manifest/ledger and documentation changes. Main and other workers are untouched.
 
 Final runtime assets: Corn4,922,264bytes/43,681tri, terrain2,071,716bytes/28,528tri. Total scene models11,668,088bytes plus900,000 reserved renderer bytes passes12MiB. Corn runtime_v03 is a texture-size optimization of private corn_master_v02; Blender roundtrip_v03 passes3clips/6images/3sockets. Private terrain is worlds/mars/relief_v02; v01 is preserved. Original Corn study and Mars ground generation are complete; no image-generation job is running.
 
@@ -16,7 +24,7 @@ The original Vite session36789 was stopped to release a locked Windows Rollup li
 
 A post-soak navigation correction derives each fighter's convex walking footprint from its actual model instead of a guessed/mirrored wing box. All three model vertex sets, rear wings and nose-side routes pass the validator, followed by browser inspection. Corn has a physical collision radius. This does not change the rendered soak assets.
 
-Next: finish the bounded Mars documentation/commit/push; verify draft PR125 exact-head Build/Vercel through REST (GraphQL quota exhausted), update its stale description and post a meaningful text-only PR121 milestone. Then continue character/environment art, animation and opening refinement before later-world expansion. The full approved campaign remains the objective; do not stop at this checkpoint. HEAD/remote still4822c0e until the pending commit is created.
+The PR125 description is updated to the connected Earth-to-Mars chapter. Text-only PR121 milestone: https://github.com/REDCANDLEKILLER1/coded-xrp-hunt-for-clarity/pull/121#issuecomment-5566773021. Next continue character/environment art, animation and opening refinement before later-world expansion. First inspect and improve the actual physical-character conversation framing on Mars, then the remaining material/animation presentation. The full approved campaign remains the objective; do not stop at this checkpoint. Current code checkpoint and remote are24417d0; only this resume update follows it until the next art edits begin.
 
 Older sections below are historical; their claims that no Corn model or Mars surface exists are superseded by this section.
 

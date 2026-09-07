@@ -744,20 +744,20 @@
         "hub",
         "mars_surface"
       ],
-      "bytes": 3597232,
-      "sha256": "aaac2c935fe4b248a2faf872b33609c3ac5e65c626550b3ea0c0bfd90cfad20b"
+      "bytes": 3062212,
+      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f"
     },
     "mr_zamn": {
       "src": "/assets/models/mr_zamn.glb",
       "notes": "Original blue heavy armor, shield, fitted beard and three clips on pinned CC0 anatomy. Private master remains outside repository.",
-      "bytes": 3435044,
+      "bytes": 3237384,
       "type": "model",
       "scenes": [
         "boarding",
         "hub",
         "crew_review"
       ],
-      "sha256": "e84bd48c4855e9766508f84a76a0b2204deb3d659e9b1b18f53310fb295e2c7f"
+      "sha256": "b0815bd995e74ac813b93d461899a50119610aaf4518d867d5961f52823c499c"
     },
     "fighter_player": {
       "src": "/assets/models/fighter_player.glb",
@@ -896,8 +896,8 @@
       "scenes": [
         "mars_surface"
       ],
-      "bytes": 4922264,
-      "sha256": "6a020e9c97e0ba84bdbcb5043a47f9477c8fb298f7dab9224210956e30a54183",
+      "bytes": 4724576,
+      "sha256": "17ddf8dfb92324e814ba66f508303ca8d5f2009241f9e58659cd5d894c72b093",
       "notes": "Original provisional Corn modeling study: corn head, sunglasses, leaf features and gold/green field armor on pinned CC0 anatomy. Six embedded maps and three clips. Private source art was unavailable; this is not a verified canon turnaround."
     },
     "mars_relief": {
@@ -906,8 +906,8 @@
       "scenes": [
         "mars_surface"
       ],
-      "bytes": 2071716,
-      "sha256": "fc13359abc2ef74901130cdb75e7d0bfa25174d1dccbcca651285f24d6fb4a9f",
+      "bytes": 2219192,
+      "sha256": "4e5ed2dbd3c36996aa04ebc33e364d38255f32a85b13f9648d6491f4f28aa63b",
       "notes": "Original Blender relief site with three pressure plants, canopy, crop beds and generated regolith albedo. Editable master and original image remain private."
     }
   },

@@ -4,8 +4,8 @@
     {
       "id": "models:xrpman",
       "path": "public/assets/models/xrpman.glb",
-      "bytes": 3597232,
-      "sha256": "aaac2c935fe4b248a2faf872b33609c3ac5e65c626550b3ea0c0bfd90cfad20b",
+      "bytes": 3062212,
+      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f",
       "triangles": 46725,
       "materialGroups": 10,
       "bones": 163,
@@ -22,13 +22,14 @@
       "textures": "1024 albedo, 1024 normal, 512 roughness; all embedded",
       "consumer": "Character review and BoardingScene actual animated hero",
       "source": "CC0 MakeHuman anatomy plus original XRPMan armor, hair, emblems, texture maps and animation",
-      "status": "Skinned runtime foundation, browser-reviewed; further character art refinement remains possible during boarding production"
+      "status": "Skinned runtime foundation, browser-reviewed; further character art refinement remains possible during boarding production",
+      "motion": "Relaxed anatomical stance and gesture clips from new private master; runtime geometry, maps, skins, sockets and combat clips verified unchanged"
     },
     {
       "id": "models:mr_zamn",
       "path": "public/assets/models/mr_zamn.glb",
-      "bytes": 3435044,
-      "sha256": "e84bd48c4855e9766508f84a76a0b2204deb3d659e9b1b18f53310fb295e2c7f",
+      "bytes": 3237384,
+      "sha256": "b0815bd995e74ac813b93d461899a50119610aaf4518d867d5961f52823c499c",
       "triangles": 43654,
       "materialGroups": 9,
       "bones": 163,
@@ -40,7 +41,8 @@
       "textures": "1024 albedo, 1024 normal, 512 roughness; embedded",
       "consumer": "Crew review and BoardingScene rescue/hub NPC",
       "source": "Pinned CC0 MakeHuman anatomy and original blue armor/shield/animation",
-      "status": "Physical crew foundation, private master v03; realism refinement remains"
+      "status": "Physical crew foundation, private master v03; realism refinement remains",
+      "motion": "Relaxed anatomical stance and gesture clips from new private master; runtime geometry, maps, skins, sockets and combat clips verified unchanged"
     },
     {
       "id": "models:fighter_player",
@@ -247,22 +249,23 @@
     {
       "id": "models:corn",
       "path": "public/assets/models/corn.glb",
-      "bytes": 4922264,
-      "sha256": "6a020e9c97e0ba84bdbcb5043a47f9477c8fb298f7dab9224210956e30a54183",
+      "bytes": 4724576,
+      "sha256": "17ddf8dfb92324e814ba66f508303ca8d5f2009241f9e58659cd5d894c72b093",
       "triangles": 43681,
       "consumer": "MarsSurfaceScene",
       "source": "Original provisional Corn modeling study: corn head, sunglasses, leaf features and gold/green field armor on pinned CC0 anatomy. Six embedded maps and three clips. Private source art was unavailable; this is not a verified canon turnaround.",
-      "status": "Playable relief opening; actual-model, browser and controlled soak checks pass. Further art refinement remains."
+      "status": "Playable relief opening; actual-model, browser and controlled soak checks pass. Further art refinement remains.",
+      "motion": "Relaxed anatomical stance and gesture clips from new private master; runtime geometry, maps, skins, sockets and combat clips verified unchanged"
     },
     {
       "id": "models:mars_relief",
       "path": "public/assets/models/mars_relief.glb",
-      "bytes": 2071716,
-      "sha256": "fc13359abc2ef74901130cdb75e7d0bfa25174d1dccbcca651285f24d6fb4a9f",
-      "triangles": 28528,
+      "bytes": 2219192,
+      "sha256": "4e5ed2dbd3c36996aa04ebc33e364d38255f32a85b13f9648d6491f4f28aa63b",
+      "triangles": 31264,
       "consumer": "MarsSurfaceScene",
       "source": "Original Blender relief site, generated regolith color map and existing authored manufactured plate maps; private editable masters retained.",
-      "status": "Playable relief opening; actual-model, browser and controlled soak checks pass. Further art refinement remains."
+      "status": "Playable relief site; split cap normals, modeled crop leaves, three faction-switched pump contracts; master v03 remains private"
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

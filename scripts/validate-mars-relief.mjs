@@ -35,12 +35,25 @@ export * from './src/game/definitive/SpaceProgress';
 export * from './src/game/definitive/PlanetApproach';
 export * from './src/game/definitive/GraphicsQuality';
 export * from './src/game/definitive/FighterFootprint';
+export * from './src/game/definitive/ConversationFrame';
 export {MarsSurfaceScene} from './src/game/definitive/MarsSurfaceScene';
-export {Vector3,Box3,AnimationMixer} from 'three';
+export {Vector3,Box3,AnimationMixer,PerspectiveCamera} from 'three';
 export {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 export {clone as cloneRig} from 'three/addons/utils/SkeletonUtils.js';`,loader:'ts',resolveDir:process.cwd()},loader:{'.css':'empty'},plugins:mutant?[mutant]:[],bundle:true,write:false,format:'esm',logLevel:'silent'});
 const m=await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
 const {CampaignSave,RELIEF_PUMPS,MarsReliefQuest,prepareMarsReliefReview,beginMarsRelief,canDescendToRelief,MARS_APPROACH,surfaceClear,surfaceMove,surfaceSegmentHit,surfaceLineClear,canSurfaceTell,fieldRepair,MarsSurfaceScene,Vector3,Box3,AnimationMixer,GLTFLoader,cloneRig,SceneController,savedChapterScene,startTransit}=m;
+// Fit actual world-space actors into the area outside the dialogue, including
+// orientation changes and an approach from each side. Framing cannot move them.
+for(const [width,height] of [[390,844],[360,740],[844,390],[1024,768]])for(const [x,z] of [[0,3],[3,0],[-3,0],[0,-3],[1.9,1.9]]){
+ const camera=new m.PerspectiveCamera(46,1,.1,300),a=new Vector3(x,0,12+z),b=new Vector3(0,0,12),before=[a.toArray(),b.toArray()];
+ m.frameConversation(camera,a,b,width,height);
+ for(const actor of [a,b])for(const dx of [-.55,.55])for(const dz of [-.45,.45])for(const y of [0,2.25]){
+  const p=actor.clone().add(new Vector3(dx,y,dz)).project(camera),sx=(p.x+1)*width/2,sy=(1-p.y)*height/2;
+  assert.ok(p.z>-1&&p.z<1);assert.ok(sx>=width*.02&&sx<=width*(width/height>1.25?.5:.98),'actors fit beside landscape dialogue');
+  assert.ok(sy>height*.12&&sy<height*(width/height>1.25?.88:.72),'actors stay above portrait dialogue');
+ }
+ assert.deepEqual([a.toArray(),b.toArray()],before);
+}
 const qualityRenderer={shadowMap:{enabled:true,needsUpdate:false},ratio:0,setPixelRatio(v){this.ratio=v;}};
 m.applyGraphicsQuality(qualityRenderer,'low',3);assert.equal(qualityRenderer.ratio,1);assert.equal(qualityRenderer.shadowMap.enabled,false);m.applyGraphicsQuality(qualityRenderer,'full',3);assert.equal(qualityRenderer.ratio,1.75);assert.equal(qualityRenderer.shadowMap.enabled,true);m.applyGraphicsQuality(qualityRenderer,'low',NaN);assert.equal(qualityRenderer.ratio,1);
 let serial=0,fail=false;const records=new Map(),storage={getItem:k=>records.get(k)??null,setItem:(k,v)=>{if(fail)throw Error('quota');records.set(k,v);}};
@@ -90,7 +103,12 @@ function fixture(){
 // Real scene interaction: distance/defender gating, save-failure hold, no reward
 // from replay and input clearing on both sides of the actual dialogue panel.
 const f=fixture(),s=f.scene;assert.equal(s.quest.introduced,false);s.interact();assert.equal(s.comms.active,false);s.hero.position.set(0,0,15);key('keydown','KeyD');s.interact();assert.ok(s.comms.active);const held=s.hero.position.clone();s.update(.3);assert.ok(s.hero.position.equals(held));
-fail=true;s.comms.dialogue.skip();assert.ok(s.comms.active);assert.equal(s.quest.introduced,false);fail=false;s.comms.dialogue.skip();assert.equal(s.comms.active,false);assert.ok(s.quest.introduced);s.update(.05);assert.ok(s.hero.position.equals(held));key('keyup','KeyD');
+assert.equal(s.camera.view.enabled,true);s.repairCooldown=8;s.shoot(new Vector3(0,1,16),new Vector3(0,0,-1),true);const heldBolt=s.bolts[0].mesh.position.clone(),heldGuards=s.guards.map(g=>g.clock);
+s.update(.5);assert.ok(s.bolts[0].mesh.position.equals(heldBolt));assert.equal(s.repairCooldown,8);assert.deepEqual(s.guards.map(g=>g.clock),heldGuards);assert.equal(s.life,100);
+// A click can close the panel between update frames, including after blur.
+window.dispatchEvent(new Event('blur'));assert.ok(s.paused);
+fail=true;s.comms.dialogue.skip();assert.ok(s.comms.active);assert.equal(s.quest.introduced,false);fail=false;s.comms.dialogue.skip();assert.equal(s.comms.active,false);assert.ok(s.quest.introduced);s.update(.05);assert.ok(s.hero.position.equals(held));
+assert.equal(s.camera.view.enabled,false,'gameplay camera restores even if dialogue was closed while paused');s.bolts[0].life=0;s.updateBolts(0);s.repairCooldown=0;s.togglePause();s.update(.05);assert.ok(s.hero.position.equals(held),'held movement must not resume after the dialogue and pause close');key('keyup','KeyD');
 s.hero.position.set(-18,0,5.4);s.interact();assert.equal(s.quest.pumpClear('intake'),false,'real remaining defenders block valve');
 // The shipping fire/update/collision path kills the actual target, at phone-like
 // dt. No hit points or rewards are injected by this simulation after setup.

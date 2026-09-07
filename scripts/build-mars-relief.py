@@ -19,7 +19,7 @@ ground=material('Mars regolith',(.4,.13,.05),.97)
 image=bpy.data.images.load(a.texture);image.scale(1024,1024)
 image.filepath_raw=str(pathlib.Path(a.master).parent/'regolith_runtime.jpg');image.file_format='JPEG';image.save();image.pack()
 tex=ground.node_tree.nodes.new('ShaderNodeTexImage');tex.image=image;tex.extension='REPEAT';ground.node_tree.links.new(tex.outputs['Color'],ground.node_tree.nodes.get('Principled BSDF').inputs['Base Color'])
-metal=material('Relief graphite hardware',(.095,.12,.12),.42,.7)
+metal=material('Relief graphite hardware',(.095,.12,.12),.54,.7)
 paint=material('Relief weathered ivory',(.45,.43,.33),.72,.25)
 if a.material_master:
     with bpy.data.libraries.load(a.material_master,link=False) as (src,dst):dst.materials=['Deck manufactured plate']
@@ -38,6 +38,7 @@ rust=material('Relief oxide basalt',(.16,.055,.023),.9)
 glass=material('Relief dark solar glass',(.018,.044,.045),.2,.5)
 green=material('Relief friendly #00FF00',(0,1,0),.4,0,1)
 red=material('Relief seized #FF2200',(1,.014,0),.5,0,1)
+plant=material('Relief living crop leaves',(.035,.22,.008),.79)
 def finish(o,name,mat,smooth=True):
     o.name=name;o.data.materials.append(mat)
     for poly in o.data.polygons:poly.use_smooth=smooth
@@ -47,7 +48,12 @@ def cube(name,pos,size,mat,bevel=.05):
     if bevel:mod=o.modifiers.new('Machined bevel','BEVEL');mod.width=bevel;mod.segments=2;bpy.ops.object.modifier_apply(modifier=mod.name)
     return finish(o,name,mat,False)
 def cylinder(name,pos,r,depth,mat,vertices=24):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=vertices,radius=r,depth=depth,location=pos);return finish(bpy.context.object,name,mat)
+    bpy.ops.mesh.primitive_cylinder_add(vertices=vertices,radius=r,depth=depth,location=pos)
+    o=finish(bpy.context.object,name,mat)
+    # Flat end caps need split normals; smoothing across the rim makes a flat
+    # landing apron and pressure-vessel lids appear inflated in the runtime.
+    for poly in o.data.polygons:poly.use_smooth=abs(poly.normal.z)<.5
+    return o
 def pipe(name,points,r,mat):
     curve=bpy.data.curves.new(name,'CURVE');curve.dimensions='3D';curve.bevel_depth=r;curve.bevel_resolution=2
     spline=curve.splines.new('POLY');spline.points.add(len(points)-1)
@@ -120,7 +126,16 @@ for x in [-10,10]:
         cube('Hydroponic tray',runtime(x,.2,z),(5,1.6,.35),metal)
         cube('Hydroponic bed',runtime(x,.4,z),(4.7,1.3,.06),rust,.02)
         for offset in [-1.6,-.8,0,.8,1.6]:
-            pipe('Crop growth', [runtime(x+offset,.42,z-.5),runtime(x+offset,.72,z),runtime(x+offset,.42,z+.5)],.055,green)
+            center=x+offset
+            pipe('Crop growth stem',[runtime(center,.42,z),runtime(center,.85,z)],.018,plant)
+            for j in range(4):
+                angle=j*math.tau/4+.35;length=.28+(j%2)*.05;vertices=[]
+                for k in range(5):
+                    t=k/4;radius=length*t;height=.62+.24*math.sin(t*math.pi*.8);width=.075*math.sin(t*math.pi)
+                    for side in [-1,0,1]:vertices.append(runtime(center+math.cos(angle)*radius-math.sin(angle)*width*side,height+.02*(1-side*side),z+math.sin(angle)*radius+math.cos(angle)*width*side))
+                faces=[(k*3+j,k*3+j+1,(k+1)*3+j+1,(k+1)*3+j) for k in range(4) for j in range(2)]
+                mesh=bpy.data.meshes.new('Crop leaf');mesh.from_pydata(vertices,[],faces);leaf=bpy.data.objects.new('Crop growth leaf',mesh);scene.collection.objects.link(leaf);finish(leaf,leaf.name,plant)
+        for side in [-1,1]:cube('Hydroponic service light',runtime(x,.35,z+side*.78),(4.7,.025,.035),green,.004)
 # Solar collectors outside the navigation rectangle.
 for x in [-36,36]:
     for z in [-28,-17,-6]:

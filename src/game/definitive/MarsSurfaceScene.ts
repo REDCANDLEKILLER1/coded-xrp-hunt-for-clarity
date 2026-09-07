@@ -9,6 +9,7 @@ import {SurfaceInput} from './SurfaceInput';
 import {SURFACE_COMBAT,canSurfaceTell,fieldRepair,surfaceLineClear,surfaceMove,surfaceSegmentHit} from './SurfaceCombat';
 import {PARKED_HEIGHT} from './LandingPlan';
 import {fighterFootprint,type GroundPoint} from './FighterFootprint';
+import {frameConversation} from './ConversationFrame';
 import {sfx} from '../audio/Sfx';
 import './surface.css';
 
@@ -62,11 +63,13 @@ export class MarsSurfaceScene implements ManagedScene{
   private arrival=0;
   private notice=0;
   private clip='';
+  private cornClip='Idle';
   private hudClock=0;
   private factionRevision=-1;
   private shots=0;
   private hits=0;
   private injuries=0;
+  private talking=false;
 
   constructor(private readonly host:Host){
     this.quest=new MarsReliefQuest(host.save);this.paused=host.save.testSlot;this.arrival=host.arrival?4:0;
@@ -126,7 +129,8 @@ export class MarsSurfaceScene implements ManagedScene{
   private togglePause():void{if(!this.active||this.dead||this.comms.active)return;this.paused=!this.paused;this.input.clear();this.paint();}
   private say(message:string):void{this.message.textContent=message;this.notice=7;}
   private conversation(kind:keyof typeof MARS_RELIEF_COMMS,commit:()=>boolean):void{
-    this.input.clear();this.play('Idle');this.comms.open(MARS_RELIEF_COMMS[kind],()=>{const ok=commit();this.input.clear();if(ok){this.refreshSite();this.paint();}return ok;});
+    if(Math.hypot(this.hero.position.x-this.corn.position.x,this.hero.position.z-this.corn.position.z)<4){this.hero.rotation.y=Math.atan2(this.corn.position.x-this.hero.position.x,this.corn.position.z-this.hero.position.z);this.corn.rotation.y=Math.atan2(this.hero.position.x-this.corn.position.x,this.hero.position.z-this.corn.position.z);}
+    this.input.clear();this.play('Idle');this.playCorn('Interact');this.comms.open(MARS_RELIEF_COMMS[kind],()=>{const ok=commit();this.input.clear();if(ok){this.playCorn('Idle');this.refreshSite();this.paint();}return ok;});
   }
   private interact():void{
     if(!this.canAct())return;
@@ -167,6 +171,10 @@ export class MarsSurfaceScene implements ManagedScene{
     if(this.clip===name)return;const clip=this.host.models[0].animations.find(a=>a.name===name);if(!clip)return;
     const previous=this.host.models[0].animations.find(a=>a.name===this.clip),next=this.mixer.clipAction(clip).reset().play();if(previous)this.mixer.clipAction(previous).crossFadeTo(next,.14,false);this.clip=name;
   }
+  private playCorn(name:string):void{
+    if(this.cornClip===name)return;const clip=this.host.models[1].animations.find(a=>a.name===name);if(!clip)return;
+    const previous=this.host.models[1].animations.find(a=>a.name===this.cornClip),next=this.cornMixer.clipAction(clip).reset().play();if(previous)this.cornMixer.clipAction(previous).crossFadeTo(next,.25,false);this.cornClip=name;
+  }
   private visible(position:Vector3):boolean{const p=position.clone().project(this.camera);return p.z>-1&&p.z<1&&Math.abs(p.x)<.92&&Math.abs(p.y)<.85;}
   private shoot(position:Vector3,direction:Vector3,hostile:boolean):void{
     if(this.bolts.length>=64)return;const mesh=new Mesh(this.boltGeometry,hostile?this.red:this.green);mesh.position.copy(position);mesh.scale.set(1,1,hostile?1:2.5);this.scene.add(mesh);
@@ -205,7 +213,9 @@ export class MarsSurfaceScene implements ManagedScene{
     }
   }
   update(dt:number):void{
-    if(!this.active)return;const wasTalking=this.comms.active;this.comms.update(dt);if(wasTalking&&!this.comms.active)this.input.clear();
+    if(!this.active)return;const wasTalking=this.talking;this.comms.update(dt);this.talking=this.comms.active;
+    if(wasTalking&&!this.talking){this.input.clear();this.updateCamera(true);}
+    if(this.comms.active){this.mixer.update(dt);this.cornMixer.update(dt);this.updateCamera();this.paint();return;}
     if(this.paused||this.dead||this.comms.active){this.paint();return;}
     if(this.arrival>0){this.arrival=Math.max(0,this.arrival-dt);this.fighter.position.y=PARKED_HEIGHT+8*(this.arrival/4)**2;this.hero.visible=this.arrival===0;this.updateCamera();this.paint();return;}
     this.hero.visible=true;this.elapsed+=dt;this.invulnerable=Math.max(0,this.invulnerable-dt);this.repairCooldown=Math.max(0,this.repairCooldown-dt);this.fireClock-=dt;
@@ -222,6 +232,8 @@ export class MarsSurfaceScene implements ManagedScene{
     this.updateCamera();this.hudClock+=dt;if(this.hudClock>.1){this.hudClock=0;this.paint();}
   }
   private updateCamera(snap=false):void{
+    if(this.comms.active&&this.hero.position.distanceTo(this.corn.position)<5){frameConversation(this.camera,this.hero.position,this.corn.position,this.host.root.clientWidth,this.host.root.clientHeight);return;}
+    this.camera.clearViewOffset();
     const aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);const distance=aspect<1?1.12:1;
     const focus=this.arrival>0?new Vector3(RELIEF_LANDING.x,Math.max(0,this.fighter.position.y-1),RELIEF_LANDING.z):this.hero.position.clone();
     const framing=this.arrival>0?1.35:1;
@@ -231,6 +243,8 @@ export class MarsSurfaceScene implements ManagedScene{
   }
   private paint():void{
     this.refreshSite();const count=RELIEF_PUMPS.filter(p=>this.quest.pumpClear(p.id)).length;
+    this.ui.dataset.conversation=String(this.comms.active);
+    this.marker.visible=!this.comms.active;
     this.status.textContent=`MARS · RELIEF SITE\nVITALS ${Math.ceil(this.life)} · SHIELD ${Math.ceil(this.shieldCharge)}\nPUMPS ${count}/3${this.paused?' · PAUSED':''}`;
     this.hint.textContent=this.arrival>0?'FIGHTER DESCENT':!this.quest.introduced?'Meet Corn at the green marker.':count<3?'Clear red seizure drones. Interact at each valve.':!this.quest.restored?'Return to Corn for the field repair unit.':'RELIEF SIGNAL SECURED · Field repair acquired.';
     this.interactButton.textContent='INTERACT';

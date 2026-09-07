@@ -62,6 +62,12 @@ const attachmentPositions=()=>['Hand_R','Hand_L'].map(name=>gltf.scene.getObject
 const base=attachmentPositions();
 assert.ok(base.every(v=>v.length()<2.5),'hand nodes stay with the character');
 const mixer=new AnimationMixer(gltf.scene);
+mixer.clipAction(gltf.animations.find(clip=>clip.name==='Idle')).play();
+for(let i=0;i<12;i++){
+  mixer.update(.25);gltf.scene.updateMatrixWorld(true);
+  for(const hand of attachmentPositions())assert.ok(hand.y>.8&&hand.y<1.08&&Math.abs(hand.x)<.36,'idle palms rest beside the thighs, not in the old bent A-pose');
+}
+mixer.stopAllAction();
 mixer.clipAction(gltf.animations.find(clip=>clip.name==='AimFire')).play();
 mixer.update(.2); gltf.scene.updateMatrixWorld(true);
 const aim=attachmentPositions();
