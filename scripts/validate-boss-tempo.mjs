@@ -51,6 +51,13 @@ const load = async (entry) => {
 const { Game2A } = await load('src/game/core/Game2A.ts');
 const { BOSSES } = await load('src/game/content/registry.ts');
 
+const launch = new Game2A(stubCanvas());
+launch.deployFromMap('ledger_prime', 'EARTH');
+launch.reset();
+check(launch.launchClock > 0, 'normal Earth launch uses its real reveal');
+check(launch.earthEncounterDirector.stageKey === undefined, 'launch check precedes encounter spawning');
+check(launch.currentStage().key === 'deep_space_lane', 'Earth launch uses its orbital environment before the first enemy spawns');
+
 /** How long a player will stare at a bar that is not moving. */
 const STALL_LIMIT = 10;
 /** A fight that runs past this is the bug, whatever the bar did on the way. */

@@ -17,6 +17,7 @@ import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../co
 import { REGULATORY_WARSHIP, RegulatoryWarshipDirector } from '../content/RegulatoryWarship';
 import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
+import { boardingTargetForWarship } from '../content/DirectBoarding';
 import { missionForPlanet } from '../content/missions';
 import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
@@ -712,6 +713,32 @@ export class Game2A {
   }
 
   get boardingFighterKey():string{return this.selectedShipKey;}
+
+  private readonly reviewTelemetry=typeof location!=='undefined'&&new URLSearchParams(location.search).get('review')==='earth';
+  private reviewSampleAt=-1;
+  /** Copied observations only: the section test offers no state setters. */
+  private sampleEarthReview():void {
+    if(!this.reviewTelemetry||this.clock-this.reviewSampleAt<.15)return;
+    this.reviewSampleAt=this.clock;
+    const actor=(a:Actor)=>({x:a.x,y:a.y,w:a.w,h:a.h,vx:a.vx,vy:a.vy,hp:a.hp});
+    this.canvas.dataset.earthReview=JSON.stringify({
+      mode:this.mode,paused:this.paused,clock:this.clock,launch:this.launchClock,
+      act:this.missionDirector.currentAct?.key,group:this.earthEncounterDirector.currentGroupNumber,
+      groupLabel:this.earthEncounterDirector.currentGroupLabel,score:this.score,kills:this.kills,
+      player:actor(this.player),shield:this.shield,shieldMax:this.shieldMax,bombs:this.bombs,special:this.special,
+      weapon:this.currentWeapon().key,barrels:this.barrels,level:this.xpLevel,
+      enemies:this.drones.map(a=>({...actor(a),key:a.enemyKey,stance:a.stance,escort:a.escort})),
+      hazards:this.hazards.map(a=>({...actor(a),key:a.hazardKey})),
+      shots:this.hostileShots.map(a=>({...actor(a),key:a.projectileKey,tracking:a.track??0})),
+      pickups:this.pickups.map(a=>({...actor(a),key:a.pickupKey})),
+      boss:this.boss?{...actor(this.boss),key:this.boss.bossKey,state:this.boss.state,attack:this.boss.attackState,shielded:this.bossShielded()}:null,
+      warship:this.warship?{...actor(this.warship),state:this.warship.state,phase:this.warshipDirector.phase,
+        systems:this.warshipDirector.targetableSystems.map(s=>({key:s.key,hp:s.remainingHp,rect:this.warshipSystemBox(s)})),
+        aperture:boardingTargetForWarship(this.warship.x,this.warship.y)}:null,
+      ships:this.mode==='select'?this.shipCards():[],choices:this.upgradeCards(),
+      retry:this.mode==='results'?this.resultsButtons().primary:null,
+    });
+  }
 
   private resize(): void {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -2484,6 +2511,7 @@ export class Game2A {
     if (this.mode === 'results') this.results();
     if (this.mode === 'victory') this.victory();
     if (this.reportAssets || (this.showAssets && this.diagnostics)) this.assetPanel();
+    this.sampleEarthReview();
   }
 
   private background(): void {
@@ -4704,7 +4732,9 @@ export class Game2A {
   }
 
   private currentStage(): StageDef {
-    const missionStageKey = this.earthEncounterDirector.stageKey;
+    // The launch reveal precedes encounter spawning; it still belongs in orbit.
+    const missionStageKey = this.earthEncounterDirector.stageKey
+      ?? earthFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
     // A guardian act has no authored encounter, so it reaches here with no
     // stageKey. Falling on through lands it on the WAVE ladder, which put the
