@@ -97,7 +97,7 @@ check(/const DUEL_LANE_TOP = 0\.06;/.test(game), 'the duel lane must reach near 
 
 // Guns fire along the nose: the whole point of flanking.
 check(/const heading = this\.playerFacing \+ Math\.PI \/ 2;/.test(game), 'the volley must be rotated by the heading');
-check(/Math\.sin\(shot\.angle \+ heading\) \* projectile\.speed/.test(game), 'shot angles must be offset by the heading');
+check(/Math\.sin\(shot\.angle \+ heading\)/.test(game), 'shot angles must be offset by the heading; validate-fighter-armory exercises actual muzzle/velocity rotation');
 check(/muzzleX \* cos - muzzleY \* sin/.test(game), 'muzzle offsets must rotate with the ship, or wide barrels fire from the wrong place');
 // A rotated volley can leave by any edge, not just the top.
 check(/bolt\.y < this\.h \+ 40 && bolt\.x > -40/.test(game), 'bolts must be culled on every edge once they can fly sideways');

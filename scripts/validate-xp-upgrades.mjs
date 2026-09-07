@@ -136,8 +136,8 @@ for (const ship of hulls) {
 // back onto a player who had deliberately declined it. Barrels are now a card
 // you pick, and validate-pickup-wiring.mjs holds the field side of the line.
 check(
-  /case 'barrel':\s*\n\s*this\.barrels = Math\.min\(MAX_BARRELS, this\.barrels \+ 1\)/.test(game),
-  'the barrel upgrade card must add a barrel',
+  /this\.barrels = Math\.min\(MAX_BARRELS, this\.barrels \+ 1\)/.test(game),
+  'the legacy barrel upgrade path must remain; actual arcade/campaign card behavior is exercised by validate-fighter-armory',
 );
 check(/private currentVolley\(\)/.test(game), 'barrels must actually widen the volley');
 // The ceiling is now checked for a whole barrel PAIR, not one shot at a time.

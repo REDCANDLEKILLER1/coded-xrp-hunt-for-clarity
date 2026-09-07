@@ -13,6 +13,7 @@ import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../conten
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
+import {RAPID_CAP,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
@@ -95,7 +96,8 @@ type WarshipActor = Actor & {
   age: number;
   fireClock: number;
 };
-type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number };
+type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number; weapon?:FighterWeapon; hitTargets?:Set<Actor> };
+type WeaponEffect={x:number;y:number;endX?:number;endY?:number;radius:number;life:number};
 /** A player missile that steers. `target` is re-acquired if its quarry dies. */
 type SeekerActor = Actor & { damage: number; angle: number; age: number };
 /**
@@ -645,8 +647,21 @@ export class Game2A {
   private reportAssets = false;
   private flightStory:FlightStoryPort|null=null;
   private storyCapturedInput=false;
+  private fighterArmory:FighterArmoryPort|null=null;
+  private fighterReady=false;
+  private fighterSyncClock=0;
+  private weaponEffects:WeaponEffect[]=[];
 
   setFlightStory(story:FlightStoryPort):void {this.flightStory=story;story.setActive(false);}
+  setFighterArmory(armory:FighterArmoryPort):void {this.fighterArmory=armory;armory.setActive(false);}
+  private get campaignArmory():FighterArmoryPort|null {return this.activePlanetKey==='ledger_prime'?this.fighterArmory:null;}
+  private syncFighterMastery():void {
+    const armory=this.campaignArmory;if(!armory)return;
+    this.fighterSyncClock=this.clock+2;
+    const saved=armory.begin(this.xpLevel,this.barrels,this.baseWeaponTier);
+    this.fighterReady=this.fighterReady||saved;
+    if(!saved){this.missionBannerText='FIGHTER SAVE PENDING // RETRYING';this.missionBannerClock=2;}
+  }
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -668,6 +683,7 @@ export class Game2A {
   deployFromMap(planetKey: string, planetLabel: string, checkpoint?: MissionCheckpointSnapshot): void {
     this.input.setActive(true);this.loop.start();
     this.flightStory?.setActive(planetKey==='ledger_prime');this.storyCapturedInput=false;
+    this.fighterArmory?.setActive(planetKey==='ledger_prime');this.fighterReady=false;
     this.progress = this.loadProgress();
     this.activePlanetKey = planetKey;
     this.activePlanetLabel = planetLabel;
@@ -703,6 +719,7 @@ export class Game2A {
   deployTestMode(): void {
     this.input.setActive(true);this.loop.start();
     this.flightStory?.setActive(false);this.storyCapturedInput=false;
+    this.fighterArmory?.setActive(false);this.fighterReady=false;
     this.activePlanetKey = null;
     this.activePlanetLabel = null;
     this.missionDirector.clear();
@@ -720,6 +737,7 @@ export class Game2A {
   suspend(): void {
     this.paused = true;
     this.flightStory?.setActive(false);this.storyCapturedInput=false;
+    this.fighterArmory?.setActive(false);
     this.input.setActive(false);this.loop.stop();
     this.cueMusic('silence');
   }
@@ -741,7 +759,8 @@ export class Game2A {
       act:this.missionDirector.currentAct?.key,group:this.earthEncounterDirector.currentGroupNumber,
       groupLabel:this.earthEncounterDirector.currentGroupLabel,score:this.score,kills:this.kills,
       player:actor(this.player),shield:this.shield,shieldMax:this.shieldMax,bombs:this.bombs,special:this.special,
-      weapon:this.currentWeapon().key,barrels:this.barrels,level:this.xpLevel,
+      weapon:this.currentWeapon().key,barrels:this.barrels,level:this.xpLevel,armory:this.campaignArmory?.state,
+      firing:{family:this.bolts[0]?.weapon?.family,activeBolts:this.bolts.length},
       enemies:this.drones.map(a=>({...actor(a),key:a.enemyKey,stance:a.stance,escort:a.escort})),
       hazards:this.hazards.map(a=>({...actor(a),key:a.hazardKey,ground:a.ground,shielded:!!linkedRelay(a,this.hazards)})),
       shots:this.hostileShots.map(a=>({...actor(a),key:a.projectileKey,tracking:a.track??0,interceptible:a.interceptible})),
@@ -793,9 +812,15 @@ export class Game2A {
 
   private frame(dt: number): void {
     this.clock += dt;
-    const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused?this.missionDirector.currentAct?.key??null:null;
+    if(this.mode==='play'&&this.campaignArmory&&this.clock>=this.fighterSyncClock&&(!this.fighterReady||this.campaignArmory.state.rank<Math.min(20,this.xpLevel)))this.syncFighterMastery();
+    const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused&&!this.campaignArmory?.active?this.missionDirector.currentAct?.key??null:null;
     const restorationSafe=this.groundRestorationPending&&this.drones.length===0&&this.hazards.every(friendlyGround)&&this.hostileShots.length===0;
     if(this.flightStory?.update(dt,storyAct,restorationSafe)){
+      this.fighterArmory?.block();
+      if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
+      this.render();return;
+    }
+    if(this.fighterArmory?.update(this.mode==='play'&&this.fighterReady&&(this.paused||this.launchClock>0||this.upgradeOffer.length>0))){
       if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
       this.render();return;
     }
@@ -1476,9 +1501,12 @@ export class Game2A {
     this.boltClock -= dt;
     if (this.boltClock <= 0) {
       const weapon = this.currentWeapon();
+      const profile=this.fighterReady?this.campaignArmory?.weapon:undefined;
       const projectile = this.projectileDef(weapon.projectileKey);
       const ship = this.playerDef();
+      const cadenceRemainder=profile?Math.max(-.05,this.boltClock):0;
       this.boltClock = weapon.fireRate * (ship.fireRate / DEFAULT_SHIP.fireRate);
+      this.boltClock+=cadenceRemainder;
       // The volley is authored nose-up. Rotating it by the fighter's heading is
       // what lets you flank a boss and still be shooting AT it: the barrels and
       // their spread swing round together rather than the shots being re-aimed
@@ -1494,11 +1522,12 @@ export class Game2A {
           y: this.player.y + muzzleX * sin + muzzleY * cos,
           w: projectile.hitbox.w,
           h: projectile.hitbox.h,
-          vx: Math.sin(shot.angle + heading) * projectile.speed,
-          vy: -Math.cos(shot.angle + heading) * projectile.speed,
+          vx: Math.sin(shot.angle + heading) * (profile?.speed??projectile.speed),
+          vy: -Math.cos(shot.angle + heading) * (profile?.speed??projectile.speed),
           damage: weapon.damage,
           projectileKey: weapon.projectileKey,
           pierce: weapon.pierce ?? 0,
+          weapon:profile,hitTargets:new Set(),
         });
       }
       sfx.play('shoot');
@@ -2322,6 +2351,34 @@ export class Game2A {
     }
   }
 
+  /** Secondary effects use the same damage gates as direct fire. They never
+   * jump a Warship phase or damage a friendly beacon. One projectile can touch
+   * a given actor once, even while a lance overlaps it on successive frames. */
+  private fighterImpact(bolt:ProjectileActor,direct:Actor):void {
+    const weapon=bolt.weapon;if(!weapon||(!weapon.splash&&!weapon.chain))return;
+    const targets:Array<{actor:Actor;hit:(damage:number)=>void}>=[];
+    const eligible=(actor:Actor)=>actor!==direct&&!bolt.hitTargets?.has(actor)&&(actor.hp??0)>0&&actor.x>=0&&actor.x<=this.w&&actor.y>=0&&actor.y<=this.h;
+    for(const drone of this.drones)if(eligible(drone))targets.push({actor:drone,hit:damage=>{drone.hp=(drone.hp??0)-damage;if((drone.hp??0)<=0)this.registerKill(drone);}});
+    for(const hazard of this.hazards)if(eligible(hazard)&&!friendlyGround(hazard)&&!linkedRelay(hazard,this.hazards))targets.push({actor:hazard,hit:damage=>{this.damageGround(hazard,damage);}});
+    const boss=this.boss;if(boss?.state==='fight'&&eligible(boss)&&!this.bossShielded())targets.push({actor:boss,hit:damage=>{if(this.boss===boss)this.damageBoss(damage);}});
+    if(weapon.splash){
+      this.weaponEffects.push({x:direct.x,y:direct.y,radius:weapon.splash,life:.22});
+      for(const target of targets){
+        if(Math.hypot(target.actor.x-direct.x,target.actor.y-direct.y)>weapon.splash)continue;
+        (bolt.hitTargets??=new Set()).add(target.actor);target.hit(bolt.damage*.45);
+      }
+    }else{
+      let origin=direct;
+      for(let jump=0;jump<weapon.chain;jump++){
+        const nearby=targets.filter(t=>!bolt.hitTargets?.has(t.actor)&&(t.actor.hp??0)>0&&Math.hypot(t.actor.x-origin.x,t.actor.y-origin.y)<=100&&Math.hypot(t.actor.x-direct.x,t.actor.y-direct.y)<=280).sort((a,b)=>Math.hypot(a.actor.x-origin.x,a.actor.y-origin.y)-Math.hypot(b.actor.x-origin.x,b.actor.y-origin.y));
+        const next=nearby[0];if(!next)break;
+        this.weaponEffects.push({x:origin.x,y:origin.y,endX:next.actor.x,endY:next.actor.y,radius:0,life:.18});
+        (bolt.hitTargets??=new Set()).add(next.actor);next.hit(bolt.damage*.7);origin=next.actor;
+      }
+    }
+    if(this.weaponEffects.length>64)this.weaponEffects.splice(0,this.weaponEffects.length-64);
+  }
+
   private collisions(): void {
     // A piercing bolt spends one charge per target instead of dying on contact,
     // so CLARITY LANCE punches a whole column rather than the first thing it
@@ -2342,20 +2399,25 @@ export class Game2A {
       }
       if(bolt.life===0)continue;
       for (const drone of this.drones) {
-        if ((drone.hp ?? 0) <= 0) continue;
+        if ((drone.hp ?? 0) <= 0||bolt.hitTargets?.has(drone)) continue;
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
+          (bolt.hitTargets??=new Set()).add(drone);
           const spent = spend(bolt);
           drone.hp = (drone.hp ?? 1) - bolt.damage;
           if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
+          this.fighterImpact(bolt,drone);
           if (spent) break;
         }
       }
       if (bolt.life === 0) continue;
       for (const hazard of this.hazards) {
-        if ((hazard.hp ?? 0) <= 0||friendlyGround(hazard)) continue;
+        if ((hazard.hp ?? 0) <= 0||friendlyGround(hazard)||bolt.hitTargets?.has(hazard)) continue;
         if (overlap(box(bolt, 0.65), box(hazard, 0.78))) {
+          (bolt.hitTargets??=new Set()).add(hazard);
+          const shielded=!!linkedRelay(hazard,this.hazards);
           const spent = spend(bolt);
           this.damageGround(hazard,bolt.damage);
+          if(!shielded)this.fighterImpact(bolt,hazard);
           if (spent) break;
         }
       }
@@ -2370,8 +2432,10 @@ export class Game2A {
       }
       if (bolt.life === 0 || !this.boss || this.boss.state !== 'fight') continue;
       if (overlap(box(bolt, 0.65), box(this.boss, 0.84))) {
+        const target=this.boss,shielded=this.bossShielded();
         bolt.life = 0;
         this.damageBoss(bolt.damage);
+        if(!shielded)this.fighterImpact(bolt,target);
       }
     }
     // Seekers land on whatever they reach first, then die -- they do not pierce.
@@ -2552,6 +2616,8 @@ export class Game2A {
   }
 
   private updateDebris(dt: number): void {
+    for(const effect of this.weaponEffects)effect.life-=dt;
+    this.weaponEffects=this.weaponEffects.filter(effect=>effect.life>0);
     const drag = 1 - Math.min(1, dt * 3.5);
     for (const p of this.debris) {
       p.x += p.vx * dt;
@@ -2818,6 +2884,7 @@ export class Game2A {
     if (this.boss?.state === 'fight' && this.bossShielded()) this.drawBossShield(this.boss);
     if (this.warship) this.drawRegulatoryWarship();
     for (const bolt of this.bolts) this.drawBolt(bolt);
+    this.drawWeaponEffects();
     for (const seeker of this.seekers) this.drawSeeker(seeker);
     for (const shot of this.hostileShots) this.drawHostileShot(shot);
     for (const pickup of this.pickups) this.drawPickup(pickup);
@@ -3026,7 +3093,33 @@ export class Game2A {
     }
   }
 
+  private drawWeaponEffects():void {
+    const ctx=this.ctx;ctx.save();ctx.strokeStyle='#00ff00';ctx.shadowColor='#00ff00';ctx.shadowBlur=10;ctx.lineWidth=2;
+    for(const effect of this.weaponEffects){
+      ctx.globalAlpha=Math.min(1,effect.life/.1);
+      if(effect.endX!==undefined&&effect.endY!==undefined){
+        const midX=(effect.x+effect.endX)/2,midY=(effect.y+effect.endY)/2;
+        ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(midX-4,midY-5);ctx.lineTo(midX+4,midY+5);ctx.lineTo(effect.endX,effect.endY);ctx.stroke();
+      }else{ctx.beginPath();ctx.arc(effect.x,effect.y,effect.radius*(1-effect.life/.25),0,Math.PI*2);ctx.stroke();}
+    }
+    ctx.restore();
+  }
+
   private drawBolt(bolt: ProjectileActor): void {
+    if(bolt.weapon){
+      const ctx=this.ctx,family=bolt.weapon.family,angle=Math.atan2(bolt.vy,bolt.vx);
+      ctx.save();ctx.translate(bolt.x,bolt.y);ctx.rotate(angle);ctx.strokeStyle='#00ff00';ctx.fillStyle='#00ff00';ctx.shadowColor='#00ff00';ctx.shadowBlur=8;
+      if(family==='rocket'){
+        ctx.fillStyle='#14251b';ctx.strokeStyle='#00ff00';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(1,-4);ctx.lineTo(-8,-4);ctx.lineTo(-6,0);ctx.lineTo(-8,4);ctx.lineTo(1,4);ctx.closePath();ctx.fill();ctx.stroke();ctx.lineWidth=3;line(ctx,-8,0,-24,0);
+      }else if(family==='plasma'){
+        ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,0,12,7,0,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#ddffdd';ctx.beginPath();ctx.ellipse(0,0,7,3,0,0,Math.PI*2);ctx.fill();
+      }else if(family==='ledger'){
+        ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-20,0);ctx.lineTo(-9,-4);ctx.lineTo(-6,3);ctx.lineTo(8,-2);ctx.lineTo(16,0);ctx.stroke();
+      }else{
+        ctx.lineWidth=family==='pulse'?5:2;line(ctx,-(family==='pulse'?23:10),0,9,0);ctx.strokeStyle='#eaffea';ctx.lineWidth=1;line(ctx,-12,0,9,0);
+      }
+      ctx.restore();return;
+    }
     const projectile = this.projectileDef(bolt.projectileKey);
     // Bolts fly in any direction now that a duel rotates the volley, and the
     // Lance round is a long beam with an obvious nose, so draw along the
@@ -3582,6 +3675,7 @@ export class Game2A {
 
   /** What each upgrade is called, does, and what the player already has. */
   private upgradeInfo(kind: UpgradeKind): { title: string; detail: string; current: string; accent: string } {
+    if(kind==='barrel'&&this.campaignArmory)return{title:'RAPID FIRE',detail:'+12% BASE FIRE FREQUENCY',current:`${this.campaignArmory.state.rapid}/${RAPID_CAP} · DAMAGE RETAINED`,accent:'#00ff00'};
     switch (kind) {
       case 'barrel':
         return {
@@ -3602,14 +3696,14 @@ export class Game2A {
           title: 'BOMB YIELD',
           detail: '+22% BLAST • +1 BOMB',
           current: `NOW: ${this.bombs}/${this.maxBombs()} RACK`,
-          accent: '#ffd24a',
+          accent: '#00ff00',
         };
       case 'pulse':
         return {
           title: 'PULSE FIELD',
           detail: '+18% REACH • FASTER CHARGE',
           current: `NOW: ${Math.round(this.pulseRadius())}px`,
-          accent: '#b56cff',
+          accent: '#00ff00',
         };
     }
   }
@@ -4296,6 +4390,7 @@ export class Game2A {
       levelled = true;
     }
     if (levelled) {
+      if(this.campaignArmory)this.syncFighterMastery();
       // Every level tops the shields back up, so a hull that took a beating
       // gets something out of the level even before the card is picked.
       this.shield = this.shieldMax;
@@ -4333,7 +4428,7 @@ export class Game2A {
     if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
     if (kind === 'bomb') return this.bombPower < BOMB_POWER_CAP;
     if (kind === 'pulse') return this.pulsePower < PULSE_POWER_CAP;
-    if (kind === 'barrel') return this.barrels < MAX_BARRELS;
+    if (kind === 'barrel') return this.campaignArmory?this.campaignArmory.state.rapid<RAPID_CAP:this.barrels < MAX_BARRELS;
     return true;
   }
 
@@ -4350,6 +4445,13 @@ export class Game2A {
   private openUpgradeChoice(): void {
     const all: UpgradeKind[] = ['barrel', 'shield', 'bomb', 'pulse'];
     const open = all.filter((kind) => this.upgradeAvailable(kind));
+    if(this.campaignArmory){
+      if(open.length===0){
+        const reward=ALL_MAXED_SCORE*Math.max(1,this.pendingUpgrades);this.score+=reward;this.pendingUpgrades=0;this.upgradeOffer=[];
+        this.missionBannerText=`ALL SYSTEMS MAX // +${reward}`;this.missionBannerClock=2.4;return;
+      }
+      this.upgradeOffer=[...open].sort(()=>Math.random()-.5).slice(0,UPGRADE_CHOICES);this.upgradeArmClock=UPGRADE_ARM_SECONDS;sfx.play('levelUp');return;
+    }
 
     if (open.length === 0) {
       // Genuinely everything maxed. Still shown, still a card, still a beat.
@@ -4408,6 +4510,10 @@ export class Game2A {
     }
     switch (kind) {
       case 'barrel':
+        if(this.campaignArmory){
+          if(!this.fighterReady||!this.campaignArmory.upgradeRapid()){this.missionBannerText='UPGRADE NOT SAVED // TRY AGAIN';this.missionBannerClock=3;return;}
+          this.missionBannerText=`RAPID FIRE // ${this.campaignArmory.state.rapid}/${RAPID_CAP}`;break;
+        }
         this.barrels = Math.min(MAX_BARRELS, this.barrels + 1);
         this.missionBannerText = `GUN // ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`;
         break;
@@ -4546,6 +4652,7 @@ export class Game2A {
     this.completedBosses = new Set<string>();
     this.bolts = [];
     this.seekers = [];
+    this.weaponEffects=[];
     this.seekerClock = SEEKER_INTERVAL;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
     this.screenClock = 0;
@@ -4613,6 +4720,8 @@ export class Game2A {
         if (this.missionDirector.currentAct?.key === 'deployment') this.missionDirector.advance();
       }
 
+      this.syncFighterMastery();
+      if(this.fighterReady&&this.campaignArmory)this.xpLevel=Math.max(this.xpLevel,this.campaignArmory.state.rank);
       this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
       this.player = this.newPlayer();
       this.cueMusic('level1');
@@ -4751,6 +4860,7 @@ export class Game2A {
   }
 
   private currentWeapon(): WeaponDef {
+    if(this.fighterReady&&this.campaignArmory)return this.campaignArmory.weapon;
     return WEAPON_LADDER[this.weaponTier() - 1] ?? WEAPON_LADDER[0];
   }
 
@@ -4832,6 +4942,7 @@ export class Game2A {
 
   private currentVolley(): WeaponShotDef[] {
     const weapon = this.currentWeapon();
+    if(this.fighterReady&&this.campaignArmory)return weapon.shots;
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
