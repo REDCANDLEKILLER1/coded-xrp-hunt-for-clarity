@@ -8,6 +8,9 @@ import { LandingScene } from './LandingScene';
 import { SpaceScene } from './SpaceScene';
 import {MarsSurfaceScene} from './MarsSurfaceScene';
 import {beginMarsRelief} from './MarsRelief';
+import {MarsExcavationScene} from './MarsExcavationScene';
+import {beginMarsExcavation,excavationCheckpoint,returnMarsRelief} from './MarsExcavation';
+import type {GroundPosition} from './MarginWarden';
 import { SPACE_MODELS, startTransit } from './SpaceProgress';
 import {initialSpaceCheckpoint} from './SpaceCheckpoint';
 import { fighterModel } from './LandingPlan';
@@ -252,20 +255,32 @@ export class MeshRuntime {
     else if(this.controller.lastError){this.status.textContent=`Departure could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save));this.controls.replaceChildren(retry);}
   }
 
-  async showMars(save:CampaignSave):Promise<void>{
+  async showMars(save:CampaignSave,returning?:GroundPosition):Promise<void>{
+    if(!returning&&excavationCheckpoint(save.snapshot.location.checkpoint)){await this.showExcavation(save);return;}
     this.root.dataset.review='mars';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing the Mars relief landing…';this.controls.replaceChildren();this.resize();this.startLoop();
     const loaded=await this.controller.change(async signal=>{
       const models=await loadModels(['xrpman','corn',fighterModel(save.snapshot.fighterShipKey),'mars_relief','space_regulator_drone'],signal);
       let scene:MarsSurfaceScene|undefined;
       try{
-        scene=new MarsSurfaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,arrival:!save.snapshot.quests.includes('mars.relief_landed'),onOrbit:()=>void this.showSpace(save),onRetry:()=>void this.showMars(save)});
+        scene=new MarsSurfaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,arrival:!save.snapshot.quests.includes('mars.relief_landed'),checkpoint:returning?'mars.north_exit':undefined,onOrbit:()=>void this.showSpace(save),onRetry:()=>void this.showMars(save),onExcavation:at=>void this.showExcavation(save,at)});
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
-        const started=beginMarsRelief(save);if(!started.ok)throw new Error('The relief landing requires a saved approach checkpoint. Return near the Mars beacon and retry.');
+        const started=returning?returnMarsRelief(save,returning):beginMarsRelief(save);if(!started.ok)throw new Error('The relief landing requires a saved approach checkpoint. Return near the Mars beacon or the excavation exit and retry.');
         return scene;
       }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
     });
     if(loaded)this.hud.hidden=true;
-    else if(this.controller.lastError){this.status.textContent=`Relief site could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry relief site';retry.addEventListener('click',()=>void this.showMars(save));this.controls.replaceChildren(retry);}
+    else if(this.controller.lastError){this.status.textContent=`Relief site could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry relief site';retry.addEventListener('click',()=>void this.showMars(save,returning));this.controls.replaceChildren(retry);}
+  }
+  async showExcavation(save:CampaignSave,at?:GroundPosition):Promise<void>{
+    this.root.dataset.review='excavation';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing the extraction route…';this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const models=await loadModels(['xrpman','margin_warden','mars_excavation','space_regulator_drone'],signal);let scene:MarsExcavationScene|undefined;
+      try{
+        scene=new MarsExcavationScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,onRelief:from=>void this.showMars(save,from),onRetry:()=>void this.showExcavation(save)});
+        if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');const entered=beginMarsExcavation(save,at);if(!entered.ok)throw new Error('Restore Corn\'s relief site and enter through its north gate.');return scene;
+      }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.status.textContent=`Extraction route could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry extraction route';retry.addEventListener('click',()=>void this.showExcavation(save,at));this.controls.replaceChildren(retry);}
   }
 
   hide(): boolean { if(!this.controller.saveBeforeLeave())return false;this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0;return true; }

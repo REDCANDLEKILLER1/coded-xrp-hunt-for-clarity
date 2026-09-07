@@ -19,3 +19,10 @@
 - Foundation mesh derivative: join matching material surfaces in the accepted v03 LOD2 without changing attachment transforms. The resulting 396,960-byte GLB has 5,156 triangles and six surfaces. Actual consumer is ?review=model. Materials remain provisional; this is not final Warship art or playable mesh transit.
 - Single manifest now distinguishes models/audio from images, and the real 2D loader skips non-image types. Existing separate audio track configuration and legacy image scene groups still need consolidation in the full asset pass.
 - Automatic approval review rejected the first PR121 start payload because it contained internal backup/master verification details. A reduced plan-and-scope-only notice was subsequently approved and posted. Keep public milestones limited to relevant implementation evidence and share-safe original renders.
+
+## Mars excavation checkpoint
+
+- Two independent power towers expose a physical protected control, with fixed mining tells and a finite patrol. This differentiates the carrier from the relief objectives and makes movement/shield timing useful.
+- Dash is an earned on-foot upgrade with immediate consumers in both Mars maps. Substepped axis sliding respects thin walls. Native testing required secondary-touch button activation; keyboard/accessibility clicks remain supported without double activation.
+- The pressure-gate frame has matching support collision and camera-line fading. Source material ownership survives faction-light replacement until scene disposal.
+- Private modeling/texture studies stay outside runtime. Current model bytes and full/low timing are measured; further detail and real-device acceptance remain unfinished. The next chapter uses the existing flight renderer and source-constrained Boo identity.

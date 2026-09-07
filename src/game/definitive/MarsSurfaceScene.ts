@@ -1,19 +1,21 @@
-import {AmbientLight,AnimationMixer,Color,CylinderGeometry,DirectionalLight,Fog,Group,Mesh,MeshBasicMaterial,MeshStandardMaterial,PerspectiveCamera,PointLight,Scene,SphereGeometry,Texture,Vector3,WebGLRenderer} from 'three';
+import {AmbientLight,AnimationMixer,BoxGeometry,Color,CylinderGeometry,DirectionalLight,Fog,Group,Mesh,MeshBasicMaterial,MeshStandardMaterial,PerspectiveCamera,PointLight,Scene,SphereGeometry,Texture,Vector3,WebGLRenderer} from 'three';
 import type {GLTF} from 'three/addons/loaders/GLTFLoader.js';
 import type {CampaignSave} from './CampaignSave';
 import type {ManagedScene} from './SceneController';
 import {CommsPanel} from './CommsPanel';
 import {disposeObject} from './ModelAssets';
 import {MarsReliefQuest,MARS_RELIEF_COMMS,RELIEF_CORN,RELIEF_LANDING,RELIEF_PUMPS,type ReliefPump} from './MarsRelief';
-import {SurfaceInput} from './SurfaceInput';
+import {SurfaceInput,bindSurfaceButton} from './SurfaceInput';
 import {SURFACE_COMBAT,canSurfaceTell,fieldRepair,surfaceLineClear,surfaceMove,surfaceSegmentHit} from './SurfaceCombat';
 import {PARKED_HEIGHT} from './LandingPlan';
 import {fighterFootprint,type GroundPoint} from './FighterFootprint';
 import {frameConversation} from './ConversationFrame';
+import {RELIEF_EXIT} from './MarsExcavation';
+import {SurfaceDash} from './SurfaceDash';
 import {sfx} from '../audio/Sfx';
 import './surface.css';
 
-interface Host{renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];arrival:boolean;onOrbit:()=>void;onRetry:()=>void}
+interface Host{renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];arrival:boolean;checkpoint?:string;onOrbit:()=>void;onRetry:()=>void;onExcavation:(at:{x:number;z:number})=>void}
 interface Guard{mesh:Group;tell:Mesh;pump:ReliefPump;hp:number;base:Vector3;clock:number;charge:number;target:Vector3;age:number}
 interface Bolt{mesh:Mesh;velocity:Vector3;hostile:boolean;life:number}
 
@@ -29,6 +31,7 @@ export class MarsSurfaceScene implements ManagedScene{
   private readonly message=document.createElement('p');
   private readonly pauseButton=document.createElement('button');
   private readonly repairButton=document.createElement('button');
+  private readonly dashButton=document.createElement('button');
   private readonly shieldButton=document.createElement('button');
   private readonly fire=document.createElement('button');
   private readonly interactButton=document.createElement('button');
@@ -49,6 +52,9 @@ export class MarsSurfaceScene implements ManagedScene{
   private readonly red=new MeshBasicMaterial({color:0xff2200,toneMapped:false});
   private readonly boltGeometry=new SphereGeometry(.085,8,6);
   private readonly marker:Mesh;
+  private readonly exitLight=new Mesh(new BoxGeometry(5,.12,.15),this.red);
+  private readonly dash=new SurfaceDash();
+  private dashing=false;
   private readonly shield=new Mesh(new SphereGeometry(1,16,10),new MeshBasicMaterial({color:0x00ff00,wireframe:true,transparent:true,opacity:.18,toneMapped:false}));
   private active=false;
   private paused=false;
@@ -82,9 +88,10 @@ export class MarsSurfaceScene implements ManagedScene{
     this.mixer=new AnimationMixer(this.hero);this.cornMixer=new AnimationMixer(this.corn);
     const idle=corn.animations.find(a=>a.name==='Idle');if(idle)this.cornMixer.clipAction(idle).play();
     this.corn.position.set(RELIEF_CORN.x,0,RELIEF_CORN.z);this.corn.rotation.y=.1;
-    const checkpoint=host.save.snapshot.location.checkpoint;
+    const checkpoint=host.checkpoint??host.save.snapshot.location.checkpoint;
     const pump=RELIEF_PUMPS.find(p=>checkpoint==='mars.pump.'+p.id);
     this.hero.position.set(pump?.x??(checkpoint==='mars.corn'?0:5),0,pump?pump.z+5.5:checkpoint==='mars.corn'?15:26);
+    if(checkpoint==='mars.north_exit')this.hero.position.set(0,0,-44);
     this.fighter.position.set(RELIEF_LANDING.x,PARKED_HEIGHT+(host.arrival?8:0),RELIEF_LANDING.z);this.hero.visible=!host.arrival;
     const canopy=this.fighter.getObjectByName('Canopy_Hinge');if(canopy)canopy.rotation.x=-1.15;
     this.fighterOutline=fighterFootprint(this.fighter);
@@ -93,6 +100,7 @@ export class MarsSurfaceScene implements ManagedScene{
     this.sun.castShadow=true;this.sun.shadow.mapSize.set(1024,1024);Object.assign(this.sun.shadow.camera,{left:-15,right:15,top:15,bottom:-15,near:1,far:80});this.sun.shadow.camera.updateProjectionMatrix();this.sun.shadow.bias=-.0003;this.sun.shadow.normalBias=.035;this.scene.add(this.sun,this.sun.target);
     const glow=new PointLight(0x00ff00,4,6,2);glow.position.set(0,1,.3);this.hero.add(glow);
     this.marker=new Mesh(new CylinderGeometry(0,.14,.30,4),this.green);this.scene.add(this.marker);
+    const arch=new Group(),archMaterial=new MeshStandardMaterial({color:0x202c27,roughness:.65,metalness:.5});arch.position.set(RELIEF_EXIT.x,0,RELIEF_EXIT.z);for(const x of [-2.7,2.7]){const leg=new Mesh(new BoxGeometry(.25,3,.4),archMaterial);leg.position.set(x,1.5,0);arch.add(leg);}const lintel=new Mesh(new BoxGeometry(5.7,.25,.4),archMaterial);lintel.position.y=3;arch.add(lintel);this.exitLight.position.y=2.75;arch.add(this.exitLight);this.scene.add(arch);
     this.shield.scale.set(.8,1.05,.8);this.shield.visible=false;this.scene.add(this.shield);
     const library=new Group();library.visible=false;library.add(drone.scene,new Mesh(this.boltGeometry,this.red));this.scene.add(library);
     for(const pump of RELIEF_PUMPS){
@@ -104,21 +112,21 @@ export class MarsSurfaceScene implements ManagedScene{
         this.guards.push({mesh:pose,tell,pump:pump.id,hp:SURFACE_COMBAT.guardHP,base,clock:1.2+i*.7,charge:0,target:new Vector3(),age:i*2});
       }
     }
-    this.scene.traverse(o=>{if(o instanceof Mesh){o.receiveShadow=true;o.castShadow=!o.name.startsWith('Relief_');for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.name.startsWith('Liquidity')||m.name.startsWith('Relief friendly'))m.toneMapped=false;}});
+    this.scene.traverse(o=>{if(o instanceof Mesh){o.receiveShadow=true;o.castShadow=true;for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.name.startsWith('Liquidity')||m.name.startsWith('Relief friendly'))m.toneMapped=false;}});
     this.comms=new CommsPanel(this.ui);this.buildUI();
-    this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield()});
+    this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield(),dash:()=>this.startDash()});
     window.addEventListener('blur',this.pause,{signal:this.lifetime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifetime.signal});
-    this.play('Idle');this.updateCamera(true);this.refreshSite();this.paint();
+    this.play('Idle');this.mixer.update(0);this.cornMixer.update(0);this.updateCamera(true);this.refreshSite();this.paint();
   }
   private buildUI():void{
     this.ui.className='surface-ui';this.status.className='surface-status';this.hint.className='surface-hint';this.message.className='surface-message';
     const top=document.createElement('div');top.className='surface-top';
-    const action=(label:string,run:()=>void,parent:HTMLElement,existing?:HTMLButtonElement)=>{const b=existing??document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',e=>{e.stopPropagation();if(this.active)run();},{signal:this.lifetime.signal});parent.appendChild(b);return b;};
+    const action=(label:string,run:()=>void,parent:HTMLElement,existing?:HTMLButtonElement)=>{const b=existing??document.createElement('button');b.type='button';b.textContent=label;bindSurfaceButton(b,()=>{if(this.active)run();},this.lifetime.signal);parent.appendChild(b);return b;};
     action('PAUSE',()=>this.togglePause(),top,this.pauseButton);
     action('COMMS',()=>{if(!this.canAct())return;if(this.quest.introduced)this.conversation(this.quest.restored?'log':'intro',()=>true);else this.say('Meet Corn beside the relief canopy.');},top);
     action('ORBIT',()=>{if(!this.canAct())return;if(this.hero.position.distanceTo(new Vector3(5,0,26))>5){this.say('Return to your parked fighter to ascend.');return;}if(this.guards.some(g=>g.hp>0&&g.mesh.position.distanceTo(this.hero.position)<14)){this.say('Clear nearby defenders before boarding the fighter.');return;}this.input.clear();this.host.onOrbit();},top);
     const bottom=document.createElement('div');bottom.className='surface-actions';
-    action('SHIELD',()=>this.toggleShield(),bottom,this.shieldButton);action('REPAIR',()=>this.repair(),bottom,this.repairButton);action('INTERACT',()=>this.interact(),bottom,this.interactButton);action('BLAST',()=>{},bottom,this.fire);this.fire.className='surface-fire';
+    action('SHIELD',()=>this.toggleShield(),bottom,this.shieldButton);action('REPAIR',()=>this.repair(),bottom,this.repairButton);action('DASH',()=>this.startDash(),bottom,this.dashButton);action('INTERACT',()=>this.interact(),bottom,this.interactButton);action('BLAST',()=>{},bottom,this.fire);this.fire.className='surface-fire';
     this.map.className='surface-map';this.map.width=140;this.map.height=150;this.map.setAttribute('aria-label','Relief site map: green allies, red seized pumps');
     this.ui.append(this.status,this.hint,top,this.message,this.map,bottom);this.ui.hidden=true;this.host.root.appendChild(this.ui);
   }
@@ -134,6 +142,7 @@ export class MarsSurfaceScene implements ManagedScene{
   }
   private interact():void{
     if(!this.canAct())return;
+    if(Math.hypot(this.hero.position.x-RELIEF_EXIT.x,this.hero.position.z-RELIEF_EXIT.z)<3){if(!this.quest.restored){this.say('Restore the relief site and speak with Corn before entering the extraction route.');return;}this.input.clear();this.host.onExcavation({x:this.hero.position.x,z:this.hero.position.z});return;}
     if(Math.hypot(this.hero.position.x-RELIEF_CORN.x,this.hero.position.z-RELIEF_CORN.z)<3.2){
       if(!this.quest.introduced)this.conversation('intro',()=>this.quest.meetCorn().ok);
       else if(!this.quest.restored&&RELIEF_PUMPS.every(p=>this.quest.pumpClear(p.id)))this.conversation('restored',()=>this.quest.completeRelief().ok);
@@ -152,6 +161,7 @@ export class MarsSurfaceScene implements ManagedScene{
     this.refreshSite();sfx.play('pulse',.6);this.say(`${pump.label} ONLINE · 40 salvage. ${RELIEF_PUMPS.every(p=>this.quest.pumpClear(p.id))?'Return to Corn.':'Continue to the next valve.'}`);
   }
   private toggleShield():void{if(this.canAct()&&this.host.save.snapshot.heroUpgrades.ledger_shield){this.shielding=!this.shielding;this.paint();}}
+  private startDash():void{if(!this.canAct())return;const move=this.input.move,dir=Math.hypot(move.x,move.y)>.1?{x:move.x,z:move.y}:{x:Math.sin(this.hero.rotation.y),z:Math.cos(this.hero.rotation.y)};if(this.dash.request(!!this.host.save.snapshot.heroUpgrades.liquidity_dash,dir))sfx.play('pulse',.5);}
   private repair():void{
     if(!this.canAct())return;const result=fieldRepair(this.life,this.repairCooldown,!!this.host.save.snapshot.heroUpgrades.field_repair);
     if(result.used){this.life=result.life;this.repairCooldown=result.cooldown;sfx.play('pulse',.6);this.say('FIELD REPAIR · Vitals restored.');this.paint();}
@@ -166,6 +176,7 @@ export class MarsSurfaceScene implements ManagedScene{
     for(const material of retired)material.dispose();
     terrain.getObjectByName('Relief_Growth')!.visible=RELIEF_PUMPS.every(p=>this.quest.pumpClear(p.id));
     this.repairButton.hidden=!this.host.save.snapshot.heroUpgrades.field_repair;this.shieldButton.hidden=!this.host.save.snapshot.heroUpgrades.ledger_shield;
+    this.dashButton.hidden=!this.host.save.snapshot.heroUpgrades.liquidity_dash;this.exitLight.material=this.quest.restored?this.green:this.red;
   }
   private play(name:string):void{
     if(this.clip===name)return;const clip=this.host.models[0].animations.find(a=>a.name===name);if(!clip)return;
@@ -181,7 +192,7 @@ export class MarsSurfaceScene implements ManagedScene{
     this.bolts.push({mesh,velocity:direction.clone().normalize().multiplyScalar(hostile?SURFACE_COMBAT.hostileBoltSpeed:SURFACE_COMBAT.heroBoltSpeed),hostile,life:hostile?2.2:1.1});sfx.play(hostile?'enemyShoot':'shoot',.35);if(!hostile)this.shots++;
   }
   private damage():void{
-    if(this.invulnerable>0||this.dead)return;this.invulnerable=.38;this.injuries++;
+    if(this.invulnerable>0||this.dead||this.dashing)return;this.invulnerable=.38;this.injuries++;
     if(this.shielding&&this.shieldCharge>0){this.shieldCharge=Math.max(0,this.shieldCharge-16);sfx.play('pulse',.35);return;}
     this.life=Math.max(0,this.life-SURFACE_COMBAT.hostileDamage);sfx.play('hurt',.4);
     if(this.life<=0){this.dead=true;this.input.clear();this.play('KnockdownRecover');const panel=document.createElement('section');panel.className='boarding-shop';const text=document.createElement('p');text.textContent='Relief signal lost. Released valves stay restored. Return to the last safe checkpoint.';const retry=document.createElement('button');retry.textContent='RETRY RELIEF SITE';retry.addEventListener('click',()=>{if(this.active)this.host.onRetry();},{signal:this.lifetime.signal});panel.append(text,retry);this.ui.appendChild(panel);}
@@ -220,14 +231,14 @@ export class MarsSurfaceScene implements ManagedScene{
     if(this.arrival>0){this.arrival=Math.max(0,this.arrival-dt);this.fighter.position.y=PARKED_HEIGHT+8*(this.arrival/4)**2;this.hero.visible=this.arrival===0;this.updateCamera();this.paint();return;}
     this.hero.visible=true;this.elapsed+=dt;this.invulnerable=Math.max(0,this.invulnerable-dt);this.repairCooldown=Math.max(0,this.repairCooldown-dt);this.fireClock-=dt;
     if(this.notice>0){this.notice-=dt;if(this.notice<=0)this.message.textContent='';}
-    const move=this.input.move,next=surfaceMove(this.hero.position,move.x*SURFACE_COMBAT.heroSpeed*dt,move.y*SURFACE_COMBAT.heroSpeed*dt,this.fighterOutline);this.hero.position.x=next.x;this.hero.position.z=next.z;
+    const move=this.input.move;this.dashing=this.dash.active;const burst=this.dash.update(dt),next=surfaceMove(this.hero.position,this.dashing?burst.x:move.x*SURFACE_COMBAT.heroSpeed*dt,this.dashing?burst.z:move.y*SURFACE_COMBAT.heroSpeed*dt,this.fighterOutline);this.hero.position.x=next.x;this.hero.position.z=next.z;
     if(Math.hypot(move.x,move.y)>.1)this.hero.rotation.y=Math.atan2(move.x,move.y);
     const target=this.quest.introduced?this.guards.filter(g=>g.hp>0&&g.mesh.position.distanceTo(this.hero.position)<SURFACE_COMBAT.range&&this.visible(g.mesh.position)&&surfaceLineClear(this.hero.position,g.mesh.position)).sort((a,b)=>a.mesh.position.distanceToSquared(this.hero.position)-b.mesh.position.distanceToSquared(this.hero.position))[0]:undefined;
     if(this.input.firing&&target){this.hero.rotation.y=Math.atan2(target.mesh.position.x-this.hero.position.x,target.mesh.position.z-this.hero.position.z);if(this.fireClock<=0){this.hero.updateMatrixWorld(true);const hand=this.hero.getObjectByName('Hand_R')?.getWorldPosition(new Vector3())??this.hero.position.clone().add(new Vector3(0,1,0));this.shoot(hand,target.mesh.position.clone().sub(hand),false);this.fireClock=SURFACE_COMBAT.heroInterval+Math.max(-.05,this.fireClock);}}
-    this.play(this.input.firing&&target?'AimFire':Math.hypot(move.x,move.y)>.1?'Run':'Idle');this.mixer.update(dt);this.cornMixer.update(dt);
+    this.play(this.dashing?'Dodge':this.input.firing&&target?'AimFire':Math.hypot(move.x,move.y)>.1?'Run':'Idle');this.mixer.update(dt);this.cornMixer.update(dt);
     this.updateGuards(dt);this.updateBolts(dt);
     this.shieldCharge=Math.min(100,Math.max(0,this.shieldCharge+(this.shielding?-14:18)*dt));if(this.shieldCharge===0)this.shielding=false;
-    this.shield.visible=this.shielding;this.shield.position.copy(this.hero.position).y+=1;
+    this.shield.visible=this.shielding||this.dashing;this.shield.position.copy(this.hero.position).y+=1;
     this.marker.position.copy(this.corn.position).y=2.2+Math.sin(this.elapsed*3)*.06;
     this.updateCamera();this.hudClock+=dt;if(this.hudClock>.1){this.hudClock=0;this.paint();}
   }
@@ -248,6 +259,7 @@ export class MarsSurfaceScene implements ManagedScene{
     this.status.textContent=`MARS · RELIEF SITE\nVITALS ${Math.ceil(this.life)} · SHIELD ${Math.ceil(this.shieldCharge)}\nPUMPS ${count}/3${this.paused?' · PAUSED':''}`;
     this.hint.textContent=this.arrival>0?'FIGHTER DESCENT':!this.quest.introduced?'Meet Corn at the green marker.':count<3?'Clear red seizure drones. Interact at each valve.':!this.quest.restored?'Return to Corn for the field repair unit.':'RELIEF SIGNAL SECURED · Field repair acquired.';
     this.interactButton.textContent='INTERACT';
+    if(this.quest.restored){this.hint.textContent='EXTRACTION ROUTE · Follow the green north gate beyond the cistern.';if(Math.hypot(this.hero.position.x-RELIEF_EXIT.x,this.hero.position.z-RELIEF_EXIT.z)<3)this.interactButton.textContent='ENTER ROUTE';}
     const nearCorn=Math.hypot(this.hero.position.x-RELIEF_CORN.x,this.hero.position.z-RELIEF_CORN.z)<3.2;
     const nearby=RELIEF_PUMPS.map(p=>({pump:p,distance:Math.hypot(this.hero.position.x-p.x,this.hero.position.z-p.z-3.25)})).sort((a,b)=>a.distance-b.distance)[0];
     if(nearCorn)this.interactButton.textContent='TALK';
@@ -257,6 +269,7 @@ export class MarsSurfaceScene implements ManagedScene{
       if(!defenders&&nearby.distance<2.5)this.interactButton.textContent='RELEASE';
     }
     this.pauseButton.textContent=this.paused?'RESUME':'PAUSE';this.shieldButton.textContent=this.shielding?'SHIELD ON':'SHIELD';this.repairButton.textContent=this.repairCooldown>0?`REPAIR ${Math.ceil(this.repairCooldown)}s`:'REPAIR';this.repairButton.disabled=this.life>=100||this.repairCooldown>0;
+    this.dashButton.textContent=this.dash.cooldown>0?`DASH ${Math.ceil(this.dash.cooldown)}s`:'DASH';this.dashButton.disabled=this.dash.cooldown>0;
     const ctx=this.map.getContext('2d');if(ctx){const plot=(x:number,z:number):[number,number]=>[(x+33)/66*140,(z+50)/90*150];ctx.clearRect(0,0,140,150);ctx.fillStyle='#061009ee';ctx.fillRect(0,0,140,150);for(const p of RELIEF_PUMPS){const [x,z]=plot(p.x,p.z);ctx.fillStyle=this.quest.pumpClear(p.id)?'#00ff00':'#ff2200';ctx.fillRect(x-4,z-4,8,8);}for(const [p,r]of[[RELIEF_CORN,3],[this.hero.position,4]]as const){const[x,z]=plot(p.x,p.z);ctx.fillStyle='#00ff00';ctx.beginPath();ctx.arc(x,z,r,0,Math.PI*2);ctx.fill();}ctx.strokeStyle='#87a187';ctx.strokeRect(...plot(0,26),5,5);}
     if(this.host.save.testSlot){Object.assign(this.ui.dataset,{position:JSON.stringify(this.hero.position.toArray()),life:String(this.life),shield:String(this.shieldCharge),paused:String(this.paused),dialogue:String(this.comms.active),arrival:String(this.arrival),pumps:String(count),introduced:String(this.quest.introduced),restored:String(this.quest.restored),shots:String(this.shots),hits:String(this.hits),injuries:String(this.injuries),firing:String(this.input.firing),guards:JSON.stringify(this.guards.filter(g=>g.hp>0).map(g=>({pump:g.pump,hp:g.hp,position:g.mesh.position.toArray(),telling:g.charge>0}))),repairCooldown:String(this.repairCooldown)});}
   }

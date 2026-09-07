@@ -266,6 +266,26 @@
       "consumer": "MarsSurfaceScene",
       "source": "Original Blender relief site, generated regolith color map and existing authored manufactured plate maps; private editable masters retained.",
       "status": "Playable relief site; split cap normals, modeled crop leaves, three faction-switched pump contracts; master v03 remains private"
+    },
+    {
+      "id": "models:margin_warden",
+      "path": "public/assets/models/margin_warden.glb",
+      "bytes": 2241964,
+      "sha256": "6c0a8236d29eeddcf791ba14a3af49fb2b1d971a5d6ff6c17df432d21ba9d808",
+      "triangles": 25616,
+      "consumer": "MarsExcavationScene through MeshRuntime",
+      "source": "Original Blender carrier; private generated armor albedo and existing original manufactured normal/roughness maps.",
+      "status": "Playable three-cycle boss; eight nodes and Blender roundtrip verified; master v02 private. Further art refinement remains."
+    },
+    {
+      "id": "models:mars_excavation",
+      "path": "public/assets/models/mars_excavation.glb",
+      "bytes": 1789176,
+      "sha256": "a86040daef9a003b63c1d4d1d00cf4c58ff27d4c5e7f4c3fb8d9ca04e22216de",
+      "triangles": 26892,
+      "consumer": "MarsExcavationScene through MeshRuntime",
+      "source": "Original Blender service route; private generated Mars regolith albedo.",
+      "status": "Playable route with six stable anchors, physical/fading gate frame and restoration; master v03 private; roundtrip and ten-minute current scene soak pass."
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

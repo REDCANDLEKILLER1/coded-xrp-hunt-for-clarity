@@ -909,6 +909,26 @@
       "bytes": 2219192,
       "sha256": "4e5ed2dbd3c36996aa04ebc33e364d38255f32a85b13f9648d6491f4f28aa63b",
       "notes": "Original Blender relief site with three pressure plants, canopy, crop beds and generated regolith albedo. Editable master and original image remain private."
+    },
+    "margin_warden": {
+      "src": "/assets/models/margin_warden.glb",
+      "type": "model",
+      "scenes": [
+        "mars_excavation"
+      ],
+      "bytes": 2241964,
+      "sha256": "6c0a8236d29eeddcf791ba14a3af49fb2b1d971a5d6ff6c17df432d21ba9d808",
+      "notes": "Original Blender model for the physical Mars excavation encounter. Raw concepts and editable masters remain private."
+    },
+    "mars_excavation": {
+      "src": "/assets/models/mars_excavation.glb",
+      "type": "model",
+      "scenes": [
+        "mars_excavation"
+      ],
+      "bytes": 1789176,
+      "sha256": "a86040daef9a003b63c1d4d1d00cf4c58ff27d4c5e7f4c3fb8d9ca04e22216de",
+      "notes": "Original Blender model for the physical Mars excavation encounter. Raw concepts and editable masters remain private."
     }
   },
   "audio": {

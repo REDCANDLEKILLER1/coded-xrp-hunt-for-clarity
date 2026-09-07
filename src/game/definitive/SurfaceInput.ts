@@ -1,3 +1,10 @@
+/** A secondary touch does not necessarily produce a browser click. Accept its
+ * down edge directly, plus detail-zero keyboard/accessibility activation. */
+export function bindSurfaceButton(button:HTMLButtonElement,action:()=>void,signal:AbortSignal):void{
+  button.addEventListener('pointerdown',event=>{if(button.disabled||event.button!==0)return;event.preventDefault();event.stopPropagation();action();},{signal});
+  button.addEventListener('click',event=>{event.stopPropagation();if(!button.disabled&&event.detail===0)action();},{signal});
+}
+
 /** On-foot ownership stays separate from both flight controllers. Native
  * movement and weapon pointers can coexist and are cleared at modal edges. */
 export class SurfaceInput {
@@ -8,7 +15,7 @@ export class SurfaceInput {
   private weaponPointer:number|null=null;
   private origin={x:0,y:0};
   private stick={x:0,y:0};
-  constructor(private readonly canvas:HTMLCanvasElement,private readonly fire:HTMLButtonElement,private readonly canAct:()=>boolean,actions:{interact:()=>void;pause:()=>void;repair:()=>void;shield:()=>void}){
+  constructor(private readonly canvas:HTMLCanvasElement,private readonly fire:HTMLButtonElement,private readonly canAct:()=>boolean,actions:{interact:()=>void;pause:()=>void;repair:()=>void;shield:()=>void;dash?:()=>void}){
     const options={signal:this.lifetime.signal};
     const usable=()=>this.owned&&this.canAct();
     canvas.addEventListener('pointerdown',event=>{
@@ -30,7 +37,7 @@ export class SurfaceInput {
       if(!usable())return;
       if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code))event.preventDefault();
       this.keys.add(event.code);
-      if(!event.repeat){if(event.code==='KeyE')actions.interact();if(event.code==='KeyR')actions.repair();if(event.code==='KeyQ')actions.shield();}
+      if(!event.repeat){if(event.code==='KeyE')actions.interact();if(event.code==='KeyR')actions.repair();if(event.code==='KeyQ')actions.shield();if(event.code==='ShiftLeft'||event.code==='ShiftRight')actions.dash?.();}
     },options);
     window.addEventListener('keyup',event=>this.keys.delete(event.code),options);
     window.addEventListener('resize',()=>this.clear(),options);

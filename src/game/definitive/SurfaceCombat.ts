@@ -8,13 +8,21 @@ export function surfaceClear(p:SurfacePoint,fighter:readonly GroundPoint[]=RELIE
   if(RELIEF_PUMPS.some(pump=>Math.hypot(p.x-pump.x,p.z-pump.z)<3.1))return false;
   if(withinFootprint(p,fighter))return false;
   if(Math.hypot(p.x-RELIEF_CORN.x,p.z-RELIEF_CORN.z)<.85)return false;
+  if([-2.7,2.7].some(x=>Math.abs(p.x-x)<.45&&Math.abs(p.z+46)<.52))return false;
   if(Math.abs(p.x)<4.8&&p.z>6&&p.z<11.7)return false;
   if(Math.abs(Math.abs(p.x)-10)<3.1&&p.z>3.6&&p.z<12.3)return false;
   return true;
 }
 /** Axis sliding keeps touch movement along obstacles from sticking. */
 export function surfaceMove(from:SurfacePoint,dx:number,dz:number,fighter:readonly GroundPoint[]=RELIEF_FIGHTER_PROXY):SurfacePoint{
-  const next={...from};if(surfaceClear({x:next.x+dx,z:next.z},fighter))next.x+=dx;if(surfaceClear({x:next.x,z:next.z+dz},fighter))next.z+=dz;return next;
+  return slideSurface(from,dx,dz,p=>surfaceClear(p,fighter));
+}
+/** Short movement steps preserve thin boundaries during a high-speed dash. */
+export function slideSurface(from:SurfacePoint,dx:number,dz:number,clear:(p:SurfacePoint)=>boolean):SurfacePoint{
+  const next={x:from.x,z:from.z},distance=Math.hypot(dx,dz);if(!Number.isFinite(distance)||distance>50)return next;
+  const steps=Math.max(1,Math.ceil(distance/.25));
+  for(let i=0;i<steps;i++){if(clear({x:next.x+dx/steps,z:next.z}))next.x+=dx/steps;if(clear({x:next.x,z:next.z+dz/steps}))next.z+=dz/steps;}
+  return next;
 }
 export function surfaceSegmentHit(a:SurfacePoint,b:SurfacePoint,center:SurfacePoint,radius:number):boolean{
   const x=b.x-a.x,z=b.z-a.z,t=Math.max(0,Math.min(1,((center.x-a.x)*x+(center.z-a.z)*z)/(x*x+z*z||1)));

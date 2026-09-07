@@ -8,7 +8,7 @@
 .surface-hint{position:absolute;top:141px;left:12px;right:12px;margin:0;max-width:400px;padding:5px;background:#031108b8;color:#d9ffd9}
 .surface-message{position:absolute;bottom:90px;left:50%;transform:translateX(-50%);width:min(82%,560px);text-align:center;color:#d9ffd9;background:#031108de;padding:7px;border-radius:5px}
 .surface-message:empty{display:none}
-.surface-actions{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:max(25px,env(safe-area-inset-bottom));display:flex;gap:7px;align-items:center}
+.surface-actions{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:max(25px,env(safe-area-inset-bottom));display:flex;gap:7px;align-items:center;max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:flex-end}
 .surface-actions .surface-fire{width:76px;height:62px;background:#005500b0;border-color:#00ff00}
 .surface-map{position:absolute;right:12px;top:146px;width:100px;height:107px;border:1px solid #00ff0050;border-radius:6px;opacity:.9}
 .surface-ui .boarding-dialogue{pointer-events:auto;z-index:6}

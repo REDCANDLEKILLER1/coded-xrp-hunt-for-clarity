@@ -1,3 +1,22 @@
+# Current checkpoint - Mars excavation complete
+
+Read MARS_EXCAVATION_CHECKPOINT.md and PLAYTEST_CARD.md. The Mars route/boss/Dash return is implemented, visually checked and gated: clean npm ci, all 51 validators with eight deliberate excavation mutation controls, TypeScript/Vite build, exact runtime Blender roundtrips, native desktop touch at four layouts, and a 600.170-second current combat soak. Original earned journey1 completed Mars restoration and returned to Corn; no later-stage grants were injected by its pilots. Parent definitive-authorization holds all reports. Main/other-worker refs are untouched; PR125 stays draft.
+
+Base before this checkpoint: 6268b283ec4d35e40fc9b7757a84ed19af3393b6. Secure the current tree on astra/definitive-review, push, verify exact-head Build/Vercel using REST, then post one meaningful text-only PR121 milestone. GitHub GraphQL quota was exhausted; use gh api REST. Do not claim remote success before checking it.
+
+Private Warden: enemies/margin_warden/blender/margin_warden_v02.blend. Terrain: worlds/mars/excavation_v03/mars_excavation.blend. Runtime Warden 2,241,964 bytes/25,616 triangles, terrain 1,789,176/26,892. Required four models total 7,797,580 bytes; embedded RGBA image estimate 25MiB. Previous private versions remain. Further art refinement and physical-phone acceptance remain explicit unfinished work.
+
+Current Vite: http://127.0.0.1:5184, session55361; old59626 was stopped for npmci. Browser CDP: ws://127.0.0.1:54024/devtools/browser/369e784f-50c9-48f9-b433-b9413f68e738. Old CLI session coded-definitive timed out; working agent-browser session coded-gate-verify connects directly to that CDP. Cached CLI: C:/Users/Michael/AppData/Local/npm-cache/_npx/6de2aa2fded2970c/node_modules/agent-browser/bin/agent-browser.js. Restart visual/snapshot/error checks pass. Never close the browser.
+
+All pilots, Blender, image and performance jobs are finished. warden1 resumes the completed excavation arena after touch/camera tests; journey1 retains its earned relief north return. gate-check is a fresh isolated excavation entry. excavation-soak is an in-memory performance rig, not an earned campaign. No active helper or pending approval. Final gate logs: excavation-npm-ci.log, excavation-full-tests.log, excavation-build.log. Soak82586 and gate41796 completed successfully.
+
+Next after securing/reporting the milestone: implement Fog Moon under MASTER_PLAN section13. Bounded design is outside the repo at definitive-authorization/FOG_MOON_DESIGN_DRAFT.md; copy it into docs when starting that scope. Private generated Boo study: characters/boo/support/boo_study_v01.png, SHA29e3081f740f9a5f42daf10555f6d745f3422814b018275720dfcf0b681c6306. Built-in image generation is complete; exact prompt/provenance is beside it and in parent BOO_SUPPORT_PROVENANCE.json. No Boo model exists yet.
+
+Recovered written character review: Downloads/CODED_CHAPTER_ONE_HANDOFF_v1_0.zip, CHARACTER_REFERENCE_REVIEW_v1.md; copied privately to references/coded_canon/provenance. It records nine source image identities/hashes; the actual PNGs were not located in current sources/Downloads/attachments/private named refs. Do not claim a new inspection of those originals. Boo is white/pale-blue with expressive eyes/smile and strictly no limbs; the study is an original interpretation of that written review. TruFi and Blue Umbrella remain allies with blue/blue-gold costumes and neon #00FF00 friendly cues. Private sheets/masters stay private.
+
+No merge/release, wallet work or engine migration. Continue the approved campaign after the internal checkpoint. Older entries below are historical; their unfinished lists and sessions are superseded here.
+
+
 ## Current follow-up — conversation and motion refinement
 
 Read MOTION_CHECKPOINT.md. Conversation framing, blurred-close camera recovery, relaxed XRPMan/Corn/Mr Zamn clips, Corn gesture, split Mars cap normals and real crop leaves are implemented. All50 validators and production build pass; all three exact character GLBs pass Blender roundtrip. New character files preserve geometry/maps/skins/sockets and combat clips byte-for-byte; unused animation data is removed. Mars asset set11,082,856bytes; terrain31,264tri. Private masters hero v06, Corn v03/runtimev04, Mr Zamn v04, terrain relief_v03; previous versions preserved. All Blender jobs and test helpers have finished.

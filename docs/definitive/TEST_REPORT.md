@@ -1,8 +1,11 @@
-# Latest verification — Mars relief opening
+# Latest verification - Mars excavation
+
+All 51 validators, clean npmci and TypeScript/Vite build pass. The original earned journey reaches Mars restoration/Dash and a saved return to Corn. Native touch caught and verified a secondary-touch action fix; four viewports, gate occlusion/collision, actual death/retry and failed victory saving pass. Eight deliberate behavioral mutations are detected. Both new exact runtime GLBs pass Blender roundtrips. The current 600.170-second full/low combat soak and six scene cycles pass with retained frame-time spikes and zero page errors. See MARS_EXCAVATION_CHECKPOINT.md for exact costs, percentiles, evidence and limits. Desktop emulation remains distinct from physical-phone review. Older entries below are historical.
+# Latest verification ï¿½ Mars relief opening
 
 Clean npm ci, all 50 validators, TypeScript/Vite production build and diff whitespace checks pass. The first clean-install attempt encountered the running Vite process holding a Windows Rollup library; stopping that local server and repeating the install succeeded. No dependency versions or lockfile changed in this checkpoint. The inherited four dependency advisories remain.
 
-The earned journey1 save flew from its actual Mars orbit pose to the approach beacon, used the real fighter descent and reloaded on the surface. The separate relief1 ordinary-input run completed all three pump captures and Corn recruitment/field repair, then retained them on reload. Native desktop touch tests covered independent pointers, release/cancel, rotation and HUD bounds at 390×844, 844×390 and 360×740. Neither result is physical-phone acceptance.
+The earned journey1 save flew from its actual Mars orbit pose to the approach beacon, used the real fighter descent and reloaded on the surface. The separate relief1 ordinary-input run completed all three pump captures and Corn recruitment/field repair, then retained them on reload. Native desktop touch tests covered independent pointers, release/cancel, rotation and HUD bounds at 390ï¿½844, 844ï¿½390 and 360ï¿½740. Neither result is physical-phone acceptance.
 
 A 600.47-second controlled combat soak recorded 78,863 frames with no browser errors or resource growth. Full detail rAF p50/p95/p99: 7.2/13.7/17.2 ms; low: 7.0/10.5/13.4 ms. Six space/surface reload cycles returned stable resource counts. This in-memory fixture replenished enemy HP and hero vitals; it is performance evidence, not normal-play pacing. The subsequent parked-fighter walking-proxy correction passed all three actual model outlines and a browser collision check. See MARS_RELIEF_CHECKPOINT.md for costs and measurement limits.
 

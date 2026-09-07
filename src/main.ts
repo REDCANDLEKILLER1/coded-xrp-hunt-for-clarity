@@ -256,7 +256,7 @@ watchForUpdates(import.meta.url);
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
 
-  if (['model', 'character', 'crew', 'boarding', 'landing', 'space', 'mars'].includes(params.get('review') ?? '') || params.has('model')) {
+  if (['model', 'character', 'crew', 'boarding', 'landing', 'space', 'mars', 'excavation'].includes(params.get('review') ?? '') || params.has('model')) {
     map.hide(); game.suspend(); boarding.setEnabled(false); onFoot.hide(); space.hide();
     gameShell.hidden = false; canvas.style.visibility = 'hidden';
     void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
@@ -268,6 +268,7 @@ void game.start().then(() => {
       }
       else if (params.get('review') === 'space') {const {prepareSpaceReview}=await import('./game/definitive/SpaceProgress');prepareSpaceReview(definitiveSave);await meshRuntime.showSpace(definitiveSave);}
       else if (params.get('review') === 'mars') {const {prepareMarsReliefReview}=await import('./game/definitive/MarsRelief');const ready=prepareMarsReliefReview(definitiveSave);if(!ready.ok)throw new Error('The isolated Mars section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
+      else if (params.get('review') === 'excavation') {const {prepareExcavationReview}=await import('./game/definitive/MarsExcavation');const ready=prepareExcavationReview(definitiveSave);if(!ready.ok)throw new Error('The isolated extraction section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
       else if (params.get('review') === 'boarding') {if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showBoarding(definitiveSave);}
       else await meshRuntime.showModel(params.get('review') === 'crew' ? 'mr_zamn' : params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
     }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });
