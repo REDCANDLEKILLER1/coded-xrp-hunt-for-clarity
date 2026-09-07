@@ -20,6 +20,7 @@ export class CampaignMap {
     private readonly onLaunch: (planet: PlanetDef, checkpoint?: MissionCheckpointSnapshot) => void,
     private readonly onTestMode: () => void,
     private readonly chapterLabel?: (planetKey:string)=>string|null,
+    private readonly launchBlocked?: (planetKey:string)=>string|null,
   ) {
     if (!this.isAvailable(this.selectedKey)) this.selectedKey = PLANETS[0].key;
     this.render();
@@ -51,7 +52,8 @@ export class CampaignMap {
     }).join('');
 
     const chapterLabel=this.chapterLabel?.(selected.key);
-    const launchButtons = chapterLabel?`<button class="deploy-button" type="button" data-action="deploy">${chapterLabel}</button>`:selectedState === 'locked'
+    const blocked=selectedState!=='locked'?this.launchBlocked?.(selected.key):null;
+    const launchButtons = blocked?`<button class="deploy-button" type="button" disabled>${blocked}</button>`:chapterLabel?`<button class="deploy-button" type="button" data-action="deploy">${chapterLabel}</button>`:selectedState === 'locked'
       ? '<button class="deploy-button" type="button" data-action="deploy" disabled>ROUTE LOCKED</button>'
       : checkpoint
         ? `<button class="deploy-button" type="button" data-action="resume">RESUME FROM ${checkpoint.checkpointLabel}</button>
@@ -115,14 +117,14 @@ export class CampaignMap {
     this.root.querySelector<HTMLButtonElement>('[data-action="resume"]')?.addEventListener('click', () => {
       const planet = PLANET_BY_KEY[this.selectedKey];
       const snapshot = missionCheckpointFor(this.progress, this.selectedKey);
-      if (!planet || !snapshot || !this.isAvailable(planet.key)) return;
+      if (!planet || !snapshot || !this.isAvailable(planet.key) || this.launchBlocked?.(planet.key)) return;
       this.progress = recordPlanetSelection(this.progress, planet.key);
       saveCampaignProgress(this.progress);
       this.onLaunch(planet, snapshot);
     });
     this.root.querySelector<HTMLButtonElement>('[data-action="restart"]')?.addEventListener('click', () => {
       const planet = PLANET_BY_KEY[this.selectedKey];
-      if (!planet || !this.isAvailable(planet.key)) return;
+      if (!planet || !this.isAvailable(planet.key) || this.launchBlocked?.(planet.key)) return;
       this.progress = clearMissionCheckpoint(this.progress, planet.key);
       this.progress = recordPlanetSelection(this.progress, planet.key);
       saveCampaignProgress(this.progress);
@@ -133,7 +135,7 @@ export class CampaignMap {
 
   private launchSelected(): void {
     const planet = PLANET_BY_KEY[this.selectedKey];
-    if (!planet || !this.isAvailable(planet.key)) return;
+    if (!planet || !this.isAvailable(planet.key) || this.launchBlocked?.(planet.key)) return;
     this.progress = recordPlanetSelection(this.progress, planet.key);
     saveCampaignProgress(this.progress);
     this.onLaunch(planet);

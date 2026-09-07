@@ -2,6 +2,16 @@
 
 Continuing production under PR124; not a completed campaign or final art approval.
 
+## Recovery follow-up after263099c
+
+A fresh isolated ordinary-control replay (connected1) reached Mars in approximately217 simulation seconds after all four patrols and portal dialogue, with31.8hull remaining. It saved400salvage, four unique patrol receipts, the Mars receipt and portal dialogue in the correct route-derived save. No browser errors. The initial reload timed out waiting for the page-load event; the server remained responsive and subsequent scene/save inspection passed. Held-key dialogue, log replay, skip, simulation pause and duplicate-reward protection were then checked in the browser.
+
+The on-screen pause button now saves the exact current position, matching the existing keyboard/blur path; pause/reload equality passes. Swept Earth/Mars atmosphere boundaries keep the measured hull and chase camera outside the planets, retain tangential movement and allow steering outward. Old inside-planet poses recover before the first rendered frame. The Mars navigation point is above the surface. A160-direction geometry test includes long-step tunnelling, sustained boost and a swept-entry mutation control. Actual boosted approach and outward escape passed after the final movement-order fix. Older Earth-complete saves retain their unlocked worlds but show a capture requirement before Mars travel; a controlled legacy-save browser fixture confirms this without claiming earned chapter progress.
+
+All48 validators pass. The final movement-order adjustment additionally passed its focused test and the final build: initialJS257.92KB/75.93gzip; lazy3D737.41KB/192.86gzip. Asset bytes and dependencies are unchanged. Full normal Earth-to-Mars play, final art, surface content, ten-minute soak and physical phone remain outstanding. The close-range Mars surface looks plain and remains provisional. See RESUME.md for current tool/evidence state.
+
+## Original flight checkpoint and measurements
+
 The captured Warship flies as its textured v03-derived mesh. One scene-root rotation converts glTF +Z bow to engine -Z forward; metres remain 1:1. Precise loaded v03 bounds are 119.997 m long, 81.483 m wide and 25.000 m high. Earlier 120×56×27 dimensions belong to the first greybox. Loaded nodes supply cameras, engines and all four muzzle origins.
 
 Each held primary volley emits four volumetric green bolts and release/cancellation stops new fire. Convergence stays on the loaded gun-deck plane. A centre-of-hull target clipped the side-gun paths; the corrected plane and 400 m minimum pass 1,200 paths at 75 orientations, including the visible 0.18 m bolt radius. The rangefinder adjusts depth only; aim direction remains player-controlled. A separate marker predicts lead. Quaternion flight retains drag travel/turn easing and independent weapon-pointer ownership.

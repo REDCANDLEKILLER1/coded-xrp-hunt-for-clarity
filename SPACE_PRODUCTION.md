@@ -1,4 +1,8 @@
-# Current flight checkpoint — supersedes the archived notes below
+# Current recovery checkpoint
+
+See docs/definitive/RESUME.md and SPACE_CHECKPOINT.md for the live state.263099c is verified pushed and green. The subsequent recovery pass adds planet approach constraints, exact UI-pause persistence and the old-save Mars launch guard. All48 checks and final build pass; ordinary connected1 space play earned Mars and portal dialogue, followed by successful pause/reload, held-dialogue and approach/escape browser tests. Normal Earth-to-Mars completion and finished art remain outstanding. Do not infer current processes or pending actions from the archived notes below.
+
+## Archived flight checkpoint
 
 See docs/definitive/SPACE_CHECKPOINT.md. Actual flight, all four patrols and Mars arrival passed a 188.4-second ordinary-control section play. Normal Earth handoff and two-stage portal dialogue were connected afterward and still need the complete browser journey replay. All 47 validators and TypeScript pass; final build/touch/push are in progress.
 

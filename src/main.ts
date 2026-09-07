@@ -12,7 +12,7 @@ import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
 import { showDebugLogView } from './game/ui/DebugLogView';
 import { CampaignSave, reviewSaveSlot } from './game/definitive/CampaignSave';
-import {enterWarship,savedChapterScene} from './game/definitive/ChapterTransitions';
+import {enterWarship,savedChapterScene,chapterLaunchBlock} from './game/definitive/ChapterTransitions';
 import {
   configureCampaignPersistence,
   loadCampaignProgress,
@@ -117,6 +117,7 @@ let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
   (planet, checkpoint?: MissionCheckpointSnapshot) => {
+    if(chapterLaunchBlock(definitiveSave,planet.key))return;
     const saved=savedChapterScene(definitiveSave);
     if(planet.key==='ledger_prime'&&saved!=='earth'){void showChapter(saved);return;}
     if(planet.key==='mars'&&definitiveSave.snapshot.warshipOwned){void showChapter(definitiveSave.snapshot.quests.includes('boarding.departure_ready')?'space':'boarding');return;}
@@ -150,6 +151,7 @@ map = new CampaignMap(
     if(planetKey==='mars'&&state.warshipOwned)return state.transit?.phase==='mars'?'CONTINUE MARS ORBIT':'FLY TO MARS';
     return null;
   },
+  planetKey=>chapterLaunchBlock(definitiveSave,planetKey),
 );
 
 const chapterRecovery=document.createElement('section');chapterRecovery.className='boarding-shop';chapterRecovery.hidden=true;gameShell.appendChild(chapterRecovery);

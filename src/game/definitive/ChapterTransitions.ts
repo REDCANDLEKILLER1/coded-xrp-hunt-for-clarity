@@ -1,5 +1,10 @@
 import type {CampaignSave,SaveResult} from './CampaignSave';
 
+/** Discovery from an older Earth save is not ownership of the captured ship. */
+export function chapterLaunchBlock(save:CampaignSave,planetKey:string):string|null {
+  return planetKey==='mars'&&!save.snapshot.warshipOwned?'CAPTURE THE WARSHIP TO TRAVEL':null;
+}
+
 /** Called after the actual disabled-warship aperture hold completes in 2D. */
 export function enterWarship(save:CampaignSave,entry:{planetKey:string;checkpointKey:string;fighterShipKey:string}):SaveResult {
   if(entry.planetKey!=='ledger_prime'||entry.checkpointKey!=='earth.boarding_lock'||!['player','xrpl_striker','ledger_warden'].includes(entry.fighterShipKey))return {ok:false,reason:'condition'};
