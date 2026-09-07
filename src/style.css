@@ -765,6 +765,13 @@ canvas {
 .boarding-dialogue strong { color: #00ff00; letter-spacing: .08em; }
 .boarding-dialogue[data-allegiance="hostile"] { border-left-color:#ff3030; }
 .boarding-dialogue[data-allegiance="hostile"] strong { color:#ff3030; }
+.earth-comms { position:absolute; inset:0; z-index:25; pointer-events:none; color:#e1f5e1; }
+.earth-comms[hidden] { display:none; }
+.earth-comms .boarding-dialogue { bottom:110px; box-shadow:0 0 0 100vmax #0006,0 0 35px #00ff0014; }
+.earth-comms button { pointer-events:auto; border:1px solid #00ff0077; color:#00ff00; background:#05180a; border-radius:6px; min-height:42px; padding:10px 14px; font:700 11px system-ui; }
+.earth-comms-log { position:absolute; right:12px; top:100px; }
+.earth-comms-log:disabled { opacity:.4; }
+@media (orientation:landscape) { .earth-comms .boarding-dialogue { bottom:40px; max-width:620px; } .earth-comms-log { top:92px; } }
 .boarding-dialogue p { min-height: 40px; margin: 10px 0; font-size: 15px; font-weight: 450; }
 .boarding-dialogue { padding: 12px 16px; bottom: 38px; }
 .boarding-ui.is-conversation .boarding-actions, .boarding-ui.is-conversation .boarding-stick, .boarding-ui.is-conversation .boarding-map, .boarding-ui.is-conversation .boarding-status { visibility: hidden; }

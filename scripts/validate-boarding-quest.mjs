@@ -68,4 +68,33 @@ assert.ok(quest.complete('departure_ready',BOARDING_DIALOGUE.outbound.id).ok); a
 save=new CampaignSave(storage,'test:boarding'); quest=new BoardingQuest(save);
 assert.ok(quest.has('departure_ready')); assert.equal(save.snapshot.credits,200);
 assert.ok(quest.begin('player').ok); assert.equal(save.snapshot.fighterShipKey,'xrpl_striker');
-console.log('boarding-quest: OK — ordered capture, finite room clears, interrupted/retried dialogue, atomic crew/ownership/rewards, preserved fighter, optional shield cache, fixed first shop and reload.');
+// Earth comms follow real mission acts and have no gameplay grants. A failed
+// receipt keeps the conversation open; a reload replays only unfinished comms.
+const {EARTH_STORY,earthStoryFor}=await load('src/game/content/EarthStory.ts');
+const {EARTH_LEDGER_PRIME_MISSION:earth}=await load('src/game/content/missions/ledgerPrime.ts');
+const earthSave=new CampaignSave(storage,'test:earth-story');
+assert.equal(earthStoryFor(null,[]),null);assert.equal(earthStoryFor('not-an-act',[]),null);
+assert.equal(new Set(Object.values(EARTH_STORY).map(s=>s.id)).size,7);
+for(const [act,scene]of Object.entries(EARTH_STORY)){
+  assert.ok(earth.acts.some(a=>a.key===act));
+  assert.equal(earthStoryFor(act,earthSave.snapshot.dialogueSeen),scene);
+  const pending=earthSave.snapshot;
+  const commit=()=>earthSave.update(d=>{if(!d.dialogueSeen.includes(scene.id))d.dialogueSeen.push(scene.id);}).ok;
+  dialogue.open(scene,commit);dialogue.update(.2);dialogue.closeWithoutEffects();
+  assert.deepEqual(earthSave.snapshot,pending,'interrupted comms grant nothing');
+  dialogue.open(scene,commit);dialogue.update(.2);fail=true;dialogue.skip();
+  assert.ok(dialogue.active&&dialogue.failed);assert.deepEqual(earthSave.snapshot,pending);
+  fail=false;dialogue.skip();assert.equal(dialogue.active,false);
+  const reloaded=new CampaignSave(storage,'test:earth-story');
+  assert.equal(earthStoryFor(act,reloaded.snapshot.dialogueSeen),null);
+  assert.equal(reloaded.snapshot.dialogueSeen.filter(id=>id===scene.id).length,1);
+  assert.equal(reloaded.snapshot.credits,0);assert.equal(reloaded.snapshot.warshipOwned,false);
+}
+for(const scene of [EARTH_STORY.regulatory_behemoth,EARTH_STORY.clarity_destroyer,EARTH_STORY.gary_fog]){
+  dialogue.open(scene,()=>true);assert.equal(dialogue.allegiance,'hostile');
+  dialogue.update(10);dialogue.press();assert.equal(dialogue.allegiance,'friendly');dialogue.closeWithoutEffects();
+}
+const replayBefore=earthSave.snapshot;
+dialogue.open({id:'log.earth',lines:Object.values(EARTH_STORY).flatMap(s=>s.lines)},()=>true);
+dialogue.update(.2);dialogue.skip();assert.deepEqual(earthSave.snapshot,replayBefore);
+console.log('boarding-quest: OK — ordered capture, atomic rewards, failed-save retries, Earth act comms/receipts/replay, hostile speakers and preserved progression.');

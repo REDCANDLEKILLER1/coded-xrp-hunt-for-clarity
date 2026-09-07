@@ -2,6 +2,7 @@ import './style.css';
 import { watchForUpdates } from './game/core/UpdateWatch';
 import './landscape.css';
 import { Game2A } from './game/core/Game2A';
+import {EarthCommsRuntime} from './game/ui/EarthCommsRuntime';
 import { CampaignMap } from './game/ui/CampaignMap';
 import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
 import { LandscapeMode } from './game/ui/LandscapeMode';
@@ -109,6 +110,7 @@ document.body.appendChild(logButton);
 
 new LandscapeMode();
 const game = new Game2A(canvas);
+game.setFlightStory(new EarthCommsRuntime(gameShell,definitiveSave));
 const boarding = new DirectBoardingRuntime(game, gameShell);
 const onFoot = new OnFootGame(gameShell);
 const space = new Space3DGame(gameShell);

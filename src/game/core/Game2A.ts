@@ -12,6 +12,7 @@ import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/Cam
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
+import type {FlightStoryPort} from '../content/EarthStory';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
 import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
@@ -639,6 +640,10 @@ export class Game2A {
    */
   private readonly diagnostics = hasDiagnosticsFlag();
   private reportAssets = false;
+  private flightStory:FlightStoryPort|null=null;
+  private storyCapturedInput=false;
+
+  setFlightStory(story:FlightStoryPort):void {this.flightStory=story;story.setActive(false);}
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d');
@@ -659,6 +664,7 @@ export class Game2A {
 
   deployFromMap(planetKey: string, planetLabel: string, checkpoint?: MissionCheckpointSnapshot): void {
     this.input.setActive(true);this.loop.start();
+    this.flightStory?.setActive(planetKey==='ledger_prime');this.storyCapturedInput=false;
     this.progress = this.loadProgress();
     this.activePlanetKey = planetKey;
     this.activePlanetLabel = planetLabel;
@@ -693,6 +699,7 @@ export class Game2A {
 
   deployTestMode(): void {
     this.input.setActive(true);this.loop.start();
+    this.flightStory?.setActive(false);this.storyCapturedInput=false;
     this.activePlanetKey = null;
     this.activePlanetLabel = null;
     this.missionDirector.clear();
@@ -709,6 +716,7 @@ export class Game2A {
 
   suspend(): void {
     this.paused = true;
+    this.flightStory?.setActive(false);this.storyCapturedInput=false;
     this.input.setActive(false);this.loop.stop();
     this.cueMusic('silence');
   }
@@ -779,6 +787,12 @@ export class Game2A {
 
   private frame(dt: number): void {
     this.clock += dt;
+    const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused?this.missionDirector.currentAct?.key??null:null;
+    if(this.flightStory?.update(dt,storyAct)){
+      if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
+      this.render();return;
+    }
+    if(this.storyCapturedInput){this.input.setActive(true);this.storyCapturedInput=false;}
     this.actions();
     // Ticked here, after actions() has read it and outside update(), which
     // returns early while the overlay is up -- an arm timer that only runs

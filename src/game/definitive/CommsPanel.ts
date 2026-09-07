@@ -22,6 +22,7 @@ export class CommsPanel {
   }
   open(scene:DialogueScene,commit:()=>boolean):boolean{const result=this.dialogue.open(scene,commit);this.paint();return result;}
   setActive(value:boolean):void{this.enabled=value;this.paint();}
+  close():void{this.dialogue.closeWithoutEffects();this.paint();}
   update(dt:number):void{if(this.enabled){this.dialogue.update(dt);this.paint();}}
   private paint():void{
     this.panel.hidden=!this.enabled||!this.active;this.speaker.textContent=this.dialogue.speaker;this.text.textContent=this.dialogue.text;

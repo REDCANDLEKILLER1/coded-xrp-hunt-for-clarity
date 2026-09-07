@@ -32,6 +32,7 @@ const stubCanvas = () => ({ width: 0, height: 0, style: {}, getContext: () => no
 globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
 globalThis.Image = class {};
 globalThis.requestAnimationFrame = () => 0;
+globalThis.cancelAnimationFrame = () => {};
 globalThis.performance = globalThis.performance ?? { now: () => 0 };
 globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
 globalThis.screen = { width: 393, height: 793, orientation: { angle: 0 } };
@@ -372,6 +373,31 @@ for (const boss of scripted) {
   }
   const before=groundTiles(599.9,844,600),after=groundTiles(600.1,844,600);
   for(const tile of before){const next=after.find(t=>t.id===tile.id);if(next){check(Math.abs(next.y-tile.y-.2)<1e-8,'ground tiles must not jump at wrap');check(next.mirror===tile.mirror,'tile identity and orientation survive offset wrap');}}
+}
+
+// Exercise the actual frame boundary with real Input, not just dialogue data.
+// Comms must own held controls and stop combat/launch clocks until they close.
+{
+  const g=new Game2A(stubCanvas());let active=false,holding=true,lastAct=null;
+  g.setFlightStory({setActive:v=>{active=v;},update:(_dt,act)=>{lastAct=act;return active&&!!act&&holding;}});
+  g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});
+  g.render=()=>{};
+  const press=(key,code=key)=>g.input.onKeyDown({key,code});
+  press('ArrowRight');press(' ','Space');press('b');press('p');
+  const before={x:g.player.x,y:g.player.y,launch:g.launchClock,ground:g.groundTravel,bombs:g.bombs,special:g.special};
+  for(let i=0;i<120;i++)g.frame(1/60);
+  check(lastAct==='orbital_approach','normal Earth launch reaches its opening comms');
+  check(g.player.x===before.x&&g.player.y===before.y&&g.launchClock===before.launch&&g.groundTravel===before.ground,'comms freezes flight, launch and ground clocks');
+  check(!g.paused&&g.bombs===before.bombs&&g.special===before.special,'comms consumes no gameplay action');
+  check(!g.input.enabled&&g.input.axis().x===0,'comms releases held steering');
+  holding=false;g.frame(1/60);
+  check(g.input.enabled&&g.launchClock<before.launch,'flight resumes when the conversation closes');
+  check(!g.paused&&g.bombs===before.bombs&&g.special===before.special,'closing comms cannot replay stale pause/bomb/pulse edges');
+  g.launchClock=0;press('ArrowRight');const x=g.player.x;g.frame(.1);
+  check(g.player.x>x,'fresh steering works after comms');
+  g.suspend();check(!active&&!g.input.enabled,'returning to map disables comms and flight together');
+  g.deployTestMode();check(!active&&g.input.enabled,'arcade play remains independent of story comms');
+  console.log('  Earth comms              holds simulation, clears stale inputs, resumes flight and suspends safely');
 }
 
 if (failures.length) {
