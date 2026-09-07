@@ -1,4 +1,5 @@
 import { CAMPAIGN_ROUTES, PLANET_BY_KEY, PLANETS, type PlanetDef } from '../content/CampaignPlanets';
+import type { ChapterRecord } from '../definitive/CampaignNavigation';
 import {
   clearMissionCheckpoint,
   loadCampaignProgress,
@@ -21,6 +22,7 @@ export class CampaignMap {
     private readonly onTestMode: () => void,
     private readonly chapterLabel?: (planetKey:string)=>string|null,
     private readonly launchBlocked?: (planetKey:string)=>string|null,
+    private readonly chapterRecord?: (planetKey:string)=>ChapterRecord|undefined,
   ) {
     if (!this.isAvailable(this.selectedKey)) this.selectedKey = PLANETS[0].key;
     this.render();
@@ -40,8 +42,9 @@ export class CampaignMap {
   private render(): void {
     const selected = PLANET_BY_KEY[this.selectedKey] ?? PLANETS[0];
     const selectedState = this.stateFor(selected.key);
-    const guardianDown = this.progress.defeatedGuardians.includes(selected.key);
-    const surfaceDown = this.progress.defeatedSurfaceBosses.includes(selected.key);
+    const record = this.chapterRecord?.(selected.key);
+    const guardianDown = record?.orbitalCleared ?? this.progress.defeatedGuardians.includes(selected.key);
+    const surfaceDown = record?.surfaceCleared ?? this.progress.defeatedSurfaceBosses.includes(selected.key);
     const checkpoint = selectedState === 'cleared' ? undefined : missionCheckpointFor(this.progress, selected.key);
     const checkpointLabel = checkpoint?.checkpointLabel ?? this.progress.checkpoints[selected.key]?.toUpperCase() ?? 'NONE';
     const routeLines = CAMPAIGN_ROUTES.map((route) => {
@@ -53,8 +56,9 @@ export class CampaignMap {
 
     const chapterLabel=this.chapterLabel?.(selected.key);
     const blocked=selectedState!=='locked'?this.launchBlocked?.(selected.key):null;
-    const launchButtons = blocked?`<button class="deploy-button" type="button" disabled>${blocked}</button>`:chapterLabel?`<button class="deploy-button" type="button" data-action="deploy">${chapterLabel}</button>`:selectedState === 'locked'
+    const launchButtons = selectedState === 'locked'
       ? '<button class="deploy-button" type="button" data-action="deploy" disabled>ROUTE LOCKED</button>'
+      : blocked?`<button class="deploy-button" type="button" disabled>${blocked}</button>`:chapterLabel?`<button class="deploy-button" type="button" data-action="deploy">${chapterLabel}</button>`
       : checkpoint
         ? `<button class="deploy-button" type="button" data-action="resume">RESUME FROM ${checkpoint.checkpointLabel}</button>
            <button class="test-button" type="button" data-action="restart">RESTART MISSION</button>`
@@ -65,7 +69,7 @@ export class CampaignMap {
         <div>
           <p class="eyebrow">XRPMan // CLARITY SYSTEM</p>
           <h1>THE HUNT FOR CLARITY</h1>
-          <p class="campaign-subtitle">Choose a route. Break the orbital guardian. Take the surface.</p>
+          <p class="campaign-subtitle">Choose a route. Break the blockade. Restore the worlds.</p>
         </div>
         <div class="campaign-record" aria-label="Campaign record">
           <span>BEST <strong>${this.progress.highScore.toLocaleString()}</strong></span>
@@ -89,19 +93,19 @@ export class CampaignMap {
             </div>
           </div>
         </section>
-        <aside class="mission-panel" style="--mission-accent:${selected.accent}">
+        <aside class="mission-panel" style="--mission-accent:#00FF00">
           <p class="mission-sector">${selectedState === 'locked' ? 'SIGNAL BLOCKED' : selected.sector}</p>
           <h2>${selectedState === 'locked' ? 'UNKNOWN WORLD' : selected.label}</h2>
           <div class="mission-status ${selectedState}">${selectedState.toUpperCase()}</div>
-          <p class="mission-briefing">${selectedState === 'locked' ? 'Clear the connected world to reveal this destination.' : selected.briefing}</p>
+          <p class="mission-briefing">${selectedState === 'locked' ? 'Clear the connected world to reveal this destination.' : record?.briefing ?? selected.briefing}</p>
           <dl class="mission-targets">
-            <div><dt>ORBITAL GUARDIAN</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : selected.guardian}<b>${guardianDown ? 'CLEARED' : 'ACTIVE'}</b></dd></div>
-            <div><dt>SURFACE BOSS</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : selected.surfaceBoss}<b>${surfaceDown ? 'CLEARED' : 'ACTIVE'}</b></dd></div>
+            <div><dt>${record ? 'ORBITAL ROUTE' : 'ORBITAL GUARDIAN'}</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : record?.orbital ?? selected.guardian}<b class="${guardianDown ? 'target-cleared' : 'target-active'}">${guardianDown ? 'CLEARED' : 'ACTIVE'}</b></dd></div>
+            <div><dt>SURFACE BOSS</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : record?.surface ?? selected.surfaceBoss}<b class="${surfaceDown ? 'target-cleared' : 'target-active'}">${surfaceDown ? 'CLEARED' : 'ACTIVE'}</b></dd></div>
             <div><dt>CHECKPOINT</dt><dd>${selectedState === 'locked' ? 'CLASSIFIED' : checkpointLabel}</dd></div>
           </dl>
           ${launchButtons}
           <button class="test-button" type="button" data-action="test">ARCADE TEST RUN</button>
-          <p class="phase-note">EARTH LEVEL 1 // LOCAL MISSION RESUME</p>
+          <p class="phase-note">CAMPAIGN PREVIEW // EARNED PROGRESS SAVED LOCALLY</p>
         </aside>
       </main>`;
 

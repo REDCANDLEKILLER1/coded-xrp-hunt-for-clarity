@@ -334,7 +334,7 @@ canvas {
   inset: 0;
   display: grid;
   place-items: center;
-  color: #00ff88;
+  color: #00ff00;
   background: rgba(2, 6, 11, 0.68);
   font-size: 24px;
   font-weight: 900;
@@ -372,8 +372,8 @@ canvas {
 }
 
 .legend-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; }
-.legend-dot.available { background: #00ff88; box-shadow: 0 0 6px #00ff88; }
-.legend-dot.cleared { background: #36a3ff; }
+.legend-dot.available { background: transparent; outline: 1px solid #00ff00; }
+.legend-dot.cleared { background: #00ff00; border-radius: 0; transform: rotate(45deg); box-shadow: 0 0 6px #00ff00; }
 .legend-dot.locked { background: #526068; }
 
 .mission-panel {
@@ -804,3 +804,12 @@ canvas {
 .landing-ui p { margin:9px 0 13px; }
 .landing-ui button { border:1px solid #00a200; border-radius:5px; padding:10px 22px; background:#102814; color:#fff; font-weight:700; cursor:pointer; }
 @media(max-height:480px) { .landing-ui { bottom:34px; padding:9px 14px; } .landing-ui p { margin:5px 0; } .landing-ui button { padding:6px 20px; } }
+
+/* Failed scene loads retain the previous scene, with a readable recovery card above its HUD. */
+.mesh-hud[data-recovery="true"] { inset:50% auto auto 50%; transform:translate(-50%,-50%); width:min(430px,calc(100% - 32px)); max-height:calc(100% - 100px); overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; padding:18px; border:1px solid #00ff0080; border-radius:10px; background:#06110ffc; box-shadow:0 12px 50px #000b; pointer-events:auto; z-index:30; }
+.mesh-hud[data-recovery="true"] p { margin:0 0 12px; }
+.mesh-runtime .mesh-hud[data-recovery="true"] .mesh-controls { position:static; width:auto; }
+.mesh-hud[data-recovery="true"] button { min-height:44px; color:#00ff00; border-color:#00ff0080; }
+
+.mission-targets b.target-cleared { color:#00ff00; }
+.mission-targets b.target-active { color:#ff3030; }

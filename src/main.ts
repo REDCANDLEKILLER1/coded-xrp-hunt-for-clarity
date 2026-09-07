@@ -14,7 +14,8 @@ import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
 import { showDebugLogView } from './game/ui/DebugLogView';
 import { CampaignSave, reviewSaveSlot } from './game/definitive/CampaignSave';
-import {enterWarship,savedChapterScene,chapterLaunchBlock} from './game/definitive/ChapterTransitions';
+import {enterWarship,savedChapterScene} from './game/definitive/ChapterTransitions';
+import {campaignNavigation,chapterRecord,type RevisitWorld} from './game/definitive/CampaignNavigation';
 import {
   configureCampaignPersistence,
   loadCampaignProgress,
@@ -121,10 +122,11 @@ let map: CampaignMap;
 map = new CampaignMap(
   campaignRoot,
   (planet, checkpoint?: MissionCheckpointSnapshot) => {
-    if(chapterLaunchBlock(definitiveSave,planet.key))return;
-    const saved=savedChapterScene(definitiveSave);
-    if(planet.key==='ledger_prime'&&saved!=='earth'){void showChapter(saved);return;}
-    if(['mars','fog_moon'].includes(planet.key)&&definitiveSave.snapshot.warshipOwned){void showChapter(saved==='mars'||saved==='fog'?saved:definitiveSave.snapshot.quests.includes('boarding.departure_ready')?'space':'boarding');return;}
+    const navigation=campaignNavigation(definitiveSave,planet.key);
+    if(navigation.action==='blocked')return;
+    if(navigation.action==='continue'){void showChapter(navigation.scene);return;}
+    if(navigation.action==='revisit'){void showChapter('space',{revisit:navigation.world});return;}
+    if(navigation.action==='fogVoyage'){void showChapter('space',{fogVoyage:true});return;}
     if(meshRuntime&&!meshRuntime.hide())return;
     onFoot.hide();
     space.hide();
@@ -150,13 +152,11 @@ map = new CampaignMap(
     game.deployTestMode();
   },
   planetKey=>{
-    const state=definitiveSave.snapshot,saved=savedChapterScene(definitiveSave);
-    if(planetKey==='ledger_prime'&&saved!=='earth')return saved==='space'?'CONTINUE FLIGHT':saved==='landing'?'CONTINUE ARRIVAL':'RETURN TO SHIP';
-    if(planetKey==='mars'&&state.warshipOwned)return saved==='mars'?'CONTINUE RELIEF SITE':state.transit?.phase==='mars'?'CONTINUE MARS ORBIT':'FLY TO MARS';
-    if(planetKey==='fog_moon'&&state.warshipOwned)return saved==='fog'?'CONTINUE RELAY CANYON':state.transit?.route==='mars_fog_moon'?'CONTINUE FOG MOON FLIGHT':'PLOT FOG MOON FROM WARSHIP';
-    return null;
+    const navigation=campaignNavigation(definitiveSave,planetKey);
+    return navigation.action==='blocked'?null:navigation.label;
   },
-  planetKey=>chapterLaunchBlock(definitiveSave,planetKey),
+  planetKey=>{const navigation=campaignNavigation(definitiveSave,planetKey);return navigation.action==='blocked'?navigation.label:null;},
+  planetKey=>chapterRecord(definitiveSave,planetKey),
 );
 
 const chapterRecovery=document.createElement('section');chapterRecovery.className='boarding-shop';chapterRecovery.hidden=true;gameShell.appendChild(chapterRecovery);
@@ -164,12 +164,12 @@ function recoverChapter(message:string,retry:()=>void):void{
   chapterRecovery.replaceChildren();chapterRecovery.hidden=false;const text=document.createElement('p');text.textContent=message;
   const button=document.createElement('button');button.textContent='RETRY';button.addEventListener('click',()=>{chapterRecovery.hidden=true;retry();});chapterRecovery.append(text,button);
 }
-async function showChapter(scene:'landing'|'boarding'|'space'|'mars'|'fog'):Promise<void>{
+async function showChapter(scene:'landing'|'boarding'|'space'|'mars'|'fog',travel?:{fogVoyage?:boolean;revisit?:RevisitWorld}):Promise<void>{
   map.hide();game.suspend();boarding.setEnabled(false);onFoot.hide();space.hide();gameShell!.hidden=false;canvas!.style.visibility='hidden';chapterRecovery.hidden=true;
   try{
     const {MeshRuntime}=await import('./game/definitive/MeshRuntime');meshRuntime??=new MeshRuntime(gameShell!);
-    if(scene==='landing')await meshRuntime.showLanding(definitiveSave);else if(scene==='boarding')await meshRuntime.showBoarding(definitiveSave);else if(scene==='mars')await meshRuntime.showMars(definitiveSave);else if(scene==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showSpace(definitiveSave);
-  }catch(error){recoverChapter(`The next section could not load. Your checkpoint is retained. ${error instanceof Error?error.message:''}`,()=>void showChapter(scene));}
+    if(scene==='landing')await meshRuntime.showLanding(definitiveSave);else if(scene==='boarding')await meshRuntime.showBoarding(definitiveSave);else if(scene==='mars')await meshRuntime.showMars(definitiveSave);else if(scene==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showSpace(definitiveSave,travel?.fogVoyage,travel?.revisit);
+  }catch(error){recoverChapter(`The next section could not load. Your checkpoint is retained. ${error instanceof Error?error.message:''}`,()=>void showChapter(scene,travel));}
 }
 
 /** Where the stored checkpoint says the interior run had reached. */

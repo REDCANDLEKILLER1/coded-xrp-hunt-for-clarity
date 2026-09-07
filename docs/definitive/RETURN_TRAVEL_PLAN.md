@@ -1,0 +1,11 @@
+# Guarded return travel
+
+Scope after Fog checkpoint b64f3f9: correct map actions, permit explicitly labeled return travel to previously reached Mars/Fog orbits, and recover safely from failed bridge loading. First visits retain their real flight missions; old map discovery flags do not bypass rebuilt chapters. No new renderer or assets in this change.
+
+Navigation choices remain a pure data module so the opening map does not eagerly import Three.js. A return requires the owned living Warship at a safe arrived orbit or its bridge, a previously earned destination orbit flag, and a different destination. The destination scene is built first; the transaction then checks the current save revision and preserves hull, shields, fighter, upgrades, credits and quest receipts. Revisits grant no rewards and do not restart completed patrols. The actual surface range gate remains in effect. During a surface mission or unfinished flight, other map choices clearly offer continuation of the current mission rather than promising a different destination.
+
+Prevent plotting Fog Moon again once its voyage started. Returning to its already reached orbit uses the separate return action. Keep later definitive chapters unavailable until they have real consumers, preserving old unlock data. Earth selection during the rebuilt chapter continues the actual current location; replay of Earth's captured campaign is not introduced here.
+
+Bridge loading must construct its models and scene before committing boarding entry. Preserve the intended bridge/hangar spawn without writing a tentative checkpoint. On load, storage, stale-request or construction failure, dispose the candidate and resume the prior scene with its original save. Test the actual failure paths and subsequent retries.
+
+Verify pure map decisions, first-visit/revisit guards, reward retention, wrong-world/range/dead-hull conditions, stale revision and storage failures. Play a real earned Fog-to-Mars return and return to Fog, including surface descent and reload, without grants. Inspect portrait/landscape map labels and failed bridge/planet loads. Run the relevant regressions and full build gates; secure the draft checkpoint and continue Bullion Reach. No merge/release.

@@ -1,6 +1,7 @@
 import type { CampaignSave, SaveResult } from './CampaignSave';
 import { initialSpaceCheckpoint, type SpaceCheckpoint } from './SpaceCheckpoint';
 import {EARTH_MARS_ROUTE,atSpaceDestination,spaceRoute} from './SpaceRoutes';
+import {canStartFogVoyage} from './CampaignNavigation';
 export type {SpaceEnemyKey} from './SpaceRoutes';
 export const SPACE_ENEMIES=['regulator_drone','fast_scout','fog_raider','rug_fighter','whale_scout'] as const;
 export const SPACE_MODELS=['regulatory_warship',...SPACE_ENEMIES.map(key=>`space_${key}`),'planet_earth','planet_mars'] as const;
@@ -12,7 +13,7 @@ export function insidePortal(checkpoint:SpaceCheckpoint):boolean{
   return Math.hypot(x-portal[0],y-portal[1],z-portal[2])<140&&-(1-2*(qx*qx+qy*qy))<-.35;
 }
 export const SPACE_WAVES=EARTH_MARS_ROUTE.waves;
-export function canPlotFogMoon(save:CampaignSave):boolean{const d=save.snapshot;return d.warshipOwned&&d.location.mode==='space'&&d.location.world==='mars'&&d.transit?.phase==='mars'&&(d.transit.route??'earth_mars')==='earth_mars'&&d.transit.hull>0&&d.quests.includes('mars.restored');}
+export function canPlotFogMoon(save:CampaignSave):boolean{return canStartFogVoyage(save.snapshot);}
 export function fogVoyageCheckpoint(save:CampaignSave):SpaceCheckpoint|null{if(!canPlotFogMoon(save))return null;const t=save.snapshot.transit!;return {...initialSpaceCheckpoint(),route:'mars_fog_moon',hull:t.hull,fore:t.fore,aft:t.aft};}
 export function beginFogVoyage(save:CampaignSave):SaveResult{const next=fogVoyageCheckpoint(save);if(!next)return{ok:false,reason:'condition'};return save.update(d=>{d.transit=next;d.location={mode:'space',world:'mars',checkpoint:'space.mars_fog_moon.departure'};if(!d.quests.includes('fog_moon.voyage_started'))d.quests.push('fog_moon.voyage_started');});}
 /** Explicit section fixture; never grants ownership to the campaign save. */

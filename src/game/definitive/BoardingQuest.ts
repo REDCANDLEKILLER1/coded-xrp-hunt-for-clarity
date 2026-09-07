@@ -24,7 +24,7 @@ export const BOARDING_OBJECTIVES: Record<BoardingStep, string> = {
 export class BoardingQuest {
   constructor(readonly save: CampaignSave) {}
   get step(): BoardingStep | null { return BOARDING_STEPS.find(step => !this.has(step)) ?? null; }
-  get objective(): string { return this.step ? BOARDING_OBJECTIVES[this.step] : 'Warship captured. The route ledger points to Mars.'; }
+  get objective(): string { return this.step ? BOARDING_OBJECTIVES[this.step] : 'Warship captured. Use the bridge terminal for ship services and flight.'; }
   has(step: BoardingStep): boolean { return this.save.snapshot.quests.includes(questFlag(step)); }
   isClear(room: BoardingRoom): boolean { return this.save.snapshot.clearedRooms.includes(roomFlag(room)); }
   get checkpoint(): BoardingRoom {

@@ -11,7 +11,7 @@ import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; clock: number; charge: number; target: Vector3; base: Vector3; kind: 'guard' | 'relay' | 'core' }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; hostile: boolean; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; onDeparture: () => void }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
@@ -89,7 +89,7 @@ export class BoardingScene implements ManagedScene {
     this.crewMarker=new Mesh(new CylinderGeometry(0,.13,.26,4),this.green);this.scene.add(this.crewMarker);
     this.scene.add(this.crew);
     this.crew.traverse(object=>{if(object instanceof Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])if(material.name==='TruFi blue')material.toneMapped=false;});
-    this.room = host.quest.checkpoint;
+    this.room = host.entryRoom ?? host.quest.checkpoint;
     const start=deckRoom(this.room);
     this.hero.position.set(start.x,0,start.z-(this.room==='hangar'?5:start.depth*.3));
     const fighter=host.fighter.scene;

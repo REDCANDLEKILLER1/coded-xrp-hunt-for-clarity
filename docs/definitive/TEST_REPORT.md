@@ -1,3 +1,7 @@
+# Latest verification — return travel
+
+Clean npmci,all54 validators,TypeScript/Vite and five deliberate travel/commit mutations pass. Earned Fog→Mars→Fog, actual surface/bridge transitions, reload, failed planet/bridge downloads and Retry preserve fighter,1740credits,three allies,all upgrades and100/150/150ship condition. Quest-backed map targets and centered44px retry controls pass portrait/landscape. No new assets/dependencies or new soak. See RETURN_TRAVEL_CHECKPOINT.md for exact build costs, test-controller interruptions and desktop-only limits. Older entries below retain their original checkpoint measurements.
+
 # Latest verification - Fog Moon
 
 Clean npmci, all 53 validators and TypeScript/Vite build pass. The earned campaign completes the real Mars-to-Fog flight, actual selected-fighter descent, Boo/two relays/Citadel, restoration/Reveal/recruitment and saved return to orbit. Real globe/Boo loading failures recover through Retry without granting progress early. Four native desktop touch layouts, independent move/fire/Reveal/Dash/cancel/rotation, actual death/retry and failed victory saving pass. Seven deliberate scene failures are detected. All four exact new runtime GLBs pass Blender roundtrips. The current 600.383-second Full/Low combat soak and six resource cycles passed without errors or retained growth. Frame interval p50/p95/p99: Full 8.70/21.80/29.70 ms; Low 7.60/18.20/25.20 ms. Maxima 55.50/49.80 ms are retained. See FOG_MOON_CHECKPOINT.md for exact evidence, sizes and honest controller interruptions. Physical-phone and final realistic-art acceptance remain outstanding. Older entries below are historical.
@@ -5,17 +9,17 @@ Clean npmci, all 53 validators and TypeScript/Vite build pass. The earned campai
 # Latest verification - Mars excavation
 
 All 51 validators, clean npmci and TypeScript/Vite build pass. The original earned journey reaches Mars restoration/Dash and a saved return to Corn. Native touch caught and verified a secondary-touch action fix; four viewports, gate occlusion/collision, actual death/retry and failed victory saving pass. Eight deliberate behavioral mutations are detected. Both new exact runtime GLBs pass Blender roundtrips. The current 600.170-second full/low combat soak and six scene cycles pass with retained frame-time spikes and zero page errors. See MARS_EXCAVATION_CHECKPOINT.md for exact costs, percentiles, evidence and limits. Desktop emulation remains distinct from physical-phone review. Older entries below are historical.
-# Latest verification � Mars relief opening
+# Latest verification ï¿½ Mars relief opening
 
 Clean npm ci, all 50 validators, TypeScript/Vite production build and diff whitespace checks pass. The first clean-install attempt encountered the running Vite process holding a Windows Rollup library; stopping that local server and repeating the install succeeded. No dependency versions or lockfile changed in this checkpoint. The inherited four dependency advisories remain.
 
-The earned journey1 save flew from its actual Mars orbit pose to the approach beacon, used the real fighter descent and reloaded on the surface. The separate relief1 ordinary-input run completed all three pump captures and Corn recruitment/field repair, then retained them on reload. Native desktop touch tests covered independent pointers, release/cancel, rotation and HUD bounds at 390�844, 844�390 and 360�740. Neither result is physical-phone acceptance.
+The earned journey1 save flew from its actual Mars orbit pose to the approach beacon, used the real fighter descent and reloaded on the surface. The separate relief1 ordinary-input run completed all three pump captures and Corn recruitment/field repair, then retained them on reload. Native desktop touch tests covered independent pointers, release/cancel, rotation and HUD bounds at 390ï¿½844, 844ï¿½390 and 360ï¿½740. Neither result is physical-phone acceptance.
 
 A 600.47-second controlled combat soak recorded 78,863 frames with no browser errors or resource growth. Full detail rAF p50/p95/p99: 7.2/13.7/17.2 ms; low: 7.0/10.5/13.4 ms. Six space/surface reload cycles returned stable resource counts. This in-memory fixture replenished enemy HP and hero vitals; it is performance evidence, not normal-play pacing. The subsequent parked-fighter walking-proxy correction passed all three actual model outlines and a browser collision check. See MARS_RELIEF_CHECKPOINT.md for costs and measurement limits.
 
 Local evidence: mars-earned-landing-report.json, mars-relief-journey-report.json, mars-mobile-report.json, mars-soak-report.json, gate logs and original gameplay screenshots in the parent evidence directory. Earlier sections below are historical checkpoints.
 
-# Foundation verification — 2026-09-06
+# Foundation verification â€” 2026-09-06
 
 Boarding follow-up: all 41 validators and build pass. The prototype was played through ordinary controls from bay to bridge, including an actual failed Core attempt/retry, both shop purchases and a return to the optional cache. Two-pointer movement/fire/release/cancel passes in both portrait and landscape desktop touch emulation. See BOARDING_PROTOTYPE.md for exact evidence, costs and unfinished scope. No physical-phone or complete-chapter result is claimed.
 

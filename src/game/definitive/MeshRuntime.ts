@@ -15,6 +15,8 @@ import {spaceModels,startTransit,fogVoyageCheckpoint,beginFogVoyage} from './Spa
 import {FogMoonScene} from './FogMoonScene';
 import {beginFogLanding} from './FogMoon';
 import {initialSpaceCheckpoint} from './SpaceCheckpoint';
+import {beginRevisit,revisitCheckpoint} from './RevisitTravel';
+import type {RevisitWorld} from './CampaignNavigation';
 import { fighterModel } from './LandingPlan';
 import { BoardingQuest } from './BoardingQuest';
 import type { CampaignSave } from './CampaignSave';
@@ -201,7 +203,8 @@ export class MeshRuntime {
       return managed;
     });
     if (!loaded && this.controller.lastError) {
-      this.status.textContent = `Unable to load model: ${this.controller.lastError}`;
+      this.hud.dataset.recovery="true";
+      this.status.textContent = `The model could not load. Try again.`;
       const retry = document.createElement('button'); retry.textContent = 'Retry'; retry.addEventListener('click', () => void this.showModel(assetId)); this.controls.replaceChildren(retry);
     }
   }
@@ -217,8 +220,8 @@ export class MeshRuntime {
       catch(error){disposeObject(warship.scene);disposeObject(fighter.scene);throw error;}
     });
     if(loaded)this.hud.hidden=true;
-    else if(this.controller.lastError){
-      this.status.textContent=`Arrival could not load: ${this.controller.lastError}. Your checkpoint is retained.`;
+    else if(this.controller.lastError){this.hud.dataset.recovery="true";
+      this.status.textContent=`Arrival could not load: Your checkpoint is retained. Try again.`;
       const retry=document.createElement('button');retry.textContent='Retry arrival';retry.addEventListener('click',()=>void this.showLanding(save));this.controls.replaceChildren(retry);
     }
   }
@@ -227,35 +230,44 @@ export class MeshRuntime {
     this.root.dataset.review = 'boarding'; this.root.hidden = false; this.hud.hidden = false;
     this.status.textContent = 'Entering the Warship…'; this.controls.replaceChildren(); this.resize(); this.startLoop();
     const quest = new BoardingQuest(save);
-    const begin = quest.begin(save.snapshot.fighterShipKey);
-    if (!begin.ok) { this.status.textContent = 'The boarding checkpoint could not be saved. Return to the map and retry.'; return; }
     const loaded = await this.controller.change(async signal => {
+      const before=save.snapshot;
+      const entryRoom=before.location.mode==='boarding'||before.location.mode==='hub'?quest.checkpoint:before.warshipOwned?'bridge':'hangar';
       const [hero,crew,fighter,deck] = await loadModels(['xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
-      try { return new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, onDeparture: () => void this.showSpace(save) }); }
-      catch (error) { disposeObject(hero.scene); disposeObject(crew.scene); disposeObject(fighter.scene); disposeObject(deck.scene); throw error; }
+      let scene:BoardingScene|undefined;
+      try {
+        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, onDeparture: () => void this.showSpace(save) });
+        if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
+        if(save.snapshot.revision!==before.revision)throw new Error('The saved route changed while the bridge was loading');
+        if(!quest.begin(before.fighterShipKey).ok)throw new Error('The boarding checkpoint could not be saved');
+        return scene;
+      }
+      catch (error) { if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(fighter.scene);disposeObject(deck.scene);}throw error; }
     });
     if (loaded) this.hud.hidden = true;
     else if (this.controller.lastError) {
-      this.status.textContent = `Boarding could not load: ${this.controller.lastError}. Your checkpoint is retained.`;
+      this.hud.dataset.recovery="true";
+      this.status.textContent = `Boarding could not load: Your checkpoint is retained. Try again.`;
       const retry=document.createElement('button');retry.textContent='Retry boarding';retry.addEventListener('click',()=>void this.showBoarding(save));this.controls.replaceChildren(retry);
     }
   }
 
-  async showSpace(save:CampaignSave,fogVoyage=false):Promise<void>{
-    this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
+  async showSpace(save:CampaignSave,fogVoyage=false,revisit?:RevisitWorld):Promise<void>{
+    this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent=revisit?`Returning to ${revisit==='mars'?'Mars':'Fog Moon'} orbit…`:'Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
     const loaded=await this.controller.change(async signal=>{
-      const checkpoint=fogVoyage?fogVoyageCheckpoint(save):save.snapshot.transit??initialSpaceCheckpoint();if(!checkpoint)throw new Error('Restore Mars and return to its orbit before plotting Fog Moon');
+      const revision=save.snapshot.revision;
+      const checkpoint=revisit?revisitCheckpoint(save,revisit):fogVoyage?fogVoyageCheckpoint(save):save.snapshot.transit??initialSpaceCheckpoint();if(!checkpoint)throw new Error(revisit?'Return travel requires a previously reached orbit and a safe owned Warship':'Restore Mars and return to its orbit before plotting Fog Moon');
       const models=await loadModels(spaceModels(checkpoint),signal);
       let scene:SpaceScene|undefined;
       try{
         scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,checkpoint,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void (save.snapshot.transit?.route==='mars_fog_moon'?this.showFogMoon(save):this.showMars(save)),onFogVoyage:()=>void this.showSpace(save,true)});
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
-        const started=fogVoyage?beginFogVoyage(save):startTransit(save);if(!started.ok)throw new Error('Departure requires the saved owned-ship route checkpoint');
+        const started=revisit?beginRevisit(save,revisit,revision):fogVoyage?beginFogVoyage(save):startTransit(save);if(!started.ok)throw new Error('Departure requires the saved owned-ship route checkpoint');
         return scene;
       }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
     });
     if(loaded)this.hud.hidden=true;
-    else if(this.controller.lastError){this.status.textContent=`Departure could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save,fogVoyage));this.controls.replaceChildren(retry);}
+    else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Departure could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save,fogVoyage,revisit));this.controls.replaceChildren(retry);}
   }
 
   async showFogMoon(save:CampaignSave):Promise<void>{
@@ -265,7 +277,7 @@ export class MeshRuntime {
       try{scene=new FogMoonScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,arrival:!save.snapshot.quests.includes('fog_moon.landed'),onOrbit:()=>void this.showSpace(save),onRetry:()=>void this.showFogMoon(save)});if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');if(!beginFogLanding(save).ok)throw new Error('Follow the scout shelter beacon and descend within 480 m');return scene;}
       catch(error){if(scene)scene.dispose();else for(const m of models)disposeObject(m.scene);throw error;}
     });
-    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.status.textContent=`Fog Moon could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry Fog Moon';retry.addEventListener('click',()=>void this.showFogMoon(save));this.controls.replaceChildren(retry);}
+    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Fog Moon could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry Fog Moon';retry.addEventListener('click',()=>void this.showFogMoon(save));this.controls.replaceChildren(retry);}
   }
 
   async showMars(save:CampaignSave,returning?:GroundPosition):Promise<void>{
@@ -282,7 +294,7 @@ export class MeshRuntime {
       }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
     });
     if(loaded)this.hud.hidden=true;
-    else if(this.controller.lastError){this.status.textContent=`Relief site could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry relief site';retry.addEventListener('click',()=>void this.showMars(save,returning));this.controls.replaceChildren(retry);}
+    else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Relief site could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry relief site';retry.addEventListener('click',()=>void this.showMars(save,returning));this.controls.replaceChildren(retry);}
   }
   async showExcavation(save:CampaignSave,at?:GroundPosition):Promise<void>{
     this.root.dataset.review='excavation';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing the extraction route…';this.controls.replaceChildren();this.resize();this.startLoop();
@@ -293,7 +305,7 @@ export class MeshRuntime {
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');const entered=beginMarsExcavation(save,at);if(!entered.ok)throw new Error('Restore Corn\'s relief site and enter through its north gate.');return scene;
       }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
     });
-    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.status.textContent=`Extraction route could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry extraction route';retry.addEventListener('click',()=>void this.showExcavation(save,at));this.controls.replaceChildren(retry);}
+    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Extraction route could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry extraction route';retry.addEventListener('click',()=>void this.showExcavation(save,at));this.controls.replaceChildren(retry);}
   }
 
   hide(): boolean { if(!this.controller.saveBeforeLeave())return false;this.controller.clear(); this.root.hidden = true; cancelAnimationFrame(this.frameId); this.frameId = 0;return true; }
@@ -308,6 +320,7 @@ export class MeshRuntime {
   private readonly resize = (): void => { this.renderer.setSize(this.root.clientWidth || innerWidth, this.root.clientHeight || innerHeight, false); };
   private applyQuality():void{applyGraphicsQuality(this.renderer,this.quality,devicePixelRatio||1);this.root.dataset.quality=this.quality;this.qualityButton.textContent=this.quality==='low'?'DETAIL: LOW':'DETAIL: FULL';this.qualityButton.setAttribute('aria-pressed',String(this.quality==='low'));}
   private startLoop(): void {
+    this.hud.dataset.recovery="false";
     if (this.frameId) return;
     this.previousTime = performance.now();
     const frame = (time: number): void => {
