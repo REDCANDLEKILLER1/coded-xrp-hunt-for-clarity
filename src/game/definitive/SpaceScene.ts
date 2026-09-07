@@ -7,20 +7,21 @@ import type { ManagedScene } from './SceneController';
 import { disposeObject } from './ModelAssets';
 import { capitalVolley, flightHull, forwardPoint, FORWARD, HullSweep, interceptPoint, segmentSphere, turnFlight, UP } from './SpaceGeometry';
 import { SpaceInput } from './SpaceInput';
-import { constrainPlanetApproach, EARTH_FLIGHT, MARS_FLIGHT, MARS_APPROACH } from './PlanetApproach';
-import {CommsPanel,PORTAL_COMMS} from './CommsPanel';
+import { constrainPlanetApproach } from './PlanetApproach';
+import {CommsPanel} from './CommsPanel';
+import {atSpaceDestination,spaceRoute,type SpaceRoute} from './SpaceRoutes';
 import {sfx} from '../audio/Sfx';
 import {applyCapturedLivery} from './FactionAppearance';
-import { arriveMars, checkpointTransit, clearSpaceWave, finishDeparture, PORTAL_POSITION, SPACE_ENEMIES, SPACE_WAVES, type SpaceEnemyKey } from './SpaceProgress';
+import { arriveSpaceDestination,canPlotFogMoon,checkpointTransit,clearSpaceWave,finishDeparture,SPACE_ENEMIES,type SpaceEnemyKey } from './SpaceProgress';
 
-interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];checkpoint?:SpaceCheckpoint;onHub:()=>void;onRetry:()=>void;onSurface:()=>void}
+interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];checkpoint?:SpaceCheckpoint;onHub:()=>void;onRetry:()=>void;onSurface:()=>void;onFogVoyage?:()=>void}
 interface Enemy {key:SpaceEnemyKey;pose:Group;sweep:HullSweep;hp:number;slot:number;age:number;nextShot:number;tell:number;velocity:Vector3;retreat:number;approach:Quaternion}
 interface Bolt {position:Vector3;previous:Vector3;velocity:Vector3;age:number;kind:'primary'|'hostile'|'missile';damage:number}
 const PROFILE:Record<SpaceEnemyKey,{hp:number;speed:number;period:number;weight:number}>={
   regulator_drone:{hp:150,speed:300,period:10,weight:.5},fast_scout:{hp:110,speed:390,period:11,weight:.75},
   fog_raider:{hp:140,speed:340,period:12,weight:1},rug_fighter:{hp:260,speed:285,period:13,weight:1.5},whale_scout:{hp:380,speed:275,period:14,weight:2},
 };
-const PORTAL=new Vector3(...PORTAL_POSITION),MISSILE_SPEED=340,BOLT_SPEED=900;
+const MISSILE_SPEED=340,BOLT_SPEED=900;
 
 /** Real meshes, one metre scale, one flight pose shared by cameras and hardpoints. */
 export class SpaceScene implements ManagedScene {
@@ -34,6 +35,7 @@ export class SpaceScene implements ManagedScene {
   private readonly contacts=document.createElement('div');
   private readonly pauseButton=document.createElement('button');
   private descendButton:HTMLButtonElement|null=null;
+  private nextRouteButton:HTMLButtonElement|null=null;
   private readonly lifetime=new AbortController();
   private readonly input=new SpaceInput();
   private readonly comms:CommsPanel;
@@ -52,6 +54,7 @@ export class SpaceScene implements ManagedScene {
   private readonly dummy=new Object3D();
   private readonly sun=new DirectionalLight(0xd9e6ff,3.5);
   private state:SpaceCheckpoint;
+  private readonly route:SpaceRoute;private readonly portalPoint:Vector3;
   private active=false;
   private paused=true;
   private dead=false;
@@ -73,7 +76,7 @@ export class SpaceScene implements ManagedScene {
   private hitFlash=0;
 
   constructor(private readonly host:Host){
-    const saved=host.checkpoint??host.save.snapshot.transit;if(!saved)throw new Error('Departure checkpoint is missing');this.state=structuredClone(saved);
+    const saved=host.checkpoint??host.save.snapshot.transit;if(!saved)throw new Error('Departure checkpoint is missing');this.state=structuredClone(saved);this.route=spaceRoute(saved);this.portalPoint=new Vector3(...this.route.portal);
     this.paused=host.save.testSlot;this.ship=flightHull(host.models[0].scene);this.ship.position.fromArray(saved.position);this.ship.quaternion.fromArray(saved.orientation);
     this.scene.add(this.ship);this.hull=new HullSweep(this.ship);
     this.scene.background=new Color(0x01030a);this.scene.environment=host.environment;this.scene.environmentIntensity=.4;
@@ -88,8 +91,8 @@ export class SpaceScene implements ManagedScene {
     }
     const library=new Group();library.visible=false;this.scene.add(library);
     SPACE_ENEMIES.forEach((key,index)=>{const template=flightHull(host.models[index+1].scene);library.add(template);this.templates.set(key,template);});
-    this.earth=host.models[6].scene;this.earth.scale.setScalar(6200);this.earth.position.fromArray(EARTH_FLIGHT.center);this.earth.rotation.set(0,1.7,.4);this.scene.add(this.earth);
-    this.mars=host.models[7].scene;this.mars.scale.setScalar(MARS_FLIGHT.radius);this.scene.add(this.mars);
+    this.earth=host.models[6].scene;this.earth.scale.setScalar(this.route.sourceModel==='planet_earth'?6200:this.route.sourcePlanet.radius);this.earth.position.fromArray(this.route.sourcePlanet.center);this.earth.rotation.set(0,1.7,.4);this.scene.add(this.earth);
+    this.mars=host.models[7].scene;this.mars.scale.setScalar(this.route.destinationPlanet.radius);this.scene.add(this.mars);
     const atmosphere=new Mesh(new SphereGeometry(1.014,64,32),new ShaderMaterial({transparent:true,depthWrite:false,side:BackSide,uniforms:{},vertexShader:'varying vec3 n; varying vec3 v; void main(){vec4 p=modelViewMatrix*vec4(position,1.0);n=normalize(normalMatrix*normal);v=normalize(-p.xyz);gl_Position=projectionMatrix*p;}',fragmentShader:'varying vec3 n; varying vec3 v; void main(){float rim=pow(1.0-abs(dot(normalize(n),normalize(v))),3.0);gl_FragColor=vec4(0.0,1.0,0.0,rim*0.48);}'}));this.earth.add(atmosphere);
     let seed=812;const rand=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};const coordinates=[];
     for(let i=0;i<1100;i++){const y=rand()*2-1,a=rand()*Math.PI*2,r=38000;coordinates.push(r*Math.sqrt(1-y*y)*Math.cos(a),r*y,r*Math.sqrt(1-y*y)*Math.sin(a));}
@@ -99,14 +102,14 @@ export class SpaceScene implements ManagedScene {
     this.portal.add(new Mesh(new TorusGeometry(180,12,12,96),portalMaterial));
     const glow=new Mesh(new TorusGeometry(165,2,8,96),new MeshBasicMaterial({color:0x00ff00,toneMapped:false}));this.portal.add(glow);
     const segments=new InstancedMesh(new ConeGeometry(8,38,4),portalMaterial,12);for(let i=0;i<12;i++){const a=i*Math.PI/6;this.dummy.position.set(Math.cos(a)*198,Math.sin(a)*198,0);this.dummy.rotation.set(0,0,a-Math.PI/2);this.dummy.updateMatrix();segments.setMatrixAt(i,this.dummy.matrix);}this.portal.add(segments);
-    this.portal.position.copy(PORTAL);this.scene.add(this.portal);
+    this.portal.position.copy(this.portalPoint);this.scene.add(this.portal);
     const makePool=(kind:Bolt['kind'],geometry:BufferGeometry,color:number,capacity:number)=>{
       const material=kind==='missile'?new MeshStandardMaterial({color:0x873526,metalness:.6,roughness:.4,emissive:0xff2200,emissiveIntensity:.45}):new MeshBasicMaterial({color,toneMapped:false});
       const pool=new InstancedMesh(geometry,material,capacity);pool.count=0;pool.frustumCulled=false;this.scene.add(pool);return pool;
     };
     this.pools={primary:makePool('primary',new CapsuleGeometry(.18,16,3,6),0x00ff00,160),hostile:makePool('hostile',new CapsuleGeometry(1.2,13,3,6),0xff2411,100),missile:makePool('missile',new ConeGeometry(2.5,15,8),0xff4400,32)};
     this.comms=new CommsPanel(this.ui);this.buildUI();this.applyPhase();
-    const restored=constrainPlanetApproach(this.ship.position,this.ship.position,this.state.phase==='mars'?MARS_FLIGHT:EARTH_FLIGHT);
+    const restored=constrainPlanetApproach(this.ship.position,this.ship.position,atSpaceDestination(this.state)?this.route.destinationPlanet:this.route.sourcePlanet);
     this.ship.position.copy(restored.position);
     this.updateCamera(true);this.portalBriefing();this.paint();
   }
@@ -118,14 +121,15 @@ export class SpaceScene implements ManagedScene {
     const button=(label:string,run:()=>void,parent:HTMLElement=top)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',run,{signal:this.lifetime.signal});parent.appendChild(b);return b;};
     this.pauseButton.type='button';this.pauseButton.addEventListener('click',()=>{if(this.dead)return;if(!this.paused){this.pause();return;}this.paused=false;this.input.clear();this.paint();},{signal:this.lifetime.signal});top.appendChild(this.pauseButton);
     const camera=button('COCKPIT',()=>{this.cockpit=!this.cockpit;camera.textContent=this.cockpit?'CHASE':'COCKPIT';this.updateCamera(true);});
-    button('LOG',()=>{if(this.comms.active)return;const seen=this.host.save.snapshot.dialogueSeen;if(seen.includes(PORTAL_COMMS.id)){this.input.clear();this.comms.open(PORTAL_COMMS,()=>true);}else this.say('No completed flight conversations yet.');});
-    button('BRIDGE',()=>{if(this.state.phase!=='mars'&&this.enemies.length){this.say('Clear the active patrol before returning to the bridge.');return;}if(this.persist())this.host.onHub();});
+    button('LOG',()=>{if(this.comms.active)return;const seen=this.host.save.snapshot.dialogueSeen;if(seen.includes(this.route.briefing.id)){this.input.clear();this.comms.open(this.route.briefing,()=>true);}else this.say('No completed flight conversations yet.');});
+    button('BRIDGE',()=>{if(!atSpaceDestination(this.state)&&this.enemies.length){this.say('Clear the active patrol before returning to the bridge.');return;}if(this.persist())this.host.onHub();});
     this.descendButton=button('DESCEND',()=>{
-      if(!this.active||this.dead||this.comms.active||this.state.phase!=='mars')return;
-      if(this.ship.position.distanceTo(MARS_APPROACH)>480){this.say('Fly within 480 m of the relief approach beacon.');return;}
+      if(!this.active||this.dead||this.comms.active||!atSpaceDestination(this.state))return;
+      if(this.ship.position.distanceTo(this.route.approach)>480){this.say(`Fly within 480 m of ${this.route.approachLabel.toLowerCase()}.`);return;}
       if(this.speed>80){this.say('Release BOOST and slow to approach speed.');return;}
       if(this.persist()){this.input.clear();this.host.onSurface();}
     });
+    this.nextRouteButton=button('PLOT FOG MOON',()=>{if(!this.canFly()||!canPlotFogMoon(this.host.save)||!this.host.onFogVoyage)return;if(this.persist()){this.input.clear();this.host.onFogVoyage();}});
     const bottom=document.createElement('div');bottom.className='space-mesh-bottom';
     const hint=document.createElement('span');hint.textContent='DRAG TO STEER · HOLD GUNS';bottom.appendChild(hint);
     for(const [label,action] of [['BOOST','boost'],['GUNS','guns']] as const){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;bottom.appendChild(b);}
@@ -153,18 +157,18 @@ export class SpaceScene implements ManagedScene {
   }
   private say(text:string):void{this.message.textContent=text;this.noticeClock=8;}
   private portalBriefing():void{
-    if(this.state.phase!=='transit'||this.state.wave!==4||this.host.save.snapshot.dialogueSeen.includes(PORTAL_COMMS.id)||this.comms.active)return;
-    this.input.clear();this.comms.open(PORTAL_COMMS,()=>{
-      const result=this.host.save.update(d=>{if(!d.transit||d.transit.phase!=='transit'||d.transit.wave!==4)return false;d.transit=this.snapshot();if(!d.dialogueSeen.includes(PORTAL_COMMS.id))d.dialogueSeen.push(PORTAL_COMMS.id);});
+    if(this.state.phase!=='transit'||this.state.wave!==this.route.waves.length||this.host.save.snapshot.dialogueSeen.includes(this.route.briefing.id)||this.comms.active)return;
+    this.input.clear();this.comms.open(this.route.briefing,()=>{
+      const result=this.host.save.update(d=>{if(!d.transit||d.transit.phase!=='transit'||spaceRoute(d.transit).id!==this.route.id||d.transit.wave!==this.route.waves.length)return false;d.transit=this.snapshot();if(!d.dialogueSeen.includes(this.route.briefing.id))d.dialogueSeen.push(this.route.briefing.id);});
       if(result.ok)this.input.clear();return result.ok;
     });
   }
   private applyPhase():void{
-    const mars=this.state.phase==='mars';this.mars.visible=mars;this.earth.visible=!mars;this.portal.visible=!mars;
-    if(mars){this.mars.position.fromArray(MARS_FLIGHT.center);this.sun.position.set(-16000,10000,-35000);}
+    const mars=atSpaceDestination(this.state);this.mars.visible=mars;this.earth.visible=!mars;this.portal.visible=!mars;
+    if(mars){this.mars.position.fromArray(this.route.destinationPlanet.center);this.sun.position.set(-16000,10000,this.route.destinationPlanet.center[2]-1500);}
   }
   private spawnWave():void{
-    const wave=SPACE_WAVES[this.state.wave];if(!wave)return;
+    const wave=this.route.waves[this.state.wave];if(!wave)return;
     wave.enemies.forEach((key,slot)=>{
       const pose=this.templates.get(key)!.clone(true);pose.visible=true;pose.position.copy(this.ship.localToWorld(new Vector3((slot-.5)*140,slot?35:-15,-1100-slot*100)));pose.quaternion.copy(this.ship.quaternion).multiply(new Quaternion().setFromAxisAngle(UP,Math.PI));this.scene.add(pose);
       this.enemies.push({key,pose,sweep:new HullSweep(pose),hp:PROFILE[key].hp,slot,age:0,nextShot:5+slot*2,tell:0,velocity:new Vector3(),retreat:0,approach:this.ship.quaternion.clone()});
@@ -244,7 +248,7 @@ export class SpaceScene implements ManagedScene {
       if(hit||bolt.age>(bolt.kind==='primary'?2.5:8))this.bolts.splice(i,1);
     }
     for(let i=this.enemies.length-1;i>=0;i--)if(this.enemies[i].hp<=0){this.impact(this.enemies[i].pose.position,0xff6633);sfx.play('explode');this.scene.remove(this.enemies[i].pose);this.enemies.splice(i,1);}
-    if(this.waveSpawned&&!this.enemies.length&&!this.dead){const result=clearSpaceWave(this.host.save,this.snapshot());if(result.ok){this.state.wave++;this.waveSpawned=false;this.bolts.length=0;this.say(this.state.wave===4?'Portal guard cleared. Follow the green navigation marker through the ring.':'Patrol cleared · 100 salvage. Continue toward the portal.');this.portalBriefing();}else{this.paused=true;this.say('Patrol cleared, but the reward could not save. Resume to retry.');}}
+    if(this.waveSpawned&&!this.enemies.length&&!this.dead){const result=clearSpaceWave(this.host.save,this.snapshot());if(result.ok){this.state.wave++;this.waveSpawned=false;this.bolts.length=0;this.say(this.state.wave===this.route.waves.length?'Portal guard cleared. Follow the green navigation marker through the ring.':'Patrol cleared · 100 salvage. Continue toward the portal.');this.portalBriefing();}else{this.paused=true;this.say('Patrol cleared, but the reward could not save. Resume to retry.');}}
   }
   private defeat():void{
     this.dead=true;this.paused=true;this.input.clear();const panel=document.createElement('div');panel.className='space-mesh-defeat';
@@ -266,7 +270,7 @@ export class SpaceScene implements ManagedScene {
   }
   private advanceShip(dt:number):void{
     const candidate=this.ship.position.clone().addScaledVector(FORWARD.clone().applyQuaternion(this.ship.quaternion),this.speed*dt);
-    const approach=constrainPlanetApproach(this.ship.position,candidate,this.state.phase==='mars'?MARS_FLIGHT:EARTH_FLIGHT);
+    const approach=constrainPlanetApproach(this.ship.position,candidate,atSpaceDestination(this.state)?this.route.destinationPlanet:this.route.sourcePlanet);
     if(approach.limited){
       this.speed=Math.min(this.speed,this.ship.position.distanceTo(approach.position)/Math.max(.001,dt));
       this.say('ATMOSPHERE LIMIT · Turn along the horizon or return to the bridge.');
@@ -287,18 +291,18 @@ export class SpaceScene implements ManagedScene {
     }else{
       const blend=1-Math.exp(-3.4*dt);this.yaw+=(this.input.x*1.35-this.yaw)*blend;this.pitch+=(this.input.y*1.35-this.pitch)*blend;
       turnFlight(this.ship.quaternion,this.yaw,this.pitch,this.input.roll*.8,dt);
-      const cruise=this.state.phase==='mars'?70:130;this.speed+=(cruise*(this.input.braking?.3:this.input.boosting?2.2:1)-this.speed)*Math.min(1,dt*1.5);
+      const cruise=atSpaceDestination(this.state)?70:130;this.speed+=(cruise*(this.input.braking?.3:this.input.boosting?2.2:1)-this.speed)*Math.min(1,dt*1.5);
       this.advanceShip(dt);
       this.nextFire=Math.max(0,this.nextFire-dt);if(this.input.firing&&this.nextFire===0){this.shoot();this.nextFire=.28;}
       if(this.state.phase==='transit'){
-        const wave=SPACE_WAVES[this.state.wave];if(wave&&!this.waveSpawned&&-this.ship.position.z>=wave.at)this.spawnWave();
+        const wave=this.route.waves[this.state.wave];if(wave&&!this.waveSpawned&&-this.ship.position.z>=wave.at)this.spawnWave();
         this.updateEnemies(dt);this.updateBolts(dt);
-        if(!this.comms.active&&this.ship.position.distanceTo(PORTAL)<140&&this.state.wave===SPACE_WAVES.length&&!this.portalCrossing){
+        if(!this.comms.active&&this.ship.position.distanceTo(this.portalPoint)<140&&this.state.wave===this.route.waves.length&&!this.portalCrossing){
           const direction=FORWARD.clone().applyQuaternion(this.ship.quaternion);if(direction.z<-.35){
-            const result=arriveMars(this.host.save,this.snapshot());if(result.ok){this.state.phase='mars';this.portalCrossing=true;this.bolts.length=0;this.applyPhase();this.say('MARS · Follow the relief beacon. Slow within 480 m and select DESCEND.');}else{this.paused=true;this.say('Portal arrival could not save. Resume to retry.');}
+            const result=arriveSpaceDestination(this.host.save,this.snapshot());if(result.ok){this.state.phase=this.route.id==='earth_mars'?'mars':'arrival';this.portalCrossing=true;this.bolts.length=0;this.applyPhase();this.say(`${this.route.arrivalLabel} · Follow ${this.route.approachLabel.toLowerCase()}. Slow within 480 m and select DESCEND.`);}else{this.paused=true;this.say('Portal arrival could not save. Resume to retry.');}
           }
         }
-        if(this.ship.position.z<-24500&&this.state.wave<4)this.say('The portal is sealed by the remaining patrols. Follow the red contacts.');
+        if(this.ship.position.z<this.portalPoint.z-500&&this.state.wave<this.route.waves.length)this.say('The portal is sealed by the remaining patrols. Follow the red contacts.');
       }else this.updateBolts(dt);
     }
     if(this.state.seconds-this.lastDamage>7){const cap=this.host.save.snapshot.capitalUpgrades.shield_capacity?150:100;this.state.fore=Math.min(cap,this.state.fore+dt*4);this.state.aft=Math.min(cap,this.state.aft+dt*4);}
@@ -316,11 +320,11 @@ export class SpaceScene implements ManagedScene {
     element.dataset.behind=String(behind);
   }
   private paint():void{
-    this.pauseButton.textContent=this.paused?(this.state.seconds===0?'BEGIN DEPARTURE':'RESUME'):'PAUSE';
-    const distance=this.ship.position.distanceTo(PORTAL),phase=this.state.phase==='mars'?'MARS ORBIT':this.state.phase==='departure'?'ENGINE START':'EARTH → MARS';
-    this.hud.textContent=`${phase}\nHULL ${Math.ceil(this.state.hull)} · FORE ${Math.ceil(this.state.fore)} · AFT ${Math.ceil(this.state.aft)}\n${Math.round(this.speed)} m/s · ${this.state.phase==='mars'?'RELIEF SIGNAL AHEAD':`${(distance/1000).toFixed(1)} km TO PORTAL · PATROL ${Math.min(4,this.state.wave+1)}/4`}`;
+    this.pauseButton.textContent=this.paused?(this.state.phase==='departure'&&this.state.seconds===0?'BEGIN DEPARTURE':'RESUME'):'PAUSE';
+    const arrived=atSpaceDestination(this.state),distance=this.ship.position.distanceTo(this.portalPoint),phase=arrived?this.route.arrivalLabel:this.state.phase==='departure'?'ENGINE START':this.route.label;
+    this.hud.textContent=`${phase}\nHULL ${Math.ceil(this.state.hull)} · FORE ${Math.ceil(this.state.fore)} · AFT ${Math.ceil(this.state.aft)}\n${Math.round(this.speed)} m/s · ${arrived?this.route.approachLabel:`${(distance/1000).toFixed(1)} km TO PORTAL · PATROL ${Math.min(this.route.waves.length,this.state.wave+1)}/${this.route.waves.length}`}`;
     this.reticle.style.opacity=this.state.phase==='departure'?'0':'1';this.place(this.reticle,forwardPoint(this.ship,this.aimRange()));
-    const navigation=this.state.phase==='mars'?MARS_APPROACH:PORTAL;this.place(this.nav,navigation,true);this.nav.textContent=this.state.phase==='mars'?`◇ RELIEF APPROACH ${(this.ship.position.distanceTo(navigation)/1000).toFixed(1)} km`:`◇ PORTAL ${(distance/1000).toFixed(1)} km`;
+    const navigation=arrived?this.route.approach:this.portalPoint;this.place(this.nav,navigation,true);this.nav.textContent=arrived?`◇ ${this.route.approachLabel} ${(this.ship.position.distanceTo(navigation)/1000).toFixed(1)} km`:`◇ PORTAL ${(distance/1000).toFixed(1)} km`;
     this.contacts.replaceChildren();
     let closest:Enemy|null=null,score=Infinity;
     for(const enemy of this.enemies){
@@ -331,7 +335,8 @@ export class SpaceScene implements ManagedScene {
     }
     if(closest)this.hud.textContent+=`\n${closest.key.replace(/_/g,' ').toUpperCase()} · ${Math.round(closest.pose.position.distanceTo(this.ship.position))} m · ${Math.max(0,Math.ceil(closest.hp))} ARMOR`;
     this.ui.style.boxShadow=this.hitFlash>0?'inset 0 0 70px #ff200060':'none';
-    if(this.descendButton){this.descendButton.hidden=this.state.phase!=='mars';this.descendButton.title=this.ship.position.distanceTo(MARS_APPROACH)<=480?'Transfer to your fighter and land at the relief site':'Approach the relief beacon within 480 m';}
+    if(this.descendButton){this.descendButton.hidden=!arrived;this.descendButton.title=this.ship.position.distanceTo(this.route.approach)<=480?`Transfer to your fighter and land at ${this.route.approachLabel.toLowerCase()}`:'Approach the beacon within 480 m';}
+    if(this.nextRouteButton)this.nextRouteButton.hidden=!this.host.onFogVoyage||!canPlotFogMoon(this.host.save);
     if(this.host.save.testSlot){const data=this.ui.dataset;data.phase=this.state.phase;data.seconds=this.state.seconds.toFixed(2);data.wave=String(this.state.wave);data.enemies=String(this.enemies.length);data.position=JSON.stringify(this.ship.position.toArray());data.orientation=JSON.stringify(this.ship.quaternion.toArray());data.volleys=String(this.volleys);data.bolts=String(this.fired);data.hits=String(this.hits);data.incomingHits=String(this.incomingHits);data.paused=String(this.paused);data.hull=String(this.state.hull);data.firing=String(this.input.firing);data.yaw=String(this.input.x);data.pitch=String(this.input.y);data.camera=this.cockpit?'cockpit':'chase';}
   }
   render():void{

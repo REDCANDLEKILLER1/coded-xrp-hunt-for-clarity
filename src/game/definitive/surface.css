@@ -1,6 +1,13 @@
 .surface-ui{position:absolute;inset:0;pointer-events:none;color:#00ff00;font:600 12px/1.45 system-ui,sans-serif;z-index:4;text-shadow:0 1px 3px #000}
 .mesh-quality{position:absolute;top:12px;right:12px;z-index:9;min-height:30px;border:1px solid #00ff0070;border-radius:5px;background:#03110bdc;color:#00ff00;font:700 10px system-ui;padding:5px 9px;cursor:pointer}
 .surface-ui[hidden]{display:none}
+.fog-feed-label{position:absolute;transform:translate(-50%,-50%);font:700 10px system-ui;padding:4px 6px;border-radius:4px;color:#ffe4df;background:#38130de8;white-space:nowrap}
+.fog-feed-label[data-true="true"]{color:#00ff00;background:#031108ee;border:1px solid #00ff00}
+.fog-relay-choice{z-index:8;pointer-events:auto}
+.fog-ui .surface-actions{display:grid;grid-template-columns:repeat(3,minmax(62px,1fr));width:220px;max-width:calc(100% - 24px)}
+.fog-ui .surface-actions .surface-fire{width:100%}
+.fog-ui .surface-message{bottom:150px}
+@media(orientation:landscape) and (max-height:540px){.fog-ui .surface-actions{grid-template-columns:repeat(6,minmax(52px,1fr));width:420px}.fog-ui .surface-message{bottom:84px}}
 .surface-status{position:absolute;top:48px;left:12px;white-space:pre-line;margin:0;padding:9px 12px;background:#031108dc;border-left:2px solid #00ff00;border-radius:4px}
 .surface-top{position:absolute;right:12px;top:90px;display:flex;gap:6px}
 .surface-ui button{pointer-events:auto;min-width:54px;min-height:42px;border:1px solid #00ff0080;border-radius:7px;background:#03110bec;color:#00ff00;font:700 11px system-ui;padding:8px 10px;touch-action:none;cursor:pointer}

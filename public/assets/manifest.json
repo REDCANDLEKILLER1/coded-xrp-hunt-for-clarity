@@ -929,6 +929,46 @@
       "bytes": 1789176,
       "sha256": "a86040daef9a003b63c1d4d1d00cf4c58ff27d4c5e7f4c3fb8d9ca04e22216de",
       "notes": "Original Blender model for the physical Mars excavation encounter. Raw concepts and editable masters remain private."
+    },
+    "boo": {
+      "src": "/assets/models/boo.glb",
+      "type": "model",
+      "scenes": [
+        "fog_surface"
+      ],
+      "bytes": 415752,
+      "sha256": "514b73a2097bdae02f53253f989077971e89befa49ebdf639efeee81f60e4133",
+      "notes": "Original provisional limbless Boo: written canon constraints, original generated spectral albedo, 7-bone rig, three float/interaction clips. Private source sheet was unavailable."
+    },
+    "fog_canyon": {
+      "src": "/assets/models/fog_canyon.glb",
+      "type": "model",
+      "scenes": [
+        "fog_surface"
+      ],
+      "bytes": 1622336,
+      "sha256": "27abcb68841387d215c51aa9b7c4f14a0a592f8d6aa76a6abcdbdd981027f4de",
+      "notes": "Original lunar service canyon, disjoint traversable shelves and two named relay/feed banks; original generated basalt albedo."
+    },
+    "fog_citadel": {
+      "src": "/assets/models/fog_citadel.glb",
+      "type": "model",
+      "scenes": [
+        "fog_surface"
+      ],
+      "bytes": 516900,
+      "sha256": "449fe8d0ae9c486920e025ce2ff01177110ef262acd5c16fb9c5f80200cbde1a",
+      "notes": "Original fixed relay Citadel: three physical feeds/rotating reflectors, reused original hostile armor albedo; named seeker origins."
+    },
+    "planet_fog_moon": {
+      "src": "/assets/models/planet_fog_moon.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 1043852,
+      "sha256": "613602718f5a78da6c7076f4195cf7abdcbb39c4835f23f685525127cbb80547",
+      "notes": "Original fictional procedural cratered globe with vertex colors; no external source imagery."
     }
   },
   "audio": {

@@ -286,6 +286,58 @@
       "consumer": "MarsExcavationScene through MeshRuntime",
       "source": "Original Blender service route; private generated Mars regolith albedo.",
       "status": "Playable route with six stable anchors, physical/fading gate frame and restoration; master v03 private; roundtrip and ten-minute current scene soak pass."
+    },
+    {
+      "id": "models:boo",
+      "path": "public/assets/models/boo.glb",
+      "bytes": 415752,
+      "sha256": "514b73a2097bdae02f53253f989077971e89befa49ebdf639efeee81f60e4133",
+      "triangles": 9064,
+      "consumer": "FogMoonScene through MeshRuntime",
+      "source": "Original provisional limbless Boo: written canon constraints, original generated spectral albedo, 7-bone rig, three float/interaction clips. Private source sheet was unavailable.",
+      "status": "Earned connected route, native desktop touch, actual-model validators, Blender roundtrip and current ten-minute Fog combat/resource soak verified. Provisional art; private masters retained. Physical-phone acceptance pending.",
+      "animations": [
+        "Glide",
+        "Idle",
+        "Interact"
+      ],
+      "images": 1
+    },
+    {
+      "id": "models:fog_canyon",
+      "path": "public/assets/models/fog_canyon.glb",
+      "bytes": 1622336,
+      "sha256": "27abcb68841387d215c51aa9b7c4f14a0a592f8d6aa76a6abcdbdd981027f4de",
+      "triangles": 23808,
+      "consumer": "FogMoonScene through MeshRuntime",
+      "source": "Original lunar service canyon, disjoint traversable shelves and two named relay/feed banks; original generated basalt albedo.",
+      "status": "Earned connected route, native desktop touch, actual-model validators, Blender roundtrip and current ten-minute Fog combat/resource soak verified. Provisional art; private masters retained. Physical-phone acceptance pending.",
+      "animations": [],
+      "images": 1
+    },
+    {
+      "id": "models:fog_citadel",
+      "path": "public/assets/models/fog_citadel.glb",
+      "bytes": 516900,
+      "sha256": "449fe8d0ae9c486920e025ce2ff01177110ef262acd5c16fb9c5f80200cbde1a",
+      "triangles": 11368,
+      "consumer": "FogMoonScene through MeshRuntime",
+      "source": "Original fixed relay Citadel: three physical feeds/rotating reflectors, reused original hostile armor albedo; named seeker origins.",
+      "status": "Earned connected route, native desktop touch, actual-model validators, Blender roundtrip and current ten-minute Fog combat/resource soak verified. Provisional art; private masters retained. Physical-phone acceptance pending.",
+      "animations": [],
+      "images": 1
+    },
+    {
+      "id": "models:planet_fog_moon",
+      "path": "public/assets/models/planet_fog_moon.glb",
+      "bytes": 1043852,
+      "sha256": "613602718f5a78da6c7076f4195cf7abdcbb39c4835f23f685525127cbb80547",
+      "triangles": 36480,
+      "consumer": "SpaceScene via SpaceRoutes",
+      "source": "Original fictional procedural cratered globe with vertex colors; no external source imagery.",
+      "status": "Earned connected route, native desktop touch, actual-model validators, Blender roundtrip and current ten-minute Fog combat/resource soak verified. Provisional art; private masters retained. Physical-phone acceptance pending.",
+      "animations": [],
+      "images": 0
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

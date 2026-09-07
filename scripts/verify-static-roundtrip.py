@@ -23,8 +23,8 @@ def metrics():
     return {'triangles':triangles,'min':list(minimum),'max':list(maximum),'nodes':{name:list(bpy.data.objects[name].matrix_world.translation) for name in a.nodes.split(',')}}
 original=document(source);bpy.ops.wm.read_factory_settings(use_empty=True);bpy.ops.import_scene.gltf(filepath=str(source));before=metrics()
 target.parent.mkdir(parents=True,exist_ok=True);bpy.ops.export_scene.gltf(filepath=str(target),export_format='GLB',export_animations=False,export_cameras=False,export_lights=False)
-restored=document(target);assert len(restored['images'])==len(original['images']);assert not restored.get('skins');assert all(not image.get('uri') for image in restored['images'])
+restored=document(target);assert len(restored.get('images',[]))==len(original.get('images',[]));assert not restored.get('skins');assert all(not image.get('uri') for image in restored.get('images',[]))
 bpy.ops.wm.read_factory_settings(use_empty=True);bpy.ops.import_scene.gltf(filepath=str(target));after=metrics();assert before['triangles']==after['triangles']
 for key in ['min','max']:assert all(abs(x-y)<.0002 for x,y in zip(before[key],after[key])),key
 for name,point in before['nodes'].items():assert all(abs(x-y)<.0002 for x,y in zip(point,after['nodes'][name])),name
-print('STATIC_ROUNDTRIP_VERIFIED '+json.dumps({'source_bytes':source.stat().st_size,'roundtrip_bytes':target.stat().st_size,'images':len(restored['images']),**after}))
+print('STATIC_ROUNDTRIP_VERIFIED '+json.dumps({'source_bytes':source.stat().st_size,'roundtrip_bytes':target.stat().st_size,'images':len(restored.get('images',[])),**after}))

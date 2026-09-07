@@ -146,7 +146,7 @@ export class MarsSurfaceScene implements ManagedScene{
     if(Math.hypot(this.hero.position.x-RELIEF_CORN.x,this.hero.position.z-RELIEF_CORN.z)<3.2){
       if(!this.quest.introduced)this.conversation('intro',()=>this.quest.meetCorn().ok);
       else if(!this.quest.restored&&RELIEF_PUMPS.every(p=>this.quest.pumpClear(p.id)))this.conversation('restored',()=>this.quest.completeRelief().ok);
-      else if(this.quest.restored)this.conversation('log',()=>true);
+      else if(this.quest.restored)this.conversation(this.host.save.snapshot.quests.includes('mars.restored')?'outbound':'log',()=>true);
       else this.say('CORN · Clear the seizure drones, then release all three pump valves.');
       return;
     }

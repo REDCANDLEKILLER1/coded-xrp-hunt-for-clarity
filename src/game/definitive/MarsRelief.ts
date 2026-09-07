@@ -12,7 +12,7 @@ export type ReliefPump=typeof RELIEF_PUMPS[number]['id'];
 export const RELIEF_BOUNDS={minX:-31,maxX:31,minZ:-49,maxZ:38};
 export const RELIEF_CORN={x:0,z:12};
 export const RELIEF_LANDING={x:0,z:26};
-export const MARS_RELIEF_COMMS:Record<'intro'|'restored'|'log',DialogueScene>={
+export const MARS_RELIEF_COMMS:Record<'intro'|'restored'|'log'|'outbound',DialogueScene>={
   intro:{id:'story.mars.corn_meeting',lines:[
     {speaker:'CORN XRPL',text:'Good news: the soil still works. Bad news: the machinery thinks it owns the rain.'},
     {speaker:'XRPMAN',text:"Your signal brought us here. Let's open the pumps."},
@@ -26,6 +26,7 @@ export const MARS_RELIEF_COMMS:Record<'intro'|'restored'|'log',DialogueScene>={
     {speaker:'STONE · COMMS',text:'Relief signal secured. We have a safe foothold on Mars.'},
   ]},
   log:{id:'log.mars.relief',lines:[{speaker:'CORN XRPL',text:'Pumps online. The field repair unit restores your vitals when it has recharged. The excavation route is our next target.'}]},
+  outbound:{id:'log.mars.outbound',lines:[{speaker:'CORN XRPL',text:'The settlements have their water and the extraction pressure is gone. Those freight records are our next lead.'},{speaker:'XRPMAN',text:'We take the fighter back to the Warship. Set a course for Fog Moon.'},{speaker:'CORN XRPL',text:'I will keep the relief network running from aboard. Try the Dash before you leave; it will help when things get crowded.'}]},
 };
 const add=(list:string[],value:string)=>{if(!list.includes(value))list.push(value);};
 export function canDescendToRelief(save:CampaignSave):boolean {

@@ -11,7 +11,9 @@ import {beginMarsRelief} from './MarsRelief';
 import {MarsExcavationScene} from './MarsExcavationScene';
 import {beginMarsExcavation,excavationCheckpoint,returnMarsRelief} from './MarsExcavation';
 import type {GroundPosition} from './MarginWarden';
-import { SPACE_MODELS, startTransit } from './SpaceProgress';
+import {spaceModels,startTransit,fogVoyageCheckpoint,beginFogVoyage} from './SpaceProgress';
+import {FogMoonScene} from './FogMoonScene';
+import {beginFogLanding} from './FogMoon';
 import {initialSpaceCheckpoint} from './SpaceCheckpoint';
 import { fighterModel } from './LandingPlan';
 import { BoardingQuest } from './BoardingQuest';
@@ -239,20 +241,31 @@ export class MeshRuntime {
     }
   }
 
-  async showSpace(save:CampaignSave):Promise<void>{
+  async showSpace(save:CampaignSave,fogVoyage=false):Promise<void>{
     this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
     const loaded=await this.controller.change(async signal=>{
-      const models=await loadModels(SPACE_MODELS,signal);
+      const checkpoint=fogVoyage?fogVoyageCheckpoint(save):save.snapshot.transit??initialSpaceCheckpoint();if(!checkpoint)throw new Error('Restore Mars and return to its orbit before plotting Fog Moon');
+      const models=await loadModels(spaceModels(checkpoint),signal);
       let scene:SpaceScene|undefined;
       try{
-        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,checkpoint:save.snapshot.transit??initialSpaceCheckpoint(),onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void this.showMars(save)});
+        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,checkpoint,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void (save.snapshot.transit?.route==='mars_fog_moon'?this.showFogMoon(save):this.showMars(save)),onFogVoyage:()=>void this.showSpace(save,true)});
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
-        const started=startTransit(save);if(!started.ok)throw new Error('Departure requires a captured bridge and saved departure briefing');
+        const started=fogVoyage?beginFogVoyage(save):startTransit(save);if(!started.ok)throw new Error('Departure requires the saved owned-ship route checkpoint');
         return scene;
       }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
     });
     if(loaded)this.hud.hidden=true;
-    else if(this.controller.lastError){this.status.textContent=`Departure could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save));this.controls.replaceChildren(retry);}
+    else if(this.controller.lastError){this.status.textContent=`Departure could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save,fogVoyage));this.controls.replaceChildren(retry);}
+  }
+
+  async showFogMoon(save:CampaignSave):Promise<void>{
+    this.root.dataset.review='fog';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Approaching the Fog Moon scout shelter…';this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const models=await loadModels(['xrpman','boo',fighterModel(save.snapshot.fighterShipKey),'fog_canyon','fog_citadel','space_regulator_drone'],signal);let scene:FogMoonScene|undefined;
+      try{scene=new FogMoonScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,arrival:!save.snapshot.quests.includes('fog_moon.landed'),onOrbit:()=>void this.showSpace(save),onRetry:()=>void this.showFogMoon(save)});if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');if(!beginFogLanding(save).ok)throw new Error('Follow the scout shelter beacon and descend within 480 m');return scene;}
+      catch(error){if(scene)scene.dispose();else for(const m of models)disposeObject(m.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.status.textContent=`Fog Moon could not load: ${this.controller.lastError}. Your checkpoint is retained.`;const retry=document.createElement('button');retry.textContent='Retry Fog Moon';retry.addEventListener('click',()=>void this.showFogMoon(save));this.controls.replaceChildren(retry);}
   }
 
   async showMars(save:CampaignSave,returning?:GroundPosition):Promise<void>{

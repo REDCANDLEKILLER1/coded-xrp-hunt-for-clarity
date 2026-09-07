@@ -1,14 +1,14 @@
 """Read a runtime GLB through Blender, re-export privately and compare contracts."""
 import argparse,json,pathlib,struct,sys
 import bpy
-p=argparse.ArgumentParser();p.add_argument('--source',required=True);p.add_argument('--output',required=True);p.add_argument('--expected-images',type=int,default=3)
+p=argparse.ArgumentParser();p.add_argument('--source',required=True);p.add_argument('--output',required=True);p.add_argument('--expected-images',type=int,default=3);p.add_argument('--nodes',default='Hero_Origin,Hand_R,Hand_L')
 a=p.parse_args(sys.argv[sys.argv.index('--')+1:]);source=pathlib.Path(a.source);target=pathlib.Path(a.output)
 if source.resolve()==target.resolve():raise RuntimeError('Roundtrip must not overwrite runtime source')
 def document(path):
     b=path.read_bytes();return json.loads(b[20:20+struct.unpack_from('<I',b,12)[0]])
 original=document(source)
 bpy.ops.wm.read_factory_settings(use_empty=True);bpy.ops.import_scene.gltf(filepath=str(source))
-before={n:list(bpy.data.objects[n].matrix_world.translation) for n in ['Hero_Origin','Hand_R','Hand_L']}
+before={n:list(bpy.data.objects[n].matrix_world.translation) for n in a.nodes.split(',')}
 target.parent.mkdir(parents=True,exist_ok=True)
 bpy.ops.export_scene.gltf(filepath=str(target),export_format='GLB',export_animations=True,export_animation_mode='ACTIONS')
 restored=document(target)
