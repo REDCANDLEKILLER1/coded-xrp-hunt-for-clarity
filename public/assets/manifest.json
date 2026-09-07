@@ -512,6 +512,86 @@
         "legacy_space",
         "legacy_onfoot"
       ]
+    },
+    "shield_relay_v1": {
+      "src": "/assets/hazards/shield_relay_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 15946,
+      "sha256": "7ef83c136811b02c9056cc66ae4292f87b45736b9822f51f491e16b0717f412d",
+      "notes": "Original built-in image generation; optimized RGBA derivative; raw master and prompts retained privately"
+    },
+    "signal_jammer_v2": {
+      "src": "/assets/hazards/signal_jammer_v2.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 14358,
+      "sha256": "3cc39d80b9245bf5d9090c7bf6b9b35a48862b8af1619494e6379629ec591c51",
+      "notes": "Original built-in image generation; optimized RGBA derivative; raw master and prompts retained privately"
+    },
+    "clarity_beacon_v1": {
+      "src": "/assets/hazards/clarity_beacon_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 19806,
+      "sha256": "c129f599958a8c3a864732ffd6b053167d9fdc656e426abbbf0f86bf2705ce8e",
+      "notes": "Original built-in image generation; optimized RGBA derivative; raw master and prompts retained privately"
+    },
+    "tracking_turret_v1": {
+      "src": "/assets/hazards/tracking_turret_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 9122,
+      "sha256": "22537ab5f36af0337a21bad4f9d5328297dcaf047a7b720ded05b104ee0f3712",
+      "notes": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained"
+    },
+    "heavy_cannon_v1": {
+      "src": "/assets/hazards/heavy_cannon_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 13662,
+      "sha256": "ef1c2a32304bad4f3ebefc2c3a335677c0c2434fc55b1dd17b7cbe793974ffc3",
+      "notes": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained"
+    },
+    "laser_tower_v1": {
+      "src": "/assets/hazards/laser_tower_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 7830,
+      "sha256": "fd3bc89f512558a3c73b8e90f3b63b459bf53f312a9f38de21c2124c9268b893",
+      "notes": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained"
+    },
+    "missile_silo_v1": {
+      "src": "/assets/hazards/missile_silo_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 17472,
+      "sha256": "0e538f1c72d33fe4e0ea99d74868984949fac2653c040af4beaed99d05aa2a23",
+      "notes": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained"
+    },
+    "plasma_battery_v1": {
+      "src": "/assets/hazards/plasma_battery_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 18202,
+      "sha256": "8ff88e590b2834f26e9ca3c5086dd702e2c971170fed8ef7b7c2ee57136bb6a9",
+      "notes": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained"
     }
   },
   "environment": {

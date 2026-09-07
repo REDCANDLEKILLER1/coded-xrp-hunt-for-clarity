@@ -70,7 +70,7 @@ assert.ok(quest.has('departure_ready')); assert.equal(save.snapshot.credits,200)
 assert.ok(quest.begin('player').ok); assert.equal(save.snapshot.fighterShipKey,'xrpl_striker');
 // Earth comms follow real mission acts and have no gameplay grants. A failed
 // receipt keeps the conversation open; a reload replays only unfinished comms.
-const {EARTH_STORY,earthStoryFor}=await load('src/game/content/EarthStory.ts');
+const {EARTH_STORY,CITY_RESTORATION,earthStoryFor}=await load('src/game/content/EarthStory.ts');
 const {EARTH_LEDGER_PRIME_MISSION:earth}=await load('src/game/content/missions/ledgerPrime.ts');
 const earthSave=new CampaignSave(storage,'test:earth-story');
 assert.equal(earthStoryFor(null,[]),null);assert.equal(earthStoryFor('not-an-act',[]),null);
@@ -97,4 +97,9 @@ for(const scene of [EARTH_STORY.regulatory_behemoth,EARTH_STORY.clarity_destroye
 const replayBefore=earthSave.snapshot;
 dialogue.open({id:'log.earth',lines:Object.values(EARTH_STORY).flatMap(s=>s.lines)},()=>true);
 dialogue.update(.2);dialogue.skip();assert.deepEqual(earthSave.snapshot,replayBefore);
+const restore=()=>earthSave.update(d=>{if(!d.dialogueSeen.includes(CITY_RESTORATION.id))d.dialogueSeen.push(CITY_RESTORATION.id);if(!d.quests.includes('earth.district_restored'))d.quests.push('earth.district_restored');}).ok;
+dialogue.open(CITY_RESTORATION,restore);dialogue.update(.2);fail=true;dialogue.skip();
+assert.deepEqual(earthSave.snapshot,replayBefore,'failed restoration receipt cannot partly commit the district');
+fail=false;dialogue.skip();assert.ok(earthSave.snapshot.quests.includes('earth.district_restored'));
+const restored=earthSave.snapshot;assert.ok(restore());assert.deepEqual(earthSave.snapshot,restored,'restoration replay is idempotent');
 console.log('boarding-quest: OK — ordered capture, atomic rewards, failed-save retries, Earth act comms/receipts/replay, hostile speakers and preserved progression.');

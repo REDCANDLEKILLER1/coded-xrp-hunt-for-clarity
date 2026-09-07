@@ -74,6 +74,9 @@ export const EARTH_FLIGHT_ENCOUNTERS: Record<string, EarthFlightEncounterDef> = 
       { label: 'ATMOSPHERIC ENTRY', restBefore: 1.5, spawns: [enemy('regulator_drone', 0.3), enemy('regulator_drone', 0.7)] },
       { label: 'GROUND FIRE // BASIC TURRET', restBefore: 1.45, spawns: [hazard('basic_turret', 0.12, -1)] },
       { label: 'TURRET PAIR', restBefore: 1.3, spawns: [hazard('basic_turret', 0.12, -1), hazard('basic_turret', 0.88, 1)] },
+      { label: 'HOSTILE CONTROL // BREAK THE RELAY', restBefore:1.35,spawns:[hazard('shield_relay',.5)] },
+      { label: 'CLARITY BEACON // FLY THROUGH TO REPAIR', restBefore:1.35,spawns:[hazard('clarity_beacon',.5)] },
+      { label: 'LINKED DEFENSES // RELAY FIRST', restBefore:1.35,spawns:[hazard('shield_relay',.5),hazard('basic_turret',.25,-1),hazard('basic_turret',.75,1)] },
       { label: 'CITY APPROACH', restBefore: 1.2, spawns: [enemy('fog_raider', 0.24), enemy('regulator_drone', 0.5), enemy('fog_raider', 0.76)] },
       { label: 'FIRST CROSSFIRE', restBefore: 1.25, spawns: [hazard('basic_turret', 0.88, 1), enemy('regulator_drone', 0.34), enemy('regulator_drone', 0.66)] },
       { label: 'CANNON TOWER // FIRST CONTACT', restBefore: 1.5, spawns: [hazard('cannon_tower', 0.5, -1)] },
@@ -100,6 +103,8 @@ export const EARTH_FLIGHT_ENCOUNTERS: Record<string, EarthFlightEncounterDef> = 
       { label: 'MINE WARNING // FIRST CONTACT', restBefore: 1.4, spawns: [hazard('armored_space_mine', 0.5)] },
       { label: 'MINE CORRIDOR', restBefore: 1.3, spawns: [hazard('armored_space_mine', 0.32), hazard('armored_space_mine', 0.68)] },
       { label: 'CANNON TURRET // FIRST CONTACT', restBefore: 1.45, spawns: [hazard('cannon_turret', 0.12, -1)] },
+      { label: 'NAVIGATION JAMMER // DESTROY THE SOURCE',restBefore:1.4,spawns:[hazard('signal_jammer',.5)] },
+      { label: 'RESTORE THE GRID',restBefore:1.4,spawns:[hazard('shield_relay',.5),hazard('cannon_turret',.2,-1),hazard('cannon_turret',.8,1)] },
       { label: 'SCOUT CROSSFIRE', restBefore: 1.25, spawns: [hazard('cannon_turret', 0.88, 1), enemy('fast_scout', 0.35), enemy('fast_scout', 0.65)] },
       { label: 'LASER TOWER // FIRST CONTACT', restBefore: 1.5, spawns: [hazard('laser_tower', 0.5, -1)] },
       { label: 'LASER LANE', restBefore: 1.35, spawns: [hazard('laser_tower', 0.12, -1), hazard('laser_tower', 0.88, 1)] },
@@ -107,6 +112,7 @@ export const EARTH_FLIGHT_ENCOUNTERS: Record<string, EarthFlightEncounterDef> = 
       { label: 'MISSILE SILO // FIRST CONTACT', restBefore: 1.55, spawns: [hazard('missile_silo', 0.5, -1)] },
       { label: 'SILO SCREEN', restBefore: 1.35, spawns: [hazard('missile_silo', 0.14, -1), enemy('fog_raider', 0.44), enemy('fog_raider', 0.7)] },
       { label: 'GRID PATROL', restBefore: 1.3, spawns: [enemy('rug_fighter', 0.26), enemy('whale_scout', 0.5), enemy('rug_fighter', 0.74)] },
+      { label: 'JAMMED BATTERY',restBefore:1.4,spawns:[hazard('signal_jammer',.4),hazard('missile_silo',.78,1)] },
       { label: 'CROSSFIRE GRID', restBefore: 1.3, spawns: [hazard('cannon_turret', 0.1, -1), hazard('laser_tower', 0.9, 1), enemy('fast_scout', 0.5)] },
       { label: 'MINEFIELD RUN', restBefore: 1.4, spawns: [hazard('armored_space_mine', 0.2), hazard('armored_space_mine', 0.4), hazard('armored_space_mine', 0.6), hazard('armored_space_mine', 0.8)] },
       { label: 'HEAVY LINE', restBefore: 1.35, spawns: [hazard('missile_silo', 0.12, -1), hazard('cannon_tower', 0.88, 1), enemy('rug_fighter', 0.5)] },
@@ -168,6 +174,9 @@ const SOLO_INTRODUCTIONS: Array<{ actKey: string; kind: 'enemy' | 'hazard'; key:
   { actKey: 'fog_belt', kind: 'enemy', key: 'rug_fighter' },
   { actKey: 'ledger_city', kind: 'hazard', key: 'basic_turret' },
   { actKey: 'ledger_city', kind: 'hazard', key: 'cannon_tower' },
+  { actKey: 'ledger_city',kind:'hazard',key:'shield_relay' },
+  { actKey: 'ledger_city',kind:'hazard',key:'clarity_beacon' },
+  { actKey: 'defense_grid',kind:'hazard',key:'signal_jammer' },
   { actKey: 'defense_grid', kind: 'hazard', key: 'armored_space_mine' },
   { actKey: 'defense_grid', kind: 'hazard', key: 'cannon_turret' },
   { actKey: 'defense_grid', kind: 'hazard', key: 'laser_tower' },
@@ -185,7 +194,7 @@ export function validateEarthFlightEncounters(): string[] {
   const allowedEnemyKeys = new Set(['regulator_drone', 'fog_raider', 'fast_scout', 'whale_scout', 'rug_fighter']);
   const allowedHazardKeys = new Set([
     'basic_turret', 'cannon_turret', 'cannon_tower', 'laser_tower',
-    'missile_silo', 'plasma_turret', 'armored_space_mine', 'asteroid',
+    'missile_silo', 'plasma_turret', 'armored_space_mine', 'asteroid','shield_relay','signal_jammer','clarity_beacon',
   ]);
   const allowedStageKeys = new Set(['deep_space_lane', 'ledger_city', 'regulatory_outpost']);
 

@@ -28,6 +28,21 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
 });
 
 export const EARTH_HAZARDS: Record<string, HazardDef> = scaleCombatants({
+  shield_relay: {
+    key:'shield_relay',label:'SHIELD RELAY',sprite:{category:'hazards',id:'shield_relay_v1'},
+    draw:{w:62,h:62},hitbox:{w:40,h:40},hp:5,minWave:1,spawnRate:0,fireRate:0,projectileSpeed:0,
+    score:550,accent:'#ff3030',spawnWeight:0,placement:'lane',fires:false,
+  },
+  signal_jammer: {
+    key:'signal_jammer',label:'SIGNAL JAMMER',sprite:{category:'hazards',id:'signal_jammer_v2'},
+    draw:{w:68,h:68},hitbox:{w:48,h:36},hp:4,minWave:1,spawnRate:0,fireRate:0,projectileSpeed:0,
+    score:450,accent:'#ff3030',spawnWeight:0,placement:'lane',fires:false,
+  },
+  clarity_beacon: {
+    key:'clarity_beacon',label:'CLARITY BEACON',sprite:{category:'hazards',id:'clarity_beacon_v1'},
+    draw:{w:54,h:54},hitbox:{w:54,h:54},hp:1,minWave:1,spawnRate:0,fireRate:0,projectileSpeed:0,
+    score:0,accent:'#00ff00',spawnWeight:0,placement:'lane',fires:false,
+  },
   armored_space_mine: {
     key: 'armored_space_mine',
     label: 'ARMORED SPACE MINE',

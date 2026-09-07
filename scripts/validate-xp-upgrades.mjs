@@ -163,7 +163,9 @@ check(/this\.seekers = \[\];/.test(game), 'seekers must not survive a reset');
 // And it has to actually hit things.
 for (const [what, pattern] of [
   ['drones', /if \(\(drone\.hp \?\? 0\) <= 0 \|\| !overlap\(box\(seeker/],
-  ['hazards', /if \(\(hazard\.hp \?\? 0\) <= 0 \|\| !overlap\(box\(seeker/],
+  // Friendly/shield filtering now precedes a shared damage path; the actual
+  // seeker collision and relay/beacon consequences run in boss-tempo.
+  ['hazards', /this\.damageGround\(hazard,\s*seeker\.damage\)/],
   ['the boss', /this\.boss\?\.state === 'fight' && overlap\(box\(seeker/],
   ['the warship', /!overlap\(box\(seeker, 0\.8\), this\.warshipSystemBox\(system\)\)/],
 ]) {

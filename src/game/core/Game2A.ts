@@ -13,6 +13,7 @@ import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../conten
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
+import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
 import { EARTH_LAUNCH_REVEAL, GARY_FOG_REVEAL, revealTotalDuration } from '../content/Level1Cinematics';
@@ -48,7 +49,7 @@ type EnemyActor = Actor & {
   /** Launched by a boss to screen it. The boss is immune while any survive. */
   escort: boolean;
 };
-type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1 };
+type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1; ground?:GroundDefense };
 type HostileProjectile = Actor & {
   damage: number;
   color: string;
@@ -59,6 +60,8 @@ type HostileProjectile = Actor & {
   track?: number;
   /** Drawn size, so a heavy round reads as heavy without new art. */
   size?: number;
+  interceptible?:boolean;
+  groundGroup?:string;
 };
 type BossActor = Actor & {
   bossKey: string;
@@ -726,6 +729,8 @@ export class Game2A {
   private readonly reviewTelemetry=typeof location!=='undefined'&&new URLSearchParams(location.search).get('review')==='earth';
   private reviewSampleAt=-1;
   private groundTravel=0;
+  private groundRestorationPending=false;
+  private restoredGround:Array<{x:number;y:number;life:number}>=[];
   /** Copied observations only: the section test offers no state setters. */
   private sampleEarthReview():void {
     if(!this.reviewTelemetry||this.clock-this.reviewSampleAt<.15)return;
@@ -738,8 +743,9 @@ export class Game2A {
       player:actor(this.player),shield:this.shield,shieldMax:this.shieldMax,bombs:this.bombs,special:this.special,
       weapon:this.currentWeapon().key,barrels:this.barrels,level:this.xpLevel,
       enemies:this.drones.map(a=>({...actor(a),key:a.enemyKey,stance:a.stance,escort:a.escort})),
-      hazards:this.hazards.map(a=>({...actor(a),key:a.hazardKey})),
-      shots:this.hostileShots.map(a=>({...actor(a),key:a.projectileKey,tracking:a.track??0})),
+      hazards:this.hazards.map(a=>({...actor(a),key:a.hazardKey,ground:a.ground,shielded:!!linkedRelay(a,this.hazards)})),
+      shots:this.hostileShots.map(a=>({...actor(a),key:a.projectileKey,tracking:a.track??0,interceptible:a.interceptible})),
+      restored:this.groundRestorationPending||this.flightStory?.districtRestored,
       pickups:this.pickups.map(a=>({...actor(a),key:a.pickupKey})),
       boss:this.boss?{...actor(this.boss),key:this.boss.bossKey,state:this.boss.state,attack:this.boss.attackState,shielded:this.bossShielded()}:null,
       warship:this.warship?{...actor(this.warship),state:this.warship.state,phase:this.warshipDirector.phase,
@@ -788,7 +794,8 @@ export class Game2A {
   private frame(dt: number): void {
     this.clock += dt;
     const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused?this.missionDirector.currentAct?.key??null:null;
-    if(this.flightStory?.update(dt,storyAct)){
+    const restorationSafe=this.groundRestorationPending&&this.drones.length===0&&this.hazards.every(friendlyGround)&&this.hostileShots.length===0;
+    if(this.flightStory?.update(dt,storyAct,restorationSafe)){
       if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
       this.render();return;
     }
@@ -864,6 +871,8 @@ export class Game2A {
 
     this.movePlayer(dt);
     this.groundTravel += this.currentStage().scrollSpeed * dt;
+    for(const restored of this.restoredGround){restored.y+=this.currentStage().scrollSpeed*dt;restored.life-=dt;}
+    this.restoredGround=this.restoredGround.filter(restored=>restored.life>0&&restored.y<this.h+140);
     this.updateFacing(dt);
     this.updateBolts(dt);
     this.updateSeekers(dt);
@@ -1163,7 +1172,9 @@ export class Game2A {
   }
 
   private updateAuthoredFlight(dt: number): void {
-    const activeThreats = this.drones.length + this.hazards.length;
+    const beaconLesson=this.earthEncounterDirector.currentGroupLabel?.startsWith('CLARITY BEACON');
+    const activeThreats = this.drones.length + this.hazards.filter(h=>!friendlyGround(h)||(beaconLesson&&h.y<this.h*.6)).length;
+    if(activeThreats===0&&this.groundRestorationPending&&this.flightStory&&!this.flightStory.districtRestored){this.hostileShots=[];return;}
     const state = this.earthEncounterDirector.update(dt, activeThreats);
     for (const spawn of state.spawns) {
       if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
@@ -1172,7 +1183,7 @@ export class Game2A {
     this.moveDrones(dt);
     this.moveHazards(dt);
 
-    if (state.completed && this.drones.length === 0 && this.hazards.length === 0) this.completeMissionFlightAct();
+    if (state.completed && this.drones.length === 0 && this.hazards.every(friendlyGround)) this.completeMissionFlightAct();
   }
 
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
@@ -1219,6 +1230,7 @@ export class Game2A {
       hazardKey: def.key,
       fireClock: def.fires ? 0.95 : 0,
       side,
+      ground:groundDefense(def.key,`${this.missionDirector.currentAct?.key}:${this.earthEncounterDirector.currentGroupNumber}`,xRatio*.4),
     });
   }
 
@@ -1395,7 +1407,7 @@ export class Game2A {
   private seekerTargets(): Array<{ x: number; y: number }> {
     const targets: Array<{ x: number; y: number }> = [];
     for (const drone of this.drones) if ((drone.hp ?? 0) > 0) targets.push(drone);
-    for (const hazard of this.hazards) if ((hazard.hp ?? 0) > 0) targets.push(hazard);
+    for (const hazard of this.hazards) if ((hazard.hp ?? 0) > 0&&!friendlyGround(hazard)&&!linkedRelay(hazard,this.hazards)) targets.push(hazard);
     if (this.boss?.state === 'fight') targets.push(this.boss);
     if (this.warship?.state === 'fight') {
       for (const system of this.warshipDirector.targetableSystems) targets.push(this.warshipSystemCenter(system));
@@ -1782,9 +1794,18 @@ export class Game2A {
   }
 
   private moveHazards(dt: number): void {
+    let activeGround=this.hazards.filter(groundAttacking).length;
     for (const hazard of this.hazards) {
       const hazardDef = this.hazardDef(hazard.hazardKey);
       hazard.y += hazard.vy * dt;
+      if(hazard.ground){
+        const wasActive=groundAttacking(hazard);
+        for(const shot of tickGround(hazard,dt,this.player,this.h,activeGround<2)){
+          this.hostileShots.push({...groundMuzzle(hazard),w:shot.size,h:shot.size,vx:Math.cos(shot.angle)*shot.speed,vy:Math.sin(shot.angle)*shot.speed,
+            damage:shot.damage,color:'#ff3030',projectileKey:shot.key,size:shot.size,homing:shot.homing,track:shot.track,interceptible:shot.interceptible,groundGroup:hazard.ground.group});
+        }
+        activeGround+=Number(groundAttacking(hazard))-Number(wasActive);continue;
+      }
       if (!hazardDef.fires) continue;
       hazard.fireClock -= dt;
       // The firing window used a fixed 96px bottom margin, which on a short
@@ -1808,6 +1829,25 @@ export class Game2A {
       hazard.fireClock = hazardDef.fireRate;
     }
     this.hazards = this.hazards.filter((hazard) => hazard.y < this.h + 60);
+  }
+
+  /** Every actual damage path observes linked shields and friendly beacons. */
+  private damageGround(hazard:HazardActor,damage:number):void {
+    if((hazard.hp??0)<=0||friendlyGround(hazard)||linkedRelay(hazard,this.hazards))return;
+    const linked=hazard.ground?.role==='relay'&&this.hazards.some(other=>linkedRelay(other,this.hazards)===hazard);
+    hazard.hp=(hazard.hp??1)-damage;if(hazard.hp>0)return;
+    const def=this.hazardDef(hazard.hazardKey);this.score+=def.score;this.special=Math.min(100,this.special+12);this.awardXp(def.score*XP_PER_SCORE);
+    this.ring(hazard.x,hazard.y);sfx.play('explode',1.2);
+    if(hazard.ground?.role==='relay'){
+      const group=hazard.ground.group;
+      for(const other of this.hazards)if(other.ground?.group===group){other.ground.phase='recover';other.ground.remaining=2.5;}
+      this.hostileShots=this.hostileShots.filter(shot=>shot.groundGroup!==group);
+      this.restoredGround.push({x:hazard.x,y:hazard.y,life:9});
+      if(linked)this.groundRestorationPending=true;
+      this.missionBannerText='RELAY DOWN // LINKED GUNS EXPOSED';this.missionBannerClock=2.8;
+      const beacon=this.hazardDef('clarity_beacon');
+      this.hazards.push({x:hazard.x,y:hazard.y,w:beacon.hitbox.w,h:beacon.hitbox.h,hp:1,vx:0,vy:hazard.vy,hazardKey:beacon.key,side:1,fireClock:0,ground:groundDefense(beacon.key,group)});
+    }
   }
 
   private updateHostileShots(dt: number): void {
@@ -2296,6 +2336,11 @@ export class Game2A {
     };
 
     for (const bolt of this.bolts) {
+      for(const incoming of this.hostileShots){
+        if(!incoming.interceptible||incoming.life===0||!overlap(box(bolt,.8),box(incoming,1)))continue;
+        incoming.life=0;bolt.life=0;this.ring(incoming.x,incoming.y);break;
+      }
+      if(bolt.life===0)continue;
       for (const drone of this.drones) {
         if ((drone.hp ?? 0) <= 0) continue;
         if (overlap(box(bolt, 0.65), box(drone, 0.68))) {
@@ -2307,17 +2352,10 @@ export class Game2A {
       }
       if (bolt.life === 0) continue;
       for (const hazard of this.hazards) {
-        if ((hazard.hp ?? 0) <= 0) continue;
+        if ((hazard.hp ?? 0) <= 0||friendlyGround(hazard)) continue;
         if (overlap(box(bolt, 0.65), box(hazard, 0.78))) {
           const spent = spend(bolt);
-          hazard.hp = (hazard.hp ?? 1) - bolt.damage;
-          if ((hazard.hp ?? 0) <= 0) {
-            this.score += this.hazardDef(hazard.hazardKey).score;
-            this.special = Math.min(100, this.special + 12);
-            this.awardXp(this.hazardDef(hazard.hazardKey).score * XP_PER_SCORE);
-            this.ring(hazard.x, hazard.y);
-            sfx.play('explode', 1.2);
-          }
+          this.damageGround(hazard,bolt.damage);
           if (spent) break;
         }
       }
@@ -2348,15 +2386,8 @@ export class Game2A {
       }
       if (!spent) {
         for (const hazard of this.hazards) {
-          if ((hazard.hp ?? 0) <= 0 || !overlap(box(seeker, 0.8), box(hazard, 0.85))) continue;
-          hazard.hp = (hazard.hp ?? 1) - seeker.damage;
-          if ((hazard.hp ?? 0) <= 0) {
-            const def = this.hazardDef(hazard.hazardKey);
-            this.score += def.score;
-            this.awardXp(def.score * XP_PER_SCORE);
-            this.special = Math.min(100, this.special + 12);
-            sfx.play('explode', 1.2);
-          }
+          if ((hazard.hp ?? 0) <= 0 ||friendlyGround(hazard)|| !overlap(box(seeker, 0.8), box(hazard, 0.85))) continue;
+          this.damageGround(hazard,seeker.damage);
           spent = true;
           break;
         }
@@ -2393,14 +2424,20 @@ export class Game2A {
     this.drones = this.drones.filter((drone) => (drone.hp ?? 0) > 0);
 
     for (const hazard of this.hazards) {
+      if(beamHits(hazard,this.player,this.w,this.h))this.damagePlayer(1,this.player.x,this.player.y);
       if (overlap(box(hazard, 0.76), box(this.player, 0.55))) {
-        hazard.hp = 0;
+        if(friendlyGround(hazard)){
+          hazard.hp=0;this.player.hp=Math.min(this.playerDef().hp,(this.player.hp??0)+1);this.shield=Math.min(this.shieldMax,this.shield+25);
+          this.missionBannerText='CLARITY BEACON // REPAIRED';this.missionBannerClock=2.8;this.ring(hazard.x,hazard.y);continue;
+        }
+        if(hazard.ground)this.damageGround(hazard,999);else hazard.hp=0;
         this.damagePlayer(1, hazard.x, hazard.y);
       }
     }
     this.hazards = this.hazards.filter((hazard) => (hazard.hp ?? 0) > 0);
 
     for (const shot of this.hostileShots) {
+      if(shot.life===0)continue;
       if (overlap(box(shot, 0.8), box(this.player, 0.55))) {
         shot.life = 0;
         this.damagePlayer(shot.damage, shot.x, shot.y);
@@ -2771,9 +2808,10 @@ export class Game2A {
   }
 
   private play(): void {
+    this.drawGroundInfrastructure();
+    for (const hazard of this.hazards) this.drawHazard(hazard);
     this.drawPlayer();
     for (const drone of this.drones) this.drawDrone(drone);
-    for (const hazard of this.hazards) this.drawHazard(hazard);
     if (this.boss) this.drawBoss(this.boss);
     // Over the boss, not under it: the bubble is the explanation for why shots
     // are bouncing, so it has to be the thing you see.
@@ -3000,9 +3038,56 @@ export class Game2A {
     line(this.ctx, bolt.x - bolt.vx * 0.012, bolt.y - bolt.vy * 0.012, bolt.x + bolt.vx * 0.012, bolt.y + bolt.vy * 0.012);
   }
 
+  private drawGroundInfrastructure():void {
+    const ctx=this.ctx;ctx.save();
+    if(this.currentStage().key==='ledger_city'||this.currentStage().key==='regulatory_outpost'){
+      const restored=this.groundRestorationPending||this.flightStory?.districtRestored;
+      ctx.strokeStyle=restored?'#00ff00':'#ce2636';ctx.lineWidth=2;ctx.globalAlpha=.48;
+      const offset=this.groundTravel%160;
+      for(const x of [this.w*.08,this.w*.92])for(let y=offset-160;y<this.h;y+=160){
+        line(ctx,x,y,x,y+115);line(ctx,x,y+115,x+(x<this.w/2?34:-34),y+140);
+        ctx.fillStyle=restored?'#00ff00':'#ce2636';ctx.fillRect(x-3,y+30,6,10);
+      }
+    }
+    ctx.globalAlpha=1;
+    for(const restored of this.restoredGround){
+      ctx.strokeStyle='#00ff00';ctx.lineWidth=3;ctx.shadowColor='#00ff00';ctx.shadowBlur=9;
+      line(ctx,restored.x-78,restored.y,restored.x+78,restored.y);line(ctx,restored.x,restored.y-50,restored.x,restored.y+70);
+    }
+    ctx.shadowBlur=0;
+    for(const hazard of this.hazards){
+      const state=hazard.ground;if(!state||!groundVisible(hazard,this.h))continue;
+      const relay=linkedRelay(hazard,this.hazards);
+      if(relay){
+        ctx.strokeStyle='#ff3030';ctx.lineWidth=2;ctx.setLineDash([5,5]);line(ctx,relay.x,relay.y,hazard.x,hazard.y);ctx.setLineDash([]);
+        ctx.beginPath();ctx.ellipse(hazard.x,hazard.y,hazard.w*.8,hazard.h*.8,0,0,Math.PI*2);ctx.stroke();
+      }
+      if(state.phase==='tell'||state.phase==='active'){
+        const beam=groundBeam(hazard,this.w,this.h);
+        ctx.strokeStyle=state.phase==='active'?'#ff3030':'rgba(255,48,48,.7)';ctx.lineWidth=state.phase==='active'?16:2;
+        ctx.setLineDash(state.phase==='tell'?[9,7]:[]);
+        if(state.role==='laser')line(ctx,beam.x,beam.y,beam.x2,beam.y2);
+        else line(ctx,beam.x,beam.y,beam.x+Math.cos(state.angle)*40,beam.y+Math.sin(state.angle)*40);
+        ctx.setLineDash([]);
+        if(state.phase==='active'){ctx.strokeStyle='#ffd4d4';ctx.lineWidth=3;line(ctx,beam.x,beam.y,beam.x2,beam.y2);}
+      }
+    }
+    if(this.hazards.some(h=>h.ground?.role==='jammer'&&(h.hp??0)>0&&groundVisible(h,this.h))){
+      ctx.fillStyle='#210b13';ctx.fillRect(this.w/2-110,92,220,21);ctx.fillStyle='#ff3030';ctx.textAlign='center';ctx.font='800 10px ui-sans-serif,system-ui';ctx.fillText('NAV SIGNAL JAMMED · DESTROY SOURCE',this.w/2,106,214);
+    }
+    ctx.restore();
+  }
+
   private drawHazard(hazard: HazardActor): void {
     const def = this.hazardDef(hazard.hazardKey);
-    const drawn = this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h);
+    const ground=hazard.ground,art=ground?GROUND_ART[ground.role]:undefined;
+    const image=art?this.assets.getImage('hazards',art.id):null;
+    let drawn=false;
+    if(art&&image){
+      const angle=ground!.phase==='tell'||ground!.phase==='active'?ground!.angle:Math.atan2(this.player.y-hazard.y,this.player.x-hazard.x);
+      this.ctx.save();this.ctx.translate(hazard.x,hazard.y);if(art.rotate)this.ctx.rotate(angle+Math.PI/2);
+      this.ctx.drawImage(image,-art.size/2,-art.size*art.pivotY,art.size,art.size);this.ctx.restore();drawn=true;
+    }else drawn=this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h);
 
     if (!drawn) {
       const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
@@ -3021,10 +3106,30 @@ export class Game2A {
       this.ctx.restore();
     }
 
-    bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+    if(ground){
+      this.ctx.save();this.ctx.translate(hazard.x,hazard.y);this.ctx.strokeStyle=friendlyGround(hazard)?'#00ff00':'#ff3030';this.ctx.lineWidth=3;
+      if(!image&&['turret','cannon','laser','plasma','missile'].includes(ground.role)){
+        const angle=ground.phase==='tell'||ground.phase==='active'?ground.angle:Math.atan2(this.player.y-hazard.y,this.player.x-hazard.x);
+        line(this.ctx,0,0,Math.cos(angle)*22,Math.sin(angle)*22);
+      }else if(ground.role==='beacon'){
+        this.ctx.shadowColor='#00ff00';this.ctx.shadowBlur=12;this.ctx.beginPath();this.ctx.arc(0,0,28,0,Math.PI*2);this.ctx.stroke();line(this.ctx,-9,0,9,0);line(this.ctx,0,-9,0,9);
+      }else if(ground.role==='jammer'){
+        for(const r of [18,28]){this.ctx.beginPath();this.ctx.arc(0,-10,r,Math.PI*1.1,Math.PI*1.9);this.ctx.stroke();}
+      }
+      this.ctx.restore();
+      if(groundVisible(hazard,this.h)&&(ground.phase==='tell'||['relay','jammer','beacon'].includes(ground.role))){
+        const text=GROUND_LABEL[ground.role],width=Math.min(this.w-16,text.length*6.2+12),x=clamp(hazard.x-width/2,8,this.w-width-8),y=hazard.y+def.draw.h/2+9;
+        this.ctx.save();this.ctx.fillStyle='#061018';this.ctx.fillRect(x,y-10,width,16);this.ctx.fillStyle=friendlyGround(hazard)?'#00ff00':'#ff5555';this.ctx.textAlign='center';this.ctx.font='800 10px ui-sans-serif,system-ui';this.ctx.fillText(text,x+width/2,y+2,width-8);this.ctx.restore();
+      }
+    }
+    if(!friendlyGround(hazard))bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
   }
 
   private drawHostileShot(shot: HostileProjectile): void {
+    if(shot.groundGroup&&(shot.size??0)>=19){
+      this.ctx.save();this.ctx.strokeStyle='#ff3030';this.ctx.fillStyle=shot.damage>1?'#ffd0c7':'#ff3030';this.ctx.lineWidth=3;this.ctx.shadowColor='#ff3030';this.ctx.shadowBlur=9;
+      this.ctx.beginPath();this.ctx.arc(shot.x,shot.y,(shot.size??19)/2,0,Math.PI*2);this.ctx.fill();this.ctx.stroke();this.ctx.restore();return;
+    }
     const projectile = this.projectileDef(shot.projectileKey);
     const image = this.assets.getImage(projectile.sprite.category, projectile.sprite.id);
     if (image) {
@@ -3891,7 +3996,10 @@ export class Game2A {
     // The Fog Breaker is a permanent upgrade to this pulse -- wider, longer,
     // and it sweeps the screen clear of fire. It no longer unlocks anything,
     // because a button that gates progress is a button people get stuck behind.
-    if (hasFogBreaker(this.progress)) this.hostileShots = [];
+    if (hasFogBreaker(this.progress)) {
+      this.hostileShots = [];
+      for(const hazard of this.hazards)if(hazard.ground?.role==='jammer'&&groundVisible(hazard,this.h))this.damageGround(hazard,999);
+    }
   }
 
   /** Opens the route to the capital ship. */
@@ -3918,11 +4026,12 @@ export class Game2A {
       this.ring(drone.x, drone.y);
     }
     this.drones = [];
-    for (const hazard of this.hazards) {
-      this.score += 75;
-      this.ring(hazard.x, hazard.y);
+    // Break power feeds before their guns; repair beacons survive ordnance.
+    for(const hazard of [...this.hazards].sort((a,b)=>Number(b.ground?.role==='relay')-Number(a.ground?.role==='relay'))){
+      if(hazard.ground)this.damageGround(hazard,999);
+      else{this.score+=75;this.ring(hazard.x,hazard.y);hazard.hp=0;}
     }
-    this.hazards = [];
+    this.hazards = this.hazards.filter(h=>(h.hp??0)>0);
     this.hostileShots = [];
     if (this.boss?.state === 'fight') {
       this.ring(this.boss.x, this.boss.y);
@@ -4465,6 +4574,7 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.groundTravel = 0;
+    this.groundRestorationPending=false;this.restoredGround=[];
     this.fogGateActive = false;
     this.fogCutClock = 0;
     this.shieldCutClock = 0;

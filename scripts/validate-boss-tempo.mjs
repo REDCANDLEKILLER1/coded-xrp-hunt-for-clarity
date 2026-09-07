@@ -400,6 +400,63 @@ for (const boss of scripted) {
   console.log('  Earth comms              holds simulation, clears stale inputs, resumes flight and suspends safely');
 }
 
+// Ground emplacements exercise the shipped motion/collision paths. Cosmetic
+// labels alone cannot pass these distinct-attack and restoration checks.
+{
+  const {groundDefense,tickGround,beamHits,groundBeam}=await load('src/game/content/GroundDefense.ts');
+  const {EARTH_LEDGER_PRIME_MISSION:mission}=await load('src/game/content/missions/ledgerPrime.ts');
+  const newGround=()=>{const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});g.launchClock=0;g.missionDirector.startAtAct(mission,'ledger_city');g.earthEncounterDirector.start('ledger_city');g.hazards=[];g.drones=[];g.hostileShots=[];g.player.y=640;return g;};
+  for(const height of [390,844])for(const key of ['basic_turret','cannon_tower','laser_tower','missile_silo','plasma_turret']){
+    const body={x:190,y:-40,w:36,h:36,hp:100,ground:groundDefense(key,'test')},player={x:190,y:height-120,vx:0,vy:0,w:24,h:30};
+    let shots=[],tellAt=null,firstAttack=null,beam=false;
+    for(let i=0;i<240;i++)shots.push(...tickGround(body,1/60,player,height,true));
+    check(!shots.length&&body.ground.phase==='idle',`${height}/${key}: offscreen defense must not fire or pre-charge`);
+    body.y=110;
+    for(let i=0;i<300;i++){
+      const output=tickGround(body,1/60,player,height,true);if(body.ground.phase==='tell'&&tellAt===null)tellAt=i/60;
+      if((output.length||body.ground.phase==='active')&&firstAttack===null)firstAttack=i/60;
+      if(body.ground.phase==='active'){beam=true;check(beamHits(body,player,390,height),'actual locked laser hits its marked lane');check(!beamHits(body,{...player,x:290},390,height),'moving outside the marked laser lane avoids damage');const segment=groundBeam(body,390,height);check(segment.y2<=height+.01,'laser segment clips at the viewport edge');}
+      shots.push(...output);
+    }
+    check(tellAt!==null&&firstAttack-tellAt>=.6,`${height}/${key}: a real visible warning precedes its first damage`);
+    if(key==='laser_tower')check(beam&&!shots.length,'laser is an active finite beam, not a renamed missile');
+    else check(shots.length>0,`${key}: must actually fire`);
+    if(key==='cannon_tower')check(shots[0].damage===2&&shots[0].size>=19,'cannon fires a heavy charged shell');
+    if(key==='missile_silo')check(shots[0].track===1.25&&shots[0].interceptible,'silo missile has bounded steering and can be intercepted');
+    if(key==='plasma_turret')check(shots.length>=3&&shots[0].angle!==shots[1].angle,'plasma creates a spaced curtain');
+  }
+  const g=newGround();for(const x of [.2,.5,.8]){g.spawnMissionHazard('laser_tower',x);g.hazards.at(-1).y=110;g.hazards.at(-1).vy=0;}
+  for(let i=0;i<300;i++){g.moveHazards(1/60);check(g.hazards.filter(h=>['tell','active'].includes(h.ground.phase)).length<=2,'at most two ground guns may wind up/beam together');}
+  for(const weapon of ['bolt','seeker','bomb']){
+    const g=newGround();g.spawnMissionHazard('shield_relay',.5);g.spawnMissionHazard('basic_turret',.25);
+    const [relay,gun]=g.hazards;relay.y=gun.y=200;const hp=gun.hp;
+    const shot=target=>({x:target.x,y:target.y,w:10,h:10,vx:0,vy:0,damage:999,life:2,pierce:0});
+    g.bolts=[shot(gun)];g.collisions();check(gun.hp===hp,'linked gun must actually reject damage before its relay falls');
+    if(weapon==='bolt')g.bolts=[shot(relay)];if(weapon==='seeker')g.seekers=[shot(relay)];if(weapon==='bomb'){g.bombs=1;g.useBomb();}
+    g.collisions();check(relay.hp<=0&&g.groundRestorationPending,`${weapon}: real relay destruction restores the linked district`);
+    check(g.hazards.some(h=>h.ground?.role==='beacon'),`${weapon}: power restoration leaves a friendly repair beacon`);
+    if(weapon!=='bomb'){g.bolts=[shot(gun)];g.collisions();check(gun.hp<=0,'relay destruction exposes the connected gun');}
+  }
+  {
+    const g=newGround();g.spawnMissionHazard('clarity_beacon',.5);const beacon=g.hazards[0];beacon.y=200;
+    const round={x:beacon.x,y:beacon.y,w:10,h:10,vx:0,vy:0,damage:999,life:2,pierce:0};
+    g.bolts=[{...round}];g.seekers=[{...round}];g.collisions();g.bombs=1;g.useBomb();
+    check(g.hazards.includes(beacon)&&beacon.hp===1,'friendly beacon survives bolts, seekers and bombs');
+    check(!g.seekerTargets().includes(beacon),'seekers never target friendly infrastructure');
+    g.player.hp=1;g.player.x=beacon.x;g.player.y=beacon.y;const score=g.score;g.collisions();
+    check(g.player.hp===2&&!g.hazards.includes(beacon)&&g.score===score,'fly-through repairs once without damage or kill score');
+    g.collisions();check(g.player.hp===2,'consumed beacon cannot repair twice');
+  }
+  {
+    const g=newGround();const missile={x:180,y:200,w:16,h:16,vx:30,vy:150,damage:1,color:'#ff3030',projectileKey:'enemy_missile',interceptible:true,track:1.25,homing:1.1};
+    g.hostileShots=[missile];for(let i=0;i<80;i++)g.updateHostileShots(1/60);const heading=Math.atan2(missile.vy,missile.vx);
+    g.player.x=350;g.updateHostileShots(.1);check(Math.atan2(missile.vy,missile.vx)===heading,'silo rocket commits straight after its bounded turn');
+    g.hostileShots=[{...missile,x:180,y:200}];g.bolts=[{x:180,y:200,w:10,h:10,vx:0,vy:0,damage:1,life:2,pierce:0}];g.collisions();
+    check(g.hostileShots.length===0&&g.bolts.length===0,'real primary collision intercepts a hostile silo missile');
+  }
+  console.log('  Ground strategy          visible distinct attacks, two-gun budget, relay shields/restoration, friendly repairs and missile interception');
+}
+
 if (failures.length) {
   console.error('boss-tempo: FAIL');
   for (const failure of failures) console.error(`  - ${failure}`);
