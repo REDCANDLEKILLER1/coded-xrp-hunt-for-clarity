@@ -108,10 +108,14 @@ export class BoardingQuest {
     });
   }
 
-  purchase(item: 'repair' | 'shield_module'): SaveResult {
-    const price = item === 'repair' ? 50 : 150;
+  purchase(item: 'repair' | 'shield_module' | 'logistics_module'): SaveResult {
+    const price = item === 'repair' ? 50 : item === 'logistics_module' ? 180 : 150;
     return this.save.purchase(`purchase.bridge.${item}`, price, draft => {
       if (!draft.warshipOwned) return false;
+      if(item==='logistics_module'){
+        if(!draft.recruits.includes('lex')||draft.location.mode!=='hub'||draft.location.checkpoint!=='boarding.bridge')return false;
+        draft.heroUpgrades.logistics_service=1;return;
+      }
       // Fixed first-introduction stock, claimed once; later shops have distinct IDs.
       draft.capitalUpgrades[item === 'repair' ? 'initial_repair' : 'shield_capacity'] = 1;
     });

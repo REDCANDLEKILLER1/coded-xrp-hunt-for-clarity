@@ -23,3 +23,9 @@
 @media(min-aspect-ratio:5/4){.surface-ui .boarding-dialogue{left:auto;right:12px;transform:none;bottom:38px;width:46%;max-height:calc(100% - 122px);overflow:auto}.surface-ui .boarding-dialogue p{font-size:14px}.surface-ui .boarding-dialogue button{min-height:36px}}
 @media(max-width:600px){.surface-status{font-size:10px;max-width:175px}.surface-top{gap:4px}.surface-top button{font-size:9px;min-width:46px;padding:5px;min-height:36px}.surface-hint{top:134px;right:98px;font-size:11px}.surface-map{width:74px;height:80px;top:146px}.surface-actions{gap:5px}.surface-actions button{font-size:10px;padding:6px;min-width:49px}.surface-actions .surface-fire{width:68px}.surface-message{font-size:11px;bottom:100px}}
 @media(orientation:landscape) and (max-height:540px){.surface-status{top:44px;font-size:10px}.surface-top{top:44px;right:102px}.surface-hint{top:119px;max-width:295px;font-size:10px}.surface-map{top:100px;width:66px;height:71px}.surface-actions{bottom:14px}.surface-message{bottom:77px;max-width:380px;font-size:10px}}
+.bullion-ui button{min-height:44px}
+.freight-hull-label,.freight-route-beacon{position:absolute;transform:translate(-50%,-50%);font:700 10px system-ui;padding:4px 6px;border-radius:4px;color:#00ff00;background:#031108e8;border:1px solid #00ff0080;white-space:nowrap;pointer-events:none}
+.freight-hull-label[data-damaged="true"]{border-style:dashed}
+.freight-choice{pointer-events:auto;z-index:8;max-height:calc(100% - 120px);overflow:auto}
+.bullion-ui .surface-hint{top:155px}
+@media(orientation:landscape) and (max-height:540px){.bullion-ui .surface-hint{top:130px}.bullion-ui .surface-top{right:104px}.bullion-ui .surface-status{max-width:245px}}

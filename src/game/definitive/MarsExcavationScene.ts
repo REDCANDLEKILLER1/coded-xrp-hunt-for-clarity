@@ -4,7 +4,7 @@ import type {CampaignSave} from './CampaignSave';
 import type {ManagedScene} from './SceneController';
 import {CommsPanel} from './CommsPanel';
 import {disposeObject} from './ModelAssets';
-import {EXCAVATION_COMMS,EXCAVATION_ENTRY,EXCAVATION_GUARDS,completeMarginWarden,excavationClear,secureExcavationRoute} from './MarsExcavation';
+import {EXCAVATION_COMMS,EXCAVATION_CONTROL,EXCAVATION_ENTRY,EXCAVATION_GUARDS,completeMarginWarden,excavationClear,secureExcavationRoute} from './MarsExcavation';
 import {MarginWarden,WARDEN,miningHazardHits,type GroundPosition,type WardenTarget} from './MarginWarden';
 import {SurfaceInput,bindSurfaceButton} from './SurfaceInput';
 import {SurfaceDash} from './SurfaceDash';
@@ -80,7 +80,7 @@ export class MarsExcavationScene implements ManagedScene{
   private interact():void{
     if(!this.canAct())return;
     if(this.hero.position.distanceTo(new Vector3(0,0,30))<3){this.returnRelief();return;}
-    if(!this.route&&this.hero.position.distanceTo(new Vector3(0,0,9))<3){
+    if(!this.route&&this.hero.position.distanceTo(new Vector3(EXCAVATION_CONTROL.x,0,EXCAVATION_CONTROL.z))<3){
       const remaining=this.guards.filter(g=>g.hp>0).length;if(remaining){this.say(`${remaining} seizure drones still hold the pressure gate.`);return;}
       const result=secureExcavationRoute(this.host.save,remaining,this.hero.position);if(!result.ok){this.say('The gate checkpoint could not save. Interact to retry.');return;}
       this.route=true;this.refreshMachine();this.say('PRESSURE GATE OPEN · Safe checkpoint secured.');return;
@@ -169,7 +169,7 @@ export class MarsExcavationScene implements ManagedScene{
     const deadGuards=this.guards.filter(g=>g.hp>0).length;this.ui.dataset.conversation=String(this.comms.active);this.pauseButton.textContent=this.paused?'RESUME':'PAUSE';this.shieldButton.textContent=this.shielding?'SHIELD ON':'SHIELD';this.repairButton.textContent=this.repairCooldown>0?`REPAIR ${Math.ceil(this.repairCooldown)}s`:'REPAIR';this.repairButton.disabled=this.life>=100||this.repairCooldown>0;this.dashButton.hidden=!this.host.save.snapshot.heroUpgrades.liquidity_dash;this.dashButton.textContent=this.dash.cooldown>0?`DASH ${Math.ceil(this.dash.cooldown)}s`:'DASH';this.dashButton.disabled=this.dash.cooldown>0;
     this.status.textContent=`MARS · EXTRACTION ROUTE\nVITALS ${Math.ceil(this.life)} · SHIELD ${Math.ceil(this.charge)}${this.paused?' · PAUSED':''}\n${this.restored?'PUBLIC FLOW RESTORED':this.route?`WARDEN ${Math.ceil(this.battle.hp)}/${WARDEN.hp} · ${this.battle.exposed?'CORE EXPOSED '+this.battle.exposure.toFixed(1)+'s':'TOWERS '+this.battle.pylons.left.hp+' / '+this.battle.pylons.right.hp}`:`SEIZURE DRONES ${deadGuards}`}`;
     this.hint.textContent=this.restored?'Liquidity Dash unlocked. Follow the south road back to Corn.':!this.route?deadGuards?'Clear the seizure patrol. Reach the pressure-gate control.':'Interact at the pressure-gate pedestal.':this.battle.exposed?'RED CONTROL EXPOSED · Hold BLAST.':`Break both red towers before either restarts.${this.battle.pylons.left.restart>0||this.battle.pylons.right.restart>0?' '+Math.ceil(Math.max(this.battle.pylons.left.restart,this.battle.pylons.right.restart))+'s remaining.':''}`;
-    this.interactButton.textContent=this.hero.position.distanceTo(new Vector3(0,0,30))<3?'RELIEF':!this.route&&this.hero.position.distanceTo(new Vector3(0,0,9))<3?'OPEN GATE':'INTERACT';
+    this.interactButton.textContent=this.hero.position.distanceTo(new Vector3(0,0,30))<3?'RELIEF':!this.route&&this.hero.position.distanceTo(new Vector3(EXCAVATION_CONTROL.x,0,EXCAVATION_CONTROL.z))<3?'OPEN GATE':'INTERACT';
     if(this.host.save.testSlot)Object.assign(this.ui.dataset,{position:JSON.stringify(this.hero.position.toArray()),life:String(this.life),shield:String(this.charge),paused:String(this.paused),dialogue:String(this.comms.active),route:String(this.route),restored:String(this.restored),bossHP:String(this.battle.hp),exposure:String(this.battle.exposure),pylons:JSON.stringify(this.battle.pylons),guards:JSON.stringify(this.guards.filter(g=>g.hp>0).map(g=>({hp:g.hp,position:g.mesh.position.toArray()}))),hazards:JSON.stringify(this.battle.hazards),shots:String(this.shotsFired),hits:String(this.hits),injuries:String(this.injuries),firing:String(this.input.firing),repairCooldown:String(this.repairCooldown),dashCooldown:String(this.dash.cooldown),dashing:String(this.dashing),victoryPending:String(this.victoryPending)});
   }
   render():void{this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);if(this.host.save.testSlot)Object.assign(this.ui.dataset,{triangles:String(this.host.renderer.info.render.triangles),calls:String(this.host.renderer.info.render.calls),geometries:String(this.host.renderer.info.memory.geometries),textures:String(this.host.renderer.info.memory.textures)});}

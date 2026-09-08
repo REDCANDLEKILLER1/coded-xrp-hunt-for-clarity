@@ -16,7 +16,8 @@ async function verify() {
   globalThis.localStorage = { getItem: () => null };
   globalThis.travelHarness = {};
   const plugin = { name: 'travel-boundary-fixtures', setup(b) {
-    b.onLoad({ filter: /[\\/](ModelAssets|BoardingScene|SpaceScene|CampaignNavigation|RevisitTravel|MeshRuntime)\.ts$/ }, ({ path }) => {
+    b.onLoad({ filter: /[\\/](ModelAssets|SpaceBackdrop|BoardingScene|SpaceScene|CampaignNavigation|RevisitTravel|MeshRuntime)\.ts$/ }, ({ path }) => {
+      if(path.endsWith('SpaceBackdrop.ts'))return {loader:'ts',contents:`export async function loadSpaceBackdrop(){if(globalThis.travelHarness.backgroundFailure)throw Error('planned backdrop failure');return {};}export function disposeSpaceBackdrop(){globalThis.travelHarness.disposed++;}`};
       if (path.endsWith('ModelAssets.ts')) return { loader: 'ts', contents: `
         export async function loadModels(ids, signal) { return globalThis.travelHarness.load(ids, signal); }
         export async function loadModel(id, signal) { return (await loadModels([id], signal))[0]; }
@@ -68,7 +69,8 @@ async function verify() {
   const save = fresh(), original = save.snapshot, keep = retained(save);
   assert.equal(m.safeOrbit(original), 'fog_moon');
   assert.deepEqual(m.campaignNavigation(save, 'mars'), { action: 'revisit', world: 'mars', label: 'RETURN TO MARS ORBIT' });
-  assert.equal(m.campaignNavigation(save, 'bullion_reach').action, 'blocked', 'old discovery is not rebuilt content');
+  assert.equal(m.campaignNavigation(save, 'rugfall').action, 'blocked', 'old discovery is not rebuilt content');
+  assert.equal(m.campaignNavigation(save, 'bullion_reach').action, 'continue', 'unrestored Fog cannot skip to the newly built chapter');
   const candidate = m.revisitCheckpoint(save, 'mars');
   assert.equal(candidate.phase, 'mars'); assert.equal(candidate.wave, 4); assert.deepEqual(save.snapshot, original);
   assert.ok(m.beginRevisit(save, 'mars', original.revision).ok); assert.deepEqual(retained(save), keep);
@@ -102,7 +104,8 @@ async function verify() {
   assert.equal(m.chapterRecord(legacy, 'mars').orbitalCleared, true);
   assert.equal(m.chapterRecord(legacy, 'mars').surfaceCleared, true);
   assert.equal(m.chapterRecord(legacy, 'fog_moon').surfaceCleared, true);
-  assert.equal(m.chapterRecord(legacy, 'bullion_reach'), undefined);
+  assert.equal(m.chapterRecord(legacy, 'rugfall'), undefined);
+  assert.equal(m.chapterRecord(legacy, 'bullion_reach').surfaceCleared, false);
   const first = fresh(); first.update(d => { d.location.world = 'mars'; d.transit.route = 'earth_mars'; d.transit.phase = 'mars'; d.transit.wave = 4; d.quests = d.quests.filter(q => !q.startsWith('fog_moon.')); });
   assert.equal(m.campaignNavigation(first, 'fog_moon').action, 'fogVoyage');
   assert.ok(m.beginFogVoyage(first).ok); assert.equal(m.canPlotFogMoon(first), false);
@@ -133,8 +136,9 @@ async function verify() {
     release(); await pending; assert.ok(old.disposed); assert.equal(current.snapshot.location.mode, mode === 'bridge' ? 'hub' : 'space');
     assert.equal(current.snapshot.location.world, mode === 'bridge' ? 'fog_moon' : 'mars'); assert.equal(current.snapshot.credits, before.credits);
   }
-  for (const mode of ['bridge', 'revisit']) for (const problem of ['construction', 'storage', 'stale', 'cancel']) {
+  for (const mode of ['bridge', 'revisit']) for (const problem of ['construction', 'storage', 'stale', 'cancel', ...(mode==='revisit'?['background']:[])]) {
     const current = fresh(), before = current.snapshot, { r, old } = await runtime();
+    if(problem==='background')travelHarness.backgroundFailure=true;
     if (problem === 'construction') travelHarness.construct = () => { throw Error('candidate construction failed'); };
     if (problem === 'storage') fail = true;
     if (problem === 'stale' || problem === 'cancel') travelHarness.load = async ids => {

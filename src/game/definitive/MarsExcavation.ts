@@ -4,6 +4,7 @@ import type {GroundPosition} from './MarginWarden';
 import {prepareMarsReliefReview,RELIEF_PUMPS} from './MarsRelief';
 export const RELIEF_EXIT={x:0,z:-46};
 export const EXCAVATION_ENTRY={x:0,z:30};
+export const EXCAVATION_CONTROL={x:0,z:11.2};
 export const EXCAVATION_GUARDS=[{x:-5,z:18},{x:5,z:18},{x:-4,z:11},{x:4,z:11}] as const;
 export const excavationCheckpoint=(checkpoint:string):boolean=>checkpoint.startsWith('mars.excavation_');
 const add=(values:string[],id:string)=>{if(!values.includes(id))values.push(id);};
@@ -20,7 +21,7 @@ export function returnMarsRelief(save:CampaignSave,at:GroundPosition):SaveResult
   return save.update(d=>{d.location.checkpoint='mars.north_exit';});
 }
 export function secureExcavationRoute(save:CampaignSave,remaining:number,at:GroundPosition):SaveResult{
-  if(!ready(save)||!excavationCheckpoint(save.snapshot.location.checkpoint)||remaining!==0||!near(at,{x:0,z:9}))return{ok:false,reason:'condition'};
+  if(!ready(save)||!excavationCheckpoint(save.snapshot.location.checkpoint)||remaining!==0||!near(at,EXCAVATION_CONTROL))return{ok:false,reason:'condition'};
   return save.claim('reward.mars.excavation_route',d=>{add(d.quests,'mars.route_secured');d.location.checkpoint='mars.excavation_arena';d.credits+=60;});
 }
 export function completeMarginWarden(save:CampaignSave,defeated:boolean):SaveResult{

@@ -1,25 +1,25 @@
-# Draft campaign playtest
+# Chapter One review playtest — September 8, 2026
 
-Preview: https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app
+[Open the fresh opening](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=earth&run=owner-chapter-one-sept8). The fixed deployment URL and exact revision are supplied with draft PR125. This branch alias can advance. The hosted preview may require the owner's Vercel sign-in; deployment protection is unchanged.
 
-The review package reaches Fog Moon restoration and guarded return travel. These links use the working-branch draft preview. The review browser currently meets Vercel sign-in at the hosted preview; no hosted gameplay inspection is claimed. This is a development build with separate section saves, no release or merge.
+The connected review route is Earth defense → original fighter landing → boarding/Mr Zamn/capture → strategic capital flight → Mars/Corn/relief → Margin Warden/Dash → Fog Moon/Boo/Reveal → Bullion Reach/LEX/relief delivery and return. One fighter is assigned at the beginning. Rugfall and SEC Outpost coordinates are retained for later work; those later missions are not implemented here.
 
-The rebuilt route is Earth flight -> selected-fighter landing -> 3D boarding/Mr Zamn/Core -> captured ship flight -> Mars/Corn/relief -> Margin Warden/Dash -> Fog voyage/Boo/relays/Citadel/Reveal and return. Bullion Reach and later definitive chapters remain unfinished.
+Direct section links prepare separate test saves with prerequisites. They are shortcuts for feedback, not proof of earned progression:
 
-Section links use isolated test saves with prerequisites. They do not represent earned campaign progression:
+- [3D flight and dreadnought](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=space&run=owner-warship-sept8)
+- [Mars relief and Corn](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=mars&run=owner-corn-sept8)
+- [Margin Warden](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=excavation&run=owner-warden-sept8)
+- [Fog Moon and Boo](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=fog&run=owner-boo-sept8)
+- [Bullion convoy and LEX](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=bullion&run=owner-convoy-sept8)
 
-- [Earth opening](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=earth&run=owner-opening)
-- [Captured ship flight](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=space&run=owner-flight)
-- [Mars relief and Corn](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=mars&run=owner-relief)
-- [Margin Warden excavation](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=excavation&run=owner-warden)
-- [Fog Moon and Boo](https://coded-xrp-hunt-for-clarity-git-astra-de-b704e5-xrpmans-projects.vercel.app/?review=fog&run=owner-fog)
+In flight, drag to steer and hold GUNS with another finger. BRAKE gives time to aim; BOOST closes distance. Use short bursts to manage gun heat. SHIELDS routes existing charge between the fore and aft banks. Destroying a battery stops its broadside. Both shield emitters must fall before the reactor can take damage. Leave the orange committed firing lanes before their countdown expires; height and flanking matter. Keyboard: WASD/arrows, Space, X brake, Shift boost, Q/E roll, C camera, Escape pause.
 
-Tap RESUME. On foot, drag the open area to move while another finger holds BLAST. SHIELD toggles defense; REPAIR restores damaged vitals; INTERACT talks or operates a nearby control. DASH works while moving/firing. REVEAL is available after meeting Boo. Keyboard: WASD/arrows, Space, E, Q, R, Shift, F and P. Flight retains drag steering and held GUNS through all four real hardpoints.
+On foot, drag the open area to move and hold BLAST. SHIELD toggles defense; INTERACT talks or operates a nearby control. Field Repair, Dash and Reveal unlock through the story. Keyboard: WASD/arrows, Space, E interact, Q shield, R repair, Shift dash, F reveal, P pause. Conversation and pause clear held controls.
 
-At the excavation, clear four drones and operate the gate pedestal. Disable both red towers within twelve seconds, then hit the exposed central control. Leave red warning lanes/circles before they activate. After victory, try Dash and return south to Corn. From the owned Mars orbit, plot Fog Moon and follow the patrols and portal to the scout-shelter approach.
+For the convoy, clear the apron and meet LEX, stay with both haulers, and choose a lane at each junction. INTERACT beside a damaged hauler repairs it using a bounded cooldown. At the siege engine, move behind it during the vent window; Reveal marks the elevated routing control. Defeating the engine opens the road. The supplies must physically reach the destination before the 420-credit reward and LEX recruitment commit. Return along the cleared road to the original fighter.
 
-On Fog Moon, clear the shelter drones and meet Boo. Follow the west shelf, Reveal the genuine letter/shape and operate its relay. The verified source leads around the north loop to the east uplink. At the Citadel, Reveal while its reflectors are open and blast the marked feed. Red lanes/seekers are dangerous; green rings mark friendly information. After restoration, return south to the selected fighter and reload in orbit.
+Try portrait and landscape, Full and Low detail, early and late dodges, different component orders, both convoy decisions, pause/reload and checkpoint retries. Report confusing controls, unfair attacks, slow frames, heat, or a character that does not look right.
 
-From an earned Mars or Fog orbit (or the owned bridge), open STAR MAP and choose the other previously reached world. The button explicitly says RETURN TO its orbit. Surface selections continue the current surface; first Fog travel still requires the real voyage. Revisit Corn/Boo, return to the ship and reload. Credits, upgrades and restoration must remain unchanged. A failed chapter download keeps the checkpoint and offers a centered Retry.
+For feedback, open the small **LOG at the bottom left**, then **SAVE .JSON**. Include the downloaded log, the part of the route and the phone/browser used. The LOG near the flight controls replays crew dialogue. The existing debug log now includes mission and combat checkpoints.
 
-Try portrait/landscape, independent controls, selective release, cancel/rotation, shield/repair/Reveal timing, dialogue, death/retry and Full/Low detail. Desktop emulation is not actual-phone acceptance. Phone feel, heat and sustained performance remain device review items. Materials, geometry and animation need further refinement toward the requested realism. TruFi and Blue Umbrella are friendly, preserving their blue identities with green friendly cues.
+Native browser touch checks passed, but human pacing, physical-phone heat/performance and final character likeness still need the owner's playtest. See [the measured checkpoint](CHAPTER_ONE_PLAYTEST_CHECKPOINT.md).

@@ -20,3 +20,20 @@
 .space-comms{pointer-events:auto;z-index:20}
 @media(orientation:portrait){.space-mesh-top{top:calc(env(safe-area-inset-top) + 102px);left:16px;right:auto}.space-mesh-status{font-size:11px}}
 @media(orientation:landscape){.space-mesh-status{top:12px;font-size:10px}.space-mesh-top{top:12px}.space-mesh-bottom{bottom:18px}.space-mesh-bottom button{min-height:50px}.space-mesh-message{bottom:78px;left:20%;right:20%;font-size:11px}}
+.space-mesh-bomber-lane{position:absolute;transform:translate(-50%,-50%);width:42px;height:42px;border:2px solid #ff1600;border-radius:50%;background:#7b160044;color:#ff3824;display:grid;place-items:center;font:bold 30px system-ui;text-shadow:0 0 8px #ff1600;pointer-events:none}
+.space-mesh-bomber-lane[hidden]{display:none}
+.space-tactics-status{position:absolute;right:18px;top:65px;max-width:265px;white-space:pre-line;text-align:right;color:#f8c99c;font-size:11px;line-height:1.5;text-shadow:0 2px 5px #000;background:#03080dba;padding:7px 10px;border-right:2px solid #b6753f;border-radius:4px;pointer-events:none}
+.space-capital-target{position:absolute;transform:translate(-50%,-50%);font:700 10px system-ui;color:#ffc272;text-shadow:0 1px 4px #000;background:#190c0599;padding:4px;border:1px solid #ffa44370;border-radius:3px;white-space:nowrap;pointer-events:none}
+.space-capital-target[data-locked=true]{color:#82909c;border-color:#52616a}
+.space-capital-target[data-behind=true]::before{content:'↶ '}
+.space-mesh-bottom{gap:8px}.space-mesh-bottom .space-shield-control{min-width:78px;max-width:94px;font-size:10px}.space-mesh-bottom button[data-action=brake]{min-width:64px}
+@media(orientation:portrait){.space-tactics-status{top:158px;right:14px;font-size:10px;max-width:210px}.space-mesh-bottom{left:10px;right:10px;gap:5px}.space-mesh-bottom>span{display:none}.space-mesh-bottom button{min-width:55px;flex:1;padding:8px 5px}.space-mesh-bottom button[data-action=guns]{min-width:65px}.space-mesh-message{bottom:110px}}
+@media(orientation:landscape) and (max-height:500px){.space-tactics-status{top:54px;font-size:9px;max-width:210px}.space-mesh-bottom>span{display:none}.space-mesh-bottom{left:auto}.space-capital-target{font-size:9px;padding:3px}}
+
+@media(orientation:landscape){.space-mesh-top{right:104px}.space-tactics-status{top:72px}}
+
+.space-tactics-status[data-hot=true]{color:#ff8c6c;border-color:#ff4b22}
+
+/* Navigation labels remain behind readable flight instruments. */
+.space-tactics-status{z-index:4;background:#03080deb}
+.space-mesh-top,.space-mesh-status{z-index:5}

@@ -16,9 +16,10 @@ export function enterWarship(save:CampaignSave,entry:{planetKey:string;checkpoin
     if(fighter){d.fighterUpgrades.weapon_tier=fighter.weaponTier;d.fighterUpgrades.barrels=fighter.barrels??1;}
   });
 }
-export function savedChapterScene(save:CampaignSave):'earth'|'landing'|'boarding'|'space'|'mars'|'fog' {
+export function savedChapterScene(save:CampaignSave):'earth'|'landing'|'boarding'|'space'|'mars'|'fog'|'bullion' {
   const d=save.snapshot;
   if(d.location.mode==='surface'&&d.location.world==='fog_moon'&&d.warshipOwned&&d.quests.includes('fog_moon.landed'))return 'fog';
+  if(d.location.mode==='surface'&&d.location.world==='bullion_reach'&&d.warshipOwned&&d.quests.includes('bullion_reach.landed'))return 'bullion';
   if(d.location.mode==='surface'&&d.location.world==='mars'&&d.warshipOwned&&d.quests.includes('mars.relief_landed'))return 'mars';
   if(d.location.mode==='space'&&d.transit&&d.warshipOwned)return 'space';
   if(d.location.mode==='hub'&&d.warshipOwned)return 'boarding';

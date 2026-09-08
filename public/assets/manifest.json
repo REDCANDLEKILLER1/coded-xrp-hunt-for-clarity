@@ -380,6 +380,26 @@
       "bytes": 110934,
       "sha256": "b78b8958b08df20e0e74d630d97dfc381d9d05a00273d7f0bf2e33beb33a2f5a",
       "notes": "Original built-in image generation; neon edit of original v01 environment; private prompt and raw master retained"
+    },
+    "deep_space_dust_v1": {
+      "src": "/assets/backgrounds/deep_space_dust_v1.webp",
+      "type": "image",
+      "bytes": 87508,
+      "sha256": "b3135d1602b573ece737eb5b67c9bfe66d0b9dc1107ec1d48d1e82cdf03a136f",
+      "scenes": [
+        "space"
+      ],
+      "notes": "Original generated 360 degree distant-space backdrop; built-in image generation 2026-09-08. No baked combat objects or private reference pixels."
+    },
+    "bullion_dust_v1": {
+      "src": "/assets/backgrounds/bullion_dust_v1.webp",
+      "type": "image",
+      "bytes": 62408,
+      "sha256": "c37ff1c174a0ed0106139530ca8c84ac522b1b449eb3a203748a124d7d2f8e1f",
+      "scenes": [
+        "space"
+      ],
+      "notes": "Original generated 360 degree distant-space backdrop; built-in image generation 2026-09-08. No baked combat objects or private reference pixels."
     }
   },
   "interior": {
@@ -742,7 +762,8 @@
         "character_review",
         "boarding",
         "hub",
-        "mars_surface"
+        "mars_surface",
+        "bullion"
       ],
       "bytes": 3062212,
       "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f"
@@ -766,7 +787,8 @@
         "landing",
         "boarding",
         "hub",
-        "mars_surface"
+        "mars_surface",
+        "bullion"
       ],
       "bytes": 360680,
       "sha256": "49b78ed1cdc029c1d902353781460891dcd0c5cf28f46ec1c702ed823b515c6b",
@@ -779,7 +801,8 @@
         "landing",
         "boarding",
         "hub",
-        "mars_surface"
+        "mars_surface",
+        "bullion"
       ],
       "bytes": 372640,
       "sha256": "80cb43c0501b491ee2b4c248b11ca55b7a95aa686e50b2874c5ffbe97bf0bdc1",
@@ -792,7 +815,8 @@
         "landing",
         "boarding",
         "hub",
-        "mars_surface"
+        "mars_surface",
+        "bullion"
       ],
       "bytes": 372648,
       "sha256": "207c4a023aff57e9d539f7cb0e10b151b7f1fb8772c091dd09392f9143d040c8",
@@ -824,7 +848,8 @@
       "type": "model",
       "scenes": [
         "space",
-        "mars_surface"
+        "mars_surface",
+        "bullion"
       ],
       "bytes": 704228,
       "sha256": "92846736a970669232b6b678b06f2a51fb8b31ef43ed3995da1a1f35f3196209",
@@ -896,9 +921,9 @@
       "scenes": [
         "mars_surface"
       ],
-      "bytes": 4724576,
-      "sha256": "17ddf8dfb92324e814ba66f508303ca8d5f2009241f9e58659cd5d894c72b093",
-      "notes": "Original provisional Corn modeling study: corn head, sunglasses, leaf features and gold/green field armor on pinned CC0 anatomy. Six embedded maps and three clips. Private source art was unavailable; this is not a verified canon turnaround."
+      "bytes": 5197356,
+      "sha256": "e80f4d9eadbf46db77cf48e38af02825e591c778479ca7e7230669c0f4d754f1",
+      "notes": "Original source-aligned Corn: exposed human face, living corn crown and husks, fitted green armor, sunglasses and animated gold cape. Six embedded original maps, three clips and three sockets. Original JPEG visually inspected; private source pixels are not embedded."
     },
     "mars_relief": {
       "src": "/assets/models/mars_relief.glb",
@@ -936,9 +961,9 @@
       "scenes": [
         "fog_surface"
       ],
-      "bytes": 415752,
-      "sha256": "514b73a2097bdae02f53253f989077971e89befa49ebdf639efeee81f60e4133",
-      "notes": "Original provisional limbless Boo: written canon constraints, original generated spectral albedo, 7-bone rig, three float/interaction clips. Private source sheet was unavailable."
+      "bytes": 3318968,
+      "sha256": "0aa0f6780f6501a575becd8c4dab007dfeaea247a16933a0800c96db2c767db0",
+      "notes": "Original source-aligned Boo: white spectral cloth and wisps, blue eyes, open smile, brows and soft spectral gesture. Corrected unified material UVs, three embedded original maps, three clips and four sockets. Private original JPEG is not embedded."
     },
     "fog_canyon": {
       "src": "/assets/models/fog_canyon.glb",
@@ -969,6 +994,66 @@
       "bytes": 1043852,
       "sha256": "613602718f5a78da6c7076f4195cf7abdcbb39c4835f23f685525127cbb80547",
       "notes": "Original fictional procedural cratered globe with vertex colors; no external source imagery."
+    },
+    "lex": {
+      "src": "/assets/models/lex.glb",
+      "type": "model",
+      "scenes": [
+        "bullion"
+      ],
+      "bytes": 3971012,
+      "sha256": "26ed1ea4a610bea437d6aa96c196fd271ffcf130047ab2e1f19a7c0113d36978",
+      "notes": "Original source-aligned TruFi commander: broad brown-skinned adult face, bald head, black beard, fitted mirrored aviators, black/gunmetal armor, cobalt emblem and metal medallion. Four clips, three sockets and seven original maps. Private original JPEG is not embedded. BullionReachScene consumer."
+    },
+    "relief_hauler": {
+      "src": "/assets/models/relief_hauler.glb",
+      "type": "model",
+      "scenes": [
+        "bullion"
+      ],
+      "bytes": 153208,
+      "sha256": "ba3fdd73050337fc64f9b81ecb71d67fc36141e9912d2bef68e62f166b84cdc8",
+      "notes": "Original metre-scale relief hauler, six wheel pivots and physical repair/cargo anchors. BullionReachScene renders two instances from one asset."
+    },
+    "market_siege_engine": {
+      "src": "/assets/models/market_siege_engine.glb",
+      "type": "model",
+      "scenes": [
+        "bullion"
+      ],
+      "bytes": 364448,
+      "sha256": "36a1016fcddeff8cf11702b415c25e423e0db1f98ffedea8d5f5e526ef0a6017",
+      "notes": "Original moving siege artillery with four actual mortar anchors, rear control and sliding armor shutters. BullionReachScene consumer."
+    },
+    "bullion_freight_yard": {
+      "src": "/assets/models/bullion_freight_yard.glb",
+      "type": "model",
+      "scenes": [
+        "bullion"
+      ],
+      "bytes": 2496832,
+      "sha256": "4c60c582b73c602f2a91fa55b2e7bb6a44da0357c78f87f7bce4896d9ac87161",
+      "notes": "Original freight yard from shared collision/layout data, real barricades and scanner. One embedded original generated mineral albedo; private master remains outside runtime."
+    },
+    "planet_bullion_reach": {
+      "src": "/assets/models/planet_bullion_reach.glb",
+      "type": "model",
+      "scenes": [
+        "space"
+      ],
+      "bytes": 467020,
+      "sha256": "1f15e3ce4692917badcb354b2888e785b1c4a96ccc89d1649aeca84ec441f277",
+      "notes": "Original fictional mineral globe using procedural geometry and vertex colors. Fog-to-Bullion route and earned return-orbit consumer."
+    },
+    "capital_blockade": {
+      "src": "/assets/models/capital_blockade.glb",
+      "type": "model",
+      "bytes": 758040,
+      "sha256": "76c0aea2b771d8ff311f16ef5d6f22efbb6a3b9bc79733b99a392bdefd0de154",
+      "scenes": [
+        "space"
+      ],
+      "notes": "Original 720 m Red Candle dreadnought; 878 m carrier variant. Five physical damage components and armored hull. Private Blender master retained, no private image pixels."
     }
   },
   "audio": {

@@ -1,12 +1,13 @@
+import {CapitalTactics} from './CapitalTactics';
 import type { CampaignSave, SaveResult } from './CampaignSave';
 import { initialSpaceCheckpoint, type SpaceCheckpoint } from './SpaceCheckpoint';
 import {EARTH_MARS_ROUTE,atSpaceDestination,spaceRoute} from './SpaceRoutes';
-import {canStartFogVoyage} from './CampaignNavigation';
+import {canStartFogVoyage,canStartBullionVoyage} from './CampaignNavigation';
 export type {SpaceEnemyKey} from './SpaceRoutes';
 export const SPACE_ENEMIES=['regulator_drone','fast_scout','fog_raider','rug_fighter','whale_scout'] as const;
-export const SPACE_MODELS=['regulatory_warship',...SPACE_ENEMIES.map(key=>`space_${key}`),'planet_earth','planet_mars'] as const;
+export const SPACE_MODELS=['regulatory_warship',...SPACE_ENEMIES.map(key=>`space_${key}`),'planet_earth','planet_mars','capital_blockade'] as const;
 export const PORTAL_POSITION=EARTH_MARS_ROUTE.portal;
-export function spaceModels(checkpoint:SpaceCheckpoint):string[]{const route=spaceRoute(checkpoint);return ['regulatory_warship',...SPACE_ENEMIES.map(key=>`space_${key}`),route.sourceModel,route.destinationModel];}
+export function spaceModels(checkpoint:SpaceCheckpoint):string[]{const route=spaceRoute(checkpoint);return ['regulatory_warship',...SPACE_ENEMIES.map(key=>`space_${key}`),route.sourceModel,route.destinationModel,'capital_blockade'];}
 const sameRoute=(a:SpaceCheckpoint,b:SpaceCheckpoint)=>(a.route??'earth_mars')===(b.route??'earth_mars');
 export function insidePortal(checkpoint:SpaceCheckpoint):boolean{
   const [x,y,z]=checkpoint.position,[qx,qy]=checkpoint.orientation,portal=spaceRoute(checkpoint).portal;
@@ -16,6 +17,9 @@ export const SPACE_WAVES=EARTH_MARS_ROUTE.waves;
 export function canPlotFogMoon(save:CampaignSave):boolean{return canStartFogVoyage(save.snapshot);}
 export function fogVoyageCheckpoint(save:CampaignSave):SpaceCheckpoint|null{if(!canPlotFogMoon(save))return null;const t=save.snapshot.transit!;return {...initialSpaceCheckpoint(),route:'mars_fog_moon',hull:t.hull,fore:t.fore,aft:t.aft};}
 export function beginFogVoyage(save:CampaignSave):SaveResult{const next=fogVoyageCheckpoint(save);if(!next)return{ok:false,reason:'condition'};return save.update(d=>{d.transit=next;d.location={mode:'space',world:'mars',checkpoint:'space.mars_fog_moon.departure'};if(!d.quests.includes('fog_moon.voyage_started'))d.quests.push('fog_moon.voyage_started');});}
+export function canPlotBullionReach(save:CampaignSave):boolean{return canStartBullionVoyage(save.snapshot);}
+export function bullionVoyageCheckpoint(save:CampaignSave):SpaceCheckpoint|null{if(!canPlotBullionReach(save))return null;const t=save.snapshot.transit!;return {...initialSpaceCheckpoint(),route:'fog_bullion_reach',hull:t.hull,fore:t.fore,aft:t.aft};}
+export function beginBullionVoyage(save:CampaignSave):SaveResult{const next=bullionVoyageCheckpoint(save);if(!next)return{ok:false,reason:'condition'};return save.update(d=>{d.transit=next;d.location={mode:'space',world:'fog_moon',checkpoint:'space.fog_bullion_reach.departure'};if(!d.quests.includes('bullion_reach.voyage_started'))d.quests.push('bullion_reach.voyage_started');});}
 /** Explicit section fixture; never grants ownership to the campaign save. */
 export function prepareSpaceReview(save:CampaignSave):SaveResult {
   if(!save.testSlot)return {ok:false,reason:'condition'};
@@ -47,9 +51,10 @@ export function finishDeparture(save:CampaignSave,checkpoint:SpaceCheckpoint):Sa
 }
 export function clearSpaceWave(save:CampaignSave,checkpoint:SpaceCheckpoint):SaveResult {
   const route=spaceRoute(checkpoint);
+  if(route.waves[checkpoint.wave]?.capital&&(!checkpoint.blockade||!new CapitalTactics(checkpoint.wave,checkpoint.blockade).defeated))return {ok:false,reason:'condition'};
   return save.claim(route.id==='earth_mars'?`reward.space.wave.${checkpoint.wave}`:`reward.space.${route.id}.wave.${checkpoint.wave}`,d=>{
     if(!d.warshipOwned||d.location.mode!=='space'||checkpoint.phase!=='transit'||checkpoint.hull<=0||d.transit?.phase!=='transit'||!sameRoute(checkpoint,d.transit)||checkpoint.wave!==d.transit.wave||checkpoint.wave>=route.waves.length)return false;
-    d.transit={...structuredClone(checkpoint),wave:checkpoint.wave+1};d.credits+=100;
+    d.transit={...structuredClone(checkpoint),wave:checkpoint.wave+1};delete d.transit.blockade;d.credits+=100;
     d.location.checkpoint=`space.wave.${checkpoint.wave+1}`;
   });
 }
@@ -64,9 +69,9 @@ export function arriveMars(save:CampaignSave,checkpoint:SpaceCheckpoint):SaveRes
 }
 export function arriveSpaceDestination(save:CampaignSave,checkpoint:SpaceCheckpoint):SaveResult{
   const route=spaceRoute(checkpoint);if(route.id==='earth_mars')return arriveMars(save,checkpoint);
-  return save.claim('reward.space.fog_moon_arrival',d=>{
+  return save.claim(`reward.space.${route.destination}_arrival`,d=>{
     if(!d.warshipOwned||d.location.mode!=='space'||checkpoint.phase!=='transit'||checkpoint.hull<=0||d.transit?.phase!=='transit'||!sameRoute(checkpoint,d.transit)||d.transit.wave!==route.waves.length||checkpoint.wave!==route.waves.length||!insidePortal(checkpoint)||!d.dialogueSeen.includes(route.briefing.id))return false;
-    d.transit={...structuredClone(checkpoint),phase:'arrival'};d.location={mode:'space',world:'fog_moon',checkpoint:'space.fog_moon_orbit'};
-    if(!d.quests.includes('fog_moon.orbit_reached'))d.quests.push('fog_moon.orbit_reached');d.earth.currentPlanet='fog_moon';if(!d.earth.discoveredPlanets.includes('fog_moon'))d.earth.discoveredPlanets.push('fog_moon');
+    d.transit={...structuredClone(checkpoint),phase:'arrival'};d.location={mode:'space',world:route.destination,checkpoint:`space.${route.destination}_orbit`};
+    if(!d.quests.includes(`${route.destination}.orbit_reached`))d.quests.push(`${route.destination}.orbit_reached`);d.earth.currentPlanet=route.destination;if(!d.earth.discoveredPlanets.includes(route.destination))d.earth.discoveredPlanets.push(route.destination);
   });
 }

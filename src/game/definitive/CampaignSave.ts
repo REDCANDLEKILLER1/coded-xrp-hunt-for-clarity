@@ -1,5 +1,6 @@
 import { CAMPAIGN_PROGRESS_STORAGE_KEY, LEGACY_PROGRESS_STORAGE_KEY, LEGACY_V1_PROGRESS_STORAGE_KEY, parseCampaignProgress, type CampaignProgress } from '../content/CampaignProgress';
 import { validSpaceCheckpoint, type SpaceCheckpoint } from './SpaceCheckpoint';
+import { validConvoyCheckpoint, type ConvoyCheckpoint } from './ConvoyCheckpoint';
 
 export const SAVE_VERSION = 1;
 export const SAVE_PREFIX = 'coded-xrp-definitive-v1';
@@ -28,6 +29,7 @@ export interface DefinitiveSave {
   heroUpgrades: Record<string, number>;
   capitalUpgrades: Record<string, number>;
   transit: SpaceCheckpoint | null;
+  convoy: ConvoyCheckpoint | null;
 }
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -43,7 +45,7 @@ export function newDefinitiveSave(earth = parseCampaignProgress(null)): Definiti
     location: { mode: 'earth', world: 'ledger_prime', checkpoint: 'earth.launch' },
     credits: 0, quests: [], visitedRooms: [], clearedRooms: [], recruits: [], rewards: [], dialogueSeen: [],
     warshipOwned: false, fighterShipKey: earth.missionCheckpoints.ledger_prime?.shipKey ?? 'player',
-    fighterUpgrades: {}, heroUpgrades: {}, capitalUpgrades: {}, transit:null,
+    fighterUpgrades: {}, heroUpgrades: {}, capitalUpgrades: {}, transit:null, convoy:null,
   };
 }
 
@@ -59,6 +61,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
     if (!count(value.credits) || typeof value.warshipOwned !== 'boolean' || !id(value.fighterShipKey)) return null;
     if (!upgrades(value.fighterUpgrades) || !upgrades(value.heroUpgrades) || !upgrades(value.capitalUpgrades)) return null;
     if(value.transit!==undefined&&value.transit!==null&&!validSpaceCheckpoint(value.transit))return null;
+    if(value.convoy!==undefined&&value.convoy!==null&&!validConvoyCheckpoint(value.convoy))return null;
     // Copy only declared fields: imported data cannot inject executable state.
     return {
       version: SAVE_VERSION, revision: value.revision as number, updatedAt: Number(value.updatedAt),
@@ -69,6 +72,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
       recruits: [...value.recruits as string[]], rewards: [...value.rewards as string[]], dialogueSeen: [...value.dialogueSeen as string[]],
       fighterUpgrades: { ...value.fighterUpgrades }, heroUpgrades: { ...value.heroUpgrades }, capitalUpgrades: { ...value.capitalUpgrades },
       transit:value.transit?clone(value.transit as SpaceCheckpoint):null,
+      convoy:value.convoy?clone(value.convoy as ConvoyCheckpoint):null,
     };
   } catch { return null; }
 }

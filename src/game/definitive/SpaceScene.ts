@@ -12,10 +12,15 @@ import {CommsPanel} from './CommsPanel';
 import {atSpaceDestination,spaceRoute,type SpaceRoute} from './SpaceRoutes';
 import {sfx} from '../audio/Sfx';
 import {applyCapturedLivery} from './FactionAppearance';
-import { arriveSpaceDestination,canPlotFogMoon,checkpointTransit,clearSpaceWave,finishDeparture,SPACE_ENEMIES,type SpaceEnemyKey } from './SpaceProgress';
+import {recordPlaytest,samplePlaytest} from './PlaytestTelemetry';
+import {CapitalEncounter} from './CapitalEncounter';
+import {CAPITAL_PARTS,routeShields,type ShieldFocus} from './CapitalTactics';
+import {disposeSpaceBackdrop} from './SpaceBackdrop';
+import {commitBomberLanes,bomberVolley} from './BomberLanes';
+import { arriveSpaceDestination,canPlotFogMoon,canPlotBullionReach,checkpointTransit,clearSpaceWave,finishDeparture,SPACE_ENEMIES,type SpaceEnemyKey } from './SpaceProgress';
 
-interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];checkpoint?:SpaceCheckpoint;onHub:()=>void;onRetry:()=>void;onSurface:()=>void;onFogVoyage?:()=>void}
-interface Enemy {key:SpaceEnemyKey;pose:Group;sweep:HullSweep;hp:number;slot:number;age:number;nextShot:number;tell:number;velocity:Vector3;retreat:number;approach:Quaternion}
+interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];backdrop?:Texture;checkpoint?:SpaceCheckpoint;onHub:()=>void;onRetry:()=>void;onSurface:()=>void;onFogVoyage?:()=>void;onBullionVoyage?:()=>void}
+interface Enemy {key:SpaceEnemyKey;pose:Group;sweep:HullSweep;hp:number;slot:number;age:number;nextShot:number;tell:number;velocity:Vector3;retreat:number;approach:Quaternion;bomber:boolean;lanes:Vector3[]|null}
 interface Bolt {position:Vector3;previous:Vector3;velocity:Vector3;age:number;kind:'primary'|'hostile'|'missile';damage:number}
 const PROFILE:Record<SpaceEnemyKey,{hp:number;speed:number;period:number;weight:number}>={
   regulator_drone:{hp:150,speed:300,period:10,weight:.5},fast_scout:{hp:110,speed:390,period:11,weight:.75},
@@ -74,12 +79,18 @@ export class SpaceScene implements ManagedScene {
   private waveSpawned=false;
   private portalCrossing=false;
   private hitFlash=0;
+  private capital:CapitalEncounter|null=null;
+  private shieldFocus:ShieldFocus='balanced';
+  private heat=0;
+  private overheated=false;
+  private collisionClock=0;
+  private readonly tacticsHud=document.createElement('p');
 
   constructor(private readonly host:Host){
     const saved=host.checkpoint??host.save.snapshot.transit;if(!saved)throw new Error('Departure checkpoint is missing');this.state=structuredClone(saved);this.route=spaceRoute(saved);this.portalPoint=new Vector3(...this.route.portal);
     this.paused=host.save.testSlot;this.ship=flightHull(host.models[0].scene);this.ship.position.fromArray(saved.position);this.ship.quaternion.fromArray(saved.orientation);
     this.scene.add(this.ship);this.hull=new HullSweep(this.ship);
-    this.scene.background=new Color(0x01030a);this.scene.environment=host.environment;this.scene.environmentIntensity=.4;
+    this.scene.background=host.backdrop??new Color(0x01030a);this.scene.backgroundIntensity=.3;this.scene.backgroundRotation.y=Math.PI/2;this.scene.environment=host.environment;this.scene.environmentIntensity=.4;
     this.scene.add(new AmbientLight(0x506789,.5));this.sun.position.set(-20000,15000,-8000);this.scene.add(this.sun);
     applyCapturedLivery(this.ship);
     for(const name of ['Camera_Chase','Camera_Cockpit_Forward','Engine_L','Engine_R'])if(!this.ship.getObjectByName(name))throw new Error(`Missing flight attachment ${name}`);
@@ -89,7 +100,7 @@ export class SpaceScene implements ManagedScene {
       flame.position.copy(this.ship.worldToLocal(this.ship.getObjectByName(name)!.getWorldPosition(new Vector3()))).z+=12;
       flame.scale.y=.02;this.ship.add(flame);this.flames.push(flame);
     }
-    const library=new Group();library.visible=false;this.scene.add(library);
+    const library=new Group();library.visible=false;if(host.models[8])library.add(host.models[8].scene);this.scene.add(library);
     SPACE_ENEMIES.forEach((key,index)=>{const template=flightHull(host.models[index+1].scene);library.add(template);this.templates.set(key,template);});
     this.earth=host.models[6].scene;this.earth.scale.setScalar(this.route.sourceModel==='planet_earth'?6200:this.route.sourcePlanet.radius);this.earth.position.fromArray(this.route.sourcePlanet.center);this.earth.rotation.set(0,1.7,.4);this.scene.add(this.earth);
     this.mars=host.models[7].scene;this.mars.scale.setScalar(this.route.destinationPlanet.radius);this.scene.add(this.mars);
@@ -122,36 +133,37 @@ export class SpaceScene implements ManagedScene {
     this.pauseButton.type='button';this.pauseButton.addEventListener('click',()=>{if(this.dead)return;if(!this.paused){this.pause();return;}this.paused=false;this.input.clear();this.paint();},{signal:this.lifetime.signal});top.appendChild(this.pauseButton);
     const camera=button('COCKPIT',()=>{this.cockpit=!this.cockpit;camera.textContent=this.cockpit?'CHASE':'COCKPIT';this.updateCamera(true);});
     button('LOG',()=>{if(this.comms.active)return;const seen=this.host.save.snapshot.dialogueSeen;if(seen.includes(this.route.briefing.id)){this.input.clear();this.comms.open(this.route.briefing,()=>true);}else this.say('No completed flight conversations yet.');});
-    button('BRIDGE',()=>{if(!atSpaceDestination(this.state)&&this.enemies.length){this.say('Clear the active patrol before returning to the bridge.');return;}if(this.persist())this.host.onHub();});
+    button('BRIDGE',()=>{if(!atSpaceDestination(this.state)&&(this.enemies.length||this.capital&&!this.capital.tactics.defeated)){this.say('Clear the active patrol before returning to the bridge.');return;}if(this.persist())this.host.onHub();});
     this.descendButton=button('DESCEND',()=>{
       if(!this.active||this.dead||this.comms.active||!atSpaceDestination(this.state))return;
       if(this.ship.position.distanceTo(this.route.approach)>480){this.say(`Fly within 480 m of ${this.route.approachLabel.toLowerCase()}.`);return;}
       if(this.speed>80){this.say('Release BOOST and slow to approach speed.');return;}
       if(this.persist()){this.input.clear();this.host.onSurface();}
     });
-    this.nextRouteButton=button('PLOT FOG MOON',()=>{if(!this.canFly()||!canPlotFogMoon(this.host.save)||!this.host.onFogVoyage)return;if(this.persist()){this.input.clear();this.host.onFogVoyage();}});
+    this.nextRouteButton=button('PLOT NEXT ROUTE',()=>{if(!this.canFly())return;const next=canPlotFogMoon(this.host.save)?this.host.onFogVoyage:canPlotBullionReach(this.host.save)?this.host.onBullionVoyage:undefined;if(next&&this.persist()){this.input.clear();next();}});
     const bottom=document.createElement('div');bottom.className='space-mesh-bottom';
-    const hint=document.createElement('span');hint.textContent='DRAG TO STEER · HOLD GUNS';bottom.appendChild(hint);
-    for(const [label,action] of [['BOOST','boost'],['GUNS','guns']] as const){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;bottom.appendChild(b);}
-    this.ui.append(this.hud,top,this.message,this.reticle,this.nav,this.contacts,bottom);this.host.root.appendChild(this.ui);
+    const hint=document.createElement('span');hint.textContent='DRAG TO STEER · BURST FIRE';bottom.appendChild(hint);
+    const shield=button('SHIELDS: BAL',()=>{this.shieldFocus=this.shieldFocus==='balanced'?'fore':this.shieldFocus==='fore'?'aft':'balanced';shield.textContent='SHIELDS: '+(this.shieldFocus==='balanced'?'BAL':this.shieldFocus.toUpperCase());this.say(this.shieldFocus==='balanced'?'BALANCED SHIELDS · Both banks recover after a quiet interval.':`CHARGE TO ${this.shieldFocus.toUpperCase()} · The opposite bank gives up charge.`);},bottom);shield.className='space-shield-control';
+    for(const [label,action] of [['BRAKE','brake'],['BOOST','boost'],['GUNS','guns']] as const){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;bottom.appendChild(b);}
+    this.tacticsHud.className='space-tactics-status';this.ui.append(this.tacticsHud,this.hud,top,this.message,this.reticle,this.nav,this.contacts,bottom);this.host.root.appendChild(this.ui);
     const signal=this.lifetime.signal,root=this.host.root;
     root.addEventListener('pointerdown',e=>{
       const target=e.target as HTMLElement,action=target.closest<HTMLElement>('[data-action]')?.dataset.action;
       if(target.closest('button')&&!action)return;if(!this.canFly())return;
-      e.preventDefault();root.setPointerCapture(e.pointerId);this.input.down(e.pointerId,e.clientX,e.clientY,action==='guns'||action==='boost'?action:'steer',performance.now()/1000);
+      e.preventDefault();root.setPointerCapture(e.pointerId);this.input.down(e.pointerId,e.clientX,e.clientY,action==='guns'||action==='boost'||action==='brake'?action:'steer',performance.now()/1000);
     },{signal});
     root.addEventListener('pointermove',e=>{this.input.move(e.pointerId,e.clientX,e.clientY,Math.min(root.clientWidth,root.clientHeight)*.26);},{signal});
     const end=(e:PointerEvent)=>{this.input.up(e.pointerId);if(root.hasPointerCapture(e.pointerId))root.releasePointerCapture(e.pointerId);};
     root.addEventListener('pointerup',end,{signal});root.addEventListener('pointercancel',end,{signal});root.addEventListener('lostpointercapture',e=>this.input.up(e.pointerId),{signal});
     window.addEventListener('keydown',e=>{if(!this.active||e.repeat)return;if(e.code==='Escape'){this.pause();return;}if(e.code==='KeyC'){camera.click();return;}if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','KeyE','Space','ShiftLeft','ShiftRight','KeyX'].includes(e.code)){e.preventDefault();if(this.canFly())this.input.key(e.code,true);}},{signal});
-    window.addEventListener('keyup',e=>this.input.key(e.code,false),{signal});window.addEventListener('blur',this.pause,{signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal});
+    window.addEventListener('resize',()=>this.input.clear(),{signal});window.addEventListener('keyup',e=>this.input.key(e.code,false),{signal});window.addEventListener('blur',this.pause,{signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal});
     this.say(this.state.phase==='departure'?'MR ZAMN · Four guns online. The original fighter is secured below.':'Flight checkpoint restored. Drag to steer; hold GUNS to fire.');
   }
   private canFly():boolean{return this.active&&!this.paused&&!this.dead&&!this.comms.active;}
   private readonly pause=():void=>{if(this.active){this.paused=true;this.input.clear();if(!this.dead)this.persist();this.paint();}};
-  setActive(value:boolean):void{this.active=value;this.ui.hidden=!value;this.input.clear();this.comms.setActive(value);window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'transit':'silence'}}));}
+  setActive(value:boolean):void{if(value)recordPlaytest('mission','space route active',{route:this.route.id,phase:this.state.phase,wave:this.state.wave,hull:this.state.hull});this.active=value;this.ui.hidden=!value;this.input.clear();this.comms.setActive(value);window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'transit':'silence'}}));}
   saveBeforeLeave():boolean{return this.dead||this.persist();}
-  private snapshot():SpaceCheckpoint{return {...this.state,position:this.ship.position.toArray() as [number,number,number],orientation:this.ship.quaternion.toArray() as [number,number,number,number]};}
+  private snapshot():SpaceCheckpoint{return {...this.state,blockade:this.capital?.tactics.wave===this.state.wave?this.capital.tactics.snapshot():undefined,position:this.ship.position.toArray() as [number,number,number],orientation:this.ship.quaternion.toArray() as [number,number,number,number]};}
   private persist():boolean{
     const result=checkpointTransit(this.host.save,this.snapshot());if(!result.ok){this.paused=true;this.input.clear();this.say('Checkpoint could not save. Pause here and retry after restoring storage.');}return result.ok;
   }
@@ -171,24 +183,38 @@ export class SpaceScene implements ManagedScene {
     const wave=this.route.waves[this.state.wave];if(!wave)return;
     wave.enemies.forEach((key,slot)=>{
       const pose=this.templates.get(key)!.clone(true);pose.visible=true;pose.position.copy(this.ship.localToWorld(new Vector3((slot-.5)*140,slot?35:-15,-1100-slot*100)));pose.quaternion.copy(this.ship.quaternion).multiply(new Quaternion().setFromAxisAngle(UP,Math.PI));this.scene.add(pose);
-      this.enemies.push({key,pose,sweep:new HullSweep(pose),hp:PROFILE[key].hp,slot,age:0,nextShot:5+slot*2,tell:0,velocity:new Vector3(),retreat:0,approach:this.ship.quaternion.clone()});
-    });this.waveSpawned=true;this.say(`${wave.label.toUpperCase()} · ${wave.enemies.map(k=>k.replace(/_/g,' ')).join(' + ')} ahead. Red marks warn before attacks.`);
+      this.enemies.push({key,pose,sweep:new HullSweep(pose),hp:PROFILE[key].hp,slot,age:0,nextShot:5+slot*2,tell:0,velocity:new Vector3(),retreat:0,approach:this.ship.quaternion.clone(),bomber:wave.doctrine==='bomber_lanes'&&key==='rug_fighter',lanes:null});
+    });
+    if(wave.capital){
+      if(!this.host.models[8])throw Error('Capital blockade model missing');
+      const pose=this.host.models[8].scene.clone(true);pose.visible=true;pose.position.set(0,40,-wave.at-1400);pose.scale.setScalar(wave.capital==='carrier'?1.22:1);this.scene.add(pose);
+      this.capital=new CapitalEncounter(pose,wave.capital==='carrier'?'SEIZURE CARRIER':'RED CANDLE DREADNOUGHT',this.state.wave,this.state.blockade);this.scene.add(this.capital.warnings);
+      const briefing={id:'story.space.capital_tactics',lines:[{speaker:'MR ZAMN · COMMS',text:'That hull is seven times our size. The two red shield emitters feed its reactor armor. Break both, then reach the amber reactor at the stern.'},{speaker:'STONE · COMMS',text:'The side batteries can be silenced first. Red lanes lock before a broadside. Brake or change height to leave them. Burst your guns; route shields toward incoming fire.'}]};
+      if(!this.host.save.snapshot.dialogueSeen.includes(briefing.id)){this.input.clear();this.comms.open(briefing,()=>this.host.save.update(d=>{if(!d.dialogueSeen.includes(briefing.id))d.dialogueSeen.push(briefing.id);}).ok);}
+    }
+    this.waveSpawned=true;this.say(`${wave.label.toUpperCase()} · ${wave.enemies.map(k=>k.replace(/_/g,' ')).join(' + ')} ahead. Red marks warn before attacks.`);
   }
   private shoot():void{
     if(this.bolts.filter(b=>b.kind==='primary').length>150)return;
     const mounts=capitalVolley(this.ship,this.aimRange());
     for(const muzzle of mounts){this.bolts.push({position:muzzle.origin,previous:muzzle.origin.clone(),velocity:muzzle.direction.multiplyScalar(BOLT_SPEED).addScaledVector(FORWARD.clone().applyQuaternion(this.ship.quaternion),this.speed),age:0,kind:'primary',damage:22});this.fired++;}
-    this.volleys++;
+    this.volleys++;this.heat=Math.min(1,this.heat+.055);if(this.heat>=1){this.overheated=true;this.say('GUNS COOLING · Reposition while the barrels vent.');}
     sfx.play('capitalShoot');
   }
   private aimRange():number{
     let best=.35,range=550;
     for(const enemy of this.enemies){const p=this.ship.worldToLocal(enemy.pose.position.clone()),angle=Math.hypot(p.x,p.y)/Math.max(1,-p.z);if(p.z<-350&&angle<best){best=angle;range=-p.z;}}
+    if(this.capital&&!this.capital.tactics.defeated)for(const key of CAPITAL_PARTS){if(this.capital.tactics.hp[key]===0||key==='reactor'&&!this.capital.tactics.exposed)continue;const p=this.ship.worldToLocal(this.capital.point(key)),angle=Math.hypot(p.x,p.y)/Math.max(1,-p.z);if(p.z<-350&&angle<best){best=angle;range=-p.z;}}
     // Rangefinder adjusts depth only. Player orientation alone sets direction.
     return Math.max(400,Math.min(2000,range));
   }
   private enemyAttack(enemy:Enemy):void{
     sfx.play('enemyShoot');
+    if(enemy.bomber&&enemy.lanes){
+      const muzzles=['Muzzle_L','Muzzle_R'].map(name=>{const node=enemy.pose.getObjectByName(name);if(!node)throw Error('Missing bomber barrel');return node.getWorldPosition(new Vector3());});
+      for(const shot of bomberVolley(muzzles,enemy.lanes)){if(this.bolts.filter(b=>b.kind!=='primary').length>=90)break;this.bolts.push({position:shot.origin,previous:shot.origin.clone(),velocity:shot.direction.multiplyScalar(570),age:0,kind:'hostile',damage:18});}
+      enemy.lanes=null;return;
+    }
     const missile=enemy.key==='whale_scout',lead=this.ship.position.clone().addScaledVector(FORWARD.clone().applyQuaternion(this.ship.quaternion),this.speed*(missile?.55:.35));
     const mounts=['Muzzle_L','Muzzle_R'];
     for(const [index,name] of mounts.entries()){
@@ -213,7 +239,7 @@ export class SpaceScene implements ManagedScene {
       wanted.clampLength(0,PROFILE[enemy.key].speed);enemy.velocity.lerp(wanted,Math.min(1,dt*2));enemy.pose.position.addScaledVector(enemy.velocity,dt);
       const look=new Object3D();look.position.copy(enemy.pose.position);look.up.copy(UP).applyQuaternion(enemy.approach);look.lookAt(extending?enemy.pose.position.clone().add(enemy.velocity):this.ship.position);look.rotateY(Math.PI);enemy.pose.quaternion.slerp(look.quaternion,Math.min(1,dt*(wide?.7:1.4)));
       if(enemy.retreat>0)enemy.retreat-=dt;
-      if(enemy.nextShot<=1.1&&enemy.tell===0){enemy.tell=1.1;this.say(`${enemy.key==='whale_scout'?'MISSILE LOCK':enemy.key.replace(/_/g,' ').toUpperCase()+' FIRING'} · Turn across the red firing line.`);}
+      if(enemy.nextShot<=(enemy.bomber?1.75:1.1)&&enemy.tell===0){enemy.tell=enemy.bomber?1.75:1.1;if(enemy.bomber)enemy.lanes=commitBomberLanes(this.ship.position,this.ship.quaternion,this.speed);this.say(`${enemy.bomber?'BOMBER LANES COMMITTED':enemy.key==='whale_scout'?'MISSILE LOCK':enemy.key.replace(/_/g,' ').toUpperCase()+' FIRING'} · Turn across the red firing line.`);}
       if(enemy.tell>0)enemy.tell=Math.max(.001,enemy.tell-dt);
       if(enemy.nextShot<=0){this.enemyAttack(enemy);enemy.nextShot=PROFILE[enemy.key].period;enemy.tell=0;if(enemy.key==='fog_raider')enemy.retreat=2.5;}
     }
@@ -234,6 +260,7 @@ export class SpaceScene implements ManagedScene {
     this.impact(bolt.position,blocked?0x00ff00:0xff4400);sfx.play(blocked?'hit':'hurt');if(this.state.hull===0)this.defeat();
   }
   private updateBolts(dt:number):void{
+    const capitalWasAlive=!!this.capital&&!this.capital.tactics.defeated;
     for(let i=this.bolts.length-1;i>=0;i--){
       const bolt=this.bolts[i];bolt.previous.copy(bolt.position);bolt.age+=dt;
       if(bolt.kind==='missile'&&bolt.age<2){const aim=this.ship.position.clone().sub(bolt.position).normalize().multiplyScalar(MISSILE_SPEED);bolt.velocity.lerp(aim,dt*.65).setLength(MISSILE_SPEED);}
@@ -243,15 +270,18 @@ export class SpaceScene implements ManagedScene {
           if(!segmentSphere(bolt.previous,bolt.position,enemy.pose.position,65))continue;
           if(enemy.sweep.hit(bolt.previous,bolt.position,1.3)){enemy.hp-=bolt.damage*this.armor(enemy,bolt.previous);this.hits++;this.impact(bolt.position,0xff7733);hit=true;break;}
         }
+        if(!hit&&this.capital&&!this.capital.tactics.defeated){const result=this.capital.hit(bolt.previous,bolt.position,bolt.damage);if(result!=='miss'){hit=true;if(result==='component'){this.hits++;this.impact(bolt.position,0xff9e22);}}}
         if(!hit)for(let j=0;j<this.bolts.length;j++){const missile=this.bolts[j];if(missile.kind==='missile'&&missile.age<20&&segmentSphere(bolt.previous,bolt.position,missile.position,6)){missile.age=20;this.impact(missile.position,0xff9944);hit=true;break;}}
       }else if(segmentSphere(bolt.previous,bolt.position,this.ship.position,75)&&this.hull.hit(bolt.previous,bolt.position,bolt.kind==='missile'?2.5:1.2)){this.damageShip(bolt);hit=true;}
       if(hit||bolt.age>(bolt.kind==='primary'?2.5:8))this.bolts.splice(i,1);
     }
     for(let i=this.enemies.length-1;i>=0;i--)if(this.enemies[i].hp<=0){this.impact(this.enemies[i].pose.position,0xff6633);sfx.play('explode');this.scene.remove(this.enemies[i].pose);this.enemies.splice(i,1);}
-    if(this.waveSpawned&&!this.enemies.length&&!this.dead){const result=clearSpaceWave(this.host.save,this.snapshot());if(result.ok){this.state.wave++;this.waveSpawned=false;this.bolts.length=0;this.say(this.state.wave===this.route.waves.length?'Portal guard cleared. Follow the green navigation marker through the ring.':'Patrol cleared · 100 salvage. Continue toward the portal.');this.portalBriefing();}else{this.paused=true;this.say('Patrol cleared, but the reward could not save. Resume to retry.');}}
+    if(capitalWasAlive&&this.capital?.tactics.defeated){for(const key of CAPITAL_PARTS){this.impact(this.capital.point(key),0xff6622);this.flashes[this.flashes.length-1].mesh.scale.setScalar(9);}sfx.play('explode');recordPlaytest('combat','capital warship disabled',{route:this.route.id,wave:this.state.wave,components:this.capital.tactics.snapshot().hp,hull:this.state.hull});}
+    if(this.waveSpawned&&!this.enemies.length&&(!this.capital||this.capital.tactics.defeated)&&!this.dead){const result=clearSpaceWave(this.host.save,this.snapshot());if(result.ok){recordPlaytest('mission','space patrol cleared',{route:this.route.id,wave:this.state.wave,hull:this.state.hull,fore:this.state.fore,aft:this.state.aft,hits:this.hits,incomingHits:this.incomingHits});this.state.wave++;delete this.state.blockade;this.waveSpawned=false;this.bolts.length=0;this.say(this.state.wave===this.route.waves.length?'Portal guard cleared. Follow the green navigation marker through the ring.':(this.capital?.tactics.defeated?'WARSHIP DISABLED · 100 salvage. Continue toward the portal.':'Patrol cleared · 100 salvage. Continue toward the portal.'));this.portalBriefing();}else{this.paused=true;this.say('Patrol cleared, but the reward could not save. Resume to retry.');}}
   }
   private defeat():void{
-    this.dead=true;this.paused=true;this.input.clear();const panel=document.createElement('div');panel.className='space-mesh-defeat';
+    if(this.dead)return;
+    recordPlaytest('combat','player hull disabled',{route:this.route.id,wave:this.state.wave,position:this.ship.position.toArray(),components:this.capital?.tactics.snapshot().hp});this.dead=true;this.paused=true;this.input.clear();const panel=document.createElement('div');panel.className='space-mesh-defeat';
     const title=document.createElement('h2');title.textContent='HULL DISABLED';const text=document.createElement('p');text.textContent='Retry the current patrol. Earned salvage, crew and the stored fighter are retained.';
     const retry=document.createElement('button');retry.textContent='RETRY PATROL';retry.addEventListener('click',()=>{
       const result=this.host.save.update(d=>{if(!d.transit)return false;d.transit.hull=100;d.transit.fore=d.transit.aft=d.capitalUpgrades.shield_capacity?150:100;});if(result.ok)this.host.onRetry();else text.textContent='Checkpoint could not save. Retry when storage is available.';
@@ -275,6 +305,9 @@ export class SpaceScene implements ManagedScene {
       this.speed=Math.min(this.speed,this.ship.position.distanceTo(approach.position)/Math.max(.001,dt));
       this.say('ATMOSPHERE LIMIT · Turn along the horizon or return to the bridge.');
     }
+    if(this.capital&&this.capital.hull.hit(this.ship.position,approach.position,24)){
+      if(this.collisionClock<=0){this.collisionClock=2;this.damageShip({position:this.ship.position.clone(),previous:approach.position.clone(),velocity:new Vector3(),age:0,kind:'hostile',damage:24});this.say('HULL PROXIMITY · Brake and steer clear of the warship.');}this.speed=0;return;
+    }
     // Cameras, hardpoints, collision and saves all use this constrained pose.
     this.ship.position.copy(approach.position);
   }
@@ -282,6 +315,8 @@ export class SpaceScene implements ManagedScene {
     if(!this.active)return;
     this.comms.update(dt);
     if(!this.canFly()){this.paint();return;}
+    this.collisionClock=Math.max(0,this.collisionClock-dt);this.heat=Math.max(0,this.heat-dt*(this.input.firing&&!this.overheated?.055:.24));if(this.overheated&&this.heat<.2)this.overheated=false;
+    const previous=this.ship.position.clone();
     this.state.seconds+=dt;this.saveClock+=dt;this.hudClock+=dt;this.noticeClock-=dt;this.hitFlash=Math.max(0,this.hitFlash-dt);
     if(this.noticeClock<=0)this.message.textContent='';
     this.earth.rotation.y+=dt*.003;this.mars.rotation.y+=dt*.004;
@@ -293,10 +328,12 @@ export class SpaceScene implements ManagedScene {
       turnFlight(this.ship.quaternion,this.yaw,this.pitch,this.input.roll*.8,dt);
       const cruise=atSpaceDestination(this.state)?70:130;this.speed+=(cruise*(this.input.braking?.3:this.input.boosting?2.2:1)-this.speed)*Math.min(1,dt*1.5);
       this.advanceShip(dt);
-      this.nextFire=Math.max(0,this.nextFire-dt);if(this.input.firing&&this.nextFire===0){this.shoot();this.nextFire=.28;}
+      this.nextFire=Math.max(0,this.nextFire-dt);if(this.input.firing&&!this.overheated&&this.nextFire===0){this.shoot();this.nextFire=.28;}
       if(this.state.phase==='transit'){
         const wave=this.route.waves[this.state.wave];if(wave&&!this.waveSpawned&&-this.ship.position.z>=wave.at)this.spawnWave();
-        this.updateEnemies(dt);this.updateBolts(dt);
+        this.updateEnemies(dt);
+        if(this.capital?.update(dt,this.ship.position,previous,FORWARD.clone().applyQuaternion(this.ship.quaternion).multiplyScalar(this.speed))){const source=this.capital.attackOrigin;this.damageShip({position:this.ship.position.clone(),previous:source,velocity:new Vector3(),age:0,kind:'hostile',damage:65});}
+        this.updateBolts(dt);
         if(!this.comms.active&&this.ship.position.distanceTo(this.portalPoint)<140&&this.state.wave===this.route.waves.length&&!this.portalCrossing){
           const direction=FORWARD.clone().applyQuaternion(this.ship.quaternion);if(direction.z<-.35){
             const result=arriveSpaceDestination(this.host.save,this.snapshot());if(result.ok){this.state.phase=this.route.id==='earth_mars'?'mars':'arrival';this.portalCrossing=true;this.bolts.length=0;this.applyPhase();this.say(`${this.route.arrivalLabel} · Follow ${this.route.approachLabel.toLowerCase()}. Slow within 480 m and select DESCEND.`);}else{this.paused=true;this.say('Portal arrival could not save. Resume to retry.');}
@@ -305,10 +342,12 @@ export class SpaceScene implements ManagedScene {
         if(this.ship.position.z<this.portalPoint.z-500&&this.state.wave<this.route.waves.length)this.say('The portal is sealed by the remaining patrols. Follow the red contacts.');
       }else this.updateBolts(dt);
     }
-    if(this.state.seconds-this.lastDamage>7){const cap=this.host.save.snapshot.capitalUpgrades.shield_capacity?150:100;this.state.fore=Math.min(cap,this.state.fore+dt*4);this.state.aft=Math.min(cap,this.state.aft+dt*4);}
+    routeShields(this.state,this.shieldFocus,this.host.save.snapshot.capitalUpgrades.shield_capacity?150:100,dt);
+    if(this.state.seconds-this.lastDamage>7){const cap=this.host.save.snapshot.capitalUpgrades.shield_capacity?150:100;this.state.fore=Math.min(cap,this.state.fore+dt*(this.shieldFocus==='aft'?0:this.shieldFocus==='fore'?8:4));this.state.aft=Math.min(cap,this.state.aft+dt*(this.shieldFocus==='fore'?0:this.shieldFocus==='aft'?8:4));}
     for(const flame of this.flames)flame.scale.y=Math.max(.02,this.speed/130)*(1+Math.sin(this.state.seconds*35)*.06);
     for(let i=this.flashes.length-1;i>=0;i--){const f=this.flashes[i];f.time-=dt;f.mesh.scale.multiplyScalar(1+dt*5);(f.mesh.material as MeshBasicMaterial).opacity=Math.max(0,f.time*3);if(f.time<=0){this.scene.remove(f.mesh);disposeObject(f.mesh);this.flashes.splice(i,1);}}
     this.stars.position.copy(this.ship.position);this.updateCamera();
+    samplePlaytest('space-flight','space flight sample',{route:this.route.id,wave:this.state.wave,hull:this.state.hull,fore:this.state.fore,aft:this.state.aft,heat:Math.round(this.heat*100),focus:this.shieldFocus,position:this.ship.position.toArray(),calls:this.host.renderer.info.render.calls,triangles:this.host.renderer.info.render.triangles,components:this.capital?.tactics.snapshot().hp});
     if(this.saveClock>=10&&!this.dead){this.saveClock=0;this.persist();}
     if(this.hudClock>=.1){this.hudClock=0;this.paint();}
   }
@@ -329,15 +368,21 @@ export class SpaceScene implements ManagedScene {
     let closest:Enemy|null=null,score=Infinity;
     for(const enemy of this.enemies){
       const tag=document.createElement('span');tag.className='space-mesh-contact';tag.dataset.warning=String(enemy.tell>0);tag.textContent=enemy.tell>0?'⚠':'◇';this.place(tag,enemy.pose.position,true);this.contacts.appendChild(tag);
+      if(enemy.lanes)for(const lane of enemy.lanes){const warning=document.createElement('span');warning.className='space-mesh-bomber-lane';warning.textContent='×';warning.setAttribute('aria-label','Committed bomber lane');this.place(warning,lane);this.contacts.appendChild(warning);}
       const relative=enemy.velocity.clone().addScaledVector(FORWARD.clone().applyQuaternion(this.ship.quaternion),-this.speed),lead=interceptPoint(this.ship.position,enemy.pose.position,relative,BOLT_SPEED);
       const marker=document.createElement('span');marker.className='space-mesh-lead';marker.textContent='·';marker.dataset.enemy=enemy.key;marker.dataset.contact=`${enemy.key}:${enemy.slot}`;this.place(marker,lead);this.contacts.appendChild(marker);
       const local=this.ship.worldToLocal(enemy.pose.position.clone()),angle=Math.hypot(local.x,local.y)/Math.max(1,-local.z);if(local.z<0&&angle<score){score=angle;closest=enemy;}
     }
+    this.tacticsHud.dataset.hot=String(this.heat>.8||this.overheated);this.tacticsHud.textContent=`GUN HEAT ${Math.round(this.heat*100)}%${this.overheated?' · COOLING':''}`;
+    if(this.capital&&!this.capital.tactics.defeated){
+      const cap=this.capital;this.tacticsHud.textContent+=`\n${cap.label} · ${Math.round(cap.pose.position.distanceTo(this.ship.position))} m\n${cap.tactics.exposed?'REACTOR EXPOSED · REACH THE STERN':'BREAK BOTH SHIELD EMITTERS'}${cap.warning?'\n'+cap.warning:''}`;
+      for(const key of CAPITAL_PARTS){if(cap.tactics.hp[key]<=0)continue;const marker=document.createElement('span');marker.className='space-capital-target';marker.dataset.part=key;marker.dataset.locked=String(key==='reactor'&&!cap.tactics.exposed);marker.textContent=`◇ ${key.replace(/_/g,' ').toUpperCase()} ${Math.ceil(cap.tactics.hp[key])}`;this.place(marker,cap.point(key),true);this.contacts.appendChild(marker);}
+    }
     if(closest)this.hud.textContent+=`\n${closest.key.replace(/_/g,' ').toUpperCase()} · ${Math.round(closest.pose.position.distanceTo(this.ship.position))} m · ${Math.max(0,Math.ceil(closest.hp))} ARMOR`;
     this.ui.style.boxShadow=this.hitFlash>0?'inset 0 0 70px #ff200060':'none';
     if(this.descendButton){this.descendButton.hidden=!arrived;this.descendButton.title=this.ship.position.distanceTo(this.route.approach)<=480?`Transfer to your fighter and land at ${this.route.approachLabel.toLowerCase()}`:'Approach the beacon within 480 m';}
-    if(this.nextRouteButton)this.nextRouteButton.hidden=!this.host.onFogVoyage||!canPlotFogMoon(this.host.save);
-    if(this.host.save.testSlot){const data=this.ui.dataset;data.phase=this.state.phase;data.seconds=this.state.seconds.toFixed(2);data.wave=String(this.state.wave);data.enemies=String(this.enemies.length);data.position=JSON.stringify(this.ship.position.toArray());data.orientation=JSON.stringify(this.ship.quaternion.toArray());data.volleys=String(this.volleys);data.bolts=String(this.fired);data.hits=String(this.hits);data.incomingHits=String(this.incomingHits);data.paused=String(this.paused);data.hull=String(this.state.hull);data.firing=String(this.input.firing);data.yaw=String(this.input.x);data.pitch=String(this.input.y);data.camera=this.cockpit?'cockpit':'chase';}
+    if(this.nextRouteButton){const fog=!!this.host.onFogVoyage&&canPlotFogMoon(this.host.save),bullion=!!this.host.onBullionVoyage&&canPlotBullionReach(this.host.save);this.nextRouteButton.hidden=!fog&&!bullion;this.nextRouteButton.textContent=bullion?'PLOT BULLION REACH':'PLOT FOG MOON';}
+    if(this.host.save.testSlot){const data=this.ui.dataset;data.capital=this.capital?JSON.stringify({label:this.capital.label,...this.capital.tactics.snapshot(),exposed:this.capital.tactics.exposed,defeated:this.capital.tactics.defeated,warning:this.capital.warning,points:Object.fromEntries(CAPITAL_PARTS.map(k=>[k,this.capital!.point(k).toArray()]))}):'';data.heat=this.heat.toFixed(3);data.shieldFocus=this.shieldFocus;data.phase=this.state.phase;data.seconds=this.state.seconds.toFixed(2);data.wave=String(this.state.wave);data.enemies=String(this.enemies.length);data.position=JSON.stringify(this.ship.position.toArray());data.orientation=JSON.stringify(this.ship.quaternion.toArray());data.volleys=String(this.volleys);data.bolts=String(this.fired);data.hits=String(this.hits);data.incomingHits=String(this.incomingHits);data.paused=String(this.paused);data.hull=String(this.state.hull);data.firing=String(this.input.firing);data.yaw=String(this.input.x);data.pitch=String(this.input.y);data.camera=this.cockpit?'cockpit':'chase';}
   }
   render():void{
     this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?66:55;this.camera.updateProjectionMatrix();
@@ -347,5 +392,5 @@ export class SpaceScene implements ManagedScene {
     this.host.renderer.render(this.scene,this.camera);
     if(this.host.save.testSlot){const info=this.host.renderer.info;this.ui.dataset.triangles=String(info.render.triangles);this.ui.dataset.calls=String(info.render.calls);this.ui.dataset.geometries=String(info.memory.geometries);this.ui.dataset.textures=String(info.memory.textures);}
   }
-  dispose():void{this.active=false;this.input.clear();this.comms.dispose();this.lifetime.abort();this.ui.remove();disposeObject(this.scene);}
+  dispose():void{this.active=false;this.input.clear();this.comms.dispose();this.lifetime.abort();this.ui.remove();disposeObject(this.scene);if(this.host.backdrop)disposeSpaceBackdrop(this.host.backdrop);}
 }

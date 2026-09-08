@@ -5,13 +5,16 @@ import { disposeObject, loadModel, loadModels } from './ModelAssets';
 import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
 import { LandingScene } from './LandingScene';
+import {loadSpaceBackdrop,disposeSpaceBackdrop} from './SpaceBackdrop';
 import { SpaceScene } from './SpaceScene';
 import {MarsSurfaceScene} from './MarsSurfaceScene';
 import {beginMarsRelief} from './MarsRelief';
 import {MarsExcavationScene} from './MarsExcavationScene';
 import {beginMarsExcavation,excavationCheckpoint,returnMarsRelief} from './MarsExcavation';
 import type {GroundPosition} from './MarginWarden';
-import {spaceModels,startTransit,fogVoyageCheckpoint,beginFogVoyage} from './SpaceProgress';
+import {spaceModels,startTransit,fogVoyageCheckpoint,beginFogVoyage,bullionVoyageCheckpoint,beginBullionVoyage} from './SpaceProgress';
+import {BullionReachScene} from './BullionReachScene';
+import {beginBullionLanding} from './BullionLanding';
 import {FogMoonScene} from './FogMoonScene';
 import {beginFogLanding} from './FogMoon';
 import {initialSpaceCheckpoint} from './SpaceCheckpoint';
@@ -252,22 +255,35 @@ export class MeshRuntime {
     }
   }
 
-  async showSpace(save:CampaignSave,fogVoyage=false,revisit?:RevisitWorld):Promise<void>{
-    this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent=revisit?`Returning to ${revisit==='mars'?'Mars':'Fog Moon'} orbit…`:'Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
+  async showSpace(save:CampaignSave,fogVoyage=false,revisit?:RevisitWorld,bullionVoyage=false):Promise<void>{
+    this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent=revisit?`Returning to ${revisit.replace(/_/g,' ')} orbit…`:'Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
     const loaded=await this.controller.change(async signal=>{
       const revision=save.snapshot.revision;
-      const checkpoint=revisit?revisitCheckpoint(save,revisit):fogVoyage?fogVoyageCheckpoint(save):save.snapshot.transit??initialSpaceCheckpoint();if(!checkpoint)throw new Error(revisit?'Return travel requires a previously reached orbit and a safe owned Warship':'Restore Mars and return to its orbit before plotting Fog Moon');
+      const checkpoint=revisit?revisitCheckpoint(save,revisit):bullionVoyage?bullionVoyageCheckpoint(save):fogVoyage?fogVoyageCheckpoint(save):save.snapshot.transit??initialSpaceCheckpoint();if(!checkpoint)throw new Error(revisit?'Return travel requires a previously reached orbit and a safe owned Warship':'Restore the departure world and return to its orbit before plotting the next route');
       const models=await loadModels(spaceModels(checkpoint),signal);
+      let backdrop:import('three').Texture;
+      try{backdrop=await loadSpaceBackdrop(checkpoint.route==='fog_bullion_reach',signal);}catch(error){for(const model of models)disposeObject(model.scene);throw error;}
       let scene:SpaceScene|undefined;
       try{
-        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,checkpoint,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void (save.snapshot.transit?.route==='mars_fog_moon'?this.showFogMoon(save):this.showMars(save)),onFogVoyage:()=>void this.showSpace(save,true)});
+        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,backdrop,checkpoint,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void (save.snapshot.transit?.route==='fog_bullion_reach'?this.showBullionReach(save):save.snapshot.transit?.route==='mars_fog_moon'?this.showFogMoon(save):this.showMars(save)),onFogVoyage:()=>void this.showSpace(save,true),onBullionVoyage:()=>void this.showSpace(save,false,undefined,true)});
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
-        const started=revisit?beginRevisit(save,revisit,revision):fogVoyage?beginFogVoyage(save):startTransit(save);if(!started.ok)throw new Error('Departure requires the saved owned-ship route checkpoint');
+        if(save.snapshot.revision!==revision)throw new Error('The saved route changed during loading');
+        const started=revisit?beginRevisit(save,revisit,revision):bullionVoyage?beginBullionVoyage(save):fogVoyage?beginFogVoyage(save):startTransit(save);if(!started.ok)throw new Error('Departure requires the saved owned-ship route checkpoint');
         return scene;
-      }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
+      }catch(error){if(scene)scene.dispose();else {for(const model of models)disposeObject(model.scene);disposeSpaceBackdrop(backdrop);}throw error;}
     });
     if(loaded)this.hud.hidden=true;
-    else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Departure could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save,fogVoyage,revisit));this.controls.replaceChildren(retry);}
+    else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Departure could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry departure';retry.addEventListener('click',()=>void this.showSpace(save,fogVoyage,revisit,bullionVoyage));this.controls.replaceChildren(retry);}
+  }
+
+  async showBullionReach(save:CampaignSave):Promise<void>{
+    this.root.dataset.review='bullion';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Approaching the Bullion Reach freight apron…';this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const revision=save.snapshot.revision,models=await loadModels(['xrpman','lex',fighterModel(save.snapshot.fighterShipKey),'bullion_freight_yard','market_siege_engine','relief_hauler','space_regulator_drone'],signal);let scene:BullionReachScene|undefined;
+      try{scene=new BullionReachScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,arrival:!save.snapshot.quests.includes('bullion_reach.landed'),onOrbit:()=>void this.showSpace(save),onRetry:()=>void this.showBullionReach(save)});if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');if(save.snapshot.revision!==revision)throw new Error('The saved route changed during loading');if(!beginBullionLanding(save).ok)throw new Error('Follow the public freight beacon and descend within 480 m');return scene;}
+      catch(error){if(scene)scene.dispose();else for(const m of models)disposeObject(m.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.hud.dataset.recovery='true';this.status.textContent='Bullion Reach could not load. Your checkpoint is retained. Try again.';const retry=document.createElement('button');retry.textContent='Retry Bullion Reach';retry.addEventListener('click',()=>void this.showBullionReach(save));this.controls.replaceChildren(retry);}
   }
 
   async showFogMoon(save:CampaignSave):Promise<void>{
@@ -291,7 +307,7 @@ export class MeshRuntime {
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         const started=returning?returnMarsRelief(save,returning):beginMarsRelief(save);if(!started.ok)throw new Error('The relief landing requires a saved approach checkpoint. Return near the Mars beacon or the excavation exit and retry.');
         return scene;
-      }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
+      }catch(error){if(scene)scene.dispose();else {for(const model of models)disposeObject(model.scene);}throw error;}
     });
     if(loaded)this.hud.hidden=true;
     else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Relief site could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry relief site';retry.addEventListener('click',()=>void this.showMars(save,returning));this.controls.replaceChildren(retry);}
@@ -303,7 +319,7 @@ export class MeshRuntime {
       try{
         scene=new MarsExcavationScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,onRelief:from=>void this.showMars(save,from),onRetry:()=>void this.showExcavation(save)});
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');const entered=beginMarsExcavation(save,at);if(!entered.ok)throw new Error('Restore Corn\'s relief site and enter through its north gate.');return scene;
-      }catch(error){if(scene)scene.dispose();else for(const model of models)disposeObject(model.scene);throw error;}
+      }catch(error){if(scene)scene.dispose();else {for(const model of models)disposeObject(model.scene);}throw error;}
     });
     if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.hud.dataset.recovery="true";this.status.textContent=`Extraction route could not load: Your checkpoint is retained. Try again.`;const retry=document.createElement('button');retry.textContent='Retry extraction route';retry.addEventListener('click',()=>void this.showExcavation(save,at));this.controls.replaceChildren(retry);}
   }

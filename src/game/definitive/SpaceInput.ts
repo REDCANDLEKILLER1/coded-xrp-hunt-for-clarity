@@ -6,6 +6,7 @@ export class SpaceInput {
   private pointerY=0;
   private readonly guns=new Set<number>();
   private readonly boosts=new Set<number>();
+  private readonly brakes=new Set<number>();
   private readonly keys=new Set<string>();
   private lastTap=-Infinity;
   get x():number{return Math.max(-1,Math.min(1,this.pointerX+Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft'))));}
@@ -13,10 +14,11 @@ export class SpaceInput {
   get roll():number{return Number(this.keys.has('KeyE'))-Number(this.keys.has('KeyQ'));}
   get firing():boolean{return this.guns.size>0||this.keys.has('Space');}
   get boosting():boolean{return this.boosts.size>0||this.keys.has('ShiftLeft')||this.keys.has('ShiftRight');}
-  get braking():boolean{return this.keys.has('KeyX');}
-  down(id:number,x:number,y:number,action:'steer'|'guns'|'boost',time:number):void {
+  get braking():boolean{return this.brakes.size>0||this.keys.has('KeyX');}
+  down(id:number,x:number,y:number,action:'steer'|'guns'|'boost'|'brake',time:number):void {
     if(action==='guns'){this.guns.add(id);return;}
     if(action==='boost'){this.boosts.add(id);return;}
+    if(action==='brake'){this.brakes.add(id);return;}
     if(this.steering!==null)return;
     this.steering=id;this.origin={x,y};this.pointerX=this.pointerY=0;
     if(time-this.lastTap<.32)this.guns.add(id);
@@ -27,7 +29,7 @@ export class SpaceInput {
     this.pointerX=(x-this.origin.x)/Math.max(1,travel);this.pointerY=(y-this.origin.y)/Math.max(1,travel);
     const length=Math.hypot(this.pointerX,this.pointerY);if(length>1){this.pointerX/=length;this.pointerY/=length;}
   }
-  up(id:number):void {this.guns.delete(id);this.boosts.delete(id);if(id===this.steering){this.steering=null;this.pointerX=this.pointerY=0;}}
+  up(id:number):void {this.guns.delete(id);this.boosts.delete(id);this.brakes.delete(id);if(id===this.steering){this.steering=null;this.pointerX=this.pointerY=0;}}
   key(code:string,down:boolean):void {if(down)this.keys.add(code);else this.keys.delete(code);}
-  clear():void {this.steering=null;this.pointerX=this.pointerY=0;this.guns.clear();this.boosts.clear();this.keys.clear();this.lastTap=-Infinity;}
+  clear():void {this.steering=null;this.pointerX=this.pointerY=0;this.guns.clear();this.boosts.clear();this.brakes.clear();this.keys.clear();this.lastTap=-Infinity;}
 }

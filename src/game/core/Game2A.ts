@@ -27,7 +27,7 @@ import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
-type Mode = 'title' | 'select' | 'play' | 'results' | 'victory';
+type Mode = 'title' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
 type EnemyStance = 'entering' | 'holding' | 'diving' | 'fleeing';
 type EnemyActor = Actor & {
@@ -693,7 +693,8 @@ export class Game2A {
     if (!mission) {
       this.missionDirector.clear();
       this.earthEncounterDirector.clear();
-      this.mode = 'select';
+      this.selectedShipKey = DEFAULT_SHIP.key;
+      this.reset();
       return;
     }
 
@@ -713,7 +714,8 @@ export class Game2A {
     this.missionDirector.start(mission);
     this.earthEncounterDirector.clear();
     this.activePlanetLabel = mission.label;
-    this.mode = 'select';
+    this.selectedShipKey = DEFAULT_SHIP.key;
+      this.reset();
   }
 
   deployTestMode(): void {
@@ -770,7 +772,7 @@ export class Game2A {
       warship:this.warship?{...actor(this.warship),state:this.warship.state,phase:this.warshipDirector.phase,
         systems:this.warshipDirector.targetableSystems.map(s=>({key:s.key,hp:s.remainingHp,rect:this.warshipSystemBox(s)})),
         aperture:boardingTargetForWarship(this.warship.x,this.warship.y)}:null,
-      ships:this.mode==='select'?this.shipCards():[],choices:this.upgradeCards(),
+      fighter:this.selectedShipKey,choices:this.upgradeCards(),
       retry:this.mode==='results'?this.resultsButtons().primary:null,
     });
   }
@@ -859,8 +861,7 @@ export class Game2A {
 
     const tap = this.input.consumeTap();
     if (!tap) return;
-    if (this.mode === 'title') return void (this.mode = 'select');
-    if (this.mode === 'select') return this.selectShipAt(tap.x, tap.y);
+    if (this.mode === 'title') { this.selectedShipKey = DEFAULT_SHIP.key; this.reset(); return; }
     if (this.mode === 'results') {
       const save = this.resumeCheckpoint();
       const buttons = this.resultsButtons();
@@ -2637,7 +2638,6 @@ export class Game2A {
     this.ctx.clearRect(0, 0, this.w, this.h);
     this.background();
     if (this.mode === 'title') this.title();
-    if (this.mode === 'select') this.shipSelect();
     if (this.mode === 'play') this.play();
     if (this.mode === 'results') this.results();
     if (this.mode === 'victory') this.victory();
@@ -2834,43 +2834,6 @@ export class Game2A {
     this.ctx.fillStyle = '#d8ffe8';
     this.ctx.font = '800 15px ui-sans-serif, system-ui';
     this.ctx.fillText('RUN IT AGAIN', this.w / 2, this.h * 0.62 + 6);
-  }
-
-  private shipSelect(): void {
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = '#00ff00';
-    this.ctx.font = '700 22px ui-sans-serif, system-ui';
-    this.ctx.fillText('SELECT YOUR SHIP', this.w / 2, 54);
-    if (this.activePlanetLabel) {
-      this.ctx.fillStyle = '#00ff00';
-      this.ctx.font = '700 11px ui-sans-serif, system-ui';
-      this.ctx.fillText(`DESTINATION // ${this.activePlanetLabel}`, this.w / 2, 73);
-    }
-
-    for (const card of this.shipCards()) {
-      const def = SHIPS[card.key];
-      const { x, y, w, h } = card.rect;
-      this.ctx.fillStyle = 'rgba(2,6,11,0.82)';
-      this.ctx.strokeStyle = def.accent;
-      this.ctx.lineWidth = 2;
-      this.ctx.fillRect(x, y, w, h);
-      this.ctx.strokeRect(x, y, w, h);
-      const compact = h < 52;
-      const art = Math.min(h - 12, 38);
-      this.drawCentered(def.sprite, x + 36, y + h / 2, art * 0.8, art);
-      this.ctx.textAlign = 'left';
-      this.ctx.fillStyle = def.accent;
-      this.ctx.font = `700 ${compact ? 11 : 13}px ui-sans-serif, system-ui`;
-      this.ctx.fillText(def.label, x + 70, y + h * 0.42);
-      this.ctx.fillStyle = 'rgba(216,255,232,0.78)';
-      this.ctx.font = `600 ${compact ? 9 : 11}px ui-sans-serif, system-ui`;
-      this.ctx.fillText(`HP ${def.hp}   SPEED ${def.speed}   FIRE ${def.fireRate.toFixed(2)}`, x + 70, y + h * 0.78);
-    }
-
-    this.ctx.textAlign = 'center';
-    this.ctx.fillStyle = 'rgba(216,255,232,0.66)';
-    this.ctx.font = '12px ui-sans-serif, system-ui';
-    this.ctx.fillText('TAP A SHIP TO DEPLOY', this.w / 2, this.h - 34);
   }
 
   private play(): void {
@@ -3922,7 +3885,7 @@ export class Game2A {
     return { blocked: false, ready: this.special >= 100 };
   }
 
-  /** Wide rectangular button for the menu screens (ship select, GAME OVER). */
+  /** Wide rectangular button for the menu screens (GAME OVER). */
   private button(rect: Rect, label: string, color: string): void {
     this.ctx.fillStyle = 'rgba(2,6,11,0.72)';
     this.ctx.strokeStyle = color;
@@ -4770,10 +4733,8 @@ export class Game2A {
   }
 
   /**
-   * Puts the hull's own strengths on the board. Each of the three ships leans
-   * one way -- the Warden launches with shields, the Striker skips the first
-   * rung of the weapon ladder, the Interceptor carries a heavier bomb rack and
-   * a wider pulse -- so ship select is a real decision.
+   * Apply the canonical fighter loadout, or preserve the loadout in an older save.
+   * New campaigns start directly; meaningful choices are earned weapon upgrades.
    */
   private applyLoadout(): void {
     const loadout = this.playerDef().loadout;
@@ -4820,29 +4781,6 @@ export class Game2A {
 
   private playerDef() {
     return SHIPS[this.selectedShipKey] ?? DEFAULT_SHIP;
-  }
-
-  private shipCards(): Array<{ key: string; rect: Rect }> {
-    const keys = Object.keys(SHIPS);
-    const w = Math.min(this.w - 32, 430);
-    // The card stack has to fit between the heading and the tap prompt. A fixed
-    // 68px card overflowed a short landscape screen, pushing the last ship
-    // entirely off the bottom where it could not be seen or chosen.
-    const top = 84;
-    const bottom = this.h - 52;
-    const available = Math.max(60, bottom - top);
-    const gap = available > 200 ? 12 : 7;
-    const h = clamp((available - gap * (keys.length - 1)) / keys.length, 34, 68);
-    const total = keys.length * h + (keys.length - 1) * gap;
-    const startY = Math.max(top, top + (available - total) / 2);
-    return keys.map((key, index) => ({ key, rect: { x: (this.w - w) / 2, y: startY + index * (h + gap), w, h } }));
-  }
-
-  private selectShipAt(x: number, y: number): void {
-    const selected = this.shipCards().find((card) => inside(card.rect, x, y));
-    if (!selected) return;
-    this.selectedShipKey = selected.key;
-    this.reset();
   }
 
   /**
