@@ -88,6 +88,21 @@ export interface EnemyDef {
    * Omit for an unarmed hull.
    */
   doctrine?: EnemyDoctrine;
+  /**
+   * How big this ship is, and therefore how much punishment it carries.
+   *
+   * Every enemy drew at 19-23px -- within four pixels of each other -- so a
+   * roster of five ships had no battlefield hierarchy at all: nothing on
+   * screen told you which contact was the dangerous one.
+   *
+   * The class scales the DRAW BOX AND THE HITBOX TOGETHER, in `scaleCombatants`,
+   * which is the only place either is computed, so they cannot drift apart and
+   * leave a ship hit by shots that visibly missed it.
+   *
+   * A heavy is NOT a boss. No health bar, no phases, no attack script, no
+   * capture logic -- a regular hull that happens to be big.
+   */
+  hull: HullClass;
 }
 
 /**
@@ -99,6 +114,15 @@ export interface EnemyDef {
  * - `broadside` a wide five-round fan for area denial.
  */
 export type EnemyDoctrine = 'pressure' | 'burst' | 'salvo' | 'broadside';
+
+/**
+ * Size class for a regular 2D enemy hull.
+ *
+ * Deliberately not the same vocabulary as the 3D leg's `ShipClassKey`
+ * (chaff / missile_boat / heavy_fighter / interceptor / gunboat), which
+ * describes a ROLE. This describes a SIZE: a light can be a missile boat.
+ */
+export type HullClass = 'light' | 'medium' | 'heavy';
 
 export interface ProjectileDef {
   key: string;
@@ -127,7 +151,64 @@ export interface WeaponDef {
   shots: WeaponShotDef[];
   /** Extra targets a single bolt punches through before it dies. */
   pierce?: number;
+  /**
+   * Blast radius in pixels. A rocket damages what it lands near, so a shell
+   * that misses down a lane still contributes -- which is what makes the
+   * family an answer to spread-out targets rather than a worse single lane.
+   */
+  splash?: number;
+  /** Damage dealt inside `splash` to everything that was not hit directly. */
+  splashDamage?: number;
+  /** How many further targets an arc jumps to after the one it hit. */
+  chain?: number;
+  /**
+   * Family name, used only to pick how a bolt is DRAWN.
+   *
+   * Deliberately a loose string: the arcade ladder and the campaign armory
+   * have different family vocabularies that overlap but are not the same set,
+   * and the renderer only asks whether this bolt is a rocket or a plasma.
+   * LadderWeaponDef narrows it to the ladder's own union, where it is a real
+   * design field rather than a drawing hint.
+   */
+  family?: string;
+  /**
+   * Deletes hostile shots it touches, INCLUDING the ones no other gun can
+   * intercept. A plasma lane is a moving hole in a fog wall, which is a
+   * defensive answer no other family offers.
+   */
+  clearsShots?: boolean;
 }
+
+/**
+ * A rung of the arcade weapon ladder.
+ *
+ * Separate from WeaponDef because Chapter One's campaign armory also produces
+ * WeaponDefs, and the two have DIFFERENT and incompatible ideas of a family:
+ * the ladder's is starter/pulse/rocket/plasma/elite, the armory's is
+ * bb/pulse/rocket/plasma/ledger, indexed by position in a saved game. Putting
+ * both on one interface made a saved armory family unassignable to a ladder
+ * family, which is TypeScript correctly reporting that they are not the same
+ * concept. `laneStep` is here for the same reason: the armory bypasses barrel
+ * expansion entirely, so a lane width would be a field it must never read.
+ */
+export interface LadderWeaponDef extends WeaponDef {
+  family: WeaponFamily;
+  /**
+   * Pixels between lanes when a barrel adds one.
+   *
+   * Per family, because a family's identity is partly its pattern width: a
+   * storm wants tight overlapping lanes, a pulse wants reach.
+   */
+  laneStep: number;
+}
+
+/**
+ * The five weapon families.
+ *
+ * `starter` is plain parallel lanes -- coverage. `pulse` pierces. `rocket`
+ * splashes. `plasma` eats incoming fire. `elite` combines.
+ */
+export type WeaponFamily = 'starter' | 'pulse' | 'rocket' | 'plasma' | 'elite';
 
 export interface PickupDef {
   key: string;

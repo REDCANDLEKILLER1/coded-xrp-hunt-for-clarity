@@ -6,7 +6,7 @@
 // truth moves here. Future inventory keys (see docs/phase-2b-asset-inventory.md)
 // are intentionally NOT wired into live play in Phase A.
 
-import type { BossAttackKey, BossDef, Size, EnemyDef, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef } from './types';
+import type { BossAttackKey, BossDef, Size, EnemyDef, HullClass, EnvironmentPropDef, FxDef, HazardDef, PickupDef, ProjectileDef, ShipDef, SpecialDef, StageDef, WeaponDef, LadderWeaponDef } from './types';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from './BossDirector';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirector';
 
@@ -27,11 +27,26 @@ import { availableEnemyKeys, selectEnemyKey, spawnInterval } from './WaveDirecto
  */
 const COMBAT_SCALE = 0.78;
 
-function scaled(size: Size): Size {
+/**
+ * How much bigger each hull class draws.
+ *
+ * The only place a size class changes a size. Applied to the draw box and the
+ * hitbox in the same expression, so a ship can never be hit by something that
+ * visibly missed it -- the failure mode that made COMBAT_SCALE a single helper
+ * in the first place.
+ */
+export const HULL_SIZE: Record<HullClass, number> = {
+  light: 1,
+  medium: 1.45,
+  heavy: 1.95,
+};
+
+function scaled(size: Size, hull: HullClass = 'light'): Size {
   // Floored, so nothing rounds away to something unhittable.
+  const scale = COMBAT_SCALE * HULL_SIZE[hull];
   return {
-    w: Math.max(6, Math.round(size.w * COMBAT_SCALE)),
-    h: Math.max(6, Math.round(size.h * COMBAT_SCALE)),
+    w: Math.max(6, Math.round(size.w * scale)),
+    h: Math.max(6, Math.round(size.h * scale)),
   };
 }
 
@@ -40,7 +55,10 @@ export function scaleCombatants<T extends { draw: Size; hitbox: Size }>(
   defs: Record<string, T>,
 ): Record<string, T> {
   return Object.fromEntries(
-    Object.entries(defs).map(([key, def]) => [key, { ...def, draw: scaled(def.draw), hitbox: scaled(def.hitbox) }]),
+    Object.entries(defs).map(([key, def]) => {
+      const hull = (def as { hull?: HullClass }).hull;
+      return [key, { ...def, draw: scaled(def.draw, hull), hitbox: scaled(def.hitbox, hull) }];
+    }),
   ) as Record<string, T>;
 }
 
@@ -107,6 +125,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     projectileSpeed: 210,
     accent: '#ff3030',
     doctrine: 'pressure',
+    hull: 'light',
   },
   fog_raider: {
     key: 'fog_raider',
@@ -125,6 +144,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     projectileSpeed: 240,
     accent: '#ff3030',
     doctrine: 'burst',
+    hull: 'medium',
   },
   whale_scout: {
     key: 'whale_scout',
@@ -143,6 +163,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     projectileSpeed: 195,
     accent: '#ff3030',
     doctrine: 'salvo',
+    hull: 'heavy',
   },
   rug_fighter: {
     key: 'rug_fighter',
@@ -161,6 +182,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     projectileSpeed: 265,
     accent: '#ff3030',
     doctrine: 'broadside',
+    hull: 'medium',
   },
 });
 
@@ -207,23 +229,64 @@ export const PROJECTILES: Record<string, ProjectileDef> = {
   },
 };
 
-export const WEAPONS: Record<string, WeaponDef> = {
+/**
+ * The weapon ladder: nine rungs, five families.
+ *
+ * The old five-rung ladder was one gun that grew. Every rung fired `bb_shot`
+ * except the last, the only new mechanic in the whole thing was pierce, and
+ * CLARITY LANCE at the top was measurably a DOWNGRADE -- 11.5 dps against
+ * QUAD's 33.3 at zero barrels -- handed to the player automatically at rank 12
+ * with no way to decline it. It is retired here.
+ *
+ * Families exist so the ladder offers answers, not just bigger numbers:
+ *
+ *   starter  parallel lanes. Coverage.
+ *   pulse    pierces a column.
+ *   rocket   splashes, so a shell down the wrong lane still counts.
+ *   plasma   deletes hostile shots it touches -- a hole in a fog wall.
+ *   elite    combinations.
+ *
+ * Every rung is strictly better than the one below it against a SINGLE
+ * CENTRED target at every barrel count, measured by validate-weapon-ladder.
+ * Centred and single is the harsh case on purpose: pierce and splash are
+ * multi-target bonuses, so requiring monotonicity without them means no rung
+ * is carried by a bonus that a lone enemy never sees.
+ *
+ * `laneStep` stays a per-family field, but every family is on 12 right now
+ * and that is derived, not chosen. A lane has to be WIDER than its own hit
+ * reach, or a barrel just stacks another beam on the single target you are
+ * already killing and a heavy gun triples its damage for free; and it has to
+ * be NARROWER than the smallest enemy, or the pattern has a hole you cannot
+ * aim through. Reach is 9-11px depending on the bolt and the smallest enemy
+ * is 13px, so the window is (11, 13) and 12 is the only integer in it.
+ *
+ * The window closed when the size classes re-authored fast_scout down to
+ * 13px; before that it was wide enough for per-family character. It is
+ * asserted in validate-weapon-ladder rather than maintained by hand, so if
+ * enemy sizes move again the check says so instead of a gun quietly getting a
+ * hole in it.
+ */
+export const WEAPONS: Record<string, LadderWeaponDef> = {
   tier_1_bb: {
     key: 'tier_1_bb',
     label: 'BB SHOT',
     tier: 1,
+    family: 'starter',
     projectileKey: 'bb_shot',
     fireRate: 0.14,
     damage: 1,
+    laneStep: 12,
     shots: [{ offsetX: 0, angle: 0 }],
   },
   tier_2_twin: {
     key: 'tier_2_twin',
     label: 'TWIN BEAM',
     tier: 2,
+    family: 'starter',
     projectileKey: 'bb_shot',
     fireRate: 0.13,
     damage: 1,
+    laneStep: 12,
     // +/-6, not +/-9. An even gun has no beam on the centreline, so the gap
     // between its inner pair is a hole a target can sit in -- and at +/-9 that
     // hole was 18px against enemies 15-19px wide. Measured, TWIN BEAM did
@@ -235,61 +298,99 @@ export const WEAPONS: Record<string, WeaponDef> = {
       { offsetX: 6, angle: 0 },
     ],
   },
-  // NOTHING IN THE LADDER FANS.
-  //
-  // This rung used to be TRI-SPREAD, firing at +/-0.18rad. An angle becomes
-  // width over distance, and measured across a portrait playfield (411x790)
-  // its three shots were 302px apart by the top of the screen -- 73% of the
-  // whole width. Only the middle beam could ever be on the thing you were
-  // aiming at, so two thirds of the gun's damage went into empty space and
-  // "the enemies at the top don't even get hurt" was a literal description of
-  // the geometry. Worse, the ladder GRANTS this gun automatically at XP level
-  // 3: the player did not choose the spread and cannot decline it.
-  //
-  // Every rung now fires parallel columns. The ladder still hands out
-  // different guns -- it varies beam COUNT, rate, damage and pierce, which is
-  // variety you can aim -- but the volley you fire is always the volley that
-  // arrives, at every range.
   tier_3_tri: {
     key: 'tier_3_tri',
     label: 'TRI-BEAM',
     tier: 3,
+    family: 'starter',
     projectileKey: 'bb_shot',
-    fireRate: 0.16,
+    fireRate: 0.12,
     damage: 1,
-    shots: [
-      { offsetX: -11, angle: 0 },
-      { offsetX: 0, angle: 0 },
-      { offsetX: 11, angle: 0 },
-    ],
+    laneStep: 12,
+    shots: [{ offsetX: -7, angle: 0 }, { offsetX: 0, angle: 0 }, { offsetX: 7, angle: 0 }],
   },
-  // The ladder is meant to hand out different guns, not the same gun with a
-  // bigger number, so the top two rungs change how you have to aim: four
-  // columns that bracket a target, then one heavy bolt that must be aimed.
   tier_4_quad: {
     key: 'tier_4_quad',
     label: 'QUAD BEAM',
     tier: 4,
+    family: 'starter',
     projectileKey: 'bb_shot',
-    fireRate: 0.12,
+    fireRate: 0.075,
     damage: 1,
+    laneStep: 12,
     shots: [
-      { offsetX: -17, angle: 0 },
-      { offsetX: -6, angle: 0 },
-      { offsetX: 6, angle: 0 },
-      { offsetX: 17, angle: 0 },
+      { offsetX: -16, angle: 0 }, { offsetX: -5, angle: 0 },
+      { offsetX: 5, angle: 0 }, { offsetX: 16, angle: 0 },
     ],
   },
-  // One heavy bolt that punches through a whole column. Slow enough that
-  // missing hurts, which keeps it a trade rather than a straight upgrade.
-  tier_5_lance: {
-    key: 'tier_5_lance',
-    label: 'CLARITY LANCE',
+  tier_5_pulse: {
+    key: 'tier_5_pulse',
+    label: 'PULSE WAVE',
     tier: 5,
+    family: 'pulse',
     projectileKey: 'clarity_beam',
-    fireRate: 0.26,
+    fireRate: 0.09,
+    damage: 4,
+    pierce: 1,
+    laneStep: 12,
+    shots: [{ offsetX: 0, angle: 0 }],
+  },
+  tier_6_rocket: {
+    key: 'tier_6_rocket',
+    label: 'ROCKET BARRAGE',
+    tier: 6,
+    family: 'rocket',
+    projectileKey: 'seeker_missile',
+    fireRate: 0.19,
     damage: 3,
+    splash: 32,
+    splashDamage: 1,
+    laneStep: 12,
+    shots: [{ offsetX: -9, angle: 0 }, { offsetX: 0, angle: 0 }, { offsetX: 9, angle: 0 }],
+  },
+  tier_7_plasma: {
+    key: 'tier_7_plasma',
+    label: 'PLASMA CANNON',
+    tier: 7,
+    family: 'plasma',
+    projectileKey: 'clarity_beam',
+    fireRate: 0.11,
+    damage: 7,
+    clearsShots: true,
+    laneStep: 12,
+    shots: [{ offsetX: 0, angle: 0 }],
+  },
+  tier_8_storm: {
+    key: 'tier_8_storm',
+    label: 'LEDGER STORM',
+    tier: 8,
+    family: 'elite',
+    projectileKey: 'bb_shot',
+    fireRate: 0.09,
+    damage: 2,
+    pierce: 1,
+    laneStep: 12,
+    shots: [
+      { offsetX: -12, angle: 0 }, { offsetX: -6, angle: 0 }, { offsetX: 0, angle: 0 },
+      { offsetX: 6, angle: 0 }, { offsetX: 12, angle: 0 },
+    ],
+  },
+  tier_9_hyper: {
+    key: 'tier_9_hyper',
+    label: 'HYPER PULSE',
+    tier: 9,
+    family: 'elite',
+    projectileKey: 'clarity_beam',
+    // 0.095, not 0.09. At 0.09 this rung put out 77.8 dps on a centred target,
+    // just past the 75.7 the campaign armory can reach before any rapid-fire
+    // rank -- so a pilot who maxed the arcade ladder and then crossed into
+    // Chapter One was handed a WEAKER gun than the one they arrived with.
+    // Chapter One's guarantee is the one that gives; this is the top of an
+    // optional ladder, and it is 3% off its own ceiling to keep that promise.
+    fireRate: 0.095,
+    damage: 7,
     pierce: 3,
+    laneStep: 12,
     shots: [{ offsetX: 0, angle: 0 }],
   },
 };

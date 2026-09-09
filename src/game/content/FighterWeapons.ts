@@ -34,7 +34,12 @@ export interface FighterArmoryPort {
   readonly active:boolean;
   readonly state:FighterWeaponState;
   readonly weapon:FighterWeapon;
-  begin(rank:number,barrels:number,baseTier:number):boolean;
+  /**
+   * Migrate an arcade checkpoint in. `legacyDps` is the sustained damage the
+   * player was ACTUALLY putting out, measured by the engine through its own
+   * volley, so the mapping never has to model the arcade ladder itself.
+   */
+  begin(rank:number,barrels:number,baseTier:number,legacyDps?:number):boolean;
   rankUp(rank:number):boolean;
   upgradeRapid():boolean;
   setActive(value:boolean):void;

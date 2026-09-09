@@ -107,10 +107,18 @@ for (let tier = 1; tier <= weapons.length; tier += 1) {
       `${label} x${barrels} leaves a ${widestGap}px gap at [${shots.join(', ')}] — the narrowest enemy is ${narrowest.toFixed(0)}px and can sit inside it`,
     );
 
-    // A barrel you picked up has to buy beams until the cap is genuinely full...
+    // A barrel you picked up has to buy beams. Full stop.
+    //
+    // This used to read `|| previous >= MAX_VOLLEY - 1`, excusing a dead
+    // barrel whenever the cap was one away -- and the cap check below used to
+    // ask only that the gun REACH the cap. Together they were green on a gun
+    // whose last pickup bought nothing: QUAD BEAM measured 4 -> 5 -> 7 -> 7
+    // beams and satisfied both, because 6 >= 7-1 excused the stall and 7 === 7
+    // called it full. That is the exact defect the player reported, passing
+    // its own test. The escape hatch is gone.
     if (barrels > 0) {
       check(
-        shots.length > previous || previous >= MAX_VOLLEY - 1,
+        shots.length > previous,
         `${label}: barrel ${barrels} bought nothing (${previous} -> ${shots.length} beams, cap ${MAX_VOLLEY})`,
       );
       // ...and no barrel may buy more than a barrel. One centre beam or one
@@ -123,10 +131,24 @@ for (let tier = 1; tier <= weapons.length; tier += 1) {
     }
     previous = shots.length;
   }
-  // Every gun must be able to spend the whole cap, not stall one short of it
-  // because its base count has the wrong parity.
+  // The cap must not be what stops a gun.
+  //
+  // Requiring `full === MAX_VOLLEY` forced every gun to the same beam count
+  // regardless of what it starts with, which is only satisfiable when the cap
+  // TRUNCATES someone -- and a truncated gun is a gun with a dead barrel. The
+  // real rule is that spending every barrel is worth it, which the per-barrel
+  // check above now enforces directly; the cap only has to be out of the way.
   const full = volleyFor(tier, MAX_BARRELS).length;
-  check(full === MAX_VOLLEY, `${label} tops out at ${full} beams, but the cap is ${MAX_VOLLEY}`);
+  const unaided = volleyFor(tier, 0).length;
+  check(full <= MAX_VOLLEY, `${label} tops out at ${full} beams, past the cap of ${MAX_VOLLEY}`);
+  // What the barrels are worth if nothing clips them: an EVEN gun spends its
+  // first barrel on the centre beam, which is one lane, and every barrel after
+  // that buys a symmetric pair. An odd gun already has its centre, so all of
+  // its barrels buy pairs.
+  const centred = volleyFor(tier, 0).some((offset) => offset === 0);
+  const earned = centred ? 2 * MAX_BARRELS : 1 + 2 * (MAX_BARRELS - 1);
+  check(full >= unaided + earned,
+    `${label} turns ${MAX_BARRELS} barrels into ${full - unaided} beams instead of ${earned}; the cap of ${MAX_VOLLEY} is clipping it`);
 }
 
 // The cap has to be odd, or an odd-base gun cannot take its last barrel pair.

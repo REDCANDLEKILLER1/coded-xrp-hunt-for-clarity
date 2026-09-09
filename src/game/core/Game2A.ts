@@ -25,7 +25,7 @@ import { boardingTargetForWarship } from '../content/DirectBoarding';
 import { missionForPlanet } from '../content/missions';
 import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
+import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HullClass, LadderWeaponDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -96,7 +96,7 @@ type WarshipActor = Actor & {
   age: number;
   fireClock: number;
 };
-type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number; weapon?:FighterWeapon; hitTargets?:Set<Actor> };
+type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number; weapon?:WeaponDef; hitTargets?:Set<Actor>; clearsShots?:boolean };
 type WeaponEffect={x:number;y:number;endX?:number;endY?:number;radius:number;life:number};
 /** A player missile that steers. `target` is re-acquired if its quarry dies. */
 type SeekerActor = Actor & { damage: number; angle: number; age: number };
@@ -192,6 +192,30 @@ const ENEMY_DOCTRINES: Record<EnemyDoctrine, {
 /** How long a tracking missile keeps steering before it goes ballistic. */
 const SALVO_TRACK_SECONDS = 2.4;
 
+/**
+ * What a size class is worth, beyond looking bigger.
+ *
+ * Size alone would be a lie: a 46px ship that dies to one bb and flies like a
+ * 20px one is a big sprite, not a heavy. These are the numbers that make the
+ * silhouette a promise.
+ *
+ * `slots` is the compositional half. The arena cap used to count SHIPS, so a
+ * screen could fill with heavies and become a wall. Counting slots instead
+ * means one heavy costs what four lights cost, which produces the shape the
+ * bigger playfield wants: a few large ships with a wing around them rather
+ * than a swarm of large ships.
+ *
+ * `hp` and `speed` multiply the authored numbers rather than replacing them,
+ * so per-ship tuning in the registry still means something.
+ */
+const HULL_COMBAT: Record<HullClass, { hp: number; speed: number; slots: number; label: string }> = {
+  light: { hp: 1, speed: 1, slots: 1, label: 'LIGHT' },
+  medium: { hp: 2.2, speed: 0.86, slots: 2, label: 'MEDIUM' },
+  heavy: { hp: 5, speed: 0.62, slots: 4, label: 'HEAVY' },
+};
+/** Lights that come up alongside a heavy, so it arrives as a formation. */
+const HEAVY_WING = 2;
+
 const ENEMY_DODGE_RANGE = 92;        // px ahead of a bolt an enemy reacts to
 const ENEMY_DODGE_COOLDOWN = 0.55;
 const ENEMY_ESCAPE_PENALTY = 40;     // score lost when one gets away
@@ -201,6 +225,8 @@ const WAVE_CLEAR_BONUS = 150;        // for destroying every enemy on screen
 // with the wave to keep pressure rising without becoming unreadable on a phone.
 const ARENA_MAX_ENEMIES_BASE = 5;
 const ARENA_MAX_ENEMIES_CAP = 10;
+/** How soon to re-check when nothing that fits can be spawned. */
+const ARENA_FULL_RETRY = 0.35;
 // Enemies were never able to shoot: EnemyDef had no firing fields and the only
 // hostile fire in the game came from bosses and ground turrets. Armed enemies
 // only fire while holding station or diving, never while entering or fleeing,
@@ -247,7 +273,7 @@ const XP_LEVEL_STEP = 150;
  * through the level and CLARITY LANCE only at the very end, so the ladder is a
  * long-term goal rather than a five-minute climb.
  */
-const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
+const WEAPON_TIER_LEVELS = [3, 5, 7, 9, 11, 13, 16, 19];
 
 // Boss duel.
 //
@@ -273,7 +299,7 @@ const MAX_BARRELS = 3;
  * Barrels come in pairs, so this wants to be odd -- at 6 an odd-base gun like
  * BB SHOT or the Lance could only take two of its three barrels.
  */
-const MAX_VOLLEY = 7;
+const MAX_VOLLEY = 11;
 /**
  * How long a freshly-opened upgrade overlay ignores taps.
  *
@@ -360,7 +386,20 @@ const ALL_MAXED_SCORE = 250;
  * started -- and compressing that spread is PR4's job, not this one.
  */
 const BASE_PLAYER_DPS = 1 / 0.14;
-const FIREPOWER_CAP = 9;
+/**
+ * The ceiling on the boss snapshot.
+ *
+ * Was 9, which was right for a five-rung ladder spanning about 11x. The nine
+ * rungs span 76x from BB SHOT to a three-barrel HYPER PULSE, so a cap of 9
+ * meant the top of the ladder outran the compensation and killed the first
+ * boss in under three seconds.
+ *
+ * Raising it is only safe because `pressureScale()` now carries trash, hazards
+ * and the arena cap -- this number reaches nothing but boss health at spawn.
+ * On the old coupled code the same change would have turned a 1hp drone into a
+ * 36hp one.
+ */
+const FIREPOWER_CAP = 80;
 /**
  * The continuous curve.
  *
@@ -530,6 +569,8 @@ const BURST_RING = FX.burst_ring;
 const HIT_SPARK = FX.hit_spark;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
+/** The smallest thing you can be aiming at, which is what "on target" means. */
+const NARROWEST_ENEMY = Math.min(...[...Object.values(ENEMIES), ...Object.values(EARTH_ENEMIES)].map((def) => def.hitbox.w));
 const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
 const BOSS_LADDER = orderedBossKeys(BOSSES);
 
@@ -658,7 +699,10 @@ export class Game2A {
   private syncFighterMastery():void {
     const armory=this.campaignArmory;if(!armory)return;
     this.fighterSyncClock=this.clock+2;
-    const saved=armory.begin(this.xpLevel,this.barrels,this.baseWeaponTier);
+    // The gun the pilot is holding RIGHT NOW, measured through the engine's own
+    // volley, so the armory never has to model the arcade ladder to avoid
+    // downgrading someone on the way in.
+    const saved=armory.begin(this.xpLevel,this.barrels,this.baseWeaponTier,this.centredDps());
     this.fighterReady=this.fighterReady||saved;
     if(!saved){this.missionBannerText='FIGHTER SAVE PENDING // RETRYING';this.missionBannerClock=2;}
   }
@@ -1036,8 +1080,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.loadoutScale()),
-      maxHp: Math.round(def.hp * this.loadoutScale()),
+      hp: Math.round(def.hp * this.loadoutScale(def)),
+      maxHp: Math.round(def.hp * this.loadoutScale(def)),
       bossKey: def.key,
       state: 'intro',
       age: -plan.musicLeadSeconds,
@@ -1528,7 +1572,7 @@ export class Game2A {
           damage: weapon.damage,
           projectileKey: weapon.projectileKey,
           pierce: weapon.pierce ?? 0,
-          weapon:profile,hitTargets:new Set(),
+          weapon:profile??weapon,hitTargets:new Set(),clearsShots:weapon.clearsShots,
         });
       }
       sfx.play('shoot');
@@ -1551,34 +1595,61 @@ export class Game2A {
 
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
-    if (this.droneClock <= 0 && this.drones.length < this.arenaEnemyCap()) {
-      const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
-      const def = this.enemyDef(enemyKey);
-      const x = 30 + Math.random() * Math.max(1, this.w - 60);
-      this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
-      this.drones.push({
-        x,
-        y: -35,
-        w: def.hitbox.w,
-        h: def.hitbox.h,
-        vx: 0,
-        vy: this.enemySpeed(def),
-        hp: this.enemyHp(def),
-        enemyKey,
-        age: 0,
-        anchorX: x,
-        phase: Math.random() * Math.PI * 2,
-        direction: Math.random() < 0.5 ? -1 : 1,
-        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
-        stance: 'entering',
-        stationX: x,
-        stationY: this.pickStationY(),
-        stanceClock: 0,
-        patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
-        dodgeCooldown: 0,
-        atRest: false,
-        escort: false,
-      });
+    // The whole formation is budgeted BEFORE anything is spawned.
+    //
+    // This gate used to ask only whether there was SOME room, then choose the
+    // enemy afterwards. A heavy costs four slots and brings two more in its
+    // wing, so a field with one slot free could admit a six-slot formation:
+    // measured at wave 3, cap 6, load 5 went straight to load 11, and the
+    // worst case ran five slots past the cap. A cap that a single spawn can
+    // clear by 5 is not a cap, and the screen becomes the wall the slot
+    // system exists to prevent.
+    //
+    // All of it sits INSIDE the clock gate. The first version of this fix
+    // costed the formation before checking the clock, so arenaLoad() reduced
+    // over every drone and pickFormation burned a Math.random() on every
+    // frame at 60Hz -- wasted work, and it perturbed the global random
+    // sequence that spawn placement and enemy phase also draw from.
+    if (this.droneClock <= 0) {
+      const room = this.arenaEnemyCap() - this.arenaLoad();
+      const enemyKey = room > 0 ? this.pickFormation(room) : undefined;
+      if (enemyKey !== undefined) {
+        const def = this.enemyDef(enemyKey);
+        const x = 30 + Math.random() * Math.max(1, this.w - 60);
+        this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
+        this.drones.push({
+          x,
+          y: -35,
+          w: def.hitbox.w,
+          h: def.hitbox.h,
+          vx: 0,
+          vy: this.enemySpeed(def),
+          hp: this.enemyHp(def),
+          enemyKey,
+          age: 0,
+          anchorX: x,
+          phase: Math.random() * Math.PI * 2,
+          direction: Math.random() < 0.5 ? -1 : 1,
+          fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+          stance: 'entering',
+          stationX: x,
+          stationY: this.pickStationY(),
+          stanceClock: 0,
+          patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+          dodgeCooldown: 0,
+          atRest: false,
+          escort: false,
+        });
+        // A heavy arrives as a formation, not as one big ship on its own. The
+        // wing is what makes the size read compositionally: small hulls beside a
+        // large one give the eye the comparison, and give the player a reason to
+        // choose a target.
+        if (def.hull === 'heavy') this.spawnHeavyWing(x);
+      } else {
+        // Nothing that fits. Wait rather than spawn part of a formation -- half
+        // a heavy's wing is a worse outcome than a slightly thinner screen.
+        this.droneClock = ARENA_FULL_RETRY;
+      }
     }
     this.moveDrones(dt);
     this.wave = 1 + Math.floor(this.score / 500);
@@ -1727,6 +1798,93 @@ export class Game2A {
     // going a while should have more screen to clear, whatever gun turned up.
     const forPressure = Math.floor(this.pressureScale() / 2);
     return Math.min(ARENA_MAX_ENEMIES_CAP + 3, ARENA_MAX_ENEMIES_BASE + Math.floor(this.wave / 2) + forPressure);
+  }
+
+  /**
+   * What the field currently costs, counting size rather than heads.
+   *
+   * One heavy occupies four lights' worth of room. Without this the cap counts
+   * ships, so a run that starts rolling heavies fills the screen with them and
+   * the hierarchy stops meaning anything -- everything is big, so nothing is.
+   */
+  /**
+   * The lights that come up beside a heavy.
+   *
+   * Deliberately the lightest hull available rather than a random pick: the
+   * point is the size contrast, and a wing of mediums would blur it.
+   */
+  /**
+   * The light hull that flies alongside a heavy.
+   *
+   * One function so the COST and the SPAWN cannot disagree: budgeting the
+   * wing off one key while spawning another is how a formation ends up
+   * costing more than it was charged for.
+   */
+  private wingKey(): string | undefined {
+    return availableEnemyKeys(ENEMIES, this.wave).find((key) => ENEMIES[key].hull === 'light');
+  }
+
+  /** Every slot the formation will occupy, wing included. */
+  private formationCost(enemyKey: string): number {
+    const hull = this.enemyDef(enemyKey).hull;
+    let cost = HULL_COMBAT[hull].slots;
+    if (hull !== 'heavy') return cost;
+    const wing = this.wingKey();
+    if (wing) cost += HEAVY_WING * HULL_COMBAT[this.enemyDef(wing).hull].slots;
+    return cost;
+  }
+
+  /**
+   * What to spawn next, or nothing if no formation fits in `room`.
+   *
+   * The roll is taken first and kept whenever it fits, so a field with space
+   * behaves exactly as before. Only when the roll wants something too big
+   * does this substitute -- the largest formation that DOES fit, so a nearly
+   * full arena still takes a light rather than going quiet.
+   */
+  private pickFormation(room: number): string | undefined {
+    const rolled = selectEnemyKey(ENEMIES, this.wave, Math.random());
+    if (this.formationCost(rolled) <= room) return rolled;
+    return availableEnemyKeys(ENEMIES, this.wave)
+      .filter((key) => this.formationCost(key) <= room)
+      .sort((a, b) => this.formationCost(b) - this.formationCost(a))[0];
+  }
+
+  private spawnHeavyWing(centreX: number): void {
+    const key = this.wingKey();
+    if (!key) return;
+    const def = this.enemyDef(key);
+    for (let i = 0; i < HEAVY_WING; i += 1) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const x = clamp(centreX + side * (46 + Math.random() * 22), 26, this.w - 26);
+      this.drones.push({
+        x,
+        y: -35 - (i + 1) * 18,
+        w: def.hitbox.w,
+        h: def.hitbox.h,
+        vx: 0,
+        vy: this.enemySpeed(def),
+        hp: this.enemyHp(def),
+        enemyKey: key,
+        age: 0,
+        anchorX: x,
+        phase: Math.random() * Math.PI * 2,
+        direction: side as -1 | 1,
+        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+        stance: 'entering',
+        stationX: x,
+        stationY: this.pickStationY(),
+        stanceClock: 0,
+        patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+        dodgeCooldown: 0,
+        atRest: false,
+        escort: false,
+      });
+    }
+  }
+
+  private arenaLoad(): number {
+    return this.drones.reduce((load, drone) => load + HULL_COMBAT[this.enemyDef(drone.enemyKey).hull].slots, 0);
   }
 
   /** Station-keeping drift so a held position still reads as flying, not parking. */
@@ -1925,8 +2083,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.loadoutScale()),
-      maxHp: Math.round(def.hp * this.loadoutScale()),
+      hp: Math.round(def.hp * this.loadoutScale(def)),
+      maxHp: Math.round(def.hp * this.loadoutScale(def)),
       bossKey,
       state: 'intro',
       age: 0,
@@ -2352,10 +2510,11 @@ export class Game2A {
     }
   }
 
-  /** Secondary effects use the same damage gates as direct fire. They never
+  /** Secondary effects -- splash and chain -- for BOTH the campaign armory
+   * and the arcade ladder. They use the same damage gates as direct fire. They never
    * jump a Warship phase or damage a friendly beacon. One projectile can touch
    * a given actor once, even while a lance overlaps it on successive frames. */
-  private fighterImpact(bolt:ProjectileActor,direct:Actor):void {
+  private secondaryImpact(bolt:ProjectileActor,direct:Actor):void {
     const weapon=bolt.weapon;if(!weapon||(!weapon.splash&&!weapon.chain))return;
     const targets:Array<{actor:Actor;hit:(damage:number)=>void}>=[];
     const eligible=(actor:Actor)=>actor!==direct&&!bolt.hitTargets?.has(actor)&&(actor.hp??0)>0&&actor.x>=0&&actor.x<=this.w&&actor.y>=0&&actor.y<=this.h;
@@ -2370,7 +2529,7 @@ export class Game2A {
       }
     }else{
       let origin=direct;
-      for(let jump=0;jump<weapon.chain;jump++){
+      for(let jump=0;jump<(weapon.chain??0);jump++){
         const nearby=targets.filter(t=>!bolt.hitTargets?.has(t.actor)&&(t.actor.hp??0)>0&&Math.hypot(t.actor.x-origin.x,t.actor.y-origin.y)<=100&&Math.hypot(t.actor.x-direct.x,t.actor.y-direct.y)<=280).sort((a,b)=>Math.hypot(a.actor.x-origin.x,a.actor.y-origin.y)-Math.hypot(b.actor.x-origin.x,b.actor.y-origin.y));
         const next=nearby[0];if(!next)break;
         this.weaponEffects.push({x:origin.x,y:origin.y,endX:next.actor.x,endY:next.actor.y,radius:0,life:.18});
@@ -2395,8 +2554,11 @@ export class Game2A {
 
     for (const bolt of this.bolts) {
       for(const incoming of this.hostileShots){
-        if(!incoming.interceptible||incoming.life===0||!overlap(box(bolt,.8),box(incoming,1)))continue;
-        incoming.life=0;bolt.life=0;this.ring(incoming.x,incoming.y);break;
+        if(incoming.life===0||!overlap(box(bolt,.8),box(incoming,1)))continue;
+        if(!incoming.interceptible&&!bolt.clearsShots)continue;
+        incoming.life=0;this.ring(incoming.x,incoming.y);
+        if(bolt.clearsShots)continue;
+        bolt.life=0;break;
       }
       if(bolt.life===0)continue;
       for (const drone of this.drones) {
@@ -2406,7 +2568,7 @@ export class Game2A {
           const spent = spend(bolt);
           drone.hp = (drone.hp ?? 1) - bolt.damage;
           if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
-          this.fighterImpact(bolt,drone);
+          this.secondaryImpact(bolt,drone);
           if (spent) break;
         }
       }
@@ -2418,7 +2580,7 @@ export class Game2A {
           const shielded=!!linkedRelay(hazard,this.hazards);
           const spent = spend(bolt);
           this.damageGround(hazard,bolt.damage);
-          if(!shielded)this.fighterImpact(bolt,hazard);
+          if(!shielded)this.secondaryImpact(bolt,hazard);
           if (spent) break;
         }
       }
@@ -2436,7 +2598,7 @@ export class Game2A {
         const target=this.boss,shielded=this.bossShielded();
         bolt.life = 0;
         this.damageBoss(bolt.damage);
-        if(!shielded)this.fighterImpact(bolt,target);
+        if(!shielded)this.secondaryImpact(bolt,target);
       }
     }
     // Seekers land on whatever they reach first, then die -- they do not pierce.
@@ -3021,10 +3183,55 @@ export class Game2A {
     }
   }
 
+  /**
+   * The mini-destroyer treatment.
+   *
+   * `enemies/whale_scout` is a near-duplicate of `enemies/fast_scout`: the same
+   * swept hull, the same green-and-red panelling, differing mainly in width.
+   * Rendered at 46px next to a 20px light that reads as "the same ship, but
+   * bigger", which is not a class -- it is a zoom.
+   *
+   * So the heavy's silhouette is authored here rather than waiting on art: a
+   * blunt armour shoulder line across the hull and four gun hardpoints at the
+   * corners, which is the shape a destroyer has and a fighter does not.
+   * Outline only -- nothing is filled over the hull, so the sprite underneath
+   * stays the thing you are shooting at.
+   *
+   * Reversible: when a distinct Whale hull arrives (requested through the
+   * asset channel), drop this and the class keeps working on size alone.
+   */
+  private drawHeavyHull(drone: EnemyActor, def: EnemyDef): void {
+    const c = this.ctx;
+    const w = def.draw.w;
+    const h = def.draw.h;
+    c.save();
+    c.translate(drone.x, drone.y);
+    c.strokeStyle = def.accent;
+    c.globalAlpha = 0.85;
+    c.lineWidth = 2;
+    // The shoulder: a wide flat prow, the read that says "this one is armoured".
+    c.beginPath();
+    c.moveTo(-w * 0.46, -h * 0.06);
+    c.lineTo(-w * 0.3, -h * 0.3);
+    c.lineTo(w * 0.3, -h * 0.3);
+    c.lineTo(w * 0.46, -h * 0.06);
+    c.stroke();
+    // Four hardpoints, because a destroyer's guns are where you can see them.
+    c.lineWidth = 3;
+    for (const [hx, hy] of [[-0.42, -0.02], [0.42, -0.02], [-0.3, 0.28], [0.3, 0.28]]) {
+      c.beginPath();
+      c.moveTo(w * hx, h * hy);
+      c.lineTo(w * hx, h * (hy - 0.16));
+      c.stroke();
+    }
+    c.restore();
+  }
+
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
     this.drawRimGlow(drone.x, drone.y, Math.max(def.draw.w, def.draw.h), def.accent);
     const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    if (def.hull === 'heavy') this.drawHeavyHull(drone, def);
     if (!drawn) {
       this.ctx.save();
       this.ctx.translate(drone.x, drone.y);
@@ -4799,6 +5006,18 @@ export class Game2A {
 
   private currentWeapon(): WeaponDef {
     if(this.fighterReady&&this.campaignArmory)return this.campaignArmory.weapon;
+    return this.ladderWeapon();
+  }
+
+  /**
+   * The arcade rung, typed as a rung.
+   *
+   * Only the ladder has lane widths, because only the ladder bolts barrels on:
+   * the campaign armory ships fixed patterns per stage and never expands them.
+   * Reaching for this where an armory weapon might be live is a type error,
+   * which is the point.
+   */
+  private ladderWeapon(): LadderWeaponDef {
     return WEAPON_LADDER[this.weaponTier() - 1] ?? WEAPON_LADDER[0];
   }
 
@@ -4832,7 +5051,8 @@ export class Game2A {
    * arriving faster.
    */
   private enemyHp(def: EnemyDef): number {
-    const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
+    const scaled = def.hp * HULL_COMBAT[def.hull].hp
+      * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
     return Math.max(1, Math.round(scaled));
   }
 
@@ -4844,7 +5064,8 @@ export class Game2A {
 
   /** A drone's speed, which climbs with the wave and with the gun facing it. */
   private enemySpeed(def: EnemyDef): number {
-    return def.baseSpeed + this.wave * 7 + (this.pressureScale() - 1) * ENEMY_SPEED_PER_SCALE;
+    const base = def.baseSpeed * HULL_COMBAT[def.hull].speed;
+    return base + this.wave * 7 + (this.pressureScale() - 1) * ENEMY_SPEED_PER_SCALE;
   }
 
   /**
@@ -4861,6 +5082,28 @@ export class Game2A {
     return clamp(1 + fromWaves + fromTime, 1, PRESSURE_CAP);
   }
 
+  /**
+   * Sustained damage per second actually LANDING on one target dead ahead.
+   *
+   * Distinct from playerDps(), which sums every lane whether or not anything
+   * is in it. That difference stopped being academic once the ladder went
+   * wide: LEDGER STORM with three barrels fires eleven lanes and reads 244
+   * raw dps, while 66.7 of it reaches a single enemy -- the rest is going
+   * past on both sides. Anything comparing two guns' STRENGTH has to use this
+   * one, or a gun is credited for shots that miss.
+   */
+  private centredDps(targetWidth = NARROWEST_ENEMY): number {
+    const weapon = this.currentWeapon();
+    const reach = targetWidth / 2 + this.projectileDef(weapon.projectileKey).hitbox.w / 2;
+    let damage = 0;
+    for (const lane of this.currentVolley()) {
+      const offset = Math.abs(lane.offsetX);
+      if (offset <= reach) damage += weapon.damage;
+      else if (weapon.splash && offset <= weapon.splash) damage += weapon.splashDamage ?? 0;
+    }
+    return damage / weapon.fireRate;
+  }
+
   /** Sustained damage per second this loadout puts out. */
   private playerDps(): number {
     const weapon = this.currentWeapon();
@@ -4874,13 +5117,57 @@ export class Game2A {
    * that reads it per-frame is back to handing the player's upgrade straight
    * back as hit points.
    */
-  private loadoutScale(): number {
-    return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
+  private loadoutScale(target?: BossDef): number {
+    // Measured against the hull it is about to be applied to, not against the
+    // raw volley.
+    //
+    // Raw playerDps() counts every lane whether or not it can reach anything.
+    // Once barrels started widening the pattern past a boss's own hull, that
+    // made the third barrel a PENALTY: the boss grew by lanes that were flying
+    // past it on both sides. Measured across four bosses and nine rungs, the
+    // third barrel pushed BB SHOT's fight from 12.3s to 17.2s and LEDGER
+    // STORM's from 12.3s to 19.4s -- a pickup that made the fight longer,
+    // which is the CLARITY LANCE complaint wearing a different hat.
+    //
+    // Scaling on the damage that actually lands keeps a boss fight the length
+    // it was tuned to be at every barrel count.
+    const width = target ? (target.hitbox?.w ?? target.draw.w) : NARROWEST_ENEMY;
+    return clamp(this.centredDps(width) / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
   }
 
+  /**
+   * The volley this loadout actually fires.
+   *
+   * Carries the #113 fix, generalised: on an EVEN gun the first barrel goes
+   * down the MIDDLE, and only then do pairs go on.
+   *
+   * "When you get 5 the sixth makes the auto cannon split into 2 rows of 3.
+   * It loses power and doesn't hit anything in the middle of the fire
+   * pattern." Both halves were true and they were one fault. Pairs-only kept
+   * the gun symmetric but could never fill the centre, so a four-beam gun plus
+   * a barrel fired -26,-17,-6,6,17,26: three each side, with the widest gap in
+   * the pattern sitting exactly where the player was aiming.
+   *
+   * It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
+   * pairs move in twos, so QUAD stopped at six and its second and third barrel
+   * pickups bought nothing at all. The centre beam is what makes the last slot
+   * spendable, which is why one rule fixes the hole and the dead pickups at
+   * once.
+   *
+   * Lanes are parallel. Barrels used to fan outward 0.045rad per pair, and an
+   * angle becomes width over distance: a three-barrel gun swept 75% of a
+   * portrait screen by the time its shots reached the top. Nothing the player
+   * can equip sprays -- the volley that leaves the muzzle is the volley that
+   * arrives.
+   */
   private currentVolley(): WeaponShotDef[] {
-    const weapon = this.currentWeapon();
-    if(this.fighterReady&&this.campaignArmory)return weapon.shots;
+    // The campaign armory fires its stage pattern exactly as authored. Barrel
+    // expansion is the ARCADE ladder's mechanic; Chapter One progresses the
+    // Earth fighter through families and stages instead, and running its
+    // patterns through the barrel loop would be this branch quietly rewriting
+    // a system it is not part of.
+    if(this.fighterReady&&this.campaignArmory)return this.campaignArmory.weapon.shots;
+    const weapon = this.ladderWeapon();
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
@@ -4895,11 +5182,13 @@ export class Game2A {
     // plus a barrel fired -26,-17,-6,6,17,26: three each side, and the widest
     // gap in the whole pattern sitting exactly where you are aiming.
     //
-    // It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
-    // pairs move in twos, so QUAD stopped at six and the seventh slot was
-    // unreachable -- measured, its second and third barrel pickups bought
-    // nothing at all. The centre beam is what makes that last slot spendable,
-    // which is why one rule fixes the hole and the dead pickups together.
+    // It also wasted a barrel. Measured on the shipped code, QUAD went
+    // 4 -> 5 -> 7 -> 7 beams: the centre beam makes the second barrel worth
+    // buying, but the third had nowhere to go, because pairs move in twos and
+    // MAX_VOLLEY was odd at seven. Only the THIRD barrel was dead -- an
+    // earlier note here claimed the second was too, which the owner corrected
+    // against the code. MAX_VOLLEY is 11 now, so the third barrel buys a pair
+    // and QUAD reads 4 -> 5 -> 7 -> 9.
     let pairs = this.barrels;
     if (!weapon.shots.some((shot) => shot.offsetX === 0) && shots.length < MAX_VOLLEY) {
       shots.push({ offsetX: 0, angle: 0 });
@@ -4908,18 +5197,7 @@ export class Game2A {
     for (let pair = 1; pair <= pairs; pair += 1) {
       // A pair goes on together or not at all, so the gun stays symmetric.
       if (shots.length + 2 > MAX_VOLLEY) break;
-      // Parallel, not fanned. Barrels used to angle outward 0.045rad per pair,
-      // and an angle becomes width over distance: on a 780px portrait screen a
-      // three-barrel gun swept 75% of the whole width by the time its shots
-      // reached the top, so there was nothing to aim at and nothing to do but
-      // slide side to side. The same gun covered 40% on the short landscape
-      // screen, which is why this only showed up in portrait.
-      //
-      // A barrel adds a BEAM, and now so does every rung of the ladder: the
-      // last fanning gun (TRI-SPREAD, +/-0.18rad) is gone. Nothing the player
-      // can equip sprays any more -- the volley that leaves the muzzle is the
-      // volley that reaches the target.
-      const offset = widest + 9 * pair;
+      const offset = widest + weapon.laneStep * pair;
       shots.push({ offsetX: -offset, angle: 0 });
       shots.push({ offsetX: offset, angle: 0 });
     }

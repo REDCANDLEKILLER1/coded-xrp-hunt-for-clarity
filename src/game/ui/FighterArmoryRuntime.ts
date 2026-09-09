@@ -28,13 +28,36 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
     this.button.addEventListener('click',()=>{if(this.enabled&&this.safe){this.opened=true;this.paint();}});
     this.root.append(this.button,this.panel);parent.appendChild(this.root);
   }
-  begin(rank:number,barrels:number,baseTier:number):boolean {
+  begin(rank:number,barrels:number,baseTier:number,legacyDps=0):boolean {
     if(this.initialized)return this.rankUp(Math.max(rank,baseTier));
     // Carry forward earned fighter mastery and bolt-on hardware from older
-    // checkpoints. New hulls retain the Striker's stronger starting weapon.
-    const oldTier=Math.min(5,baseTier+[3,6,9,12].filter(at=>rank>=at).length);
-    const mastered=Math.min(20,Math.max(rank,baseTier,barrels>0||oldTier>=4?4:1,oldTier===5?7:1));
-    return this.save.update(d=>{d.fighterUpgrades.weapon_rank=mastered;d.fighterUpgrades.weapon_family=oldTier===5?1:0;d.fighterUpgrades.rapid_fire=Math.min(RAPID_CAP,Math.max(0,barrels));}).ok;
+    // checkpoints, and never hand back less gun than the player walked in
+    // with.
+    //
+    // This used to re-derive the arcade tier here, from a copy of the arcade's
+    // own numbers -- `[3,6,9,12]` and a five-rung ceiling. When the ladder
+    // became nine rungs on different thresholds, this copy went stale in
+    // silence and a rank-7 pilot migrated from 53 dps down to 11. The engine
+    // now MEASURES what the player was firing and passes it in, so there is no
+    // second model of the ladder to fall out of date.
+    const rapid=Math.min(RAPID_CAP,Math.max(0,barrels));
+    let mastered=Math.min(20,Math.max(1,rank,baseTier));
+    let family:FighterFamily='bb';
+    const output=(candidate:FighterFamily,at:number)=>{
+      if(!fighterStage(candidate,at))return 0;
+      const weapon=fighterWeapon({family:candidate,rank:at,rapid});
+      return weapon.damage*weapon.shots.length/weapon.fireRate;
+    };
+    // The cheapest rank that covers the incoming loadout, and the family at
+    // that rank that covers it best. Walking up rather than solving keeps this
+    // honest about the armory's real ceiling: if nothing reaches, the pilot
+    // gets the strongest thing that exists instead of a silent downgrade.
+    for(let at=mastered;at<=20;at++){
+      const best=FIGHTER_FAMILIES.reduce((pick,candidate)=>output(candidate,at)>output(pick,at)?candidate:pick,'bb' as FighterFamily);
+      mastered=at;family=best;
+      if(output(best,at)>=legacyDps)break;
+    }
+    return this.save.update(d=>{d.fighterUpgrades.weapon_rank=mastered;d.fighterUpgrades.weapon_family=Math.max(0,FIGHTER_FAMILIES.indexOf(family));d.fighterUpgrades.rapid_fire=rapid;}).ok;
   }
   rankUp(rank:number):boolean {
     const next=Math.max(this.current.rank,Math.min(20,rank));if(next===this.current.rank)return true;

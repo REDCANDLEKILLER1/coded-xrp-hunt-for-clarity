@@ -85,43 +85,27 @@ for (const height of [274, 780]) {
 // ---- health scales with what the player brings -------------------------
 check(BASE > 0, 'BASE_PLAYER_DPS is missing');
 check(CAP >= 4, `a firepower cap of ${CAP} cannot cover an 11x damage range`);
-check(/private loadoutScale\(\): number \{/.test(game), 'loadoutScale is missing -- the boss spawn snapshot');
+check(/private loadoutScale\(/.test(game), 'loadoutScale is missing -- the boss spawn snapshot');
 check(/private pressureScale\(\): number \{/.test(game), 'pressureScale is missing -- the run-progress curve');
 check(/private playerDps\(\): number \{/.test(game), 'playerDps is missing');
 
-// Model the ladder the way the game does, and require a consistent fight.
-const dpsFor = (weapon, barrels) => {
-  let shots = weapon.shots.length;
-  for (let pair = 1; pair <= barrels; pair += 1) {
-    if (shots + 2 > MAX_VOLLEY) break;
-    shots += 2;
-  }
-  return (shots * weapon.damage) / weapon.fireRate;
-};
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-
-const times = [];
-for (const weapon of Object.values(WEAPONS)) {
-  for (const barrels of [0, MAX_BARRELS]) {
-    const dps = dpsFor(weapon, barrels);
-    const scale = clamp(dps / BASE, 1, CAP);
-    // Gary Fog, through his armour.
-    const effective = (BOSSES.gary_fog.hp * scale) / 0.73;
-    times.push({ label: `${weapon.label} x${barrels}`, dps, scale, seconds: effective / dps });
-  }
-}
-const seconds = times.map((row) => row.seconds);
-const spread = Math.max(...seconds) / Math.min(...seconds);
-check(
-  spread < 1.8,
-  `time to kill the first boss still varies ${spread.toFixed(1)}x across the ladder `
-  + `(${Math.min(...seconds).toFixed(0)}s to ${Math.max(...seconds).toFixed(0)}s)`,
-);
-check(Math.min(...seconds) > 8, `the fastest loadout kills the first boss in ${Math.min(...seconds).toFixed(0)}s`);
+// Boss fight length moved to validate-weapon-ladder.
+//
+// It was asserted here against a hand-written MODEL of the barrel rule -- a
+// local `dpsFor` that counted lanes in pairs. That model was already wrong:
+// it had no centre-beam rule and no per-family lane width, so it agreed with
+// the game by coincidence and would have kept agreeing with itself after the
+// real rule changed. Re-implementing the rule under test is the mistake this
+// repo has made more than any other.
+//
+// Both guarantees it made -- the spread across the ladder stays under 1.8x,
+// and the fastest loadout still needs more than 8 seconds -- are now measured
+// on all four bosses at every rung and barrel count, driven through the
+// shipped currentVolley() and loadoutScale(), in validate-weapon-ladder.
 
 // The boss must actually use its own scaled maximum, not the tuning number.
 check(/maxHp: number;/.test(game), 'BossActor needs its own maximum');
-check(/hp: Math\.round\(def\.hp \* this\.loadoutScale\(\)\)/.test(game), 'boss health must snapshot the loadout at spawn');
+check(/hp: Math\.round\(def\.hp \* this\.loadoutScale\(/.test(game), 'boss health must snapshot the loadout at spawn');
 check(/this\.boss\.hp \?\? 0\) \/ this\.boss\.maxHp/.test(game), 'the health bar must read against the scaled maximum');
 check(/bossPhaseIndex\(def, boss\.hp \?\? boss\.maxHp, boss\.maxHp\)/.test(game),
   'phase thresholds must be measured against the scaled maximum, or a scaled boss opens in its last phase');
@@ -145,10 +129,13 @@ check(/const COMBAT_SCALE = ([\d.]+);/.test(registrySrc), 'COMBAT_SCALE is missi
 const combat = Number(/const COMBAT_SCALE = ([\d.]+);/.exec(registrySrc)?.[1]);
 check(combat > 0.5 && combat < 1, `COMBAT_SCALE of ${combat} is not a shrink`);
 // Scaling the sprite without the hitbox gives a ship hit by things that miss.
-const scaler = registrySrc.split('function scaled(size: Size): Size {')[1]?.split('\n}\n')[0] ?? '';
+const scaler = registrySrc.split('function scaled(size: Size, hull: HullClass = \'light\'): Size {')[1]?.split('\n}\n')[0] ?? '';
 check(/w:/.test(scaler) && /h:/.test(scaler), 'the scale helper must resize both axes');
-check(/draw: scaled\(def\.draw\), hitbox: scaled\(def\.hitbox\)/.test(registrySrc),
-  'draw and hitbox must scale together');
+// Both boxes must go through the same helper with the SAME hull argument.
+// A size class that scaled the sprite but not the hitbox would give a ship
+// that is hit by shots which visibly missed it.
+check(/draw: scaled\(def\.draw, hull\), hitbox: scaled\(def\.hitbox, hull\)/.test(registrySrc),
+  'draw and hitbox must scale together, through the same hull');
 for (const [name, defs] of [['SHIPS', SHIPS], ['ENEMIES', ENEMIES], ['BOSSES', BOSSES]]) {
   for (const [key, def] of Object.entries(defs)) {
     check(def.hitbox.w >= 6 && def.hitbox.h >= 6, `${name}.${key} shrank to an unhittable ${def.hitbox.w}x${def.hitbox.h}`);
@@ -162,6 +149,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `difficulty: OK — first boss takes ${Math.min(...seconds).toFixed(0)}-${Math.max(...seconds).toFixed(0)}s `
-  + `at every loadout, curtain ${((2 * curtain) / 390 * 100).toFixed(0)}% of portrait, ships at ${combat}x.`,
+  `difficulty: OK — curtain ${((2 * curtain) / 390 * 100).toFixed(0)}% of portrait, ships at ${combat}x; `
+  + 'boss fight length is measured through the shipped volley in weapon-ladder.',
 );
