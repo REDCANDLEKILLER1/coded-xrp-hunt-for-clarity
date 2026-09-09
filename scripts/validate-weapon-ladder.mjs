@@ -180,6 +180,66 @@ for (const weapon of ladder) {
   }
 }
 
+// ---- no upgrade may make a boss fight LONGER ----------------------------
+//
+// A boss is scaled by the loadout facing it, so a fight is meant to run about
+// the same length whatever you are holding. That only works if the scale is
+// measured against damage that reaches the boss. It was measured against the
+// raw volley, and once barrels widened the pattern past a boss's own hull the
+// third barrel became a penalty: the boss grew by lanes that were flying past
+// it. Measured across four bosses, BB SHOT went 12.3s -> 17.2s and LEDGER
+// STORM 12.3s -> 19.4s on that pickup.
+//
+// A pickup that lengthens the fight is the CLARITY LANCE complaint in another
+// place, so it gets the same treatment: measured, not trusted.
+{
+  const { BOSSES } = await load('src/game/content/registry.ts');
+  const game = new Game2A(stubCanvas());
+  game.deployTestMode();
+  game.reset();
+  const bosses = Object.values(BOSSES);
+  check(bosses.length > 0, 'no bosses to measure -- this check would pass vacuously');
+  for (const boss of bosses) {
+    const width = boss.hitbox?.w ?? boss.draw.w;
+    const seconds = (tier, barrels) => {
+      game.baseWeaponTier = tier;
+      game.xpLevel = 1;
+      game.barrels = barrels;
+      const weapon = ladder[tier - 1];
+      const reach = width / 2 + (PROJECTILES[weapon.projectileKey]?.hitbox.w ?? 5) / 2;
+      let damage = 0;
+      for (const lane of game.currentVolley()) {
+        const offset = Math.abs(lane.offsetX);
+        if (offset <= reach) damage += weapon.damage;
+        else if (weapon.splash && offset <= weapon.splash) damage += weapon.splashDamage ?? 0;
+      }
+      return Math.round(boss.hp * game.loadoutScale(boss)) / (damage / weapon.fireRate);
+    };
+    for (const weapon of ladder) {
+      for (const barrels of barrelCounts.slice(1)) {
+        const before = seconds(weapon.tier, barrels - 1);
+        const after = seconds(weapon.tier, barrels);
+        check(after <= before + 0.5,
+          `${boss.key}: ${weapon.label}'s barrel ${barrels} makes the fight LONGER, ${before.toFixed(1)}s -> ${after.toFixed(1)}s -- the boss is scaling on shots that miss it`);
+      }
+      const flat = barrelCounts.map((b) => seconds(weapon.tier, b));
+      check(Math.max(...flat) <= 40,
+        `${boss.key} vs ${weapon.label} runs ${Math.max(...flat).toFixed(0)}s at its worst`);
+    }
+    // The whole point of scaling a boss to the loadout: one fight length, not
+    // one that is impossible with BB SHOT and trivial with a maxed gun. These
+    // two guarantees came from validate-difficulty, which asserted them
+    // against a hand-written MODEL of the barrel rule; they are measured
+    // through the shipped volley here instead.
+    const every = ladder.flatMap((w) => barrelCounts.map((b) => seconds(w.tier, b)));
+    const spread = Math.max(...every) / Math.min(...every);
+    check(spread < 1.8,
+      `${boss.key}: time to kill varies ${spread.toFixed(1)}x across the ladder (${Math.min(...every).toFixed(0)}s to ${Math.max(...every).toFixed(0)}s)`);
+    check(Math.min(...every) > 8,
+      `${boss.key}: the fastest loadout kills it in ${Math.min(...every).toFixed(0)}s`);
+  }
+}
+
 // ---- the campaign armory is NOT on this ladder --------------------------
 //
 // Chapter One's Earth fighter progresses through families and stages in its

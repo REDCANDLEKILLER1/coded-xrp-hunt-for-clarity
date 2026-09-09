@@ -38,7 +38,10 @@ check(/this\.wave/.test(body), 'pressureScale must read the wave');
 check(/this\.clock/.test(body), 'pressureScale must read the run clock');
 
 // ---- the boss snapshot is a snapshot, and only bosses take it ------------
-const loadoutCalls = [...code.matchAll(/this\.loadoutScale\(\)/g)].length;
+// `this.loadoutScale()` with empty parens, not `this.loadoutScale(` with
+// anything in them: the boss spawn now passes the hull it is scaling, so an
+// exact-parens match counted zero while the mechanism was intact.
+const loadoutCalls = [...code.matchAll(/this\.loadoutScale\(/g)].length;
 check(loadoutCalls > 0, 'loadoutScale is never called');
 for (const method of ['enemyHp', 'hazardHp', 'enemySpeed', 'arenaEnemyCap']) {
   const region = code.split(`private ${method}(`)[1]?.split('\n  }')[0] ?? '';

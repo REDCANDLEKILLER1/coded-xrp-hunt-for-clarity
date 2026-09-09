@@ -1078,8 +1078,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.loadoutScale()),
-      maxHp: Math.round(def.hp * this.loadoutScale()),
+      hp: Math.round(def.hp * this.loadoutScale(def)),
+      maxHp: Math.round(def.hp * this.loadoutScale(def)),
       bossKey: def.key,
       state: 'intro',
       age: -plan.musicLeadSeconds,
@@ -2023,8 +2023,8 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: 0,
-      hp: Math.round(def.hp * this.loadoutScale()),
-      maxHp: Math.round(def.hp * this.loadoutScale()),
+      hp: Math.round(def.hp * this.loadoutScale(def)),
+      maxHp: Math.round(def.hp * this.loadoutScale(def)),
       bossKey,
       state: 'intro',
       age: 0,
@@ -5057,8 +5057,22 @@ export class Game2A {
    * that reads it per-frame is back to handing the player's upgrade straight
    * back as hit points.
    */
-  private loadoutScale(): number {
-    return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
+  private loadoutScale(target?: BossDef): number {
+    // Measured against the hull it is about to be applied to, not against the
+    // raw volley.
+    //
+    // Raw playerDps() counts every lane whether or not it can reach anything.
+    // Once barrels started widening the pattern past a boss's own hull, that
+    // made the third barrel a PENALTY: the boss grew by lanes that were flying
+    // past it on both sides. Measured across four bosses and nine rungs, the
+    // third barrel pushed BB SHOT's fight from 12.3s to 17.2s and LEDGER
+    // STORM's from 12.3s to 19.4s -- a pickup that made the fight longer,
+    // which is the CLARITY LANCE complaint wearing a different hat.
+    //
+    // Scaling on the damage that actually lands keeps a boss fight the length
+    // it was tuned to be at every barrel count.
+    const width = target ? (target.hitbox?.w ?? target.draw.w) : NARROWEST_ENEMY;
+    return clamp(this.centredDps(width) / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
   }
 
   /**
