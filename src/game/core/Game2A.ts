@@ -1604,44 +1604,52 @@ export class Game2A {
     // worst case ran five slots past the cap. A cap that a single spawn can
     // clear by 5 is not a cap, and the screen becomes the wall the slot
     // system exists to prevent.
-    const room = this.arenaEnemyCap() - this.arenaLoad();
-    const enemyKey = room > 0 ? this.pickFormation(room) : undefined;
-    if (this.droneClock <= 0 && enemyKey !== undefined) {
-      const def = this.enemyDef(enemyKey);
-      const x = 30 + Math.random() * Math.max(1, this.w - 60);
-      this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
-      this.drones.push({
-        x,
-        y: -35,
-        w: def.hitbox.w,
-        h: def.hitbox.h,
-        vx: 0,
-        vy: this.enemySpeed(def),
-        hp: this.enemyHp(def),
-        enemyKey,
-        age: 0,
-        anchorX: x,
-        phase: Math.random() * Math.PI * 2,
-        direction: Math.random() < 0.5 ? -1 : 1,
-        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
-        stance: 'entering',
-        stationX: x,
-        stationY: this.pickStationY(),
-        stanceClock: 0,
-        patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
-        dodgeCooldown: 0,
-        atRest: false,
-        escort: false,
-      });
-      // A heavy arrives as a formation, not as one big ship on its own. The
-      // wing is what makes the size read compositionally: small hulls beside a
-      // large one give the eye the comparison, and give the player a reason to
-      // choose a target.
-      if (def.hull === 'heavy') this.spawnHeavyWing(x);
-    } else if (this.droneClock <= 0) {
-      // Nothing that fits. Wait rather than spawn part of a formation -- half
-      // a heavy's wing is a worse outcome than a slightly thinner screen.
-      this.droneClock = ARENA_FULL_RETRY;
+    //
+    // All of it sits INSIDE the clock gate. The first version of this fix
+    // costed the formation before checking the clock, so arenaLoad() reduced
+    // over every drone and pickFormation burned a Math.random() on every
+    // frame at 60Hz -- wasted work, and it perturbed the global random
+    // sequence that spawn placement and enemy phase also draw from.
+    if (this.droneClock <= 0) {
+      const room = this.arenaEnemyCap() - this.arenaLoad();
+      const enemyKey = room > 0 ? this.pickFormation(room) : undefined;
+      if (enemyKey !== undefined) {
+        const def = this.enemyDef(enemyKey);
+        const x = 30 + Math.random() * Math.max(1, this.w - 60);
+        this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
+        this.drones.push({
+          x,
+          y: -35,
+          w: def.hitbox.w,
+          h: def.hitbox.h,
+          vx: 0,
+          vy: this.enemySpeed(def),
+          hp: this.enemyHp(def),
+          enemyKey,
+          age: 0,
+          anchorX: x,
+          phase: Math.random() * Math.PI * 2,
+          direction: Math.random() < 0.5 ? -1 : 1,
+          fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+          stance: 'entering',
+          stationX: x,
+          stationY: this.pickStationY(),
+          stanceClock: 0,
+          patience: ENEMY_PATIENCE_MIN + Math.random() * ENEMY_PATIENCE_VARY,
+          dodgeCooldown: 0,
+          atRest: false,
+          escort: false,
+        });
+        // A heavy arrives as a formation, not as one big ship on its own. The
+        // wing is what makes the size read compositionally: small hulls beside a
+        // large one give the eye the comparison, and give the player a reason to
+        // choose a target.
+        if (def.hull === 'heavy') this.spawnHeavyWing(x);
+      } else {
+        // Nothing that fits. Wait rather than spawn part of a formation -- half
+        // a heavy's wing is a worse outcome than a slightly thinner screen.
+        this.droneClock = ARENA_FULL_RETRY;
+      }
     }
     this.moveDrones(dt);
     this.wave = 1 + Math.floor(this.score / 500);
