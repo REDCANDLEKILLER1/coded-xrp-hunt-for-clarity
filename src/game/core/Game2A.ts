@@ -25,7 +25,7 @@ import { boardingTargetForWarship } from '../content/DirectBoarding';
 import { missionForPlanet } from '../content/missions';
 import type { MissionCheckpointDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
-import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HullClass, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
+import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HullClass, LadderWeaponDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
 type Mode = 'title' | 'play' | 'results' | 'victory';
 type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: number; hp?: number; life?: number };
@@ -96,7 +96,7 @@ type WarshipActor = Actor & {
   age: number;
   fireClock: number;
 };
-type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number; weapon?:FighterWeapon; hitTargets?:Set<Actor> };
+type ProjectileActor = Actor & { damage: number; projectileKey: string; pierce: number; weapon?:WeaponDef; hitTargets?:Set<Actor>; clearsShots?:boolean };
 type WeaponEffect={x:number;y:number;endX?:number;endY?:number;radius:number;life:number};
 /** A player missile that steers. `target` is re-acquired if its quarry dies. */
 type SeekerActor = Actor & { damage: number; angle: number; age: number };
@@ -271,7 +271,7 @@ const XP_LEVEL_STEP = 150;
  * through the level and CLARITY LANCE only at the very end, so the ladder is a
  * long-term goal rather than a five-minute climb.
  */
-const WEAPON_TIER_LEVELS = [3, 6, 9, 12];
+const WEAPON_TIER_LEVELS = [3, 5, 7, 9, 11, 13, 16, 19];
 
 // Boss duel.
 //
@@ -297,7 +297,7 @@ const MAX_BARRELS = 3;
  * Barrels come in pairs, so this wants to be odd -- at 6 an odd-base gun like
  * BB SHOT or the Lance could only take two of its three barrels.
  */
-const MAX_VOLLEY = 7;
+const MAX_VOLLEY = 11;
 /**
  * How long a freshly-opened upgrade overlay ignores taps.
  *
@@ -384,7 +384,20 @@ const ALL_MAXED_SCORE = 250;
  * started -- and compressing that spread is PR4's job, not this one.
  */
 const BASE_PLAYER_DPS = 1 / 0.14;
-const FIREPOWER_CAP = 9;
+/**
+ * The ceiling on the boss snapshot.
+ *
+ * Was 9, which was right for a five-rung ladder spanning about 11x. The nine
+ * rungs span 76x from BB SHOT to a three-barrel HYPER PULSE, so a cap of 9
+ * meant the top of the ladder outran the compensation and killed the first
+ * boss in under three seconds.
+ *
+ * Raising it is only safe because `pressureScale()` now carries trash, hazards
+ * and the arena cap -- this number reaches nothing but boss health at spawn.
+ * On the old coupled code the same change would have turned a 1hp drone into a
+ * 36hp one.
+ */
+const FIREPOWER_CAP = 80;
 /**
  * The continuous curve.
  *
@@ -554,6 +567,8 @@ const BURST_RING = FX.burst_ring;
 const HIT_SPARK = FX.hit_spark;
 const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
+/** The smallest thing you can be aiming at, which is what "on target" means. */
+const NARROWEST_ENEMY = Math.min(...[...Object.values(ENEMIES), ...Object.values(EARTH_ENEMIES)].map((def) => def.hitbox.w));
 const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
 const BOSS_LADDER = orderedBossKeys(BOSSES);
 
@@ -682,7 +697,10 @@ export class Game2A {
   private syncFighterMastery():void {
     const armory=this.campaignArmory;if(!armory)return;
     this.fighterSyncClock=this.clock+2;
-    const saved=armory.begin(this.xpLevel,this.barrels,this.baseWeaponTier);
+    // The gun the pilot is holding RIGHT NOW, measured through the engine's own
+    // volley, so the armory never has to model the arcade ladder to avoid
+    // downgrading someone on the way in.
+    const saved=armory.begin(this.xpLevel,this.barrels,this.baseWeaponTier,this.centredDps());
     this.fighterReady=this.fighterReady||saved;
     if(!saved){this.missionBannerText='FIGHTER SAVE PENDING // RETRYING';this.missionBannerClock=2;}
   }
@@ -1552,7 +1570,7 @@ export class Game2A {
           damage: weapon.damage,
           projectileKey: weapon.projectileKey,
           pierce: weapon.pierce ?? 0,
-          weapon:profile,hitTargets:new Set(),
+          weapon:profile??weapon,hitTargets:new Set(),clearsShots:weapon.clearsShots,
         });
       }
       sfx.play('shoot');
@@ -2432,10 +2450,11 @@ export class Game2A {
     }
   }
 
-  /** Secondary effects use the same damage gates as direct fire. They never
+  /** Secondary effects -- splash and chain -- for BOTH the campaign armory
+   * and the arcade ladder. They use the same damage gates as direct fire. They never
    * jump a Warship phase or damage a friendly beacon. One projectile can touch
    * a given actor once, even while a lance overlaps it on successive frames. */
-  private fighterImpact(bolt:ProjectileActor,direct:Actor):void {
+  private secondaryImpact(bolt:ProjectileActor,direct:Actor):void {
     const weapon=bolt.weapon;if(!weapon||(!weapon.splash&&!weapon.chain))return;
     const targets:Array<{actor:Actor;hit:(damage:number)=>void}>=[];
     const eligible=(actor:Actor)=>actor!==direct&&!bolt.hitTargets?.has(actor)&&(actor.hp??0)>0&&actor.x>=0&&actor.x<=this.w&&actor.y>=0&&actor.y<=this.h;
@@ -2450,7 +2469,7 @@ export class Game2A {
       }
     }else{
       let origin=direct;
-      for(let jump=0;jump<weapon.chain;jump++){
+      for(let jump=0;jump<(weapon.chain??0);jump++){
         const nearby=targets.filter(t=>!bolt.hitTargets?.has(t.actor)&&(t.actor.hp??0)>0&&Math.hypot(t.actor.x-origin.x,t.actor.y-origin.y)<=100&&Math.hypot(t.actor.x-direct.x,t.actor.y-direct.y)<=280).sort((a,b)=>Math.hypot(a.actor.x-origin.x,a.actor.y-origin.y)-Math.hypot(b.actor.x-origin.x,b.actor.y-origin.y));
         const next=nearby[0];if(!next)break;
         this.weaponEffects.push({x:origin.x,y:origin.y,endX:next.actor.x,endY:next.actor.y,radius:0,life:.18});
@@ -2475,8 +2494,11 @@ export class Game2A {
 
     for (const bolt of this.bolts) {
       for(const incoming of this.hostileShots){
-        if(!incoming.interceptible||incoming.life===0||!overlap(box(bolt,.8),box(incoming,1)))continue;
-        incoming.life=0;bolt.life=0;this.ring(incoming.x,incoming.y);break;
+        if(incoming.life===0||!overlap(box(bolt,.8),box(incoming,1)))continue;
+        if(!incoming.interceptible&&!bolt.clearsShots)continue;
+        incoming.life=0;this.ring(incoming.x,incoming.y);
+        if(bolt.clearsShots)continue;
+        bolt.life=0;break;
       }
       if(bolt.life===0)continue;
       for (const drone of this.drones) {
@@ -2486,7 +2508,7 @@ export class Game2A {
           const spent = spend(bolt);
           drone.hp = (drone.hp ?? 1) - bolt.damage;
           if ((drone.hp ?? 0) <= 0) this.registerKill(drone);
-          this.fighterImpact(bolt,drone);
+          this.secondaryImpact(bolt,drone);
           if (spent) break;
         }
       }
@@ -2498,7 +2520,7 @@ export class Game2A {
           const shielded=!!linkedRelay(hazard,this.hazards);
           const spent = spend(bolt);
           this.damageGround(hazard,bolt.damage);
-          if(!shielded)this.fighterImpact(bolt,hazard);
+          if(!shielded)this.secondaryImpact(bolt,hazard);
           if (spent) break;
         }
       }
@@ -2516,7 +2538,7 @@ export class Game2A {
         const target=this.boss,shielded=this.bossShielded();
         bolt.life = 0;
         this.damageBoss(bolt.damage);
-        if(!shielded)this.fighterImpact(bolt,target);
+        if(!shielded)this.secondaryImpact(bolt,target);
       }
     }
     // Seekers land on whatever they reach first, then die -- they do not pierce.
@@ -4924,6 +4946,18 @@ export class Game2A {
 
   private currentWeapon(): WeaponDef {
     if(this.fighterReady&&this.campaignArmory)return this.campaignArmory.weapon;
+    return this.ladderWeapon();
+  }
+
+  /**
+   * The arcade rung, typed as a rung.
+   *
+   * Only the ladder has lane widths, because only the ladder bolts barrels on:
+   * the campaign armory ships fixed patterns per stage and never expands them.
+   * Reaching for this where an armory weapon might be live is a type error,
+   * which is the point.
+   */
+  private ladderWeapon(): LadderWeaponDef {
     return WEAPON_LADDER[this.weaponTier() - 1] ?? WEAPON_LADDER[0];
   }
 
@@ -4988,6 +5022,28 @@ export class Game2A {
     return clamp(1 + fromWaves + fromTime, 1, PRESSURE_CAP);
   }
 
+  /**
+   * Sustained damage per second actually LANDING on one target dead ahead.
+   *
+   * Distinct from playerDps(), which sums every lane whether or not anything
+   * is in it. That difference stopped being academic once the ladder went
+   * wide: LEDGER STORM with three barrels fires eleven lanes and reads 244
+   * raw dps, while 66.7 of it reaches a single enemy -- the rest is going
+   * past on both sides. Anything comparing two guns' STRENGTH has to use this
+   * one, or a gun is credited for shots that miss.
+   */
+  private centredDps(targetWidth = NARROWEST_ENEMY): number {
+    const weapon = this.currentWeapon();
+    const reach = targetWidth / 2 + this.projectileDef(weapon.projectileKey).hitbox.w / 2;
+    let damage = 0;
+    for (const lane of this.currentVolley()) {
+      const offset = Math.abs(lane.offsetX);
+      if (offset <= reach) damage += weapon.damage;
+      else if (weapon.splash && offset <= weapon.splash) damage += weapon.splashDamage ?? 0;
+    }
+    return damage / weapon.fireRate;
+  }
+
   /** Sustained damage per second this loadout puts out. */
   private playerDps(): number {
     const weapon = this.currentWeapon();
@@ -5005,9 +5061,39 @@ export class Game2A {
     return clamp(this.playerDps() / BASE_PLAYER_DPS, 1, FIREPOWER_CAP);
   }
 
+  /**
+   * The volley this loadout actually fires.
+   *
+   * Carries the #113 fix, generalised: on an EVEN gun the first barrel goes
+   * down the MIDDLE, and only then do pairs go on.
+   *
+   * "When you get 5 the sixth makes the auto cannon split into 2 rows of 3.
+   * It loses power and doesn't hit anything in the middle of the fire
+   * pattern." Both halves were true and they were one fault. Pairs-only kept
+   * the gun symmetric but could never fill the centre, so a four-beam gun plus
+   * a barrel fired -26,-17,-6,6,17,26: three each side, with the widest gap in
+   * the pattern sitting exactly where the player was aiming.
+   *
+   * It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
+   * pairs move in twos, so QUAD stopped at six and its second and third barrel
+   * pickups bought nothing at all. The centre beam is what makes the last slot
+   * spendable, which is why one rule fixes the hole and the dead pickups at
+   * once.
+   *
+   * Lanes are parallel. Barrels used to fan outward 0.045rad per pair, and an
+   * angle becomes width over distance: a three-barrel gun swept 75% of a
+   * portrait screen by the time its shots reached the top. Nothing the player
+   * can equip sprays -- the volley that leaves the muzzle is the volley that
+   * arrives.
+   */
   private currentVolley(): WeaponShotDef[] {
-    const weapon = this.currentWeapon();
-    if(this.fighterReady&&this.campaignArmory)return weapon.shots;
+    // The campaign armory fires its stage pattern exactly as authored. Barrel
+    // expansion is the ARCADE ladder's mechanic; Chapter One progresses the
+    // Earth fighter through families and stages instead, and running its
+    // patterns through the barrel loop would be this branch quietly rewriting
+    // a system it is not part of.
+    if(this.fighterReady&&this.campaignArmory)return this.campaignArmory.weapon.shots;
+    const weapon = this.ladderWeapon();
     if (this.barrels <= 0) return weapon.shots;
     const shots = [...weapon.shots];
     const widest = Math.max(...weapon.shots.map((shot) => Math.abs(shot.offsetX)), 0);
@@ -5022,11 +5108,13 @@ export class Game2A {
     // plus a barrel fired -26,-17,-6,6,17,26: three each side, and the widest
     // gap in the whole pattern sitting exactly where you are aiming.
     //
-    // It also meant an even gun could never reach MAX_VOLLEY. Seven is odd and
-    // pairs move in twos, so QUAD stopped at six and the seventh slot was
-    // unreachable -- measured, its second and third barrel pickups bought
-    // nothing at all. The centre beam is what makes that last slot spendable,
-    // which is why one rule fixes the hole and the dead pickups together.
+    // It also wasted a barrel. Measured on the shipped code, QUAD went
+    // 4 -> 5 -> 7 -> 7 beams: the centre beam makes the second barrel worth
+    // buying, but the third had nowhere to go, because pairs move in twos and
+    // MAX_VOLLEY was odd at seven. Only the THIRD barrel was dead -- an
+    // earlier note here claimed the second was too, which the owner corrected
+    // against the code. MAX_VOLLEY is 11 now, so the third barrel buys a pair
+    // and QUAD reads 4 -> 5 -> 7 -> 9.
     let pairs = this.barrels;
     if (!weapon.shots.some((shot) => shot.offsetX === 0) && shots.length < MAX_VOLLEY) {
       shots.push({ offsetX: 0, angle: 0 });
@@ -5035,18 +5123,7 @@ export class Game2A {
     for (let pair = 1; pair <= pairs; pair += 1) {
       // A pair goes on together or not at all, so the gun stays symmetric.
       if (shots.length + 2 > MAX_VOLLEY) break;
-      // Parallel, not fanned. Barrels used to angle outward 0.045rad per pair,
-      // and an angle becomes width over distance: on a 780px portrait screen a
-      // three-barrel gun swept 75% of the whole width by the time its shots
-      // reached the top, so there was nothing to aim at and nothing to do but
-      // slide side to side. The same gun covered 40% on the short landscape
-      // screen, which is why this only showed up in portrait.
-      //
-      // A barrel adds a BEAM, and now so does every rung of the ladder: the
-      // last fanning gun (TRI-SPREAD, +/-0.18rad) is gone. Nothing the player
-      // can equip sprays any more -- the volley that leaves the muzzle is the
-      // volley that reaches the target.
-      const offset = widest + 9 * pair;
+      const offset = widest + weapon.laneStep * pair;
       shots.push({ offsetX: -offset, angle: 0 });
       shots.push({ offsetX: offset, angle: 0 });
     }

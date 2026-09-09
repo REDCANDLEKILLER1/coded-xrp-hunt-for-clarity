@@ -23,7 +23,9 @@ const {Game2A}=await load('src/game/core/Game2A.ts');
 const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {FighterArmoryRuntime}=await load('src/game/ui/FighterArmoryRuntime.ts');
 const {FAMILY_INFO,FIGHTER_FAMILIES,fighterWeapon,RAPID_CAP}=await load('src/game/content/FighterWeapons.ts');
-const {ENEMIES}=await load('src/game/content/registry.ts');
+const {ENEMIES,PROJECTILES}=await load('src/game/content/registry.ts');
+const {EARTH_ENEMIES}=await load('src/game/content/EarthThreats.ts');
+const narrowestEnemy=Math.min(...[...Object.values(ENEMIES),...Object.values(EARTH_ENEMIES)].map(def=>def.hitbox.w));
 const {groundDefense}=await load('src/game/content/GroundDefense.ts');
 let serial=0;
 function fixture(){
@@ -153,11 +155,18 @@ for(const family of ['rocket','plasma','ledger']){
 }
 // Every legacy tier/barrel combination retains at least its old centered DPS
 // on migration, and never destroys or edits the stored legacy checkpoint.
+//
+// Both sides are measured ON TARGET. Raw volley dps stopped being comparable
+// once the arcade ladder went wide: eleven lanes at 12px spacing read 244 raw
+// dps while 66.7 of it lands on one enemy, so a raw comparison would demand
+// the armory beat damage that is flying past the target on both sides.
 for(let baseTier=1;baseTier<=5;baseTier++)for(let rank=1;rank<=13;rank++)for(let barrels=0;barrels<=3;barrels++){
-  const legacy=new Game2A(new Element());legacy.deployTestMode();legacy.reset();legacy.xpLevel=rank;legacy.barrels=barrels;legacy.baseWeaponTier=baseTier;const oldDps=legacy.playerDps();
+  const legacy=new Game2A(new Element());legacy.deployTestMode();legacy.reset();legacy.xpLevel=rank;legacy.barrels=barrels;legacy.baseWeaponTier=baseTier;const oldDps=legacy.centredDps();
   legacy.pendingUpgrades=1;legacy.applyUpgrade('barrel');assert.equal(legacy.barrels,Math.min(3,barrels+1),'actual legacy card retains barrel behavior');
-  const save=new CampaignSave(storage,`test:migrate-${baseTier}-${rank}-${barrels}`),armory=new FighterArmoryRuntime(new Element(),save);assert.ok(armory.begin(rank,barrels,baseTier));
-  assert.ok(armory.weapon.damage*armory.weapon.shots.length/armory.weapon.fireRate>=oldDps-1e-6,`migration regresses rank ${rank}/barrels ${barrels}`);
+  const save=new CampaignSave(storage,`test:migrate-${baseTier}-${rank}-${barrels}`),armory=new FighterArmoryRuntime(new Element(),save);assert.ok(armory.begin(rank,barrels,baseTier,oldDps));
+  const reach=narrowestEnemy/2+(PROJECTILES[armory.weapon.projectileKey]?.hitbox.w??5)/2;
+  const newDps=armory.weapon.shots.filter(shot=>Math.abs(shot.offsetX)<=reach).length*armory.weapon.damage/armory.weapon.fireRate;
+  assert.ok(newDps>=oldDps-1e-6,`migration regresses rank ${rank}/barrels ${barrels}: ${oldDps.toFixed(1)} -> ${newDps.toFixed(1)} dps on target`);
 }
 console.log('fighter-armory: OK — 20 stages, two viewports, centered TTK, actual rapid cadence, damage/speed, bounded impacts, shield/friendly gates, safe selection, migration and separate durable tracks.');
 console.log(JSON.stringify(results));
