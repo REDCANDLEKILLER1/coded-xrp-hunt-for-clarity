@@ -225,6 +225,8 @@ const WAVE_CLEAR_BONUS = 150;        // for destroying every enemy on screen
 // with the wave to keep pressure rising without becoming unreadable on a phone.
 const ARENA_MAX_ENEMIES_BASE = 5;
 const ARENA_MAX_ENEMIES_CAP = 10;
+/** How soon to re-check when nothing that fits can be spawned. */
+const ARENA_FULL_RETRY = 0.35;
 // Enemies were never able to shoot: EnemyDef had no firing fields and the only
 // hostile fire in the game came from bosses and ground turrets. Armed enemies
 // only fire while holding station or diving, never while entering or fleeing,
@@ -1593,8 +1595,18 @@ export class Game2A {
 
   private updateDrones(dt: number): void {
     this.droneClock -= dt;
-    if (this.droneClock <= 0 && this.arenaLoad() < this.arenaEnemyCap()) {
-      const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
+    // The whole formation is budgeted BEFORE anything is spawned.
+    //
+    // This gate used to ask only whether there was SOME room, then choose the
+    // enemy afterwards. A heavy costs four slots and brings two more in its
+    // wing, so a field with one slot free could admit a six-slot formation:
+    // measured at wave 3, cap 6, load 5 went straight to load 11, and the
+    // worst case ran five slots past the cap. A cap that a single spawn can
+    // clear by 5 is not a cap, and the screen becomes the wall the slot
+    // system exists to prevent.
+    const room = this.arenaEnemyCap() - this.arenaLoad();
+    const enemyKey = room > 0 ? this.pickFormation(room) : undefined;
+    if (this.droneClock <= 0 && enemyKey !== undefined) {
       const def = this.enemyDef(enemyKey);
       const x = 30 + Math.random() * Math.max(1, this.w - 60);
       this.droneClock = Math.min(def.spawnRate, spawnInterval(this.wave));
@@ -1626,6 +1638,10 @@ export class Game2A {
       // large one give the eye the comparison, and give the player a reason to
       // choose a target.
       if (def.hull === 'heavy') this.spawnHeavyWing(x);
+    } else if (this.droneClock <= 0) {
+      // Nothing that fits. Wait rather than spawn part of a formation -- half
+      // a heavy's wing is a worse outcome than a slightly thinner screen.
+      this.droneClock = ARENA_FULL_RETRY;
     }
     this.moveDrones(dt);
     this.wave = 1 + Math.floor(this.score / 500);
@@ -1789,9 +1805,45 @@ export class Game2A {
    * Deliberately the lightest hull available rather than a random pick: the
    * point is the size contrast, and a wing of mediums would blur it.
    */
+  /**
+   * The light hull that flies alongside a heavy.
+   *
+   * One function so the COST and the SPAWN cannot disagree: budgeting the
+   * wing off one key while spawning another is how a formation ends up
+   * costing more than it was charged for.
+   */
+  private wingKey(): string | undefined {
+    return availableEnemyKeys(ENEMIES, this.wave).find((key) => ENEMIES[key].hull === 'light');
+  }
+
+  /** Every slot the formation will occupy, wing included. */
+  private formationCost(enemyKey: string): number {
+    const hull = this.enemyDef(enemyKey).hull;
+    let cost = HULL_COMBAT[hull].slots;
+    if (hull !== 'heavy') return cost;
+    const wing = this.wingKey();
+    if (wing) cost += HEAVY_WING * HULL_COMBAT[this.enemyDef(wing).hull].slots;
+    return cost;
+  }
+
+  /**
+   * What to spawn next, or nothing if no formation fits in `room`.
+   *
+   * The roll is taken first and kept whenever it fits, so a field with space
+   * behaves exactly as before. Only when the roll wants something too big
+   * does this substitute -- the largest formation that DOES fit, so a nearly
+   * full arena still takes a light rather than going quiet.
+   */
+  private pickFormation(room: number): string | undefined {
+    const rolled = selectEnemyKey(ENEMIES, this.wave, Math.random());
+    if (this.formationCost(rolled) <= room) return rolled;
+    return availableEnemyKeys(ENEMIES, this.wave)
+      .filter((key) => this.formationCost(key) <= room)
+      .sort((a, b) => this.formationCost(b) - this.formationCost(a))[0];
+  }
+
   private spawnHeavyWing(centreX: number): void {
-    const lights = availableEnemyKeys(ENEMIES, this.wave).filter((key) => ENEMIES[key].hull === 'light');
-    const key = lights[0];
+    const key = this.wingKey();
     if (!key) return;
     const def = this.enemyDef(key);
     for (let i = 0; i < HEAVY_WING; i += 1) {

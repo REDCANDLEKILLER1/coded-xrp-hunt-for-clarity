@@ -21,6 +21,27 @@ const load = async (entry) => {
   const b = await build({ entryPoints: [entry], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
   return import(`data:text/javascript;base64,${Buffer.from(b.outputFiles[0].text).toString('base64')}`);
 };
+const store = new Map();
+globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, String(v)), removeItem: (k) => void store.delete(k) };
+const noopCtx = new Proxy({}, { get: (t, k) => (k in t ? t[k] : k === 'measureText' ? () => ({ width: 10 })
+  : k === 'createLinearGradient' || k === 'createRadialGradient' ? () => ({ addColorStop() {} }) : () => {}),
+  set: (t, k, v) => { t[k] = v; return true; } });
+const stubCanvas = () => ({ width: 0, height: 0, style: {}, getContext: () => noopCtx, addEventListener() {}, removeEventListener() {},
+  getBoundingClientRect: () => ({ left: 0, top: 0, width: 393, height: 793 }), setPointerCapture() {}, releasePointerCapture() {} });
+globalThis.CustomEvent = class { constructor(type, init) { this.type = type; this.detail = init?.detail; } };
+globalThis.Image = class {};
+globalThis.requestAnimationFrame = () => 0;
+globalThis.performance = globalThis.performance ?? { now: () => 0 };
+globalThis.matchMedia = () => ({ matches: false, addEventListener() {} });
+globalThis.screen = { width: 393, height: 793, orientation: { angle: 0 } };
+globalThis.devicePixelRatio = 1;
+globalThis.document = { addEventListener() {}, removeEventListener() {}, querySelector: () => null, createElement: stubCanvas, body: { appendChild() {} } };
+globalThis.innerWidth = 393;
+globalThis.innerHeight = 793;
+globalThis.window = { addEventListener() {}, removeEventListener() {}, dispatchEvent: () => true, setTimeout, clearTimeout,
+  localStorage: globalThis.localStorage, devicePixelRatio: 1, innerWidth: 393, innerHeight: 793 };
+globalThis.location = { search: '', pathname: '/' };
+
 const { ENEMIES, BOSSES, HULL_SIZE } = await load('src/game/content/registry.ts');
 const { EARTH_ENEMIES } = await load('src/game/content/EarthThreats.ts');
 const roster = { ...ENEMIES, ...EARTH_ENEMIES };
@@ -93,10 +114,91 @@ check(slotOf('heavy') > slotOf('medium') && slotOf('medium') > slotOf('light'),
   `slot cost is not monotone: light ${slotOf('light')}, medium ${slotOf('medium')}, heavy ${slotOf('heavy')}`);
 check(/private arenaLoad\(\)/.test(game), 'arenaLoad is missing -- the cap is still counting heads');
 const spawnGate = game.split('private updateDrones(')[1]?.split('\n  }')[0] ?? '';
-check(/this\.arenaLoad\(\) < this\.arenaEnemyCap\(\)/.test(spawnGate),
-  'the spawn gate still counts ships rather than size -- a screen can fill with heavies');
 check(/if \(def\.hull === 'heavy'\) this\.spawnHeavyWing\(/.test(spawnGate),
   'a heavy must arrive with a wing, or the size has nothing to be read against');
+
+// ---- the cap actually holds, at every remaining capacity -----------------
+//
+// This was a source grep for `arenaLoad() < arenaEnemyCap()` in the spawn
+// gate, and that is exactly as much as it proved: the gate existed. It did,
+// and the cap was still broken, because the gate asked whether there was SOME
+// room and then chose the enemy afterwards. A heavy costs four slots and
+// brings two more in its wing, so one free slot could admit a six-slot
+// formation. Measured on the shipped code: wave 3, cap 6, load 5 -> load 11,
+// with a worst case five slots past the cap.
+//
+// So this drives the real spawner instead. A heavy is FORCED -- selectEnemyKey
+// takes its roll as an argument, so the roll that yields the heavy is found
+// first and Math.random is pinned to it -- at every remaining capacity from an
+// empty field to one slot free, and the post-spawn load is compared against
+// the cap the game itself computed.
+{
+  const { Game2A } = await load('src/game/core/Game2A.ts');
+  const { selectEnemyKey, availableEnemyKeys } = await load('src/game/content/WaveDirector.ts');
+
+  const heavyKey = Object.keys(ENEMIES).find((key) => ENEMIES[key].hull === 'heavy');
+  const lightKey = Object.keys(ENEMIES).find((key) => ENEMIES[key].hull === 'light');
+  check(!!heavyKey && !!lightKey, 'the roster has no heavy or no light -- this check would prove nothing');
+
+  const rollFor = (wave, key) => {
+    for (let i = 0; i <= 2000; i += 1) { const roll = i / 2000; if (selectEnemyKey(ENEMIES, wave, roll) === key) return roll; }
+    return null;
+  };
+  const parked = (key, x = 200, y = 300) => {
+    const def = ENEMIES[key];
+    return { x, y, w: def.hitbox.w, h: def.hitbox.h, vx: 0, vy: 0, hp: 99, enemyKey: key, age: 5, anchorX: x,
+      phase: 0, direction: 1, fireClock: 99, stance: 'holding', stationX: x, stationY: y, stanceClock: 9,
+      patience: 99, dodgeCooldown: 9, atRest: true, escort: false };
+  };
+
+  let exercised = 0;
+  let forced = 0;
+  for (const wave of [3, 4, 5, 6, 8, 12, 20]) {
+    const roll = rollFor(wave, heavyKey);
+    if (roll === null) continue;
+    const probe = new Game2A(stubCanvas());
+    probe.deployTestMode(); probe.reset(); probe.wave = wave; probe.clock = 0;
+    const cap = probe.arenaEnemyCap();
+    check(cap > 0, `wave ${wave} has a cap of ${cap}`);
+    for (let fill = 0; fill < cap; fill += 1) {
+      const game2a = new Game2A(stubCanvas());
+      game2a.deployTestMode(); game2a.reset();
+      game2a.wave = wave; game2a.clock = 0; game2a.playerHitClock = 1;
+      game2a.drones = Array.from({ length: fill }, () => parked(lightKey));
+      const before = game2a.arenaLoad();
+      if (before >= cap) continue;
+      game2a.droneClock = 0;
+      const realRandom = Math.random;
+      Math.random = () => roll;
+      try { game2a.updateDrones(0.016); } finally { Math.random = realRandom; }
+      const after = game2a.arenaLoad();
+      exercised += 1;
+
+      check(after <= cap,
+        `wave ${wave}: a forced heavy at load ${before}/${cap} pushed the arena to ${after} -- ${after - cap} slots past the cap`);
+
+      // Atomic: a heavy either arrives with its whole wing or does not arrive.
+      const added = game2a.drones.slice(fill);
+      const heavies = added.filter((drone) => ENEMIES[drone.enemyKey].hull === 'heavy').length;
+      const lights = added.filter((drone) => ENEMIES[drone.enemyKey].hull === 'light').length;
+      const wingSize = Number(/const HEAVY_WING = (\d+)/.exec(game)?.[1]);
+      check(Number.isFinite(wingSize) && wingSize > 0, 'HEAVY_WING could not be read from the source');
+      if (heavies > 0) {
+        forced += 1;
+        check(lights === wingSize,
+          `wave ${wave}: a heavy spawned at load ${before}/${cap} with ${lights} escorts instead of ${wingSize} -- the formation is not atomic`);
+      }
+      // Room for a light means the field must not go quiet: a cap that stops
+      // spawning early is as wrong as one that overshoots.
+      if (cap - before >= 1) {
+        check(added.length > 0,
+          `wave ${wave}: ${cap - before} slot(s) free and nothing spawned -- the arena stalls instead of substituting a smaller formation`);
+      }
+    }
+  }
+  check(exercised > 20, `only ${exercised} spawn attempts exercised -- this check is not covering the capacity range`);
+  check(forced > 0, 'no forced heavy ever actually spawned -- the check never reached the case it exists for');
+}
 
 // A heavy must be slower and tougher, or it is only a bigger sprite.
 const numOf = (cls, field) => Number(new RegExp(`${cls}: \\{[^}]*${field}: ([\\d.]+)`).exec(table)?.[1]);
