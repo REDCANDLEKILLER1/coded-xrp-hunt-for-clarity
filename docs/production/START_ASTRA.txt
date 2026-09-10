@@ -1,0 +1,12 @@
+OWNER LAUNCH MESSAGE — UNSENT TEMPLATE
+This file is not itself an approval. The dependency/model-format exception takes effect only when XRPMan sends the message below. Copy only the text between BEGIN and END into the Astra Work task.
+
+BEGIN
+Read docs/production/CHAPTER_ONE_MASTER_HANDOFF_v1_0.md and CHAPTER1_BUILD_STATUS.md on branch gpt/chapter1-master-handoff-20260906 in REDCANDLEKILLER1/coded-xrp-hunt-for-clarity.
+
+I approve this complete Chapter One production plan for an isolated preview build. I explicitly authorize adding Three.js and strictly necessary matching TypeScript types, the corresponding package.json/package-lock.json changes, and optimized local GLB/glTF models with declared textures, referenced by a model manifest and actually consumed by the game. No unrelated dependency upgrades or other protected changes are authorized.
+
+First create and verify the local rollback copy exactly as the plan requires. Preserve the current game and v03 masters. Then execute the whole chapter: improved 2D Earth combat, story and characters, actual 3D boarding, and actual mesh-based Warship/space combat through the portal ending. Use the source images and generate missing production assets as needed within the approved scope. Make ordinary reversible decisions yourself and continue through internal checkpoints without asking me to approve each step.
+
+Keep GPT in the loop through PR #121 and durable build-status notes. Work in small scoped branches/commits and supply one combined playable preview. Finish the permitted work, test and inspect it, fix your own failures, and stop for our consolidated audit. No main changes, PR merges, wallet/blockchain, secrets, workflows, Vercel changes, paid APIs or private-reference uploads.
+END
