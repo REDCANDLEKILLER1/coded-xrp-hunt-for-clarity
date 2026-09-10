@@ -192,7 +192,7 @@ check(
 //
 // The old ring took `def.accent`, so it was green only on the default ship.
 const registryBundle = await build({ entryPoints: ['src/game/content/registry.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
-const { SHIPS: shipKeys, BOSSES: bossDefs } = await import(`data:text/javascript;base64,${Buffer.from(registryBundle.outputFiles[0].text).toString('base64')}`);
+const { SHIPS: shipKeys, BOSSES: bossDefs, ENEMIES } = await import(`data:text/javascript;base64,${Buffer.from(registryBundle.outputFiles[0].text).toString('base64')}`);
 check(Object.values(shipKeys).every(s=>isGreen(s.accent)), 'owned fighter indicators share the green friendly faction');
 const actualPlayerDef=game.playerDef;
 let variedAccent=0;
@@ -211,6 +211,70 @@ for (const key of Object.keys(shipKeys)) {
 }
 game.playerDef=actualPlayerDef;
 game.selectedShipKey = Object.keys(shipKeys)[0];
+
+// ---- 4b. a hull carries a hard edge, not just a wash ----------------------
+//
+// The owner, on a real 360x644 phone: "all the spaceships you're fighting are
+// very dim, you can't see them, they look almost invisible."
+//
+// Measured, that was literal. The Earth-descent sprites are blue-grey
+// (regulator_drone 56,91,139) and 76.6% of the band they fly in renders RGB
+// (1,1,2). The rim light was their only contrast pass and it peaks OUTSIDE the
+// ink, so it moved the hull by +0.0016 relative luminance out of 0.0437.
+//
+// A blurred shadow was tried as the fix and rejected by measurement: it lit
+// 3.3x more pixels but took peak contrast only 9.19:1 -> 9.40:1 and LOWERED the
+// share of pixels clearing 3:1, because a blur spreads dim light the same way
+// the gradient already did. The shipped fix stamps an opaque accent silhouette
+// around the hull; measured in Chromium against the real backdrop, pixels
+// clearing 3:1 went 29 -> 301 for regulator_drone and 1 -> 189 for fog_raider.
+//
+// So the rule is: the edge must be OPAQUE and it must be OFFSET on both axes.
+// A single centred stamp is a tint, not an edge.
+{
+  const spriteFor = (drone) => game.enemyDef(drone.enemyKey).sprite;
+  // Seed the loader so sprites "exist": with no image the hull falls through to
+  // its vector fallback and there is no silhouette to stamp.
+  const keys = Object.keys(ENEMIES);
+  check(keys.length > 0, 'no enemies to draw');
+  for (const key of keys) {
+    const def = ENEMIES[key];
+    game.assets.images.set(`${def.sprite.category}:${def.sprite.id}`, { width: def.draw.w, height: def.draw.h });
+  }
+  for (const key of keys) {
+    const def = ENEMIES[key];
+    const drone = { x: 180, y: 300, w: def.hitbox.w, h: def.hitbox.h, vx: 0, vy: 0, hp: 5, enemyKey: key,
+      age: 1, anchorX: 180, phase: 0, direction: 1, fireClock: 9, stance: 'holding', stationX: 180,
+      stationY: 300, stanceClock: 9, patience: 9, dodgeCooldown: 9, atRest: true, escort: false };
+    // Cleared so the silhouette is BUILT inside this recording, not served from
+    // the cache a previous hull filled.
+    game.hullEdges.clear();
+    rec.reset();
+    game.drawDrone(drone);
+    const images = rec.ops.filter((o) => o.op === 'image');
+    check(images.length >= 3, `${key}: hull drew ${images.length} image ops -- no edge pass at all`);
+
+    // The silhouette must be an OPAQUE ACCENT copy of the sprite's alpha.
+    // Without the source-in fill it is just a blurred duplicate of the art,
+    // which is the wash this replaced wearing a different hat.
+    const tint = rec.ops.filter((o) => o.op === 'fillRect' && o.state.globalCompositeOperation === 'source-in');
+    check(tint.length > 0, `${key}: the edge silhouette is never tinted -- source-in fill is missing`);
+    check(tint.some((o) => hex(o.state.fillStyle) === hex(def.accent)),
+      `${key}: the silhouette is tinted ${tint.map((o) => o.state.fillStyle).join(',')} instead of the hull accent ${def.accent}`);
+
+    // Stamps offset from the hull's own draw position, on both axes, opaque.
+    const cx = 180 - def.draw.w / 2;
+    const cy = 300 - def.draw.h / 2;
+    const stamps = images.filter((o) => Math.round(o.x - cx) !== 0 || Math.round(o.y - cy) !== 0);
+    check(stamps.length >= 4, `${key}: only ${stamps.length} offset stamps -- a centred stamp is a tint, not an edge`);
+    check(stamps.some((o) => o.x < cx) && stamps.some((o) => o.x > cx),
+      `${key}: the edge is not offset horizontally`);
+    check(stamps.some((o) => o.y < cy) && stamps.some((o) => o.y > cy),
+      `${key}: the edge is not offset vertically`);
+    check(stamps.every((o) => (o.state.globalAlpha ?? 1) >= 0.99),
+      `${key}: edge stamps are translucent (min alpha ${Math.min(...stamps.map((o) => o.state.globalAlpha ?? 1))}) -- a dim edge is the wash this replaced`);
+  }
+}
 
 // ---- 5. the rim light is a rim, and it is dim ----------------------------
 const glows = rec.ops.filter((o) => o.op === 'fill' && o.state.fillStyle?.__gradient === true);

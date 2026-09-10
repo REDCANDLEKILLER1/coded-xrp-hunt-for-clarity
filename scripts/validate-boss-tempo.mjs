@@ -403,8 +403,86 @@ for (const boss of scripted) {
 // Ground emplacements exercise the shipped motion/collision paths. Cosmetic
 // labels alone cannot pass these distinct-attack and restoration checks.
 {
-  const {groundDefense,tickGround,beamHits,groundBeam}=await load('src/game/content/GroundDefense.ts');
+  const {groundDefense,tickGround,beamHits,groundBeam,groundVisible}=await load('src/game/content/GroundDefense.ts');
   const {EARTH_LEDGER_PRIME_MISSION:mission}=await load('src/game/content/missions/ledgerPrime.ts');
+  // An emplacement must live long enough to USE its telegraph.
+  //
+  // The owner, on a real phone: "the turrets actually have words written on
+  // them, it says charging and laser, and none of them are even shooting, and
+  // it's too easy to kill them." Measured on the shipped build, that was
+  // literally true -- 88 of 91 guns on a full Earth run never fired, 97% were
+  // destroyed at y < 76 with a median death height of 10px, and the whole level
+  // produced 4 rounds. They died DURING the tell, which is exactly why the
+  // label was the last thing on screen.
+  //
+  // The obvious fix is a shorter tell, and it is forbidden by the check below
+  // this one: a 0.6s minimum visible warning. So this asserts the OUTCOME --
+  // a gun spawned by the real campaign path survives to fire -- and leaves the
+  // tell alone.
+  {
+    const roles=['basic_turret','cannon_turret','cannon_tower','laser_tower','missile_silo','plasma_turret'];
+    for(const key of roles){
+      const g=new Game2A(stubCanvas());
+      g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});g.launchClock=0;
+      g.missionDirector.startAtAct(mission,'ledger_city');g.earthEncounterDirector.start('ledger_city');
+      g.hazards=[];g.drones=[];g.hostileShots=[];
+      // A maxed gun pointed straight at it -- the harshest case, and the one
+      // the owner was actually playing. Set BEFORE the spawn, because
+      // emplacement health is snapshotted against the loadout at spawn time;
+      // raising it afterwards measured a level-1 gun being shot by a level-10
+      // player, which is not a state the game can be in.
+      g.xpLevel=10;
+      g.spawnMissionHazard(key,.5);
+      const gun=g.hazards[0];
+      check(!!gun,`${key}: did not spawn`);
+      if(!gun)continue;
+      let attacked=null,alive=0,hurtOffscreen=false;
+      for(let i=0;i<60*16;i++){
+        g.playerHitClock=1;g.player.x=gun.x;g.player.y=g.h-65;
+        const hpBefore=gun.hp,phaseBefore=gun.ground?.phase;
+        g.update(1/60);
+        // The phase machine, not the shot count. A silo's missile is
+        // interceptible and the player parked underneath shoots it down in the
+        // same frame, so `hostileShots.length` never grows and the gun looks
+        // silent when it actually fired -- which is how this check first
+        // reported the silo at 4.08s against a real 2.3s.
+        const fired=phaseBefore==='tell'&&gun.ground?.phase!=='tell';
+        if((fired||gun.ground?.phase==='active')&&attacked===null)attacked=i/60;
+        // A gun that may not aim yet may not be shot yet. Without this the two
+        // windows disagree and the player kills guns by spraying the top edge,
+        // which is how 88 of 91 died having never left 'idle'.
+        if(gun.hp<hpBefore&&!groundVisible(gun,g.h))hurtOffscreen=true;
+        if(!g.hazards.includes(gun))break;
+        alive=i/60;
+      }
+      check(attacked!==null,`${key}: destroyed after ${alive.toFixed(2)}s without ever attacking -- a label with no shot behind it`);
+      check(!hurtOffscreen,`${key}: took damage while still forbidden from aiming -- the damage window and the action window disagree`);
+      // And it must not take half the pass to get there. The flat idle prefix
+      // this replaced spent 0.65s of a short on-screen life doing nothing.
+      if(attacked!==null)check(attacked<=2.5,`${key}: first attack at ${attacked.toFixed(2)}s from spawn -- too slow to matter on a scrolling screen`);
+    }
+    // And the bar must not lie about it. A scaled gun whose bar divides by the
+    // registry base reads FULL for most of its life and then empties in one
+    // volley, which is a new complaint in the same family as the one above.
+    const g=new Game2A(stubCanvas());
+    g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});g.launchClock=0;
+    g.missionDirector.startAtAct(mission,'ledger_city');g.earthEncounterDirector.start('ledger_city');
+    g.hazards=[];g.spawnMissionHazard('basic_turret',.5);
+    const gun=g.hazards[0];
+    check(gun.hpMax===gun.hp,'a spawned emplacement must record the hp it spawned with');
+    check(gun.hpMax>g.hazardDef(gun.hazardKey).hp,
+      `a campaign emplacement spawned at ${gun.hpMax}hp against a registry base of ${g.hazardDef(gun.hazardKey).hp} -- it is not tougher than the arcade build it was measured too fragile in`);
+    // The friendly repair beacon is the exception and must NOT be hardened:
+    // the player flies through it, and its hp is asserted at 1 elsewhere.
+    const beaconGame=new Game2A(stubCanvas());
+    beaconGame.deployFromMap('ledger_prime','EARTH');beaconGame.reset(undefined,{fresh:true});beaconGame.launchClock=0;
+    beaconGame.missionDirector.startAtAct(mission,'ledger_city');beaconGame.earthEncounterDirector.start('ledger_city');
+    beaconGame.hazards=[];beaconGame.spawnMissionHazard('clarity_beacon',.5);
+    const beacon=beaconGame.hazards[0];
+    check(beacon.hp===beaconGame.hazardDef('clarity_beacon').hp,
+      `the friendly repair beacon was hardened to ${beacon.hp}hp -- the hp scale must only reach hostile emplacements`);
+  }
+
   const newGround=()=>{const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});g.launchClock=0;g.missionDirector.startAtAct(mission,'ledger_city');g.earthEncounterDirector.start('ledger_city');g.hazards=[];g.drones=[];g.hostileShots=[];g.player.y=640;return g;};
   for(const height of [390,844])for(const key of ['basic_turret','cannon_tower','laser_tower','missile_silo','plasma_turret']){
     const body={x:190,y:-40,w:36,h:36,hp:100,ground:groundDefense(key,'test')},player={x:190,y:height-120,vx:0,vy:0,w:24,h:30};

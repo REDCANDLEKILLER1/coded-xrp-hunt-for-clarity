@@ -22,7 +22,7 @@ const load=async path=>{const result=await build({entryPoints:[path],bundle:true
 const {Game2A}=await load('src/game/core/Game2A.ts');
 const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {FighterArmoryRuntime}=await load('src/game/ui/FighterArmoryRuntime.ts');
-const {FAMILY_INFO,FIGHTER_FAMILIES,fighterWeapon,RAPID_CAP}=await load('src/game/content/FighterWeapons.ts');
+const {FAMILY_INFO,FIGHTER_FAMILIES,fighterWeapon,fighterMark,RAPID_CAP}=await load('src/game/content/FighterWeapons.ts');
 const {ENEMIES,PROJECTILES}=await load('src/game/content/registry.ts');
 const {EARTH_ENEMIES}=await load('src/game/content/EarthThreats.ts');
 const narrowestEnemy=Math.min(...[...Object.values(ENEMIES),...Object.values(EARTH_ENEMIES)].map(def=>def.hitbox.w));
@@ -168,5 +168,42 @@ for(let baseTier=1;baseTier<=5;baseTier++)for(let rank=1;rank<=13;rank++)for(let
   const newDps=armory.weapon.shots.filter(shot=>Math.abs(shot.offsetX)<=reach).length*armory.weapon.damage/armory.weapon.fireRate;
   assert.ok(newDps>=oldDps-1e-6,`migration regresses rank ${rank}/barrels ${barrels}: ${oldDps.toFixed(1)} -> ${newDps.toFixed(1)} dps on target`);
 }
+// Every rank the player reaches hands over a gun that CHANGED.
+//
+// The owner's device log: LIQUIDITY BEAM II, III and IV at levels 2, 3 and 4,
+// then levels 5, 6, 7, 8, 9 and 10 each reporting LIQUIDITY BEAM IV. The banner
+// compares weapon keys, so it never fired again and the fair reading was "it
+// does not update your weapons". `fighterStage` clamps at 4 and bb unlocks at
+// rank 1, so bb was terminal from rank 4 onward.
+//
+// Marks fix that ABOVE stage 4 only. The second half of this check is the part
+// that matters most: a global rank multiplier was tried first and it flattened
+// every family's authored four-stage curve, collapsing all four plasma stages
+// to one-shot kills against the group above and turning the monotonic TTK check
+// red at every coefficient from 0.05 to 0.30. So the authored stages must stay
+// at mark 0, exactly as shipped.
+{
+  const dpsOf=w=>w.damage*w.shots.length/w.fireRate;
+  for(const family of FIGHTER_FAMILIES){
+    for(let stage=1;stage<=4;stage++){
+      const rank=FAMILY_INFO[family].unlock+stage-1;
+      assert.equal(fighterMark(family,rank),0,`${family} stage ${stage} carries a mark -- the authored curve is being scaled`);
+    }
+  }
+  const seen=new Set();let previous=0;
+  for(let rank=1;rank<=10;rank++){
+    const weapon=fighterWeapon({family:'bb',rank,rapid:0});
+    const dps=dpsOf(weapon);
+    assert.ok(!seen.has(weapon.key),`rank ${rank} re-issues ${weapon.key} -- a level-up that changes nothing`);
+    assert.ok(dps>previous,`rank ${rank} (${weapon.label}) is ${dps.toFixed(1)} dps, not better than ${previous.toFixed(1)}`);
+    seen.add(weapon.key);previous=dps;
+  }
+  assert.equal(seen.size,10,`only ${seen.size} distinct guns across ranks 1-10`);
+  // A mark must be worth something on its own, and must not run away either.
+  const four=dpsOf(fighterWeapon({family:'bb',rank:4,rapid:0}));
+  const ten=dpsOf(fighterWeapon({family:'bb',rank:10,rapid:0}));
+  assert.ok(ten/four>=1.5&&ten/four<=2.5,`six marks move bb ${(ten/four).toFixed(2)}x -- outside the 1.5-2.5x band`);
+}
+
 console.log('fighter-armory: OK — 20 stages, two viewports, centered TTK, actual rapid cadence, damage/speed, bounded impacts, shield/friendly gates, safe selection, migration and separate durable tracks.');
 console.log(JSON.stringify(results));
