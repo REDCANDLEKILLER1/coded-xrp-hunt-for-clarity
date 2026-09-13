@@ -61,6 +61,9 @@ assert.ok(Math.abs(box.getSize(new Vector3()).y-1.9304)<.015,'canonical 6 ft 4 i
 const attachmentPositions=()=>['Hand_R','Hand_L'].map(name=>gltf.scene.getObjectByName(name).getWorldPosition(new Vector3()));
 const base=attachmentPositions();
 assert.ok(base.every(v=>v.length()<2.5),'hand nodes stay with the character');
+const knee=gltf.scene.getObjectByName('lowerleg01L');
+assert.ok(knee,'left knee bone is preserved');
+const restKnee=knee.quaternion.clone();
 const mixer=new AnimationMixer(gltf.scene);
 mixer.clipAction(gltf.animations.find(clip=>clip.name==='Idle')).play();
 for(let i=0;i<12;i++){
@@ -83,6 +86,15 @@ gltf.scene.traverse(object=>{
 });
 assert.ok(palmDistance<.06,'the firing socket touches the actual posed hand surface');
 mixer.stopAllAction();
+for (const name of ['Walk','Run','Dodge','KnockdownRecover']) {
+  const clip=gltf.animations.find(candidate=>candidate.name===name);
+  mixer.time=0;
+  const action=mixer.clipAction(clip).reset().play();
+  mixer.update(clip.duration*.75);
+  const bend=restKnee.clone().invert().multiply(knee.quaternion).normalize();
+  assert.ok(bend.z<-.2,`${name} bends the knee backward anatomically instead of kicking the shin forward`);
+  action.stop();
+}
 const movement={};
 for (const clip of gltf.animations) {
   mixer.stopAllAction();

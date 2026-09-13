@@ -1,12 +1,12 @@
 # Conversation and character motion checkpoint
 
-Follow-up to Mars relief commit24417d0. All three characters now use a relaxed anatomical arm pose and a deliberate interaction gesture. XRPMan's walking/running arm swing uses that stance. Existing firing, damage, dodge and knockdown clips remain unchanged.
+Follow-up to the Mars relief checkpoint. All three characters retain the relaxed anatomical arm pose and interaction gesture. XRP Man v08 also corrects the lower-leg bend in Walk, Run, Dodge and KnockdownRecover; the knees now flex behind the body instead of kicking forward. Geometry, skin, maps, sockets and the other animation clips remain unchanged.
 
 The motion builder opens an existing private master and saves a new version. `refine-character-motion.py` targets the actual shoulder/elbow/wrist chains; `splice-glb-animations.py` transfers only the selected clips and removes unused animation buffers. An independent semantic comparison verified unchanged node/socket transforms, every geometry/skin buffer, every embedded image and every retained combat clip before the runtime files were replaced. Evidence: parent definitive-authorization/motion-preservation-report.json.
 
 | Runtime | Bytes | Triangles | Private master |
 |---|---:|---:|---|
-| XRPMan | 3,062,212 | 46,725 | xrpman_master_v06.blend |
+| XRPMan | 3,066,484 | 46,725 | xrpman_master_v08.blend |
 | Corn | 4,724,576 | 43,681 | corn_master_v03.blend; runtime v04 |
 | Mr Zamn | 3,237,384 | 43,654 | mr_zamn_master_v04.blend |
 | Mars relief | 2,219,192 | 31,264 | worlds/mars/relief_v03 |

@@ -408,7 +408,8 @@
       "type": "image",
       "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_security_checkpoint": {
@@ -416,7 +417,8 @@
       "type": "image",
       "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_access_corridor": {
@@ -424,7 +426,8 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_maintenance_shaft": {
@@ -432,7 +435,8 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_field_control": {
@@ -440,7 +444,8 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_defense_deck": {
@@ -448,8 +453,25 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
+    },
+    "regulatory_core_chamber": {
+      "src": "/assets/interior/regulatory_core_chamber.webp",
+      "type": "image",
+      "bytes": 102932,
+      "sha256": "4c703922e1f6bc49598711eea0b3c99f75936edef4bfac68cb21a43e8aac5d4d",
+      "notes": "Generated 1024x576 Ledger Defense Core chamber display; original generation retained in Codex generated-images storage.",
+      "scenes": ["boarding"]
+    },
+    "regulatory_captured_bridge": {
+      "src": "/assets/interior/regulatory_captured_bridge.webp",
+      "type": "image",
+      "bytes": 126754,
+      "sha256": "06f9c0f613a143189067d4a42caa87e6bd3d5463aa9837ec38ce7b8ad391214c",
+      "notes": "Generated 1024x576 captured-warship bridge display; original generation retained in Codex generated-images storage.",
+      "scenes": ["boarding"]
     }
   },
   "hazards": {
@@ -755,8 +777,8 @@
         "mars_surface",
         "bullion"
       ],
-      "bytes": 3062212,
-      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f"
+      "bytes": 3066484,
+      "sha256": "daf20943dcf656630e82aec32ea26fb6f71122b9ead4d2aef9a775703e4fc030"
     },
     "mr_zamn": {
       "src": "/assets/models/mr_zamn.glb",
@@ -829,9 +851,9 @@
         "boarding",
         "hub"
       ],
-      "bytes": 4046020,
-      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
-      "notes": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer."
+      "bytes": 3144760,
+      "sha256": "8cd0c65ec7d768776cf8a196938dc26b6426458815ebfb443db121f6629e8b42",
+      "notes": "Blender-authored widened eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer."
     },
     "space_regulator_drone": {
       "src": "/assets/models/space_regulator_drone.glb",

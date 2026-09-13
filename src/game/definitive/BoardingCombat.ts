@@ -12,3 +12,20 @@ export function selectBoardingTarget<T extends BoardingTarget>(targets: readonly
 export function coreExposure(relaysAlive: boolean, clock: number): boolean {
   return !relaysAlive && clock % 10 > 6;
 }
+export interface CompanionPlan { warp: boolean; advance: boolean; fire: boolean }
+/** Keeps a recruited ally close without letting it shoot through authored cover. */
+export function companionPlan(heroDistance:number,targetDistance:number,coverBlocked:boolean):CompanionPlan {
+  return {warp:heroDistance>12,advance:heroDistance>2.25,fire:targetDistance<=15&&!coverBlocked};
+}
+export type BoardingInteraction = 'terminal' | 'crew' | 'none';
+/** Room terminals win when the companion is standing beside the player. */
+export function boardingInteraction(terminalDistance:number,crewDistance:number,crewVisible:boolean):BoardingInteraction {
+  if(terminalDistance<=2.5)return 'terminal';
+  if(crewVisible&&crewDistance<2.6)return 'crew';
+  return 'none';
+}
+
+/** The bridge exit field is a hard traversal gate until Ledger Shield is active. */
+export function canCrossExitField(fromZ:number,toZ:number,fieldZ:number,shieldOn:boolean):boolean {
+  return shieldOn||fromZ>fieldZ||toZ<=fieldZ;
+}

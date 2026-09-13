@@ -16,7 +16,7 @@ globalThis.self=globalThis;globalThis.createImageBitmap=async()=>({width:1024,he
 const gltf=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length),'');gltf.scene.updateMatrixWorld(true);
 const geometry=[];let triangles=0;
 gltf.scene.traverse(o=>{if(o.isMesh){geometry.push(o);o.material.side=DoubleSide;triangles+=o.geometry.index.count/3;if(o.material.map)assert.equal(o.material.map.colorSpace,SRGBColorSpace);}});
-assert.ok(triangles<60_000&&geometry.length<=32);
+assert.ok(triangles<60_000&&geometry.length<=layout.rooms.length*4,'four batched architecture materials per room');
 const ray=new Raycaster();let samples=0;
 for(const room of layout.rooms){
   const group=gltf.scene.getObjectByName(`Deck_${room.id}`);assert.ok(group);
@@ -34,4 +34,4 @@ for(const door of layout.doors){
   ray.set(new Vector3(door.x,.6,door.z).addScaledVector(axis,-2),axis);ray.far=4;
   assert.equal(ray.intersectObjects(geometry,false).length,0,'authored wall geometry leaves the navigation door open');
 }
-console.log(`boarding-architecture: OK — ${triangles} triangles / ${geometry.length} surfaces, ${samples} floor samples, seven open doorways, ${boardingBytes} model bytes and reserved renderer within 12 MiB.`);
+console.log(`boarding-architecture: OK — ${triangles} triangles / ${geometry.length} surfaces, ${samples} floor samples, ${layout.doors.length} open doorways, ${boardingBytes} model bytes and reserved renderer within 12 MiB.`);

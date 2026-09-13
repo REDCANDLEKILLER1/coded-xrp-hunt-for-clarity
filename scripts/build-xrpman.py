@@ -441,7 +441,7 @@ def make_action(name,duration,kind):
             for s,sign in [('.L',1),('.R',-1)]:
                 stride=math.sin(phase)*sign
                 rotate('upperleg01'+s,(1,0,0),stride*amplitude)
-                rotate('lowerleg01'+s,(1,0,0),-max(0,-stride)*amplitude*1.5)
+                rotate('lowerleg01'+s,(1,0,0),max(0,-stride)*amplitude*1.5)
                 rotate('foot'+s,(1,0,0),max(0,-stride)*amplitude*.3)
                 base=world_pose('upperarm01'+s,(0,1,0),sign*.27)
                 rig.pose.bones['upperarm01'+s].rotation_quaternion=base @ world_pose('upperarm01'+s,(1,0,0),-stride*amplitude*.65)
@@ -461,11 +461,11 @@ def make_action(name,duration,kind):
         elif kind=='Dodge':
             e=math.sin(math.pi*t); rotate('spine03',(1,0,0),.52*e)
             for s in ['.L','.R']:
-                rotate('upperleg01'+s,(1,0,0),.6*e); rotate('lowerleg01'+s,(1,0,0),-1.1*e)
+                rotate('upperleg01'+s,(1,0,0),.6*e); rotate('lowerleg01'+s,(1,0,0),1.1*e)
         elif kind=='KnockdownRecover':
             e=math.sin(math.pi*t)**.8; rotate('spine03',(1,0,0),.85*e); rotate('head',(1,0,0),-.2*e)
             for s in ['.L','.R']:
-                rotate('upperleg01'+s,(1,0,0),1.15*e); rotate('lowerleg01'+s,(1,0,0),-1.5*e)
+                rotate('upperleg01'+s,(1,0,0),1.15*e); rotate('lowerleg01'+s,(1,0,0),1.5*e)
         for bone_name in animated:
             pb=rig.pose.bones[bone_name]; pb.keyframe_insert('rotation_quaternion',frame=f,group=bone_name)
             if bone_name=='root': pb.keyframe_insert('location',frame=f,group=bone_name)

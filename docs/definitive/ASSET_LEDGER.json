@@ -4,8 +4,8 @@
     {
       "id": "models:xrpman",
       "path": "public/assets/models/xrpman.glb",
-      "bytes": 3062212,
-      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f",
+      "bytes": 3066484,
+      "sha256": "daf20943dcf656630e82aec32ea26fb6f71122b9ead4d2aef9a775703e4fc030",
       "triangles": 46725,
       "materialGroups": 10,
       "bones": 163,
@@ -71,13 +71,13 @@
     {
       "id": "models:boarding_deck",
       "path": "public/assets/models/boarding_deck.glb",
-      "bytes": 4046020,
-      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
-      "triangles": 48924,
+      "bytes": 3144760,
+      "sha256": "8cd0c65ec7d768776cf8a196938dc26b6426458815ebfb443db121f6629e8b42",
+      "triangles": 37088,
       "materialGroups": 32,
       "nodes": 8,
       "consumer": "boarding, hub",
-      "source": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer.",
+      "source": "Blender-authored widened eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer.",
       "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
     },
     {

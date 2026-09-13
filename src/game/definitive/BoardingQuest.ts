@@ -14,7 +14,7 @@ export const BOARDING_OBJECTIVES: Record<BoardingStep, string> = {
   security_relay: 'Clear the security detail and disable its door relay.',
   rescue_junction: 'Open the crew route and meet Mr Zamn.',
   engineering_power: 'Clear engineering and restore power to the hangar.',
-  command_access: 'Use the command terminal to open the Core chamber.',
+  command_access: 'Clear command access and open the Core chamber.',
   core_defeated: 'Break the two relays, then defeat the Ledger Defense Core.',
   bridge_secured: 'Use Ledger Shield through the exit field. Secure the bridge.',
   departure_ready: 'Check the ship terminal and prepare the captured Warship.',
@@ -62,7 +62,7 @@ export class BoardingQuest {
   }
 
   clear(room: BoardingRoom): SaveResult {
-    if (!['security', 'engineering', 'core'].includes(room) || this.lockReason(room)) return { ok: false, reason: 'condition' };
+    if (room === 'core' || this.lockReason(room)) return { ok: false, reason: 'condition' };
     return this.save.update(draft => { add(draft.clearedRooms, roomFlag(room)); });
   }
 
@@ -70,9 +70,13 @@ export class BoardingQuest {
     return this.save.claim(`reward.boarding.${step}`, draft => {
       const index = BOARDING_STEPS.indexOf(step);
       if (index > 0 && !draft.quests.includes(questFlag(BOARDING_STEPS[index - 1]))) return false;
+      if (step === 'hangar_safe' && !draft.clearedRooms.includes('boarding.hangar')) return false;
       if (step === 'security_relay' && !draft.clearedRooms.includes('boarding.security')) return false;
+      if (step === 'rescue_junction' && !draft.clearedRooms.includes('boarding.rescue')) return false;
       if (step === 'engineering_power' && !draft.clearedRooms.includes('boarding.engineering')) return false;
+      if (step === 'command_access' && !draft.clearedRooms.includes('boarding.command')) return false;
       if (step === 'core_defeated' && !draft.clearedRooms.includes('boarding.core')) return false;
+      if (step === 'bridge_secured' && !draft.clearedRooms.includes('boarding.bridge')) return false;
       add(draft.quests, questFlag(step));
       if (dialogueId) add(draft.dialogueSeen, dialogueId);
       if (step === 'rescue_junction') add(draft.quests, 'crew.zamn_introduced');
@@ -93,7 +97,7 @@ export class BoardingQuest {
 
   cache(): SaveResult {
     return this.save.claim('reward.boarding.shield_cache', draft => {
-      if (!draft.heroUpgrades.ledger_shield || !draft.quests.includes('boarding.rescue_junction')) return false;
+      if (!draft.heroUpgrades.ledger_shield || !draft.quests.includes('boarding.rescue_junction') || !draft.clearedRooms.includes('boarding.cache')) return false;
       draft.credits += 100;
       add(draft.clearedRooms, 'boarding.cache');
     });
