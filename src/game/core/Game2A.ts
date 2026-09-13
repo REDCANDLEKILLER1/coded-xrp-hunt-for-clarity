@@ -227,6 +227,16 @@ const WAVE_CLEAR_BONUS = 150;        // for destroying every enemy on screen
 // with the wave to keep pressure rising without becoming unreadable on a phone.
 const ARENA_MAX_ENEMIES_BASE = 5;
 const ARENA_MAX_ENEMIES_CAP = 10;
+/**
+ * The campaign screen's ceiling, in the same slots the arena uses.
+ *
+ * 12 against a shipped peak of 5. Sized for a 360x644 phone: a light costs 1,
+ * a medium 2, a heavy 4, so the worst readable case is three heavies, and the
+ * common case is six to nine small contacts -- busy, still countable.
+ */
+const CAMPAIGN_SLOT_CAP = 12;
+/** An emplacement holds ground rather than manoeuvres, so it costs one. */
+const CAMPAIGN_HAZARD_SLOTS = 1;
 /** How soon to re-check when nothing that fits can be spawned. */
 const ARENA_FULL_RETRY = 0.35;
 /**
@@ -1288,7 +1298,7 @@ export class Game2A {
     const beaconLesson=this.earthEncounterDirector.currentGroupLabel?.startsWith('CLARITY BEACON');
     const activeThreats = this.drones.length + this.hazards.filter(h=>!friendlyGround(h)||(beaconLesson&&h.y<this.h*.6)).length;
     if(activeThreats===0&&this.groundRestorationPending&&this.flightStory&&!this.flightStory.districtRestored){this.hostileShots=[];return;}
-    const state = this.earthEncounterDirector.update(dt, activeThreats);
+    const state = this.earthEncounterDirector.update(dt, activeThreats, (spawns) => this.campaignRoomFor(spawns));
     for (const spawn of state.spawns) {
       if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
       else this.spawnMissionHazard(spawn.hazardKey, spawn.x, spawn.side);
@@ -1297,6 +1307,33 @@ export class Game2A {
     this.moveHazards(dt);
 
     if (state.completed && this.drones.length === 0 && this.hazards.every(friendlyGround)) this.completeMissionFlightAct();
+  }
+
+  /**
+   * Whether the campaign screen has room for a whole authored group.
+   *
+   * The arena spawner has had a slot system for a while -- light 1, medium 2,
+   * heavy 4 -- and the campaign path never used it: measured over a complete
+   * Earth run, `arenaEnemyCap`, `arenaLoad` and `updateDrones` were called
+   * ZERO times. The cap curve was inert here, which is why raising it did
+   * nothing for the empty-sky problem.
+   *
+   * Costed in the same slots so a mixed screen is weighed the way the arena
+   * weighs it, and a whole group must fit before any of it is released -- the
+   * same all-or-nothing rule that stops a heavy's wing from clearing the arena
+   * cap by five slots.
+   */
+  private campaignRoomFor(spawns: readonly { kind: string; enemyKey?: string }[]): boolean {
+    const cost = spawns.reduce((total, spawn) => total
+      + (spawn.kind === 'enemy' ? HULL_COMBAT[this.enemyDef(spawn.enemyKey ?? '').hull].slots : CAMPAIGN_HAZARD_SLOTS), 0);
+    return cost <= CAMPAIGN_SLOT_CAP - this.campaignLoad();
+  }
+
+  /** Slots the campaign screen is currently carrying. */
+  private campaignLoad(): number {
+    const air = this.drones.reduce((load, drone) => load + HULL_COMBAT[this.enemyDef(drone.enemyKey).hull].slots, 0);
+    const ground = this.hazards.filter((hazard) => !friendlyGround(hazard)).length * CAMPAIGN_HAZARD_SLOTS;
+    return air + ground;
   }
 
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {

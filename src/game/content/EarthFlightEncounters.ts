@@ -8,6 +8,24 @@ export interface EncounterGroupDef {
   spawns: EncounterSpawnDef[];
 }
 
+/**
+ * How much of a group may still be alive when the next one is released.
+ * 0 restores the shipped serial gate; 1 would release the next group the frame
+ * the current one lands.
+ */
+const OVERLAP_SHARE = 0.5;
+/**
+ * Seconds a group must have been on screen before the next may join it.
+ *
+ * Density and PACE are separate problems and this is what keeps them separate.
+ * Gating purely on room filled the screen beautifully -- peak 12, zero empty
+ * sky in Ledger City -- and cut the acts that complete almost in half, because
+ * a group costs wall-clock only while it is the thing being waited for. The
+ * owner's complaint was that the level is too SHORT, so buying density with
+ * pace is trading one report for the other.
+ */
+const GROUP_MIN_DWELL = 3;
+
 export interface EarthFlightEncounterDef {
   actKey: string;
   stageKey: string;
@@ -285,6 +303,10 @@ export class EarthFlightEncounterDirector {
   private wait = 0;
   private groupSpawned = false;
   private done = false;
+  /** How many of the live group may remain when the next is let in. */
+  private overlapFloor = 0;
+  /** Seconds since the live group was released. */
+  private dwell = 0;
 
   start(actKey: string): void {
     this.encounter = earthFlightEncounterFor(actKey) ?? null;
@@ -292,6 +314,8 @@ export class EarthFlightEncounterDirector {
     this.wait = this.encounter?.groups[0]?.restBefore ?? 0;
     this.groupSpawned = false;
     this.done = false;
+    this.overlapFloor = 0;
+    this.dwell = 0;
   }
 
   clear(): void {
@@ -300,19 +324,58 @@ export class EarthFlightEncounterDirector {
     this.wait = 0;
     this.groupSpawned = false;
     this.done = false;
+    this.overlapFloor = 0;
+    this.dwell = 0;
   }
 
-  update(dt: number, activeThreatCount: number): { spawns: EncounterSpawnDef[]; completed: boolean } {
+  /**
+   * Sequencing, with BOUNDED OVERLAP.
+   *
+   * The gate used to be `activeThreatCount <= 0`: the next group was withheld
+   * until every threat on screen was dead. That made peak concurrency equal to
+   * the largest single authored group -- measured, exactly 5 -- no matter what
+   * the arena cap said, and it is why the owner's report was "it needs a lot
+   * more enemies, they need to be swarming".
+   *
+   * It was worse than a low ceiling. 28 of the 102 authored groups contain no
+   * air enemies at all, and they are clustered -- `ledger_city` groups 2-6 and
+   * `defense_grid` groups 1-5 are each five consecutive all-hazard groups, and
+   * a ground emplacement holds the gate for its entire scroll. Those two acts
+   * measured 92-93% empty sky.
+   *
+   * A group now releases once the one before it is SPENT rather than gone, and
+   * only when the engine says there is room for the whole of it. `hasRoomFor`
+   * is a callback because slot cost is the engine's knowledge, not the
+   * director's -- the same rule the arena spawner uses, so a screen still
+   * cannot fill with heavies.
+   *
+   * Two things deliberately did not change. An oversized group still waits for
+   * an empty screen, so a group larger than the cap can never deadlock the act.
+   * And `completed` is unchanged: the caller still requires an empty screen
+   * before it ends the act, so overlap changes when pressure ARRIVES, never
+   * when the act is over.
+   */
+  update(
+    dt: number,
+    activeThreatCount: number,
+    hasRoomFor: (spawns: EncounterSpawnDef[]) => boolean = () => true,
+  ): { spawns: EncounterSpawnDef[]; completed: boolean } {
     if (!this.encounter || this.done) return { spawns: [], completed: this.done };
 
-    if (this.groupSpawned && activeThreatCount <= 0) {
-      this.groupIndex += 1;
-      this.groupSpawned = false;
-      if (this.groupIndex >= this.encounter.groups.length) {
-        this.done = true;
-        return { spawns: [], completed: true };
+    this.dwell += Math.max(0, dt);
+    if (this.groupSpawned && (activeThreatCount <= this.overlapFloor || this.dwell >= GROUP_MIN_DWELL)) {
+      const next = this.encounter.groups[this.groupIndex + 1];
+      // An empty screen always advances -- that is the old behaviour, kept as
+      // the floor so nothing can stall.
+      if (!next || activeThreatCount <= 0 || hasRoomFor(next.spawns)) {
+        this.groupIndex += 1;
+        this.groupSpawned = false;
+        if (this.groupIndex >= this.encounter.groups.length) {
+          this.done = true;
+          return { spawns: [], completed: true };
+        }
+        this.wait = this.encounter.groups[this.groupIndex].restBefore;
       }
-      this.wait = this.encounter.groups[this.groupIndex].restBefore;
     }
 
     if (this.groupSpawned) return { spawns: [], completed: false };
@@ -320,7 +383,14 @@ export class EarthFlightEncounterDirector {
     if (this.wait > 0) return { spawns: [], completed: false };
 
     this.groupSpawned = true;
-    return { spawns: this.encounter.groups[this.groupIndex].spawns, completed: false };
+    const group = this.encounter.groups[this.groupIndex];
+    // How much of this group may still be alive when the next one is allowed
+    // in. A share rather than a constant, so a one-ship group still has to be
+    // dealt with and a six-ship group does not have to be cleared to the last
+    // straggler before the sky refills.
+    this.overlapFloor = Math.floor(group.spawns.length * OVERLAP_SHARE);
+    this.dwell = 0;
+    return { spawns: group.spawns, completed: false };
   }
 
   get active(): boolean { return this.encounter !== null; }
