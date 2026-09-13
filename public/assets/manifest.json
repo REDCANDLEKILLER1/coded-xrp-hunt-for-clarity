@@ -463,15 +463,29 @@
       "bytes": 102932,
       "sha256": "4c703922e1f6bc49598711eea0b3c99f75936edef4bfac68cb21a43e8aac5d4d",
       "notes": "Generated 1024x576 Ledger Defense Core chamber display; original generation retained in Codex generated-images storage.",
-      "scenes": ["boarding"]
+      "scenes": [
+        "boarding"
+      ]
     },
-    "regulatory_captured_bridge": {
-      "src": "/assets/interior/regulatory_captured_bridge.webp",
+    "regulatory_security_atrium": {
+      "src": "/assets/interior/regulatory_security_atrium.webp",
       "type": "image",
-      "bytes": 126754,
-      "sha256": "06f9c0f613a143189067d4a42caa87e6bd3d5463aa9837ec38ce7b8ad391214c",
-      "notes": "Generated 1024x576 captured-warship bridge display; original generation retained in Codex generated-images storage.",
-      "scenes": ["boarding"]
+      "bytes": 99172,
+      "sha256": "05aaf04a0277eb0a8176af6d8aaa31246ad87ce63446340f53a2a6831ca0ff3a",
+      "notes": "Vast hostile multi-level security atrium, red emergency lighting, consoles and catwalks. Original generation retained in Codex generated-images storage.",
+      "scenes": [
+        "boarding"
+      ]
+    },
+    "regulatory_bridge_arena": {
+      "src": "/assets/interior/regulatory_bridge_arena.webp",
+      "type": "image",
+      "bytes": 113478,
+      "sha256": "558316100fc267824859aee228ad3b08c131b9ed067b44dc7f870c69e47c0b18",
+      "notes": "Large hostile bridge boss arena, command dais, cover and fleet viewport. Original generation retained in Codex generated-images storage.",
+      "scenes": [
+        "boarding"
+      ]
     }
   },
   "hazards": {
@@ -782,15 +796,15 @@
     },
     "mr_zamn": {
       "src": "/assets/models/mr_zamn.glb",
-      "notes": "Original blue heavy armor, shield, fitted beard and three clips on pinned CC0 anatomy. Private master remains outside repository.",
-      "bytes": 3237384,
+      "notes": "Original blue heavy armor, shield and five clips on pinned CC0 anatomy. Walk and Run now drive the shared leg chain; private Blender masters remain outside the repository.",
+      "bytes": 3253384,
       "type": "model",
       "scenes": [
         "boarding",
         "hub",
         "crew_review"
       ],
-      "sha256": "b0815bd995e74ac813b93d461899a50119610aaf4518d867d5961f52823c499c"
+      "sha256": "2aa650bd50d95bae6b3d9449ca0ea8febb1a504bfdb7545c62ff4f045664bdd0"
     },
     "fighter_player": {
       "src": "/assets/models/fighter_player.glb",
@@ -853,7 +867,7 @@
       ],
       "bytes": 3144760,
       "sha256": "8cd0c65ec7d768776cf8a196938dc26b6426458815ebfb443db121f6629e8b42",
-      "notes": "Blender-authored widened eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer."
+      "notes": "Blender-authored eight-sector cutaway architecture from shared metre layout, embedded plate materials and BoardingScene consumer."
     },
     "space_regulator_drone": {
       "src": "/assets/models/space_regulator_drone.glb",

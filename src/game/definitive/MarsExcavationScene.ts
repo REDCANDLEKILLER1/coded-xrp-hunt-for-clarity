@@ -13,6 +13,7 @@ import {segmentSphere} from './SpaceGeometry';
 import {frameWarden} from './WardenFrame';
 import {SurfaceOcclusion} from './SurfaceOcclusion';
 import {sfx} from '../audio/Sfx';
+import {campaignHeroDamage} from './BoardingCombat';
 import './surface.css';
 interface Host{renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];onRelief:(at:GroundPosition)=>void;onRetry:()=>void}
 interface Patrol{mesh:Group;hp:number;clock:number;charge:number;target:Vector3;tell:Mesh}
@@ -121,7 +122,7 @@ export class MarsExcavationScene implements ManagedScene{
       else if(!b.hostile){
         const g=this.guards.find(g=>g.hp>0&&surfaceSegmentHit(before,b.mesh.position,g.mesh.position,.7));
         if(g){g.hp=Math.max(0,g.hp-12);b.life=0;this.hits++;sfx.play('hit',.3);if(g.hp===0){g.mesh.visible=false;g.tell.visible=false;sfx.play('explode',.4);}}
-        else for(const id of this.battle.targets())if(segmentSphere(before,b.mesh.position,this.targetPosition(id),id==='core'?1.35:1.1)){if(this.battle.damage(id,12)){this.hits++;sfx.play('hit',.3);}b.life=0;break;}
+        else for(const id of this.battle.targets())if(segmentSphere(before,b.mesh.position,this.targetPosition(id),id==='core'?1.35:1.1)){if(this.battle.damage(id,campaignHeroDamage(12,this.host.save.snapshot.heroUpgrades.boarding_weapon))){this.hits++;sfx.play('hit',.3);}b.life=0;break;}
       }
       if(b.life<=0){this.scene.remove(b.mesh);this.shots.splice(i,1);}
     }

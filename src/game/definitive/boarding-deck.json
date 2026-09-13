@@ -8,7 +8,7 @@
     { "id":"cache", "title":"05 · SHIELD CACHE", "x":18, "z":0, "width":14, "depth":12, "terminal":[23,0], "enemies":[[15,-5],[19,-5],[15,5],[19,5]] },
     { "id":"command", "title":"06 · COMMAND ACCESS", "x":0, "z":14, "width":18, "depth":10, "terminal":[-5,16], "enemies":[[-6,11],[0,11],[6,11],[4,16]] },
     { "id":"core", "title":"07 · LEDGER DEFENSE CORE", "x":0, "z":27, "width":16, "depth":16, "terminal":[0,32.8], "enemies":[[-6,22],[6,22],[0,24]] },
-    { "id":"bridge", "title":"08 · CAPTURED BRIDGE", "x":0, "z":40, "width":10, "depth":10, "terminal":[0,42], "enemies":[[-4,37],[4,37],[-4,40],[4,40]] }
+    { "id":"bridge", "title":"08 · WARSHIP BRIDGE", "x":0, "z":40, "width":10, "depth":10, "terminal":[0,42], "enemies":[[-4,37],[4,37],[-4,40],[4,40]] }
   ],
   "doors": [
     { "a":"hangar", "b":"security", "x":0, "z":-19, "axis":"z", "width":3.6 },

@@ -11,7 +11,7 @@ const mutant=mutation?{name:'mars-contract-control',setup(build){build.onLoad({f
  if(mutation==='approach'&&args.path.endsWith('MarsRelief.ts'))contents=contents.replace('<=480;','<=50000;');
  if(mutation==='defenders'&&args.path.endsWith('MarsRelief.ts'))contents=contents.replace('remainingGuards!==0','false');
  if(mutation==='held-key'&&args.path.endsWith('SurfaceInput.ts'))contents=contents.replace('this.keys.clear();','');
- if(mutation==='damage'&&args.path.endsWith('MarsSurfaceScene.ts'))contents=contents.replace('hit.hp-=SURFACE_COMBAT.heroDamage','hit.hp-=SURFACE_COMBAT.heroDamage/2');
+ if(mutation==='damage'&&args.path.endsWith('MarsSurfaceScene.ts'))contents=contents.replace('campaignHeroDamage(SURFACE_COMBAT.heroDamage,','campaignHeroDamage(SURFACE_COMBAT.heroDamage/2,');
  return{contents,loader:'ts'};
 });}}:null;
 

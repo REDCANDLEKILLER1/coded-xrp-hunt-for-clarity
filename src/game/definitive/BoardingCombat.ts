@@ -1,4 +1,4 @@
-export interface BoardingTarget { kind: 'guard' | 'relay' | 'core'; hp: number; x: number; z: number }
+export interface BoardingTarget { kind: BoardingEnemyKind; hp: number; x: number; z: number }
 
 /** A nearer protected Core must not steal assisted aim from its remaining relay. */
 export function selectBoardingTarget<T extends BoardingTarget>(targets: readonly T[], x: number, z: number): T | undefined {
@@ -28,4 +28,37 @@ export function boardingInteraction(terminalDistance:number,crewDistance:number,
 /** The bridge exit field is a hard traversal gate until Ledger Shield is active. */
 export function canCrossExitField(fromZ:number,toZ:number,fieldZ:number,shieldOn:boolean):boolean {
   return shieldOn||fromZ>fieldZ||toZ<=fieldZ;
+}
+
+export interface BoardingWeapon {
+  level:number;
+  label:string;
+  damage:number;
+  cooldown:number;
+  shots:number;
+  spread:number;
+}
+export const BOARDING_WEAPONS:readonly BoardingWeapon[]=[
+  {level:1,label:'ION SIDEARM',damage:14,cooldown:.23,shots:1,spread:0},
+  {level:2,label:'PULSE REPEATER',damage:12,cooldown:.13,shots:1,spread:0},
+  {level:3,label:'ARC SCATTERGUN',damage:10,cooldown:.34,shots:3,spread:.19},
+  {level:4,label:'LEDGER CANNON',damage:22,cooldown:.22,shots:2,spread:.075},
+];
+export function boardingWeapon(level:number|undefined):BoardingWeapon {
+  return BOARDING_WEAPONS[Math.max(0,Math.min(BOARDING_WEAPONS.length-1,Math.floor(level??1)-1))];
+}
+export type BoardingEnemyKind='guard'|'relay'|'core'|'warden'|'captain';
+export function boardingEnemyHealth(kind:BoardingEnemyKind):number {
+  return kind==='captain'?520:kind==='core'?650:kind==='warden'?210:kind==='relay'?65:42;
+}
+export function boardingEnemyVolley(kind:BoardingEnemyKind,tactic:number):readonly number[] {
+  if(kind==='captain')return [-.48,-.24,0,.24,.48];
+  if(kind==='core')return [-.28,0,.28];
+  if(kind==='warden')return tactic%2?[-.2,0,.2]:[-.1,.1];
+  return [0];
+}
+/** Boarding weapon mastery remains useful on every later on-foot world. */
+export function campaignHeroDamage(base:number,boardingLevel:number|undefined):number {
+  const multiplier=[1,1.15,1.35,1.65][boardingWeapon(boardingLevel).level-1];
+  return base*multiplier;
 }

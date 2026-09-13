@@ -33,6 +33,16 @@ for i,old in enumerate(doc['animations']):
     for sampler in clip['samplers']:
         for key in ['input','output']:sampler[key]=accessor(sampler[key])
     doc['animations'][i]=clip;updated.append(clip['name'])
+existing={clip['name'] for clip in doc['animations']}
+for name in sorted(selected-existing):
+    clip=copy.deepcopy(next(c for c in source['animations'] if c['name']==name))
+    for channel in clip['channels']:
+        node_name=source['nodes'][channel['target']['node']]['name']
+        if node_name not in nodes:raise RuntimeError('Animation target missing from runtime: '+node_name)
+        channel['target']['node']=nodes[node_name]
+    for sampler in clip['samplers']:
+        for key in ['input','output']:sampler[key]=accessor(sampler[key])
+    doc['animations'].append(clip);updated.append(name)
 used=set()
 for mesh in doc['meshes']:
     for primitive in mesh['primitives']:

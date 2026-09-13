@@ -16,6 +16,7 @@ import {SpectralReveal} from './SpectralReveal';
 import {fieldRepair,slideSurface} from './SurfaceCombat';
 import {fighterFootprint,withinFootprint,type GroundPoint} from './FighterFootprint';
 import {PARKED_HEIGHT} from './LandingPlan';
+import {campaignHeroDamage} from './BoardingCombat';
 import {frameConversation} from './ConversationFrame';
 import {frameWarden} from './WardenFrame';
 import {sfx} from '../audio/Sfx';
@@ -147,8 +148,8 @@ export class BullionReachScene implements ManagedScene{
     for(let i=this.shots.length-1;i>=0;i--){const b=this.shots[i],before=b.mesh.position.clone();b.life-=dt;b.mesh.position.addScaledVector(b.velocity,dt);const end=b.mesh.position,cover=this.coverHit(before,end)??Infinity;
       if(b.hostile){const hero=freightSphereHit(before,end,this.hero.position.clone().add(new Vector3(0,1,0)),.5)??Infinity,cargo=this.convoy.firstHit(before,end);const t=Math.min(cover,hero,cargo?.t??Infinity);if(t<Infinity){if(hero===t)this.hurt(8);else if(cargo&&cargo.t===t)this.convoy.hit(before,end,8);b.life=0;}}
       else{const contacts=this.guards.filter(g=>g.hp>0&&g.mesh.visible).map(g=>({g,t:freightSphereHit(before,end,g.mesh.position,.72)})).filter((v):v is {g:Guard;t:number}=>v.t!==null).sort((a,b)=>a.t-b.t);const guard=contacts[0];const weak=this.bossStarted&&this.battle.hp>0?freightSphereHit(before,end,this.rear(),MARKET_SIEGE.rearRadius):null;
-        if(guard&&guard.t<=cover&&(weak===null||guard.t<=weak)){guard.g.hp=Math.max(0,guard.g.hp-12);this.hits++;b.life=0;if(!guard.g.hp){guard.g.mesh.visible=false;guard.g.tell.visible=false;this.refresh();sfx.play('explode',.25);}}
-        else if(weak!==null&&weak<=cover){if(this.battle.hitRear(b.origin,end,12))this.hits++;b.life=0;}
+        if(guard&&guard.t<=cover&&(weak===null||guard.t<=weak)){guard.g.hp=Math.max(0,guard.g.hp-campaignHeroDamage(12,this.host.save.snapshot.heroUpgrades.boarding_weapon));this.hits++;b.life=0;if(!guard.g.hp){guard.g.mesh.visible=false;guard.g.tell.visible=false;this.refresh();sfx.play('explode',.25);}}
+        else if(weak!==null&&weak<=cover){if(this.battle.hitRear(b.origin,end,campaignHeroDamage(12,this.host.save.snapshot.heroUpgrades.boarding_weapon)))this.hits++;b.life=0;}
         else if(cover<Infinity||freightBoxHit(before,end,this.battle.pose,3.5,.2,3.6,5.2)!==null)b.life=0;
       }
       if(b.life<=0){this.scene.remove(b.mesh);this.shots.splice(i,1);}

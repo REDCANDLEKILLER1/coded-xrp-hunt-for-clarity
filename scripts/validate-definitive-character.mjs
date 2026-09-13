@@ -92,7 +92,7 @@ for (const name of ['Walk','Run','Dodge','KnockdownRecover']) {
   const action=mixer.clipAction(clip).reset().play();
   mixer.update(clip.duration*.75);
   const bend=restKnee.clone().invert().multiply(knee.quaternion).normalize();
-  assert.ok(bend.z<-.2,`${name} bends the knee backward anatomically instead of kicking the shin forward`);
+  assert.ok(bend.z<-.2,`${name} kicks the shin forward through the knee instead of folding it back`);
   action.stop();
 }
 const movement={};

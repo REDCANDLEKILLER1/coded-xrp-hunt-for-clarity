@@ -6,10 +6,10 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingInteraction, canCrossExitField, companionPlan, coreExposure, selectBoardingTarget } from './BoardingCombat';
+import { boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingWeapon, canCrossExitField, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
-interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: 'guard' | 'relay' | 'core' }
+interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
 interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void }
 
@@ -73,8 +73,17 @@ export class BoardingScene implements ManagedScene {
   private statsClock = 0;
   private shotsFired = 0;
   private crewShotsFired = 0;
+  private verticalVelocity = 0;
+  private meleeClock = 0;
+  private meleeCombo = 0;
+  private jumpCount = 0;
+  private hiddenPanel: Group | null = null;
+  private readonly factionLights: PointLight[] = [];
+  private readonly floorMaterials: MeshBasicMaterial[] = [];
+  private readonly wallMaterials: MeshBasicMaterial[] = [];
   private pauseButton: HTMLButtonElement | null = null;
   private coreStarted = false;
+  private captureClock = 0;
   private readonly box = new BoxGeometry(1,1,1);
   private readonly boltGeometry = new SphereGeometry(.09,8,6);
   private readonly metal = new MeshStandardMaterial({ color:0x25303c, roughness:.58, metalness:.68 });
@@ -83,6 +92,7 @@ export class BoardingScene implements ManagedScene {
   private readonly green = new MeshBasicMaterial({ color:0x00ff00, toneMapped:false });
   private readonly blue = new MeshBasicMaterial({ color:0x2e8cff, toneMapped:false });
   private readonly barrierMaterial = new MeshBasicMaterial({ color:0xff351e, wireframe:true, transparent:true, opacity:.22, toneMapped:false });
+  private readonly bossMetal = new MeshStandardMaterial({color:0x42151b,roughness:.34,metalness:.82});
   private readonly heroShield = new Mesh(new SphereGeometry(1,20,12),new MeshBasicMaterial({color:0x00ff00,wireframe:true,transparent:true,opacity:.14,toneMapped:false}));
   private readonly exitField = new Mesh(this.box,this.red);
 
@@ -138,21 +148,67 @@ export class BoardingScene implements ManagedScene {
   private buildRoomArt(parent:Object3D,room:typeof DECK[number]):void {
     const backgrounds:Record<BoardingRoom,string>={
       hangar:'/assets/interior/regulatory_docking_bay.webp',security:'/assets/interior/regulatory_security_checkpoint.webp',
-      rescue:'/assets/interior/regulatory_access_corridor.webp',engineering:'/assets/interior/regulatory_maintenance_shaft.webp',
+      rescue:'/assets/interior/regulatory_security_atrium.webp',engineering:'/assets/interior/regulatory_maintenance_shaft.webp',
       cache:'/assets/interior/regulatory_field_control.webp',command:'/assets/interior/regulatory_defense_deck.webp',
-      core:'/assets/interior/regulatory_core_chamber.webp',bridge:'/assets/interior/regulatory_captured_bridge.webp',
+      core:'/assets/interior/regulatory_core_chamber.webp',bridge:'/assets/interior/regulatory_bridge_arena.webp',
     };
     const wallTexture=new TextureLoader().load(backgrounds[room.id]);wallTexture.colorSpace=SRGBColorSpace;
-    const panel=new Mesh(new PlaneGeometry(Math.min(10,room.width*.72),2.35),new MeshBasicMaterial({map:wallTexture,side:DoubleSide,toneMapped:false}));
+    const wallMaterial=new MeshBasicMaterial({map:wallTexture,color:0xff8c86,side:DoubleSide,toneMapped:false});this.wallMaterials.push(wallMaterial);
+    const panel=new Mesh(new PlaneGeometry(Math.min(12,room.width*.8),2.7),wallMaterial);
     panel.position.set(room.x,1.62,room.z+room.depth/2-.08);panel.rotation.y=Math.PI;parent.add(panel);
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');if(!ctx)return;
-    ctx.fillStyle='#07111c';ctx.fillRect(0,0,512,256);ctx.strokeStyle='#ff351e';ctx.lineWidth=18;ctx.strokeRect(12,12,488,232);
-    ctx.strokeStyle='#00ff00';ctx.lineWidth=5;for(let x=-80;x<560;x+=64){ctx.beginPath();ctx.moveTo(x,232);ctx.lineTo(x+46,24);ctx.stroke();}
+    ctx.fillStyle='#07111c';ctx.fillRect(0,0,512,256);ctx.strokeStyle='#ffffff';ctx.lineWidth=18;ctx.strokeRect(12,12,488,232);
+    ctx.strokeStyle='#ffffff';ctx.lineWidth=5;for(let x=-80;x<560;x+=64){ctx.beginPath();ctx.moveTo(x,232);ctx.lineTo(x+46,24);ctx.stroke();}
     ctx.fillStyle='#07111c';ctx.fillRect(52,78,408,100);ctx.strokeStyle='#d9ecff';ctx.lineWidth=9;ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6,x=256+Math.cos(a)*64,y=128+Math.sin(a)*42;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.closePath();ctx.stroke();
-    ctx.strokeStyle='#00ff00';ctx.lineWidth=12;ctx.beginPath();ctx.moveTo(226,98);ctx.lineTo(286,158);ctx.moveTo(286,98);ctx.lineTo(226,158);ctx.stroke();
+    ctx.strokeStyle='#ffffff';ctx.lineWidth=12;ctx.beginPath();ctx.moveTo(226,98);ctx.lineTo(286,158);ctx.moveTo(286,98);ctx.lineTo(226,158);ctx.stroke();
     const floorTexture=new CanvasTexture(canvas);floorTexture.colorSpace=SRGBColorSpace;
-    const floor=new Mesh(new PlaneGeometry(Math.min(room.width*.66,11),Math.min(room.depth*.25,3.2)),new MeshBasicMaterial({map:floorTexture,transparent:true,opacity:.78,side:DoubleSide,toneMapped:false}));
+    const floorMaterial=new MeshBasicMaterial({map:floorTexture,color:0xff351e,transparent:true,opacity:.78,side:DoubleSide,toneMapped:false});this.floorMaterials.push(floorMaterial);
+    const floor=new Mesh(new PlaneGeometry(Math.min(room.width*.66,11),Math.min(room.depth*.25,3.2)),floorMaterial);
     floor.rotation.set(-Math.PI/2,0,Math.PI);floor.position.set(room.x,.025,room.z);parent.add(floor);
+  }
+  private buildObjectiveLandmark(parent:Object3D,room:typeof DECK[number]):void {
+    const [x,z]=room.terminal,structure=new Group();parent.add(structure);
+    // Every objective has a physical alcove, overhead frame, task light and floor plinth.
+    this.part(structure,[x-1.15,1.45,z+.42],[.18,2.9,.5],this.trim);this.part(structure,[x+1.15,1.45,z+.42],[.18,2.9,.5],this.trim);
+    this.part(structure,[x,2.82,z+.42],[2.45,.2,.5],this.metal);this.part(structure,[x,.09,z],[3,.16,2.2],this.bossMetal);
+    const taskLight=new PointLight(0xff2418,4,6,2);taskLight.position.set(x,2.35,z-.55);structure.add(taskLight);this.factionLights.push(taskLight);
+    if(room.id==='hangar'){
+      for(const sign of [-1,1]){this.part(structure,[x+sign*2.1,1.25,z],[.32,2.5,.32],this.trim);this.part(structure,[x+sign*2.1,2.55,z],[.55,.16,.55],this.red);}
+      this.part(structure,[x,2.48,z],[4.5,.2,.35],this.metal);this.part(structure,[x,.2,z-1.4],[4.8,.05,.12],this.green);
+    }else if(room.id==='security'){
+      for(const sign of [-1,1]){const relay=new Mesh(new CylinderGeometry(.38,.52,2.45,12),this.bossMetal);relay.position.set(x+sign*2,1.22,z+.25);structure.add(relay);this.part(structure,[x+sign*2,2.12,z+.25],[.55,.16,.55],this.red);}
+      this.part(structure,[x,1.85,z+.55],[3.6,.12,.2],this.blue);
+    }else if(room.id==='rescue'){
+      const secret=new Group();parent.add(secret);this.hiddenPanel=secret;
+      this.part(secret,[10.35,1.35,6.8],[2.8,2.7,.34],this.bossMetal);for(const sign of [-1,1])this.part(secret,[10.35+sign*1.28,1.45,6.52],[.14,2.9,.18],this.red);
+      this.part(secret,[10.35,.08,6.25],[3.15,.08,1.45],this.red);this.part(secret,[10.35,2.7,6.5],[3,.18,.4],this.trim);
+      for(const sign of [-1,1])this.part(structure,[x+sign*2.05,.75,z],[.7,1.5,1.2],this.metal);
+    }else if(room.id==='engineering'){
+      for(const sign of [-1,1]){const coil=new Mesh(new CylinderGeometry(.55,.55,2.6,16),this.bossMetal);coil.position.set(x+sign*2,1.3,z+.15);structure.add(coil);for(const y of [.45,1.05,1.65,2.25])this.part(structure,[x+sign*2,y,z+.15],[1.25,.08,1.25],this.red);}
+      this.part(structure,[x,2.35,z+.8],[4.4,.18,.25],this.trim);
+    }else if(room.id==='cache'){
+      this.part(structure,[x,1.45,z+.75],[4.6,2.9,.45],this.bossMetal);for(const sign of [-1,1])this.part(structure,[x+sign*1.65,1.45,z+.48],[.16,2.45,.14],this.red);
+      this.part(structure,[x,.3,z-.9],[3.8,.22,.7],this.trim);
+    }else if(room.id==='command'){
+      const table=new Mesh(new CylinderGeometry(1.45,1.65,.78,8),this.bossMetal);table.position.set(x+3.25,.39,z);structure.add(table);
+      const holo=new Mesh(new CylinderGeometry(.75,1.15,.05,24),this.blue);holo.position.set(x+3.25,.84,z);structure.add(holo);this.obstacles.push({x:x+3.25,z,w:3.1,d:3.1,cover:true});
+      for(const sign of [-1,1])this.part(structure,[x+sign*1.65,2.1,z+.55],[.12,1.25,.12],this.red);
+    }else if(room.id==='core'){
+      for(const sign of [-1,1]){this.part(structure,[x+sign*2.15,1.4,z+.3],[.55,2.8,.55],this.bossMetal);this.part(structure,[x+sign*2.15,1.4,z-.02],[.14,2.25,.14],this.red);}
+      this.part(structure,[x,2.55,z+.5],[4.8,.22,.5],this.trim);
+    }else{
+      // The bridge terminal sits on a command dais with a layered approach and flanking data towers.
+      this.part(structure,[x,.13,z-.5],[5,.24,3.4],this.bossMetal);this.part(structure,[x,.3,z-2.05],[3.7,.18,.55],this.trim);this.part(structure,[x,.46,z-2.42],[2.8,.18,.55],this.trim);
+      for(const sign of [-1,1]){this.part(structure,[x+sign*2.05,1.35,z+.4],[.65,2.7,.65],this.metal);this.part(structure,[x+sign*2.05,1.55,z-.02],[.4,1.4,.08],this.blue);}
+      this.part(structure,[x,2.75,z+.65],[4.8,.24,.65],this.trim);
+    }
+  }
+  private addConsole(parent:Object3D,x:number,z:number,rotation=0):void {
+    const console=new Group();console.position.set(x,0,z);console.rotation.y=rotation;parent.add(console);
+    this.part(console,[0,.42,0],[1.7,.84,.9],this.bossMetal);
+    const screen=this.part(console,[0,.9,-.08],[1.42,.07,.68],this.blue);screen.rotation.x=-.48;
+    this.part(console,[-.62,.95,-.46],[.14,.12,.08],this.red);this.part(console,[.62,.95,-.46],[.14,.12,.08],this.red);
+    this.obstacles.push({x,z,w:rotation?1:1.7,d:rotation?1.7:1,cover:true});
   }
   private addCover(parent:Object3D,x:number,z:number,w:number,d:number):void {
     this.part(parent,[x,.36,z],[w,.72,d]);this.part(parent,[x,.74,z],[w*.9,.05,d*.86],this.blue);
@@ -172,11 +228,15 @@ export class BoardingScene implements ManagedScene {
       const serviceLights:Mesh[]=[];
       group.traverse(object=>{if(object instanceof Mesh&&object.material instanceof MeshStandardMaterial&&object.material.name==='Deck warm working light'){replacedLights.add(object.material);object.material=this.red;serviceLights.push(object);}});
       this.roomLights.set(room.id,serviceLights);
+      const alarm=new PointLight(0xff2418,5,Math.max(room.width,room.depth)*1.25,2);alarm.position.set(room.x,2.7,room.z);group.add(alarm);this.factionLights.push(alarm);
+      for(const sign of [-1,1])this.part(group,[room.x+sign*room.width*.42,1.55,room.z+room.depth*.42],[.55,3.1,1.1],this.trim);
       this.buildRoomArt(group,room);
       for(const [x,z,w,d] of cover[room.id]??[])this.addCover(group,x,z,w,d);
       const [x,z]=room.terminal;this.part(group,[x,.6,z],[1.3,1.2,.85]);
       this.obstacles.push({x,z,w:1.3,d:.85,cover:true});
-      const terminal=this.part(group,[x,1.23,z],[1.1,.08,.7],this.green);this.terminals.set(room.id,terminal);
+      const terminal=this.part(group,[x,1.23,z],[1.1,.08,.7],this.red);this.terminals.set(room.id,terminal);
+      this.addConsole(group,x+(room.id==='engineering'?2:-2),z,room.id==='engineering'?Math.PI/2:0);
+      this.buildObjectiveLandmark(group,room);
       // Functional rooms have distinct machinery rather than recolored boxes.
       if(room.id==='engineering'){
         const cylinder=new Mesh(new CylinderGeometry(1.4,1.4,2.4,16),this.metal);cylinder.position.set(-23,1.2,0);group.add(cylinder);
@@ -209,13 +269,15 @@ export class BoardingScene implements ManagedScene {
     const save=this.host.quest.save.snapshot;
     if(save.revision===this.factionRevision)return;
     this.factionRevision=save.revision;
-    const steps:Partial<Record<BoardingRoom,BoardingStep>>={hangar:'hangar_safe',security:'security_relay',rescue:'rescue_junction',engineering:'engineering_power',command:'command_access',core:'core_defeated',bridge:'bridge_secured'};
-    for(const [room,lights] of this.roomLights){
-      const friendly=save.warshipOwned||!!steps[room]&&save.quests.includes('boarding.'+steps[room]);
-      for(const light of lights)light.material=friendly?this.green:this.red;
-    }
+    const friendly=save.warshipOwned;
+    for(const lights of this.roomLights.values())for(const light of lights)light.material=friendly?this.green:this.red;
+    for(const terminal of this.terminals.values())terminal.material=friendly?this.green:this.red;
+    for(const material of this.floorMaterials)material.color.set(friendly?0x00ff00:0xff351e);
+    for(const material of this.wallMaterials)material.color.set(friendly?0x8dff9d:0xff8c86);
+    for(const light of this.factionLights){light.color.set(friendly?0x00ff55:0xff2418);light.intensity=friendly?3.2:5;}
+    this.exitField.material=friendly?this.green:this.red;
+    this.barrierMaterial.color.set(friendly?0x00ff00:0xff351e);
   }
-
   private buildUI():void {
     this.ui.className='boarding-ui';this.status.className='boarding-status';this.health.className='boarding-health';this.hint.className='boarding-hint';
     this.status.append(this.health,this.hint);this.map.width=130;this.map.height=170;this.map.className='boarding-map';this.map.setAttribute('aria-label','Warship deck map');
@@ -224,7 +286,7 @@ export class BoardingScene implements ManagedScene {
     const fire=button('BLAST',()=>{});fire.className='boarding-fire';
     fire.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(!this.canAct())return;this.firingPointer=e.pointerId;fire.setPointerCapture(e.pointerId);},{signal:this.lifetime.signal});
     for(const name of ['pointerup','pointercancel','lostpointercapture'])fire.addEventListener(name,e=>{if((e as PointerEvent).pointerId===this.firingPointer)this.firingPointer=null;},{signal:this.lifetime.signal});
-    button('INTERACT',()=>this.interact());button('DODGE',()=>this.dodge());
+    button('INTERACT',()=>this.interact());button('PUNCH',()=>this.punch());button('JUMP',()=>this.jump());button('DODGE',()=>this.dodge());
     button('SHIELD',()=>{if(this.host.quest.save.snapshot.heroUpgrades.ledger_shield)this.shieldOn=!this.shieldOn;else this.say('Ledger Shield is earned by defeating the Core.');});
     const top=document.createElement('div');top.className='boarding-top';
     const pause=button('PAUSE',()=>{if(this.ui.querySelector('.boarding-shop'))return;this.paused=!this.paused;pause.textContent=this.paused?'RESUME':'PAUSE';this.clearInput();},top);
@@ -256,7 +318,7 @@ export class BoardingScene implements ManagedScene {
       if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code))event.preventDefault();
       if(this.dialog.active){if(!event.repeat&&['Enter','Space'].includes(event.code))this.dialog.press();return;}
       this.keys.add(event.code);
-      if(!event.repeat){if(event.code==='KeyE')this.interact();if(event.code==='ShiftLeft')this.dodge();if(event.code==='KeyQ'&&this.host.quest.save.snapshot.heroUpgrades.ledger_shield)this.shieldOn=!this.shieldOn;}
+      if(!event.repeat){if(event.code==='KeyE')this.interact();if(event.code==='KeyF')this.punch();if(event.code==='KeyJ')this.jump();if(event.code==='ShiftLeft')this.dodge();if(event.code==='KeyQ'&&this.host.quest.save.snapshot.heroUpgrades.ledger_shield)this.shieldOn=!this.shieldOn;}
     },options);
     window.addEventListener('keyup',event=>this.keys.delete(event.code),options);
     window.addEventListener('blur',()=>{this.clearInput();if(this.active)this.paused=true;},options);
@@ -271,7 +333,7 @@ export class BoardingScene implements ManagedScene {
     for(const id of [this.stickPointer,this.firingPointer])if(id!==null)for(const element of [this.host.renderer.domElement,...this.ui.querySelectorAll('button')])if(element.hasPointerCapture(id))element.releasePointerCapture(id);
     this.keys.clear();this.stick.set(0,0);this.stickPointer=null;this.firingPointer=null;
   }
-  private canAct():boolean{return this.active&&!this.paused&&!this.dead&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop');}
+  private canAct():boolean{return this.active&&!this.paused&&!this.dead&&this.captureClock<=0&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop');}
   private say(text:string):void{this.message=text;this.messageClock=4;}
   private conversation(scene:DialogueScene,step?:BoardingStep,record=true):void {
     this.clearInput();this.play('Idle');
@@ -280,12 +342,15 @@ export class BoardingScene implements ManagedScene {
     }
     this.dialog.open(scene,()=>{
       const result=step&&!this.host.quest.has(step)?this.host.quest.complete(step,scene.id):record?this.host.quest.recordDialogue(scene.id):{ok:true};
-      if(result.ok){this.clearInput();return true;}return false;
+      if(result.ok){if(step==='bridge_secured'){this.captureClock=5;this.clearInput();}this.clearInput();return true;}return false;
     });
   }
   private interact():void {
     if(!this.canAct())return;
     const q=this.host.quest,room=deckRoom(this.room),distance=Math.hypot(this.hero.position.x-room.terminal[0],this.hero.position.z-room.terminal[1]);
+    const hiddenDistance=this.room==='rescue'?Math.hypot(this.hero.position.x-10.35,this.hero.position.z-6.8):Infinity;
+    const hiddenRouteOpen=q.save.snapshot.quests.includes('boarding.hidden_route');
+    if(hiddenDistance<2.35&&!hiddenRouteOpen){if(!q.has('engineering_power'))this.say('A sealed wall seam. Engineering power may expose its lock.');else if(!q.isClear('rescue'))this.say('Hostiles still control the hidden-deck lock.');else if(q.findHiddenRoute().ok){this.say('SECRET FOUND · Detention route open. ARC SCATTERGUN acquired.');this.syncCrew();}return;}
     const focus=boardingInteraction(distance,this.hero.position.distanceTo(this.crew.position),this.crew.visible);
     if(focus==='crew'){
       if(!q.has('rescue_junction')&&!q.isClear('rescue'))this.say('MR ZAMN · Clear this junction. Then I can move with you.');
@@ -295,9 +360,9 @@ export class BoardingScene implements ManagedScene {
     }
     if(focus==='none'){this.say('Move close to the glowing terminal to interact.');return;}
     switch(this.room){
-      case 'hangar':if(!q.isClear('hangar'))this.say('Clear the arrival bay before opening the security door.');else{q.complete('hangar_safe');this.say('Bay secured. The security door is open.');}break;
+      case 'hangar':if(!q.isClear('hangar'))this.say('Clear the arrival bay before opening the security door.');else{q.complete('hangar_safe');this.say('Bay secured. PULSE REPEATER acquired. Security deck open.');}break;
       case 'security':if(!q.isClear('security'))this.say('Clear the security detail first.');else{q.complete('security_relay');this.say('Door relay disabled. Crew junction unlocked.');}break;
-      case 'rescue':this.say(q.isClear('rescue')?'Mr Zamn is on the blue survivor platform. Speak to him.':'Clear the crew junction so Mr Zamn can move.');break;
+      case 'rescue':this.say(!q.isClear('rescue')?'Clear the crew junction.':!q.has('engineering_power')?'Restore Engineering power, then search the outer wall seams.':!q.save.snapshot.quests.includes('boarding.hidden_route')?'The scanner marks a false wall near the far red panel.':'The detention passage is open. Find Mr Zamn behind it.');break;
       case 'engineering':if(!q.isClear('engineering'))this.say('Clear engineering before rerouting power.');else if(!q.has('engineering_power'))this.conversation(BOARDING_DIALOGUE.engineering,'engineering_power');else this.say('Hangar power is restored.');break;
       case 'command':if(!q.isClear('command'))this.say('Clear command access before opening the Core chamber.');else{q.complete('command_access');this.say('Core chamber open. Destroy its two relays.');}break;
       case 'core':if(q.has('core_defeated'))this.say('Ledger Shield acquired. Activate SHIELD before the bridge exit field.');else this.say('Break both red relays, then strike while the Core is exposed.');break;
@@ -324,6 +389,11 @@ export class BoardingScene implements ManagedScene {
   private spawnRoom(room:BoardingRoom):void {
     if(this.host.quest.isClear(room)||this.enemies.some(e=>e.room===room))return;
     for(const [x,z] of deckRoom(room).enemies)this.enemy(room,x,z,'guard');
+    const miniboss:Partial<Record<BoardingRoom,readonly [number,number,BoardingEnemyKind]>>={
+      hangar:[0,-22,'warden'],security:[0,-12,'warden'],rescue:[7,-6,'warden'],engineering:[-18,3,'warden'],
+      cache:[18,3,'warden'],command:[0,16,'warden'],bridge:[0,40,'captain'],
+    };
+    const elite=miniboss[room];if(elite)this.enemy(room,elite[0],elite[1],elite[2]);
     if(room==='core'){
       for(const [x,z] of DECK_LAYOUT.core.relays)this.enemy(room,x,z,'relay');
       this.enemy(room,DECK_LAYOUT.core.center[0],DECK_LAYOUT.core.center[1],'core');
@@ -331,23 +401,29 @@ export class BoardingScene implements ManagedScene {
     }
   }
   private enemy(room:BoardingRoom,x:number,z:number,kind:Enemy['kind']):void {
-    const group=new Group();group.position.set(x,kind==='core'?1.8:1.1,z);this.scene.add(group);
-    const core=kind==='core',relay=kind==='relay';
-    this.part(group,[0,0,0],core?[2.6,2.2,2.6]:relay?[.7,1.6,.7]:[.9,.55,.85]);
-    this.part(group,[0,.05,-(core?1.32:.44)],core?[1.8,.5,.07]:[.6,.15,.07],this.red);
-    if(!relay)for(const sign of [-1,1])this.part(group,[sign*(core?1.6:.7),-.1,0],core?[.5,.9,2.1]:[.35,.22,.95],this.trim);
+    const core=kind==='core',relay=kind==='relay',captain=kind==='captain',warden=kind==='warden',elite=captain||warden;
+    const group=new Group();group.position.set(x,core?1.8:elite?1.35:1.1,z);this.scene.add(group);
+    this.part(group,[0,0,0],core?[2.6,2.2,2.6]:captain?[2,1.65,1.8]:warden?[1.45,1.2,1.3]:relay?[.7,1.6,.7]:[.9,.55,.85],elite?this.bossMetal:this.metal);
+    this.part(group,[0,.05,-(core?1.32:captain?.94:warden?.69:.44)],core?[1.8,.5,.07]:elite?[1.05,.28,.08]:[.6,.15,.07],this.red);
+    if(!relay)for(const sign of [-1,1])this.part(group,[sign*(core?1.6:captain?1.2:warden?.9:.7),-.1,0],core?[.5,.9,2.1]:captain?[.42,.4,1.55]:warden?[.35,.3,1.2]:[.35,.22,.95],this.trim);
+    if(elite){this.part(group,[0,.75,0],[captain?.7:.48,captain?.42:.34,captain?.65:.45],this.red);for(const sign of [-1,1])this.part(group,[sign*(captain?.72:.5),.48,-.45],[.16,.16,.7],this.red);}
     const tell=new Mesh(this.box,this.red);tell.visible=false;this.scene.add(tell);
-    let barrier:Mesh|undefined;
-    if(core){barrier=new Mesh(new SphereGeometry(2.3,18,12),this.barrierMaterial);group.add(barrier);}
-    const tactic=this.enemies.filter(enemy=>enemy.room===room&&enemy.kind==='guard').length%3;
-    this.enemies.push({mesh:group,tell,barrier,room,hp:core?650:relay?65:42,clock:.6+tactic*.25,charge:0,target:new Vector3(),base:group.position.clone(),tactic,kind});
+    let barrier:Mesh|undefined;if(core){barrier=new Mesh(new SphereGeometry(2.3,18,12),this.barrierMaterial);group.add(barrier);}
+    const tactic=this.enemies.filter(enemy=>enemy.room===room&&enemy.kind==='guard').length%3,maxHp=boardingEnemyHealth(kind);
+    this.enemies.push({mesh:group,tell,barrier,room,hp:maxHp,maxHp,clock:.6+tactic*.25,charge:0,target:new Vector3(),base:group.position.clone(),tactic,kind});
   }
   private play(name:string):void {
     if(this.clip===name)return;const clip=this.host.hero.animations.find(a=>a.name===name);if(!clip)return;
     const previous=this.host.hero.animations.find(a=>a.name===this.clip);const action=this.mixer.clipAction(clip).reset().play();
     if(previous)action.crossFadeFrom(this.mixer.clipAction(previous),.12,false);this.clip=name;
   }
-  private playCrew(name:'Idle'|'Interact'):void {
+  private jump():void {if(!this.canAct()||this.hero.position.y>.04)return;this.verticalVelocity=6.4;this.jumpCount++;sfx.play('pulse',.3);}
+  private punch():void {
+    if(!this.canAct())return;const hit=selectBoardingTarget(this.enemies.filter(enemy=>enemy.room===this.room&&enemy.hp>0&&this.hero.position.distanceTo(enemy.mesh.position)<2.55).map(enemy=>({enemy,kind:enemy.kind,hp:enemy.hp,x:enemy.mesh.position.x,z:enemy.mesh.position.z})),this.hero.position.x,this.hero.position.z)?.enemy;
+    this.meleeClock=.38;this.play('Interact');this.invulnerability=Math.max(this.invulnerability,.18);if(!hit){this.meleeCombo=0;this.say('Punch missed. Close the distance or use your boarding weapon.');return;}
+    this.meleeCombo=Math.min(3,this.meleeCombo+1);const damage=this.hero.position.y>.35?42:20+this.meleeCombo*6;hit.hp-=damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
+  }
+  private playCrew(name:'Idle'|'Interact'|'Walk'|'Run'):void {
     if(this.crewClip===name)return;const clip=this.host.crew.animations.find(candidate=>candidate.name===name);if(!clip)return;
     const previous=this.host.crew.animations.find(candidate=>candidate.name===this.crewClip);const action=this.crewMixer.clipAction(clip).reset().play();
     if(previous)action.crossFadeFrom(this.crewMixer.clipAction(previous),.1,false);this.crewClip=name;
@@ -387,7 +463,7 @@ export class BoardingScene implements ManagedScene {
   }
   private syncCrew():void {
     const recruited=this.host.quest.has('rescue_junction');
-    if(!recruited){const position=DECK_LAYOUT.crew.rescue;this.crew.position.set(position[0],0,position[1]);this.crew.visible=this.room==='rescue';this.crewRoom='rescue';}
+    if(!recruited){const found=this.host.quest.save.snapshot.quests.includes('boarding.hidden_route'),position=found?[9,6] as const:DECK_LAYOUT.crew.rescue;this.crew.position.set(position[0],0,position[1]);this.crew.visible=found&&this.room==='rescue';this.crewRoom='rescue';}
     else{
       this.crew.visible=true;
       if(this.crewRoom!==this.room||companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).warp){
@@ -395,6 +471,7 @@ export class BoardingScene implements ManagedScene {
         this.crew.position.copy(this.hero.position).addScaledVector(intoRoom,1.5);this.crew.position.y=0;this.crewRoom=this.room;
       }
     }
+    if(this.hiddenPanel)this.hiddenPanel.visible=!this.host.quest.save.snapshot.quests.includes('boarding.hidden_route');
     this.crewMarker.visible=this.crew.visible;this.crewMarker.position.copy(this.crew.position).y=2.4;
   }
   private updateCrew(dt:number):void {
@@ -404,14 +481,15 @@ export class BoardingScene implements ManagedScene {
     const forward=new Vector3(Math.sin(this.hero.rotation.y),0,Math.cos(this.hero.rotation.y));
     const destination=this.hero.position.clone().addScaledVector(forward,-1.9).add(new Vector3(forward.z,0,-forward.x).multiplyScalar(.75));
     const follow=destination.sub(this.crew.position);follow.y=0;
-    if(companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).advance&&follow.length()>0.25){const step=follow.normalize().multiplyScalar(Math.min(follow.length(),dt*4.35));for(const axis of ['x','z'] as const){const next=this.crew.position.clone();next[axis]+=step[axis];const room=deckRoom(this.room);if(insideWallMargin(room,next.x,next.z)&&!this.obstacles.some(o=>Math.abs(next.x-o.x)<o.w/2+.25&&Math.abs(next.z-o.z)<o.d/2+.25))this.crew.position[axis]=next[axis];}}
+    let crewMoving=false;
+    if(companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).advance&&follow.length()>0.25){const step=follow.normalize().multiplyScalar(Math.min(follow.length(),dt*4.35));for(const axis of ['x','z'] as const){const next=this.crew.position.clone();next[axis]+=step[axis];const room=deckRoom(this.room);if(insideWallMargin(room,next.x,next.z)&&!this.obstacles.some(o=>Math.abs(next.x-o.x)<o.w/2+.25&&Math.abs(next.z-o.z)<o.d/2+.25)){this.crew.position[axis]=next[axis];crewMoving=true;}}}
     const focus=target?.mesh.position??this.hero.position;const direction=focus.clone().sub(this.crew.position);const angle=Math.atan2(direction.x,direction.z);this.crew.rotation.y+=Math.atan2(Math.sin(angle-this.crew.rotation.y),Math.cos(angle-this.crew.rotation.y))*Math.min(1,dt*8);
     if(target&&direction.length()<15&&this.crewFireClock<=0){
       const hand=this.crew.getObjectByName('Hand_R');const origin=hand?hand.getWorldPosition(new Vector3()):this.crew.position.clone().add(new Vector3(0,1.05,0));
       const targetPoint=target.mesh.position.clone();targetPoint.y=Math.max(.8,targetPoint.y);
       if(companionPlan(this.hero.position.distanceTo(this.crew.position),direction.length(),this.coverBlocks(origin,targetPoint)).fire){this.fire(origin,targetPoint.sub(origin),'crew',7);this.crewFireClock=.72;this.crewActionClock=.3;this.playCrew('Interact');}
     }
-    if(this.crewActionClock<=0)this.playCrew('Idle');this.crewMarker.position.copy(this.crew.position).y=2.4;
+    if(this.crewActionClock<=0)this.playCrew(crewMoving?'Run':'Idle');this.crewMarker.position.copy(this.crew.position).y=2.4;
   }  update(dt:number):void {
     if(!this.active)return;this.dialog.update(dt);
     this.refreshFactionLighting();
@@ -425,9 +503,22 @@ export class BoardingScene implements ManagedScene {
       const focus=this.hero.position.clone();if(this.crew.visible&&focus.distanceTo(this.crew.position)<6)focus.lerp(this.crew.position,.5);
       this.camera.position.lerp(focus.clone().add(new Vector3(4,4.6,-7)),1-Math.exp(-dt*5));this.camera.lookAt(focus);
     }
+    if(this.captureClock>0&&!this.dialog.active){
+      this.captureClock=Math.max(0,this.captureClock-dt);const progress=1-this.captureClock/5,color=new Color(0xff2418).lerp(new Color(0x00ff55),progress);
+      for(const light of this.factionLights){light.color.copy(color);light.intensity=5-progress*1.8;}
+      for(const material of this.floorMaterials)material.color.copy(color);
+      for(const material of this.wallMaterials)material.color.copy(new Color(0xff8c86).lerp(new Color(0x8dff9d),progress));
+      for(const terminal of this.terminals.values())terminal.material=progress>.68?this.green:this.red;
+      this.exitField.material=progress>.82?this.green:this.red;
+      const focus=new Vector3(0,1,40);this.camera.position.lerp(new Vector3(11-progress*3,8+progress*4,27+progress*7),1-Math.exp(-dt*2.4));this.camera.lookAt(focus);
+      this.mixer.update(dt);this.crewMixer.update(dt);this.message='CAPTURE SEQUENCE · Regulatory red yielding to XRP green';this.messageClock=1;this.paintHUD();
+      if(this.captureClock===0){this.paused=false;this.say('WARSHIP CAPTURED · All decks under green control.');}
+      return;
+    }
     if(this.dead){this.mixer.update(dt);return;}
     if(this.paused||this.dialog.active||this.ui.querySelector('.boarding-shop')){this.paintHUD();return;}
-    this.clock+=dt;this.fireClock-=dt;this.dodgeClock=Math.max(0,this.dodgeClock-dt);this.dodgeCooldown=Math.max(0,this.dodgeCooldown-dt);this.invulnerability=Math.max(0,this.invulnerability-dt);this.messageClock-=dt;
+    this.clock+=dt;this.fireClock-=dt;this.dodgeClock=Math.max(0,this.dodgeClock-dt);
+    this.verticalVelocity-=15*dt;this.hero.position.y=Math.max(0,this.hero.position.y+this.verticalVelocity*dt);if(this.hero.position.y===0)this.verticalVelocity=0;this.meleeClock=Math.max(0,this.meleeClock-dt);this.dodgeCooldown=Math.max(0,this.dodgeCooldown-dt);this.invulnerability=Math.max(0,this.invulnerability-dt);this.messageClock-=dt;
     this.updateCrew(dt);this.crewMixer.update(dt);
     if(this.shieldOn){this.shield=Math.max(0,this.shield-dt*6);if(!this.shield)this.shieldOn=false;}else this.shield=Math.min(100,this.shield+dt*14);
     this.heroShield.visible=this.shieldOn;this.heroShield.position.copy(this.hero.position).y+=1;
@@ -443,8 +534,8 @@ export class BoardingScene implements ManagedScene {
       const target=this.hero.position.clone();target[axis]+=this.move[axis]*distance;const next=roomAt(target.x,target.z);
       if(!next||!insideWallMargin(next,target.x,target.z)||!canCross(this.room,next.id,target.x,target.z))continue;
       if(this.room==='bridge'&&!canCrossExitField(this.hero.position.z,target.z,DECK_LAYOUT.core.exitFieldZ,this.shieldOn)){this.say('Activate Ledger Shield to cross this low-power exit field.');continue;}
-      if(this.obstacles.some(o=>Math.abs(target.x-o.x)<o.w/2+.3&&Math.abs(target.z-o.z)<o.d/2+.3))continue;
-      if(this.enemies.some(e=>e.room===this.room&&e.hp>0&&Math.hypot(target.x-e.mesh.position.x,target.z-e.mesh.position.z)<(e.kind==='core'?2.2:.72)))continue;
+      if(this.hero.position.y<.72&&this.obstacles.some(o=>Math.abs(target.x-o.x)<o.w/2+.3&&Math.abs(target.z-o.z)<o.d/2+.3))continue;
+      if(this.enemies.some(e=>e.room===this.room&&e.hp>0&&Math.hypot(target.x-e.mesh.position.x,target.z-e.mesh.position.z)<(e.kind==='core'?2.2:e.kind==='captain'?1.55:e.kind==='warden'?1.2:.72)))continue;
       const reason=this.host.quest.lockReason(next.id);
       if(reason){this.say(reason);continue;}
       if(next.id!==this.room){const result=this.host.quest.enter(next.id);if(!result.ok){this.say('Checkpoint could not be saved. Retry after storage is available.');continue;}this.room=next.id;this.spawnRoom(next.id);}
@@ -455,8 +546,8 @@ export class BoardingScene implements ManagedScene {
     let direction=this.move.clone();
     if(firing){const point=target?.mesh.position??this.aim;direction.copy(point).sub(this.hero.position);direction.y=0;}
     if(direction.lengthSq()>.001){const desired=Math.atan2(direction.x,direction.z);this.hero.rotation.y+=Math.atan2(Math.sin(desired-this.hero.rotation.y),Math.cos(desired-this.hero.rotation.y))*Math.min(1,dt*14);}
-    this.play(this.dodgeClock>0?'Dodge':firing?'AimFire':this.move.lengthSq()>.04?'Run':'Idle');this.mixer.update(dt);this.hero.updateMatrixWorld(true);
-    if(firing&&this.fireClock<=0){this.fireClock=.23;const origin=this.hero.getObjectByName('Hand_R')!.getWorldPosition(new Vector3());const point=target?.mesh.position.clone()??origin.clone().add(new Vector3(Math.sin(this.hero.rotation.y),0,Math.cos(this.hero.rotation.y)).multiplyScalar(15));this.fire(origin,point.sub(origin),'hero');}
+    this.play(this.dodgeClock>0||this.hero.position.y>.18?'Dodge':this.meleeClock>0?'Interact':firing?'AimFire':this.move.lengthSq()>.04?'Run':'Idle');this.mixer.update(dt);this.hero.updateMatrixWorld(true);
+    if(firing&&this.fireClock<=0){const weapon=boardingWeapon(this.host.quest.save.snapshot.heroUpgrades.boarding_weapon);this.fireClock=weapon.cooldown;const origin=this.hero.getObjectByName('Hand_R')!.getWorldPosition(new Vector3());const point=target?.mesh.position.clone()??origin.clone().add(new Vector3(Math.sin(this.hero.rotation.y),0,Math.cos(this.hero.rotation.y)).multiplyScalar(15));const direction=point.sub(origin);for(let shot=0;shot<weapon.shots;shot++){const offset=(shot-(weapon.shots-1)/2)*weapon.spread;this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),offset),'hero',weapon.damage);}}
     this.updateEnemies(dt);this.updateBolts(dt);
     if(this.room==='bridge'&&!this.host.quest.has('bridge_secured')&&this.hero.position.z<DECK_LAYOUT.core.exitFieldZ+1&&!this.shieldOn)this.say('Activate Ledger Shield to cross this low-power exit field.');
     const focus=this.hero.position.clone().add(new Vector3(0,.7,0));
@@ -480,8 +571,8 @@ export class BoardingScene implements ManagedScene {
         const direction=enemy.target.clone().sub(enemy.mesh.position);direction.y=0;
         enemy.tell.position.copy(enemy.mesh.position).addScaledVector(direction,.5);enemy.tell.position.y=.035;
         enemy.tell.rotation.y=Math.atan2(direction.x,direction.z);enemy.tell.scale.set(.18+.12*Math.sin(this.clock*18)**2,.025,direction.length());
-        if(enemy.charge<=0){const origin=enemy.mesh.position.clone();const direction=enemy.target.clone().sub(origin);this.fire(origin,direction,'enemy',enemy.kind==='core'?18:11);if(enemy.kind==='core')for(const s of [-1,1])this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),s*.28),'enemy',15);enemy.clock=enemy.kind==='core'?1.65:1.9+enemy.tactic*.25;enemy.mesh.scale.setScalar(1);}
-      }else if(enemy.clock<=0&&attackers<3&&this.onScreen(enemy.mesh.position)){enemy.charge=.68+enemy.tactic*.09;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
+        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:1.9+enemy.tactic*.25;enemy.mesh.scale.setScalar(1);}
+      }else if(enemy.clock<=0&&attackers<3&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:.68+enemy.tactic*.09;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
     }
   }
   private updateBolts(dt:number):void {
@@ -493,7 +584,7 @@ export class BoardingScene implements ManagedScene {
       if(this.coverBlocks(start,end)){remove(i);continue;}
       if(bolt.owner==='enemy'){if(swept(this.hero.position.clone().add(new Vector3(0,1,0)),.75)){this.hurt(bolt.damage);remove(i);continue;}}
       else{
-        const hit=this.enemies.find(e=>e.room===this.room&&e.hp>0&&swept(e.mesh.position,e.kind==='core'?1.7:.8));
+        const hit=this.enemies.find(e=>e.room===this.room&&e.hp>0&&swept(e.mesh.position,e.kind==='core'?1.7:e.kind==='captain'?1.45:e.kind==='warden'?1.15:.8));
         if(hit){const exposed=hit.kind!=='core'||this.coreExposed();
           if(exposed){hit.hp-=bolt.damage;sfx.play('hit',.5);}else this.say('Core shield active. Relays first; strike during the exposure window.');
           if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
@@ -513,12 +604,13 @@ export class BoardingScene implements ManagedScene {
       this.ui.dataset.room=this.room;this.ui.dataset.x=this.hero.position.x.toFixed(3);this.ui.dataset.z=this.hero.position.z.toFixed(3);
       this.ui.dataset.shots=String(this.shotsFired);this.ui.dataset.firing=String(this.firingPointer!==null||this.keys.has('Space'));
       this.ui.dataset.crewShots=String(this.crewShotsFired);this.ui.dataset.enemies=String(this.enemies.filter(enemy=>enemy.room===this.room&&enemy.hp>0).length);
+      this.ui.dataset.weapon=String(boardingWeapon(this.host.quest.save.snapshot.heroUpgrades.boarding_weapon).level);this.ui.dataset.combo=String(this.meleeCombo);this.ui.dataset.jumps=String(this.jumpCount);this.ui.dataset.capture=this.captureClock.toFixed(2);
       this.ui.dataset.crewX=this.crew.position.x.toFixed(3);this.ui.dataset.crewZ=this.crew.position.z.toFixed(3);this.ui.dataset.crewVisible=String(this.crew.visible);
       this.ui.dataset.drawCalls=String(this.host.renderer.info.render.calls);this.ui.dataset.triangles=String(this.host.renderer.info.render.triangles);
       this.ui.dataset.geometries=String(this.host.renderer.info.memory.geometries);this.ui.dataset.textures=String(this.host.renderer.info.memory.textures);
     }
-    const q=this.host.quest;const core=this.enemies.find(e=>e.kind==='core'&&e.hp>0);
-    this.health.textContent=`${deckRoom(this.room).title}   VITALS ${Math.ceil(this.life)}${q.save.snapshot.heroUpgrades.ledger_shield?`   SHIELD ${Math.ceil(this.shield)}${this.shieldOn?' · ACTIVE':''}`:''}${this.paused?'   PAUSED':''}${this.room==='core'&&core?`   CORE ${Math.ceil(core.hp)} · ${this.coreExposed()?'EXPOSED':'SHIELDED'}`:''}`;
+    const q=this.host.quest,weapon=boardingWeapon(q.save.snapshot.heroUpgrades.boarding_weapon),core=this.enemies.find(e=>e.kind==='core'&&e.hp>0),elite=this.enemies.find(e=>e.room===this.room&&['warden','captain'].includes(e.kind)&&e.hp>0);
+    this.health.textContent=deckRoom(this.room).title+'   VITALS '+Math.ceil(this.life)+'   '+weapon.label+(q.save.snapshot.heroUpgrades.ledger_shield?'   SHIELD '+Math.ceil(this.shield)+(this.shieldOn?' · ACTIVE':''):'')+(this.paused?'   PAUSED':'')+(this.captureClock>0?'   CAPTURE':'')+(this.room==='core'&&core?'   CORE '+Math.ceil(core.hp)+' · '+(this.coreExposed()?'EXPOSED':'SHIELDED'):elite?'   '+(elite.kind==='captain'?'BRIDGE CAPTAIN':'WARDEN')+' '+Math.ceil(elite.hp)+'/'+elite.maxHp:'');
     this.hint.textContent=this.messageClock>0?this.message:q.objective;
     for(const {door,mesh} of this.doorPanels)mesh.visible=!!q.lockReason(door.b);
     for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
