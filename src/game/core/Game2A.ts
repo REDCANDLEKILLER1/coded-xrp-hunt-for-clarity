@@ -304,6 +304,16 @@ const XP_LEVEL_STEP = 150;
  * long-term goal rather than a five-minute climb.
  */
 const WEAPON_TIER_LEVELS = [3, 5, 7, 9, 11, 13, 16, 19];
+/**
+ * The highest arcade level a pilot can arrive at by crossing a planet boundary.
+ *
+ * Leaving Earth used to confiscate the gun. `campaignArmory` is null anywhere
+ * but `ledger_prime`, so the armory weapon stopped applying, and `applyLoadout`
+ * then set `xpLevel = 1`: measured, a rank-10 plasma pilot went 16.69 dps ->
+ * 7.14 dps and a maxed one far further. The carry below is capped at the top of
+ * the ladder because that is where the ladder ends, not as a tax.
+ */
+const MASTERY_CARRY_CAP = 20;
 
 // Boss duel.
 //
@@ -778,6 +788,47 @@ export class Game2A {
   setFlightStory(story:FlightStoryPort):void {this.flightStory=story;story.setActive(false);}
   setFighterArmory(armory:FighterArmoryPort):void {this.fighterArmory=armory;armory.setActive(false);}
   private get campaignArmory():FighterArmoryPort|null {return this.activePlanetKey==='ledger_prime'?this.fighterArmory:null;}
+  /**
+   * What the arcade ladder owes a pilot who earned their gun on Earth.
+   *
+   * The campaign armory only applies on `ledger_prime` -- that separation is
+   * deliberate and stays -- but the MASTERY behind it is saved campaign
+   * progress, and it survives the trip even though the weapon system does not.
+   * Off Earth the ladder takes over, so the ladder has to start where the
+   * armory left off rather than at rung one.
+   *
+   * Measured, never mapped. `FighterArmoryRuntime.begin` already solves this
+   * in the other direction, and it carries a scar: it used to hold its own
+   * copy of the arcade's thresholds, that copy went stale in silence when the
+   * ladder changed shape, and a rank-7 pilot migrated from 53 dps down to 11.
+   * So this walks the real ladder against the real armory weapon's output and
+   * keeps no second table of its own.
+   */
+  private masteryCarry():{level:number;barrels:number} {
+    const armory=this.fighterArmory;
+    if(!armory)return{level:1,barrels:0};
+    const weapon=armory.weapon;
+    const earned=weapon.damage*weapon.shots.length/Math.max(0.001,weapon.fireRate);
+    const barrels=clamp(Math.floor(armory.state.rapid),0,MAX_BARRELS);
+    if(!(earned>0))return{level:1,barrels};
+    // The cheapest rung that covers what they were firing. Walking up rather
+    // than solving keeps it honest about the ladder's real ceiling: if nothing
+    // reaches, they get the top of it instead of a silent downgrade.
+    let level=1;
+    for(let at=1;at<=MASTERY_CARRY_CAP;at+=1){
+      level=at;
+      if(this.ladderDpsAt(at)>=earned)break;
+    }
+    return{level,barrels};
+  }
+
+  /** Sustained output of the arcade rung a given level unlocks, bare of barrels. */
+  private ladderDpsAt(level:number):number {
+    let tier=this.baseWeaponTier;
+    for(const at of WEAPON_TIER_LEVELS) if(level>=at) tier+=1;
+    const weapon=WEAPON_LADDER[clamp(tier,1,WEAPON_LADDER.length)-1]??WEAPON_LADDER[0];
+    return weapon.damage*weapon.shots.length/Math.max(0.001,weapon.fireRate);
+  }
   private syncFighterMastery():void {
     const armory=this.campaignArmory;if(!armory)return;
     this.fighterSyncClock=this.clock+2;
@@ -5220,6 +5271,7 @@ export class Game2A {
 
       this.syncFighterMastery();
       if(this.fighterReady&&this.campaignArmory)this.xpLevel=Math.max(this.xpLevel,this.campaignArmory.state.rank);
+      this.carryMasteryIntoLadder();
       this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
       this.player = this.newPlayer();
       this.cueMusic('level1');
@@ -5264,7 +5316,24 @@ export class Game2A {
     this.score = 0;
     this.wave = 1;
     this.kills = 0;
+    this.carryMasteryIntoLadder();
     this.earthEncounterDirector.clear();
+  }
+
+  /**
+   * Off Earth, the ladder starts where the armory left off.
+   *
+   * A floor, never a ceiling -- a checkpoint that already holds a higher level
+   * keeps it -- and only on a campaign planet. The arcade (`deployTestMode`,
+   * no `activePlanetKey`) is its own ladder from rung one and must not inherit
+   * campaign mastery, which is why this reads the planet rather than just the
+   * armory.
+   */
+  private carryMasteryIntoLadder():void {
+    if(!this.activePlanetKey||this.campaignArmory)return;
+    const carried=this.masteryCarry();
+    this.xpLevel=Math.max(this.xpLevel,carried.level);
+    this.barrels=Math.max(this.barrels,carried.barrels);
   }
 
   /**

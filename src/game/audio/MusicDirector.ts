@@ -6,6 +6,24 @@ const MANIFEST_URL = '/assets/audio/manifest.json';
 const MUTE_STORAGE_KEY = 'coded.music.muted';
 const FADE_MS = 900;
 const FADE_STEP_MS = 50;
+/**
+ * How many times the audio manifest may be fetched before the director gives
+ * up, and how long to wait between tries.
+ *
+ * `loadManifest` ran exactly once, from the constructor, and its `catch` only
+ * logged. `this.manifest` therefore stayed null forever and `play()` dropped
+ * every cue for the rest of the page load -- so ONE transient failure at t=0,
+ * on a phone that had just woken its radio, muted the entire session with no
+ * way back short of a reload. `loadAssetCatalog()` already re-arms itself;
+ * this did not.
+ *
+ * Bounded on purpose. A manifest that is genuinely missing is a deploy
+ * problem, and a director that retries it forever turns that into a request
+ * loop nobody asked for. Four tries over about 4.6 seconds covers the radio
+ * waking up; beyond that it stops and says so.
+ */
+const MANIFEST_ATTEMPTS = 4;
+const MANIFEST_BACKOFF_MS = [400, 1200, 3000];
 
 /**
  * Music playback for the campaign.
@@ -96,20 +114,36 @@ export class MusicDirector {
   };
 
   private async loadManifest(): Promise<void> {
-    try {
-      const response = await fetch(MANIFEST_URL, { cache: 'no-store' });
-      if (!response.ok) throw new Error(`audio manifest HTTP ${response.status}`);
-      this.manifest = resolveMusicCatalog(await response.json() as MusicConfig, await loadAssetCatalog());
-      // A cue may have fired while the manifest was in flight.
-      const cue = this.pendingCue;
-      if (cue && this.unlocked) {
-        this.pendingCue = null;
-        this.play(cue);
+    for (let attempt = 1; attempt <= MANIFEST_ATTEMPTS; attempt += 1) {
+      try {
+        const response = await fetch(MANIFEST_URL, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`audio manifest HTTP ${response.status}`);
+        // Both fetches at once. They were awaited one after the other, which
+        // cost a whole round trip before a note could play.
+        const [config, catalog] = await Promise.all([
+          response.json() as Promise<MusicConfig>,
+          loadAssetCatalog(),
+        ]);
+        this.manifest = resolveMusicCatalog(config, catalog);
+        if (attempt > 1) debugLog.log('audio', 'manifest recovered', { attempt });
+        // A cue may have fired while the manifest was in flight.
+        const cue = this.pendingCue;
+        if (cue && this.unlocked) {
+          this.pendingCue = null;
+          this.play(cue);
+        }
+        return;
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        if (attempt >= MANIFEST_ATTEMPTS) {
+          debugLog.log('audio', 'manifest unavailable', { error: detail, attempts: attempt });
+          return;
+        }
+        debugLog.log('audio', 'manifest retry', { error: detail, attempt, of: MANIFEST_ATTEMPTS });
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, MANIFEST_BACKOFF_MS[attempt - 1] ?? MANIFEST_BACKOFF_MS[MANIFEST_BACKOFF_MS.length - 1]);
+        });
       }
-    } catch (error) {
-      debugLog.log('audio', 'manifest unavailable', {
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
   }
 
