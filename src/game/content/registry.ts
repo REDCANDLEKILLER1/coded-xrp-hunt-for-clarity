@@ -577,6 +577,9 @@ export const BOSS_ATTACK_KEYS: readonly BossAttackKey[] = [
   'charge',
   'sweep_beam',
   'escort_screen',
+  'seeker_salvo',
+  'pincer',
+  'spiral',
 ];
 
 export const BOSSES: Record<string, BossDef> = scaleCombatants({
@@ -607,9 +610,14 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
         // The screen opens the last phase: he hides behind his escorts before
         // he shows you anything else, so the phase starts as a fight you
         // cannot win by holding fire on him.
-        hpThreshold: 0.28, moveSpeed: 124, fireRate: 0.58, projectileSpeed: 250, projectileCount: 5, spread: 0.19,
+        //
+        // It used to end with every move in the table -- radial and sweep as
+        // well -- which made the teacher a worse version of the last boss and
+        // left the four fights indistinguishable from each other. He now ends
+        // on the two moves he spent the fight teaching.
+        hpThreshold: 0.34, moveSpeed: 124, fireRate: 0.58, projectileSpeed: 250, projectileCount: 5, spread: 0.19,
         pattern: 'burst', accent: '#ff3030',
-        attacks: ['escort_screen', 'radial', 'charge', 'fog_wall', 'sweep_beam'],
+        attacks: ['escort_screen', 'fog_wall', 'charge', 'aimed_volley'],
       },
     ],
   },
@@ -629,13 +637,21 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
       },
       {
         // Halfway down it starts launching fighters to defend it.
-        hpThreshold: 0.58, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18,
-        pattern: 'sweep', accent: '#ff3030', attacks: ['escort_screen', 'fog_wall', 'aimed_volley'],
+        hpThreshold: 0.66, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18,
+        pattern: 'sweep', accent: '#ff3030', attacks: ['escort_screen', 'pincer', 'aimed_volley'],
       },
       {
-        hpThreshold: 0.24, moveSpeed: 105, fireRate: 0.48, projectileSpeed: 270, projectileCount: 6, spread: 0.16,
+        // It never charges and it never spirals. The Behemoth holds a line
+        // and takes space away from you: sweeps, pincers, and a screen it
+        // hides behind while both are up. Gary dives at you; this does not,
+        // and that difference is the whole fight.
+        // Four moves, not five, and 44% of the bar rather than 24%. A phase
+        // has to own enough health to run its script through at least once or
+        // the last moves are content nobody sees: measured, the old five-move
+        // loop cost 7.80s inside a phase that lasted 1.5-4.8s.
+        hpThreshold: 0.44, moveSpeed: 105, fireRate: 0.48, projectileSpeed: 270, projectileCount: 6, spread: 0.16,
         pattern: 'burst', accent: '#ff3030',
-        attacks: ['escort_screen', 'radial', 'charge', 'sweep_beam'],
+        attacks: ['escort_screen', 'pincer', 'sweep_beam', 'aimed_volley'],
       },
     ],
   },
@@ -648,10 +664,28 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
     hp: 82,
     triggerWave: 13,
     score: 1200,
+    // The hunter, and the only boss that fights alone -- it never launches a
+    // screen and never puts up a wall. It closes, and the seekers are the
+    // reason you cannot simply keep your distance: they follow, and the only
+    // answer is to shoot them down, which means taking the gun off the boss.
+    //
+    // It had no `attacks` array at all before, so none of the machinery below
+    // reached it: no telegraph, no armour, no punish window. Measured, it
+    // spent 100% of a 22.4s fight on the unscripted flat-timer fallback.
     phases: [
-      { hpThreshold: 1, moveSpeed: 70, fireRate: 0.78, projectileSpeed: 245, projectileCount: 4, spread: 0.2, pattern: 'sweep', accent: '#ff3030' },
-      { hpThreshold: 0.6, moveSpeed: 98, fireRate: 0.56, projectileSpeed: 275, projectileCount: 5, spread: 0.17, pattern: 'spread', accent: '#ff3030' },
-      { hpThreshold: 0.22, moveSpeed: 132, fireRate: 0.4, projectileSpeed: 305, projectileCount: 7, spread: 0.14, pattern: 'burst', accent: '#ff3030' },
+      {
+        hpThreshold: 1, moveSpeed: 70, fireRate: 0.78, projectileSpeed: 245, projectileCount: 4, spread: 0.2,
+        pattern: 'sweep', accent: '#ff3030', attacks: ['aimed_volley', 'seeker_salvo'],
+      },
+      {
+        hpThreshold: 0.64, moveSpeed: 98, fireRate: 0.56, projectileSpeed: 275, projectileCount: 5, spread: 0.17,
+        pattern: 'spread', accent: '#ff3030', attacks: ['aimed_volley', 'seeker_salvo', 'charge'],
+      },
+      {
+        hpThreshold: 0.38, moveSpeed: 132, fireRate: 0.4, projectileSpeed: 305, projectileCount: 7, spread: 0.14,
+        pattern: 'burst', accent: '#ff3030',
+        attacks: ['seeker_salvo', 'charge', 'radial', 'aimed_volley'],
+      },
     ],
   },
   final_clarity: {
@@ -663,10 +697,29 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
     hp: 120,
     triggerWave: 17,
     score: 2000,
+    // The exam. Its own move is the spiral -- a gap that travels, so the
+    // answer is to keep circling rather than to find a spot and hold it --
+    // and around it, one move borrowed from each of the three fights before:
+    // Gary's wall, the Destroyer's seekers, the Behemoth's pincer.
+    //
+    // Unscripted, it was a bullet hose: 554 shots and a measured peak of 62
+    // live projectiles in 35.8s, with no tell on any of them and no window
+    // worth aiming for. More shots is not a harder boss; it is a less
+    // readable one.
     phases: [
-      { hpThreshold: 1, moveSpeed: 82, fireRate: 0.66, projectileSpeed: 270, projectileCount: 5, spread: 0.17, pattern: 'aimed', accent: '#ff3030' },
-      { hpThreshold: 0.55, moveSpeed: 112, fireRate: 0.46, projectileSpeed: 305, projectileCount: 7, spread: 0.14, pattern: 'sweep', accent: '#ff3030' },
-      { hpThreshold: 0.2, moveSpeed: 148, fireRate: 0.32, projectileSpeed: 340, projectileCount: 9, spread: 0.12, pattern: 'burst', accent: '#ff3030' },
+      {
+        hpThreshold: 1, moveSpeed: 82, fireRate: 0.66, projectileSpeed: 270, projectileCount: 5, spread: 0.17,
+        pattern: 'aimed', accent: '#ff3030', attacks: ['aimed_volley', 'spiral'],
+      },
+      {
+        hpThreshold: 0.62, moveSpeed: 112, fireRate: 0.46, projectileSpeed: 305, projectileCount: 7, spread: 0.14,
+        pattern: 'sweep', accent: '#ff3030', attacks: ['spiral', 'fog_wall', 'seeker_salvo'],
+      },
+      {
+        hpThreshold: 0.36, moveSpeed: 148, fireRate: 0.32, projectileSpeed: 340, projectileCount: 9, spread: 0.12,
+        pattern: 'burst', accent: '#ff3030',
+        attacks: ['spiral', 'escort_screen', 'radial', 'pincer', 'charge'],
+      },
     ],
   },
 });
