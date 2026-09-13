@@ -17,6 +17,9 @@ export interface CompanionPlan { warp: boolean; advance: boolean; fire: boolean 
 export function companionPlan(heroDistance:number,targetDistance:number,coverBlocked:boolean):CompanionPlan {
   return {warp:heroDistance>12,advance:heroDistance>2.25,fire:targetDistance<=15&&!coverBlocked};
 }
+export function companionGait(followDistance:number):'Idle'|'Walk'|'Run' {
+  return followDistance<=.25?'Idle':followDistance<=1.5?'Walk':'Run';
+}
 export type BoardingInteraction = 'terminal' | 'crew' | 'none';
 /** Room terminals win when the companion is standing beside the player. */
 export function boardingInteraction(terminalDistance:number,crewDistance:number,crewVisible:boolean):BoardingInteraction {
@@ -44,8 +47,9 @@ export const BOARDING_WEAPONS:readonly BoardingWeapon[]=[
   {level:3,label:'ARC SCATTERGUN',damage:10,cooldown:.34,shots:3,spread:.19},
   {level:4,label:'LEDGER CANNON',damage:22,cooldown:.22,shots:2,spread:.075},
 ];
-export function boardingWeapon(level:number|undefined):BoardingWeapon {
-  return BOARDING_WEAPONS[Math.max(0,Math.min(BOARDING_WEAPONS.length-1,Math.floor(level??1)-1))];
+export function boardingWeapon(level:unknown):BoardingWeapon {
+  const parsed=Number(level??1);const safeLevel=Number.isFinite(parsed)?parsed:1;
+  return BOARDING_WEAPONS[Math.max(0,Math.min(BOARDING_WEAPONS.length-1,Math.floor(safeLevel)-1))];
 }
 export type BoardingEnemyKind='guard'|'relay'|'core'|'warden'|'captain';
 export function boardingEnemyHealth(kind:BoardingEnemyKind):number {
@@ -58,7 +62,7 @@ export function boardingEnemyVolley(kind:BoardingEnemyKind,tactic:number):readon
   return [0];
 }
 /** Boarding weapon mastery remains useful on every later on-foot world. */
-export function campaignHeroDamage(base:number,boardingLevel:number|undefined):number {
+export function campaignHeroDamage(base:number,boardingLevel:unknown):number {
   const multiplier=[1,1.15,1.35,1.65][boardingWeapon(boardingLevel).level-1];
   return base*multiplier;
 }

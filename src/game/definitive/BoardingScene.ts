@@ -6,7 +6,7 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingWeapon, canCrossExitField, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -481,15 +481,16 @@ export class BoardingScene implements ManagedScene {
     const forward=new Vector3(Math.sin(this.hero.rotation.y),0,Math.cos(this.hero.rotation.y));
     const destination=this.hero.position.clone().addScaledVector(forward,-1.9).add(new Vector3(forward.z,0,-forward.x).multiplyScalar(.75));
     const follow=destination.sub(this.crew.position);follow.y=0;
-    let crewMoving=false;
-    if(companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).advance&&follow.length()>0.25){const step=follow.normalize().multiplyScalar(Math.min(follow.length(),dt*4.35));for(const axis of ['x','z'] as const){const next=this.crew.position.clone();next[axis]+=step[axis];const room=deckRoom(this.room);if(insideWallMargin(room,next.x,next.z)&&!this.obstacles.some(o=>Math.abs(next.x-o.x)<o.w/2+.25&&Math.abs(next.z-o.z)<o.d/2+.25)){this.crew.position[axis]=next[axis];crewMoving=true;}}}
+    let crewGait:'Idle'|'Walk'|'Run'='Idle';
+    const followDistance=follow.length();
+    if(companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).advance&&followDistance>0.25){const step=follow.normalize().multiplyScalar(Math.min(followDistance,dt*4.35));for(const axis of ['x','z'] as const){const next=this.crew.position.clone();next[axis]+=step[axis];const room=deckRoom(this.room);if(insideWallMargin(room,next.x,next.z)&&!this.obstacles.some(o=>Math.abs(next.x-o.x)<o.w/2+.25&&Math.abs(next.z-o.z)<o.d/2+.25)){this.crew.position[axis]=next[axis];crewGait=companionGait(followDistance);}}}
     const focus=target?.mesh.position??this.hero.position;const direction=focus.clone().sub(this.crew.position);const angle=Math.atan2(direction.x,direction.z);this.crew.rotation.y+=Math.atan2(Math.sin(angle-this.crew.rotation.y),Math.cos(angle-this.crew.rotation.y))*Math.min(1,dt*8);
     if(target&&direction.length()<15&&this.crewFireClock<=0){
       const hand=this.crew.getObjectByName('Hand_R');const origin=hand?hand.getWorldPosition(new Vector3()):this.crew.position.clone().add(new Vector3(0,1.05,0));
       const targetPoint=target.mesh.position.clone();targetPoint.y=Math.max(.8,targetPoint.y);
       if(companionPlan(this.hero.position.distanceTo(this.crew.position),direction.length(),this.coverBlocks(origin,targetPoint)).fire){this.fire(origin,targetPoint.sub(origin),'crew',7);this.crewFireClock=.72;this.crewActionClock=.3;this.playCrew('Interact');}
     }
-    if(this.crewActionClock<=0)this.playCrew(crewMoving?'Run':'Idle');this.crewMarker.position.copy(this.crew.position).y=2.4;
+    if(this.crewActionClock<=0)this.playCrew(crewGait);this.crewMarker.position.copy(this.crew.position).y=2.4;
   }  update(dt:number):void {
     if(!this.active)return;this.dialog.update(dt);
     this.refreshFactionLighting();

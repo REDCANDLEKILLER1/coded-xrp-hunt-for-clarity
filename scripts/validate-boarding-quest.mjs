@@ -8,7 +8,7 @@ const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {BoardingQuest}=await load('src/game/definitive/BoardingQuest.ts');
 const {Dialogue,BOARDING_DIALOGUE}=await load('src/game/definitive/Dialogue.ts');
 const {DECK,DECK_DOORS,canCross,roomAt,insideWallMargin}=await load('src/game/definitive/BoardingLayout.ts');
-const {selectBoardingTarget,coreExposure,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
+const {selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
 assert.equal(DECK.length,8);
 for(const room of DECK){assert.equal(roomAt(room.x,room.z).id,room.id);assert.ok(insideWallMargin(room,room.x,room.z));}
 for(const door of DECK_DOORS){
@@ -28,8 +28,10 @@ assert.equal(boardingInteraction(3,.7,true),'crew');
 assert.equal(boardingInteraction(3,.7,false),'none');
 assert.equal(canCrossExitField(35.5,36.5,36,false),false,'unshielded hero cannot cross exit field');
 assert.equal(canCrossExitField(35.5,36.5,36,true),true,'active Ledger Shield permits crossing');
-assert.equal(boardingWeapon(1).label,'ION SIDEARM');assert.equal(boardingWeapon(3).shots,3);assert.equal(boardingWeapon(99).level,4);
+assert.equal(boardingWeapon(1).label,'ION SIDEARM');assert.equal(boardingWeapon(3).shots,3);assert.equal(boardingWeapon(99).level,4);assert.equal(boardingWeapon('3').level,3);assert.equal(boardingWeapon('corrupt').level,1);
+assert.equal(companionGait(.2),'Idle');assert.equal(companionGait(1),'Walk');assert.equal(companionGait(2),'Run');
 assert.equal(boardingEnemyHealth('captain'),520);assert.equal(boardingEnemyHealth('warden'),210);assert.equal(boardingEnemyVolley('captain',0).length,5);assert.ok(Math.abs(campaignHeroDamage(12,4)-19.8)<1e-9);
+assert.equal(campaignHeroDamage(12,'corrupt'),12,'corrupt boarding weapon save falls back to base damage');
 assert.ok(DECK.every(room=>room.enemies.length>=3),'every deck room has a combat encounter');
 assert.ok(DECK.reduce((sum,room)=>sum+room.enemies.length,0)>=30,'boarding route has sustained enemy pressure');
 const data=new Map(); let fail=false;
