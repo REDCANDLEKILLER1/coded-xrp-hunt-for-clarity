@@ -6,7 +6,7 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -192,6 +192,7 @@ export class BoardingScene implements ManagedScene {
     }else if(room.id==='command'){
       const table=new Mesh(new CylinderGeometry(1.45,1.65,.78,8),this.bossMetal);table.position.set(x+3.25,.39,z);structure.add(table);
       const holo=new Mesh(new CylinderGeometry(.75,1.15,.05,24),this.blue);holo.position.set(x+3.25,.84,z);structure.add(holo);this.obstacles.push({x:x+3.25,z,w:3.1,d:3.1,cover:true});
+      for(const [px,pz,sx,sz] of [[x+2,z-1.55,4,.12],[x+5.85,z+.4,.12,4],[x+5.45,z+2.35,.9,.12]])this.part(structure,[px,.035,pz],[sx,.03,sz],this.blue);
       for(const sign of [-1,1])this.part(structure,[x+sign*1.65,2.1,z+.55],[.12,1.25,.12],this.red);
     }else if(room.id==='core'){
       for(const sign of [-1,1]){this.part(structure,[x+sign*2.15,1.4,z+.3],[.55,2.8,.55],this.bossMetal);this.part(structure,[x+sign*2.15,1.4,z-.02],[.14,2.25,.14],this.red);}
@@ -360,7 +361,7 @@ export class BoardingScene implements ManagedScene {
     }
     if(focus==='none'){this.say('Move close to the glowing terminal to interact.');return;}
     switch(this.room){
-      case 'hangar':if(!q.isClear('hangar'))this.say('Clear the arrival bay before opening the security door.');else{q.complete('hangar_safe');this.say('Bay secured. PULSE REPEATER acquired. Security deck open.');}break;
+      case 'hangar':if(!q.isClear('hangar'))this.say('Terminal locked under fire. Clear the arrival bay, then return to claim it.');else{q.complete('hangar_safe');this.say('Bay secured. PULSE REPEATER acquired. Security deck open.');}break;
       case 'security':if(!q.isClear('security'))this.say('Clear the security detail first.');else{q.complete('security_relay');this.say('Door relay disabled. Crew junction unlocked.');}break;
       case 'rescue':this.say(!q.isClear('rescue')?'Clear the crew junction.':!q.has('engineering_power')?'Restore Engineering power, then search the outer wall seams.':!q.save.snapshot.quests.includes('boarding.hidden_route')?'The scanner marks a false wall near the far red panel.':'The detention passage is open. Find Mr Zamn behind it.');break;
       case 'engineering':if(!q.isClear('engineering'))this.say('Clear engineering before rerouting power.');else if(!q.has('engineering_power'))this.conversation(BOARDING_DIALOGUE.engineering,'engineering_power');else this.say('Hangar power is restored.');break;
@@ -558,6 +559,7 @@ export class BoardingScene implements ManagedScene {
     this.statsClock+=dt;if(this.statsClock>.1){this.paintHUD();this.statsClock=0;}
   }
   private updateEnemies(dt:number):void {
+    const pressure=boardingPressure(this.room);
     let attackers=this.enemies.filter(e=>e.room===this.room&&e.hp>0&&e.charge>0).length;
     for(const enemy of this.enemies){
       enemy.mesh.visible=enemy.room===this.room;
@@ -572,8 +574,8 @@ export class BoardingScene implements ManagedScene {
         const direction=enemy.target.clone().sub(enemy.mesh.position);direction.y=0;
         enemy.tell.position.copy(enemy.mesh.position).addScaledVector(direction,.5);enemy.tell.position.y=.035;
         enemy.tell.rotation.y=Math.atan2(direction.x,direction.z);enemy.tell.scale.set(.18+.12*Math.sin(this.clock*18)**2,.025,direction.length());
-        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:1.9+enemy.tactic*.25;enemy.mesh.scale.setScalar(1);}
-      }else if(enemy.clock<=0&&attackers<3&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:.68+enemy.tactic*.09;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
+        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=(enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:1.9+enemy.tactic*.25)*pressure.cadence;enemy.mesh.scale.setScalar(1);}
+      }else if(enemy.clock<=0&&attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:.68+enemy.tactic*.09;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
     }
   }
   private updateBolts(dt:number):void {

@@ -10,11 +10,11 @@ export const roomFlag = (room: BoardingRoom): string => `boarding.${room}`;
 const add = (values: string[], value: string): void => { if (!values.includes(value)) values.push(value); };
 
 export const BOARDING_OBJECTIVES: Record<BoardingStep, string> = {
-  hangar_safe: 'Land safely. Test movement and open the bay terminal.',
-  security_relay: 'Clear the security detail and disable its door relay.',
+  hangar_safe: 'Survive the arrival ambush. Clear the bay, then claim its terminal.',
+  security_relay: 'Break Security’s synchronized crossfire, then disable the door relay.',
   rescue_junction: 'Search the crew junction for the hidden detention route and find Mr Zamn.',
-  engineering_power: 'Defeat the Engineering Warden and restore power to the hidden-deck scanner.',
-  command_access: 'Clear command access and open the Core chamber.',
+  engineering_power: 'Push through the Crew Junction to Engineering. Defeat its Warden and restore scanner power.',
+  command_access: 'Flank the command table, clear the deck, and open the Core chamber.',
   core_defeated: 'Break the two relays, then defeat the Ledger Defense Core.',
   bridge_secured: 'Use Ledger Shield through the exit field. Secure the bridge.',
   departure_ready: 'Check the ship terminal and prepare the captured Warship.',

@@ -61,6 +61,13 @@ export function boardingEnemyVolley(kind:BoardingEnemyKind,tactic:number):readon
   if(kind==='warden')return tactic%2?[-.2,0,.2]:[-.1,.1];
   return [0];
 }
+export interface BoardingPressure { attackers:number; cadence:number }
+export function boardingPressure(room:string):BoardingPressure {
+  if(room==='security')return {attackers:4,cadence:.72};
+  if(room==='engineering')return {attackers:4,cadence:.8};
+  if(room==='command')return {attackers:4,cadence:.85};
+  return {attackers:3,cadence:1};
+}
 /** Boarding weapon mastery remains useful on every later on-foot world. */
 export function campaignHeroDamage(base:number,boardingLevel:unknown):number {
   const multiplier=[1,1.15,1.35,1.65][boardingWeapon(boardingLevel).level-1];
