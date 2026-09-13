@@ -546,6 +546,11 @@ const BOSS_ATTACKS: Record<BossAttackKey, { telegraph: number; active: number; r
   radial: { telegraph: 0.8, active: 0, recover: 0.4, label: 'BURST' },
   charge: { telegraph: 0.9, active: 0.75, recover: 0.5, label: 'CHARGE' },
   sweep_beam: { telegraph: 0.85, active: 1.5, recover: 0.5, label: 'SWEEP' },
+  // Long tell, long recovery: the missiles have to be shot down, and a player
+  // who spends the window on them has earned the punish that follows.
+  seeker_salvo: { telegraph: 1.15, active: 0, recover: 0.75, label: 'SEEKERS' },
+  pincer: { telegraph: 0.95, active: 0, recover: 0.5, label: 'PINCER' },
+  spiral: { telegraph: 1.0, active: 1.8, recover: 0.62, label: 'SPIRAL' },
 };
 
 /**
@@ -567,6 +572,30 @@ const FOG_WALL_GAP = 3;
 const RADIAL_SHOTS = 14;
 const RADIAL_GAP = 3;
 const BOSS_CHARGE_SPEED = 430;
+/** Missiles in a salvo, and the fan they leave the boss on. */
+const SEEKER_COUNT = 4;
+const SEEKER_FAN = 0.5;
+/**
+ * Shots in one converging curtain, and how wide the killing column is.
+ *
+ * The pincer paints the column the player was standing in and then closes on
+ * it from both sides, so the answer is to leave. `PINCER_SPAN` is that column
+ * in pixels; anything much narrower stops reading as a threat at all, and
+ * anything much wider on a 360px screen leaves nowhere to go.
+ */
+const PINCER_SHOTS = 6;
+const PINCER_SPAN = 96;
+/**
+ * Arms in the spiral, how fast the pattern rotates, and the gap between
+ * volleys.
+ *
+ * Four arms at 0.15s, not five at 0.11s. The first pass put a measured peak of
+ * 66 live projectiles on a 360px screen, which is not a harder boss -- it is
+ * an unreadable one, and unreadable was the complaint that started this.
+ */
+const SPIRAL_ARMS = 4;
+const SPIRAL_RATE = 2.35;
+const SPIRAL_INTERVAL = 0.15;
 /** Escorts launched by a screen attack, and how long before they break off. */
 /**
  * The escort screen, as a clock rather than a wall.
@@ -2395,9 +2424,12 @@ export class Game2A {
 
   /** Locks in where the next attack will land, at the moment the tell starts. */
   private aimBossAttack(boss: BossActor, key: BossAttackKey): void {
-    boss.attackAim = key === 'fog_wall'
-      // The gap opens where the player is standing when the wall is called.
-      // Staying put is safe; the punish is for panicking mid-tell.
+    // `fog_wall` opens its gap where the player is standing when it is called,
+    // so staying put is safe and the punish is for panicking mid-tell.
+    // `pincer` marks the same column and CLOSES on it, so the punish is for
+    // standing still. Both are locked at the start of the tell -- an aim that
+    // kept tracking through the wind-up would leave nothing to dodge.
+    boss.attackAim = key === 'fog_wall' || key === 'pincer'
       ? clamp(this.player.x, 40, this.w - 40)
       : this.player.x;
   }
@@ -2433,6 +2465,44 @@ export class Game2A {
       return;
     }
 
+    if (key === 'seeker_salvo') {
+      // Aimed at the player, but they steer, so the fan is not the point --
+      // the point is that they can be shot out of the air. `track` is what
+      // the ground silo's missile uses, and it is deliberately the same
+      // number: one interception skill, taught once, used everywhere.
+      const aimed = Math.atan2(this.player.y - originY, this.player.x - boss.x);
+      const middle = (SEEKER_COUNT - 1) / 2;
+      for (let i = 0; i < SEEKER_COUNT; i += 1) {
+        const angle = aimed + (i - middle) * (SEEKER_FAN / Math.max(1, middle));
+        this.pushBossShot(boss.x, originY, angle, phase.projectileSpeed * 0.62, phase.accent, {
+          w: 14,
+          h: 14,
+          projectileKey: 'enemy_missile',
+          homing: 1.1,
+          track: 1.25,
+          interceptible: true,
+        });
+      }
+      sfx.play('enemyShoot');
+      return;
+    }
+
+    if (key === 'pincer') {
+      // Two curtains that close on the marked column. The wall says stand
+      // still; this says move. Same tell language, opposite answer.
+      for (let i = 0; i < PINCER_SHOTS; i += 1) {
+        const reach = (i + 1) / PINCER_SHOTS;
+        const drop = PINCER_SPAN * 0.5 * reach;
+        for (const side of [-1, 1] as const) {
+          const from = boss.attackAim + side * (PINCER_SPAN * 0.5 + drop);
+          const angle = Math.atan2(this.h - originY, boss.attackAim - from);
+          this.pushBossShot(clamp(from, 8, this.w - 8), originY, angle, phase.projectileSpeed * 0.9, phase.accent);
+        }
+      }
+      sfx.play('enemyShoot');
+      return;
+    }
+
     if (key === 'escort_screen') {
       this.launchEscorts(boss);
       return;
@@ -2452,6 +2522,19 @@ export class Game2A {
       boss.x += clamp(boss.attackAim - boss.x, -1, 1) * BOSS_CHARGE_SPEED * dt;
       boss.y += BOSS_CHARGE_SPEED * 0.62 * dt;
       boss.y = Math.min(boss.y, this.playerLane().bottom - 46);
+      return;
+    }
+
+    if (key === 'spiral') {
+      // A radial's gap is read once and stood in. A spiral's gap MOVES, so the
+      // answer is to keep circling in one direction for the whole window.
+      boss.fireClock -= dt;
+      if (boss.fireClock > 0) return;
+      boss.fireClock = SPIRAL_INTERVAL;
+      for (let arm = 0; arm < SPIRAL_ARMS; arm += 1) {
+        const angle = boss.age * SPIRAL_RATE + (arm / SPIRAL_ARMS) * Math.PI * 2;
+        this.pushBossShot(boss.x, boss.y, angle, phase.projectileSpeed * 0.78, phase.accent);
+      }
       return;
     }
 
@@ -2582,7 +2665,24 @@ export class Game2A {
     sfx.play('deny');
   }
 
-  private pushBossShot(x: number, y: number, angle: number, speed: number, color: string): void {
+  /**
+   * One boss projectile.
+   *
+   * `extra` exists for the seeker salvo. Everything a boss fired used to be an
+   * un-interceptible bullet, so the interception path -- which the ground
+   * silos have used since they shipped -- had never once been reachable from a
+   * boss fight. A homing missile the player can shoot out of the air is a
+   * different question from a bullet they have to dodge, and it is the only
+   * answer in the table whose verb is the gun.
+   */
+  private pushBossShot(
+    x: number,
+    y: number,
+    angle: number,
+    speed: number,
+    color: string,
+    extra: Partial<HostileProjectile> = {},
+  ): void {
     this.hostileShots.push({
       x,
       y,
@@ -2593,6 +2693,7 @@ export class Game2A {
       damage: 1,
       color,
       projectileKey: 'enemy_red_bullet',
+      ...extra,
     });
   }
 
@@ -3654,6 +3755,44 @@ export class Game2A {
       c.beginPath();
       c.arc(boss.x, boss.y, 26 + 54 * charge, 0, Math.PI * 2);
       c.stroke();
+    } else if (key === 'pincer') {
+      // Paint the column that is about to be CLOSED, and the two walls coming
+      // for it. The fog wall paints everything except the safe place; this
+      // paints the unsafe place. Opposite tells for opposite answers.
+      c.globalAlpha = 0.18 + 0.3 * charge;
+      c.fillRect(boss.attackAim - PINCER_SPAN * 0.5, boss.y, PINCER_SPAN, this.h - boss.y);
+      c.globalAlpha = 0.55 + 0.45 * charge;
+      c.lineWidth = 3;
+      for (const side of [-1, 1] as const) {
+        const x = boss.attackAim + side * PINCER_SPAN * (1.1 - 0.6 * charge);
+        c.beginPath();
+        c.moveTo(clamp(x, 4, this.w - 4), boss.y + boss.h * 0.35);
+        c.lineTo(clamp(boss.attackAim + side * PINCER_SPAN * 0.5, 4, this.w - 4), this.h);
+        c.stroke();
+      }
+    } else if (key === 'seeker_salvo') {
+      // Missile silhouettes fanning out of the boss, plus the word that says
+      // what to do about them. SHOOT, not dodge.
+      const aimed = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+      const middle = (SEEKER_COUNT - 1) / 2;
+      for (let i = 0; i < SEEKER_COUNT; i += 1) {
+        const angle = aimed + (i - middle) * (SEEKER_FAN / Math.max(1, middle));
+        const reach = 26 + 46 * charge;
+        c.beginPath();
+        c.arc(boss.x + Math.cos(angle) * reach, boss.y + Math.sin(angle) * reach, 4 + 3 * charge, 0, Math.PI * 2);
+        c.fill();
+      }
+    } else if (key === 'spiral') {
+      // The arms, drawn where they will start, winding up as the tell fills.
+      c.lineWidth = 2;
+      for (let arm = 0; arm < SPIRAL_ARMS; arm += 1) {
+        const angle = boss.age * SPIRAL_RATE + (arm / SPIRAL_ARMS) * Math.PI * 2;
+        const reach = 20 + 62 * charge;
+        c.beginPath();
+        c.moveTo(boss.x, boss.y);
+        c.lineTo(boss.x + Math.cos(angle) * reach, boss.y + Math.sin(angle) * reach);
+        c.stroke();
+      }
     } else if (key === 'sweep_beam') {
       const swing = Math.sin(boss.age * 3.1) * 0.7 + Math.PI / 2;
       c.globalAlpha = 0.28 + 0.4 * charge;
