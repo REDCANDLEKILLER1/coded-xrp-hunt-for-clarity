@@ -6,7 +6,7 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingObstacleBlocksMove, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -448,6 +448,8 @@ export class BoardingScene implements ManagedScene {
       for(let i=this.enemies.length-1;i>=0;i--)if(this.enemies[i].room===this.room)this.enemies.splice(i,1);
       for(const b of this.bolts)this.scene.remove(b.mesh);this.bolts.length=0;
       const room=deckRoom(this.room);this.hero.position.set(room.x,0,this.room==='bridge'?DECK_LAYOUT.core.exitFieldZ-.55:room.z-room.depth*.32);
+      if(this.room==='hangar'){this.host.fighter.scene.getObjectByName('Pilot_Exit')?.getWorldPosition(this.hero.position);this.hero.position.y=0;}
+      this.verticalVelocity=0;this.dodgeClock=0;this.meleeClock=0;
       this.life=100;this.shield=100;this.dead=false;this.invulnerability=1;this.spawnRoom(this.room);panel.remove();this.clearInput();
     });panel.append(title,text,button);this.ui.appendChild(panel);
   }
@@ -484,7 +486,7 @@ export class BoardingScene implements ManagedScene {
     const follow=destination.sub(this.crew.position);follow.y=0;
     let crewGait:'Idle'|'Walk'|'Run'='Idle';
     const followDistance=follow.length();
-    if(companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).advance&&followDistance>0.25){const step=follow.normalize().multiplyScalar(Math.min(followDistance,dt*4.35));for(const axis of ['x','z'] as const){const next=this.crew.position.clone();next[axis]+=step[axis];const room=deckRoom(this.room);if(insideWallMargin(room,next.x,next.z)&&!this.obstacles.some(o=>Math.abs(next.x-o.x)<o.w/2+.25&&Math.abs(next.z-o.z)<o.d/2+.25)){this.crew.position[axis]=next[axis];crewGait=companionGait(followDistance);}}}
+    if(companionPlan(this.hero.position.distanceTo(this.crew.position),Infinity,false).advance&&followDistance>0.25){const step=follow.normalize().multiplyScalar(Math.min(followDistance,dt*4.35));for(const axis of ['x','z'] as const){const next=this.crew.position.clone();next[axis]+=step[axis];const room=deckRoom(this.room);if(insideWallMargin(room,next.x,next.z)&&!boardingObstacleBlocksMove(this.obstacles,this.crew.position,next,.25)){this.crew.position[axis]=next[axis];crewGait=companionGait(followDistance);}}}
     const focus=target?.mesh.position??this.hero.position;const direction=focus.clone().sub(this.crew.position);const angle=Math.atan2(direction.x,direction.z);this.crew.rotation.y+=Math.atan2(Math.sin(angle-this.crew.rotation.y),Math.cos(angle-this.crew.rotation.y))*Math.min(1,dt*8);
     if(target&&direction.length()<15&&this.crewFireClock<=0){
       const hand=this.crew.getObjectByName('Hand_R');const origin=hand?hand.getWorldPosition(new Vector3()):this.crew.position.clone().add(new Vector3(0,1.05,0));
@@ -535,8 +537,8 @@ export class BoardingScene implements ManagedScene {
     for(const axis of ['x','z'] as const){
       const target=this.hero.position.clone();target[axis]+=this.move[axis]*distance;const next=roomAt(target.x,target.z);
       if(!next||!insideWallMargin(next,target.x,target.z)||!canCross(this.room,next.id,target.x,target.z))continue;
-      if(this.room==='bridge'&&!canCrossExitField(this.hero.position.z,target.z,DECK_LAYOUT.core.exitFieldZ,this.shieldOn)){this.say('Activate Ledger Shield to cross this low-power exit field.');continue;}
-      if(this.hero.position.y<.72&&this.obstacles.some(o=>Math.abs(target.x-o.x)<o.w/2+.3&&Math.abs(target.z-o.z)<o.d/2+.3))continue;
+      if(this.room==='bridge'&&!canCrossExitField(this.hero.position.z,target.z,DECK_LAYOUT.core.exitFieldZ,this.shieldOn,this.host.quest.has('bridge_secured'))){this.say('Activate Ledger Shield to cross this low-power exit field.');continue;}
+      if(this.hero.position.y<.72&&boardingObstacleBlocksMove(this.obstacles,this.hero.position,target))continue;
       if(this.enemies.some(e=>e.room===this.room&&e.hp>0&&Math.hypot(target.x-e.mesh.position.x,target.z-e.mesh.position.z)<(e.kind==='core'?2.2:e.kind==='captain'?1.55:e.kind==='warden'?1.2:.72)))continue;
       const reason=this.host.quest.lockReason(next.id);
       if(reason){this.say(reason);continue;}

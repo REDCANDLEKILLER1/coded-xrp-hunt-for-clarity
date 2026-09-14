@@ -28,9 +28,9 @@ export function boardingInteraction(terminalDistance:number,crewDistance:number,
   return 'none';
 }
 
-/** The bridge exit field is a hard traversal gate until Ledger Shield is active. */
-export function canCrossExitField(fromZ:number,toZ:number,fieldZ:number,shieldOn:boolean):boolean {
-  return shieldOn||fromZ>fieldZ||toZ<=fieldZ;
+/** The hostile bridge field requires Ledger Shield; capture makes it safe to revisit. */
+export function canCrossExitField(fromZ:number,toZ:number,fieldZ:number,shieldOn:boolean,captured=false):boolean {
+  return captured||shieldOn||fromZ>fieldZ||toZ<=fieldZ;
 }
 
 export interface BoardingWeapon {
@@ -72,4 +72,19 @@ export function boardingPressure(room:string):BoardingPressure {
 export function campaignHeroDamage(base:number,boardingLevel:unknown):number {
   const multiplier=[1,1.15,1.35,1.65][boardingWeapon(boardingLevel).level-1];
   return base*multiplier;
+}
+
+export interface BoardingObstacle { x:number; z:number; w:number; d:number }
+/** A landing or checkpoint overlap may retreat out of cover, but never move deeper. */
+export function boardingObstacleBlocksMove(obstacles:readonly BoardingObstacle[],from:{x:number;z:number},to:{x:number;z:number},radius=.3):boolean {
+  return obstacles.some(obstacle=>{
+    const depth=(point:{x:number;z:number})=>Math.min(obstacle.w/2+radius-Math.abs(point.x-obstacle.x),obstacle.d/2+radius-Math.abs(point.z-obstacle.z));
+    const next=depth(to);
+    if(next<=0)return false;
+    const current=depth(from);
+    if(current<=0)return true;
+    const outwardX=Math.abs(to.x-obstacle.x)-Math.abs(from.x-obstacle.x);
+    const outwardZ=Math.abs(to.z-obstacle.z)-Math.abs(from.z-obstacle.z);
+    return outwardX<0||outwardZ<0||(outwardX<=1e-6&&outwardZ<=1e-6);
+  });
 }

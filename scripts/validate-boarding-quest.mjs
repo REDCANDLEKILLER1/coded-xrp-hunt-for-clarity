@@ -8,7 +8,7 @@ const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {BoardingQuest}=await load('src/game/definitive/BoardingQuest.ts');
 const {Dialogue,BOARDING_DIALOGUE}=await load('src/game/definitive/Dialogue.ts');
 const {DECK,DECK_DOORS,canCross,roomAt,insideWallMargin}=await load('src/game/definitive/BoardingLayout.ts');
-const {selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
+const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
 assert.equal(DECK.length,8);
 for(const room of DECK){assert.equal(roomAt(room.x,room.z).id,room.id);assert.ok(insideWallMargin(room,room.x,room.z));}
 for(const door of DECK_DOORS){
@@ -16,6 +16,17 @@ for(const door of DECK_DOORS){
   assert.equal(canCross(door.a,door.b,door.x+(door.axis==='z'?3:0),door.z+(door.axis==='x'?3:0)),false,'solid jamb blocks passage');
 }
 assert.equal(canCross('hangar','core',0,0),false,'rooms cannot teleport through unrelated doors');
+// Reproduce a jump landing inside the fighter nose from the rendered playtest.
+const fighterCover=[{x:0,z:-28,w:1.85,d:8.8}];
+const landed={x:.274,z:-23.650};
+assert.equal(boardingObstacleBlocksMove(fighterCover,landed,{x:.274,z:-23.60}),false,'jump landing can walk out of the fighter nose');
+assert.equal(boardingObstacleBlocksMove(fighterCover,landed,{x:.274,z:-23.70}),true,'overlap escape cannot move deeper into the fighter');
+assert.equal(boardingObstacleBlocksMove(fighterCover,{x:1.3,z:-28},{x:1.2,z:-28}),true,'grounded approach still collides with the fighter');
+assert.equal(boardingObstacleBlocksMove(fighterCover,{x:.274,z:-23.35},{x:.274,z:-23.25}),false,'last escape step can clear the collision boundary');
+assert.equal(boardingObstacleBlocksMove(fighterCover,{x:.4,z:-24.33},{x:.4,z:-24.28}),false,'overlap can escape toward the nose even when the side is nearer');
+const pillar=[{x:0,z:0,w:2,d:2}];
+assert.equal(boardingObstacleBlocksMove(pillar,{x:0,z:0},{x:.1,z:0},.25),false,'companion can escape a centered placement overlap');
+assert.equal(boardingObstacleBlocksMove(pillar,{x:1.3,z:0},{x:1.2,z:0},.25),true,'companion cannot enter solid cover');
 const core={kind:'core',hp:650,x:1,z:0},relay={kind:'relay',hp:65,x:9,z:0};
 assert.equal(selectBoardingTarget([core,relay],0,0),relay,'farther surviving relay wins over nearer shielded Core');
 assert.equal(selectBoardingTarget([core,{...relay,hp:0}],0,0),core);
@@ -28,6 +39,7 @@ assert.equal(boardingInteraction(3,.7,true),'crew');
 assert.equal(boardingInteraction(3,.7,false),'none');
 assert.equal(canCrossExitField(35.5,36.5,36,false),false,'unshielded hero cannot cross exit field');
 assert.equal(canCrossExitField(35.5,36.5,36,true),true,'active Ledger Shield permits crossing');
+assert.equal(canCrossExitField(35.5,36.5,36,false,true),true,'captured green bridge stays accessible without Shield');
 assert.equal(boardingWeapon(1).label,'ION SIDEARM');assert.equal(boardingWeapon(3).shots,3);assert.equal(boardingWeapon(99).level,4);assert.equal(boardingWeapon('3').level,3);assert.equal(boardingWeapon('corrupt').level,1);
 assert.equal(companionGait(.2),'Idle');assert.equal(companionGait(1),'Walk');assert.equal(companionGait(2),'Run');
 assert.equal(boardingEnemyHealth('captain'),520);assert.equal(boardingEnemyHealth('warden'),210);assert.equal(boardingEnemyVolley('captain',0).length,5);
@@ -124,3 +136,20 @@ assert.deepEqual(earthSave.snapshot,replayBefore,'failed restoration receipt can
 fail=false;dialogue.skip();assert.ok(earthSave.snapshot.quests.includes('earth.district_restored'));
 const restored=earthSave.snapshot;assert.ok(restore());assert.deepEqual(earthSave.snapshot,restored,'restoration replay is idempotent');
 console.log('boarding-quest: OK — ordered capture, atomic rewards, failed-save retries, Earth act comms/receipts/replay, hostile speakers and preserved progression.');
+
+// Drive the real retry button: the old room-center spawn was inside the parked fighter.
+const {BoardingScene}=await load('src/game/definitive/BoardingScene.ts');
+const {Vector3,Object3D}=await import('three');
+const previousDocument=globalThis.document;
+let retryClick;
+globalThis.document={createElement:()=>({append(){},appendChild(){},remove(){},addEventListener(type,callback){if(type==='click')retryClick=callback;}})};
+try{
+  const fighter=new Object3D(),exit=new Object3D();exit.name='Pilot_Exit';exit.position.set(1.7,0,-25.5);fighter.add(exit);fighter.updateMatrixWorld(true);
+  let respawned=false,inputCleared=false;
+  const retry={room:'hangar',scene:{remove(){}},enemies:[],bolts:[],hero:{position:new Vector3(0,1,-28)},host:{fighter:{scene:fighter}},ui:{appendChild(){}},verticalVelocity:4,dodgeClock:.2,meleeClock:.1,spawnRoom(room){respawned=room==='hangar';},clearInput(){inputCleared=true;}};
+  BoardingScene.prototype.retryPanel.call(retry);retryClick();
+  assert.deepEqual(retry.hero.position.toArray(),[1.7,0,-25.5],'retry uses the original fighter exit rather than an obstructed room center');
+  assert.ok(respawned&&inputCleared);assert.equal(retry.life,100);assert.equal(retry.dead,false);
+  assert.equal(retry.verticalVelocity,0);assert.equal(retry.dodgeClock,0);assert.equal(retry.meleeClock,0);
+}finally{globalThis.document=previousDocument;}
+console.log('boarding retry: original fighter exit restored, stale jump/dodge/melee cleared.');
