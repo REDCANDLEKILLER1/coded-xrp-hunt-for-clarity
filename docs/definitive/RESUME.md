@@ -1,3 +1,7 @@
+# Current continuation — September 14, 2026
+
+Continue `astra/chapter-one-interior`, draft PR #131. Read [BOARDING_CONTINUATION_20260914.md](BOARDING_CONTINUATION_20260914.md) for the pushed handoff, traversal fix, playtest evidence, recovery, and merge hold. The former September 8 handoff below is background for the integrated Chapter One candidate, not the active branch.
+
 # Review handoff — September 8, 2026
 
 The scoped Chapter One review candidate is on `astra/definitive-review`, continuing baseline `511748503235eded75c1498ac237552ef4ef1b10`, for draft PR125. Read CHAPTER_ONE_PLAYTEST_CHECKPOINT.md and PLAYTEST_CARD.md for the completed work, measured checks, recovery and explicit review limits. Corn v11, Boo v07 and LEX v12 are registered; original source sheets and versioned masters remain private.

@@ -17,7 +17,7 @@ for file in [a.master,a.output,a.render]:
     if file:pathlib.Path(file).parent.mkdir(parents=True,exist_ok=True)
 bpy.ops.wm.open_mainfile(filepath=a.base);scene=bpy.context.scene
 rig=next(o for o in scene.objects if o.type=='ARMATURE');rig.data.pose_position='POSE'
-selected=[name for name in ['Idle','Walk','Run','Interact'] if name in bpy.data.actions]
+selected=[name for name in ['Idle','Walk','Run','Interact','Dodge','KnockdownRecover'] if name in bpy.data.actions]
 rig.animation_data.action=None
 for track in list(rig.animation_data.nla_tracks):rig.animation_data.nla_tracks.remove(track)
 for action in list(bpy.data.actions):
@@ -45,7 +45,7 @@ def world_rotation(name,axis,angle):
 
 animated=['root','spine01','spine03','head']+[n+s for s in ['.L','.R'] for n in ['upperarm01','lowerarm01','upperleg01','lowerleg01','foot','wrist']]
 for name in selected:
-    duration={'Idle':3.6,'Walk':1.1,'Run':.7,'Interact':3.2}[name];frames=round(duration*30)
+    duration={'Idle':3.6,'Walk':1.1,'Run':.7,'Interact':3.2,'Dodge':.7,'KnockdownRecover':2.0}[name];frames=round(duration*30)
     action=bpy.data.actions.new(name);rig.animation_data.action=action;action.use_fake_user=True
     for f in sorted(set(range(0,frames+1,2))|{frames}):
         t=f/frames;phase=t*math.tau
@@ -57,7 +57,7 @@ for name in selected:
             for side,sign in [('.L',1),('.R',-1)]:
                 stride=math.sin(phase)*sign
                 rotate('upperleg01'+side,(1,0,0),stride*amp)
-                rotate('lowerleg01'+side,(1,0,0),-max(0,-stride)*amp*1.5)
+                rotate('lowerleg01'+side,(1,0,0),max(0,-stride)*amp*1.5)
                 rotate('foot'+side,(1,0,0),max(0,-stride)*amp*.3)
                 rig.pose.bones['upperarm01'+side].rotation_quaternion=world_rotation('upperarm01'+side,(1,0,0),-stride*amp*.65) @ relaxed['upperarm01'+side]
             rig.pose.bones['root'].location.z=abs(math.sin(phase))*(.012 if name=='Walk' else .023)
@@ -67,6 +67,18 @@ for name in selected:
             aim_chain('upperarm01.R','lowerarm01.R',(-.18,-.52*envelope,-.98+.3*envelope))
             aim_chain('lowerarm01.R','wrist.R',(-.08,-.13-.83*envelope,-.985+.7*envelope))
             rotate('head',(1,0,0),.06*envelope)
+        elif name=='Dodge':
+            envelope=math.sin(math.pi*t)
+            rotate('spine01',(1,0,0),-.42*envelope)
+            for side in ['.L','.R']:
+                rotate('upperleg01'+side,(1,0,0),.6*envelope)
+                rotate('lowerleg01'+side,(1,0,0),1.1*envelope)
+        elif name=='KnockdownRecover':
+            envelope=math.sin(math.pi*t)**2
+            rotate('spine01',(1,0,0),-.85*envelope)
+            for side in ['.L','.R']:
+                rotate('upperleg01'+side,(1,0,0),1.15*envelope)
+                rotate('lowerleg01'+side,(1,0,0),1.5*envelope)
         for bone in animated:
             pb=rig.pose.bones[bone];pb.keyframe_insert('rotation_quaternion',frame=f,group=bone)
             if bone=='root':pb.keyframe_insert('location',frame=f,group=bone)
@@ -77,7 +89,7 @@ bpy.ops.wm.save_as_mainfile(filepath=a.master)
 bpy.ops.object.select_all(action='DESELECT');rig.select_set(True)
 for obj in scene.objects:
     if obj.parent==rig:obj.select_set(True)
-bpy.ops.export_scene.gltf(filepath=a.output,export_format='GLB',use_selection=True,export_yup=True,export_animations=True,export_animation_mode='ACTIONS',export_force_sampling=True,export_def_bones=True,export_skins=True,export_all_influences=False,export_extras=False,export_cameras=False,export_lights=False)
+bpy.ops.export_scene.gltf(filepath=a.output,export_format='GLB',use_selection=True,export_yup=True,export_animations=True,export_animation_mode='ACTIONS',export_force_sampling=False,export_def_bones=True,export_skins=True,export_all_influences=False,export_extras=False,export_cameras=False,export_lights=False)
 if a.render:
     scene.cycles.samples=20;scene.render.filepath=a.render;bpy.ops.render.render(write_still=True)
 print('MOTION_REFINED '+json.dumps({'master':a.master,'clips':selected}))

@@ -1,7 +1,7 @@
 import { CampaignSave, type DefinitiveSave, type SaveResult } from './CampaignSave';
 import {recordPlanetCleared} from '../content/CampaignProgress';
 
-export const BOARDING_STEPS = ['hangar_safe', 'security_relay', 'rescue_junction', 'engineering_power', 'command_access', 'core_defeated', 'bridge_secured', 'departure_ready'] as const;
+export const BOARDING_STEPS = ['hangar_safe', 'security_relay', 'engineering_power', 'rescue_junction', 'command_access', 'core_defeated', 'bridge_secured', 'departure_ready'] as const;
 export type BoardingStep = typeof BOARDING_STEPS[number];
 export const BOARDING_ROOMS = ['hangar', 'security', 'rescue', 'engineering', 'cache', 'command', 'core', 'bridge'] as const;
 export type BoardingRoom = typeof BOARDING_ROOMS[number];
@@ -10,11 +10,11 @@ export const roomFlag = (room: BoardingRoom): string => `boarding.${room}`;
 const add = (values: string[], value: string): void => { if (!values.includes(value)) values.push(value); };
 
 export const BOARDING_OBJECTIVES: Record<BoardingStep, string> = {
-  hangar_safe: 'Land safely. Test movement and open the bay terminal.',
-  security_relay: 'Clear the security detail and disable its door relay.',
-  rescue_junction: 'Open the crew route and meet Mr Zamn.',
-  engineering_power: 'Clear engineering and restore power to the hangar.',
-  command_access: 'Use the command terminal to open the Core chamber.',
+  hangar_safe: 'Survive the arrival ambush. Clear the bay, then claim its terminal.',
+  security_relay: 'Break Security’s synchronized crossfire, then disable the door relay.',
+  rescue_junction: 'Search the crew junction for the hidden detention route and find Mr Zamn.',
+  engineering_power: 'Push through the Crew Junction to Engineering. Defeat its Warden and restore scanner power.',
+  command_access: 'Flank the command table, clear the deck, and open the Core chamber.',
   core_defeated: 'Break the two relays, then defeat the Ledger Defense Core.',
   bridge_secured: 'Use Ledger Shield through the exit field. Secure the bridge.',
   departure_ready: 'Check the ship terminal and prepare the captured Warship.',
@@ -54,15 +54,15 @@ export class BoardingQuest {
 
   lockReason(room: BoardingRoom): string | null {
     const requirements: Partial<Record<BoardingRoom, BoardingStep>> = {
-      security: 'hangar_safe', rescue: 'security_relay', engineering: 'rescue_junction',
-      command: 'engineering_power', core: 'command_access', bridge: 'core_defeated', cache: 'rescue_junction',
+      security: 'hangar_safe', rescue: 'security_relay', engineering: 'security_relay',
+      command: 'rescue_junction', core: 'command_access', bridge: 'core_defeated', cache: 'rescue_junction',
     };
     const required = requirements[room];
     return required && !this.has(required) ? BOARDING_OBJECTIVES[required] : null;
   }
 
   clear(room: BoardingRoom): SaveResult {
-    if (!['security', 'engineering', 'core'].includes(room) || this.lockReason(room)) return { ok: false, reason: 'condition' };
+    if (room === 'core' || this.lockReason(room)) return { ok: false, reason: 'condition' };
     return this.save.update(draft => { add(draft.clearedRooms, roomFlag(room)); });
   }
 
@@ -70,15 +70,21 @@ export class BoardingQuest {
     return this.save.claim(`reward.boarding.${step}`, draft => {
       const index = BOARDING_STEPS.indexOf(step);
       if (index > 0 && !draft.quests.includes(questFlag(BOARDING_STEPS[index - 1]))) return false;
+      if (step === 'hangar_safe' && !draft.clearedRooms.includes('boarding.hangar')) return false;
       if (step === 'security_relay' && !draft.clearedRooms.includes('boarding.security')) return false;
+      if (step === 'rescue_junction' && (!draft.clearedRooms.includes('boarding.rescue') || !draft.quests.includes('boarding.hidden_route') || !draft.quests.includes('boarding.engineering_power'))) return false;
       if (step === 'engineering_power' && !draft.clearedRooms.includes('boarding.engineering')) return false;
+      if (step === 'command_access' && !draft.clearedRooms.includes('boarding.command')) return false;
       if (step === 'core_defeated' && !draft.clearedRooms.includes('boarding.core')) return false;
+      if (step === 'bridge_secured' && !draft.clearedRooms.includes('boarding.bridge')) return false;
       add(draft.quests, questFlag(step));
       if (dialogueId) add(draft.dialogueSeen, dialogueId);
+      if (step === 'hangar_safe') draft.heroUpgrades.boarding_weapon=Math.max(2,draft.heroUpgrades.boarding_weapon??1);
       if (step === 'rescue_junction') add(draft.quests, 'crew.zamn_introduced');
       if (step === 'engineering_power') add(draft.quests, 'earth.hangar_power_restored');
       if (step === 'core_defeated') {
         draft.heroUpgrades.ledger_shield = 1;
+        draft.heroUpgrades.boarding_weapon = Math.max(4,draft.heroUpgrades.boarding_weapon??1);
         draft.location = { mode: 'boarding', world: 'ledger_prime', checkpoint: 'boarding.core' };
       }
       if (step === 'bridge_secured') {
@@ -91,9 +97,17 @@ export class BoardingQuest {
     });
   }
 
+  findHiddenRoute(): SaveResult {
+    return this.save.claim('reward.boarding.hidden_route', draft => {
+      if (!draft.quests.includes('boarding.engineering_power') || !draft.clearedRooms.includes('boarding.rescue')) return false;
+      add(draft.quests, 'boarding.hidden_route');
+      draft.heroUpgrades.boarding_weapon=Math.max(3,draft.heroUpgrades.boarding_weapon??1);
+    });
+  }
+
   cache(): SaveResult {
     return this.save.claim('reward.boarding.shield_cache', draft => {
-      if (!draft.heroUpgrades.ledger_shield || !draft.quests.includes('boarding.rescue_junction')) return false;
+      if (!draft.heroUpgrades.ledger_shield || !draft.quests.includes('boarding.rescue_junction') || !draft.clearedRooms.includes('boarding.cache')) return false;
       draft.credits += 100;
       add(draft.clearedRooms, 'boarding.cache');
     });
@@ -104,6 +118,7 @@ export class BoardingQuest {
       if (!draft.quests.includes('boarding.command_access')) return false;
       add(draft.clearedRooms, 'boarding.core'); add(draft.quests, 'boarding.core_defeated');
       draft.heroUpgrades.ledger_shield = 1;
+      draft.heroUpgrades.boarding_weapon = Math.max(4,draft.heroUpgrades.boarding_weapon??1);
       draft.location = { mode: 'boarding', world: 'ledger_prime', checkpoint: 'boarding.core' };
     });
   }

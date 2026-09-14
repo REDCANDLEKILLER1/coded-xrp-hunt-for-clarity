@@ -42,8 +42,10 @@ for room in layout['rooms']:
     objects=[];x,z,w,d=room['x'],room['z'],room['width'],room['depth']
     root=bpy.data.objects.new('Deck_'+room['id'],None);scene.collection.objects.link(root)
     box('Continuous pressure deck',x,z,-.15,w,d,.18,wall,0)
-    for i in range(int(w/2)):
-        for j in range(int(d/2)):box('Deck plate',x-w/2+1+i*2,z-d/2+1+j*2,-.09,1.985,1.985,.18,plate,.018)
+    # Four-metre plates retain readable floor seams over the continuous deck while
+    # keeping the expanded interior inside the mobile scene budget.
+    for i in range(int(w/4)):
+        for j in range(int(d/4)):box('Deck plate',x-w/2+2+i*4,z-d/2+2+j*4,-.09,3.985,3.985,.18,plate,.018)
     for axis in ['x','z']:
         for sign in [-1,1]:
             length=d if axis=='x' else w;fixed=(x if axis=='x' else z)+sign*(w if axis=='x' else d)/2
