@@ -117,6 +117,41 @@ const { EARTH_LEDGER_PRIME_MISSION } = await load('src/game/content/missions/led
     `ledger_city is empty ${emptyShare.toFixed(0)}% of the time; it measured 92-93% before and the point of this change is that the sky refills`);
 }
 
+// ---- 2b. the pace that was bought back stays bought -----------------------
+//
+// GROUP_MIN_DWELL is a measured decision, not a taste. Sweeping it over five
+// seeds on `orbital_approach`, release time against screen density:
+//
+//   serial   never released in 300s   mean 1.77   peak 5.0
+//   dwell 3   55s                     mean 2.89   peak 8.2
+//   dwell 5   64s                     mean 2.55   peak 7.8
+//   dwell 6   66s                     mean 2.36   peak 6.0
+//
+// Collapsing it hands the wall-clock straight back to the "too short" report
+// that started this, and nothing else in this file notices -- dwell 0.01
+// survived every other check here.
+{
+  const encounters = await (await import('node:fs/promises')).readFile('src/game/content/EarthFlightEncounters.ts', 'utf8');
+  const dwell = Number(/const GROUP_MIN_DWELL = ([\d.]+);/.exec(encounters)?.[1]);
+  check(Number.isFinite(dwell), 'GROUP_MIN_DWELL could not be read from the source');
+  check(dwell >= 3,
+    `GROUP_MIN_DWELL is ${dwell}s; below 3 a group stops costing wall-clock and the acts shorten again`);
+  check(dwell <= 8,
+    `GROUP_MIN_DWELL is ${dwell}s; past 8 the screen empties between groups and the density is gone`);
+
+  // And behaviourally: releases must not become a stream. Measured on the real
+  // director, counting how fast `ledger_city` burns through its authored groups.
+  const paced = new EarthFlightEncounterDirector();
+  paced.start('ledger_city');
+  let releases = 0;
+  for (let i = 0; i < 60 * 60; i += 1) {
+    // Threats never die, so only the dwell clock can advance the script.
+    if (paced.update(1 / 60, 3, () => true).spawns.length) releases += 1;
+  }
+  check(releases <= 60 / 3,
+    `${releases} groups released in 60s with the screen still full -- the dwell gate is not holding anything back`);
+}
+
 // ---- 3. nothing deadlocks -------------------------------------------------
 //
 // Two ways overlap could hang an act, both checked against the director

@@ -23,8 +23,23 @@ const OVERLAP_SHARE = 0.5;
  * a group costs wall-clock only while it is the thing being waited for. The
  * owner's complaint was that the level is too SHORT, so buying density with
  * pace is trading one report for the other.
+ *
+ * 5, chosen by sweeping it rather than by feel. `orbital_approach` over five
+ * seeds, measuring how long the director takes to release every authored group
+ * against how many bodies are on screen while it does:
+ *
+ *   serial (shipped)   never released in 300s   mean 1.77   peak 5.0
+ *   dwell 3             55s                     mean 2.89   peak 8.2
+ *   dwell 4             61s                     mean 2.48   peak 8.0
+ *   dwell 5             64s                     mean 2.55   peak 7.8
+ *   dwell 6             66s                     mean 2.36   peak 6.0
+ *
+ * The cliff sits between 5 and 6: peak concurrency falls 7.8 -> 6.0 to buy two
+ * more seconds, which is a bad trade against "make it much harder". 5 is the
+ * last value that still fills the screen, and it hands back 16% of the pace
+ * that 3 gave away.
  */
-const GROUP_MIN_DWELL = 3;
+const GROUP_MIN_DWELL = 5;
 
 export interface EarthFlightEncounterDef {
   actKey: string;

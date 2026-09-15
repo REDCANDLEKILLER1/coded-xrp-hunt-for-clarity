@@ -57,6 +57,7 @@ const load = async (entry) => {
 };
 const { Game2A } = await load('src/game/core/Game2A.ts');
 const { BOSSES } = await load('src/game/content/registry.ts');
+const { friendlyGround } = await load('src/game/content/GroundDefense.ts');
 
 /** A fight that runs past this on the STARTER gun is a slog, not a boss. */
 const FIGHT_LIMIT = 100;
@@ -202,6 +203,60 @@ for (const key of keys) {
     check(signature.length > 0,
       `${key} has no move of its own -- every one of its ${moves.size} moves also shows up in another fight`);
   }
+}
+
+// ---- 5b. the arena is not sterile ----------------------------------------
+//
+// `startGuardian` clears `this.hazards`, which is right -- nobody wants the
+// previous act's clutter scrolling into a duel. But `updateHazards` was then
+// never reached again while a boss was up, in EITHER the arcade branch or the
+// campaign guardian branch, so a gun placed there could not move, could not
+// aim and could not be hit. Same shape as the escort bug: the only call site
+// lived behind a branch the boss path skips.
+//
+// Driven, not read: play a fight and watch for a hostile gun that actually
+// travels down the screen.
+{
+  const source = await (await import('node:fs/promises')).readFile('src/game/core/Game2A.ts', 'utf8');
+  const { g, restore } = spawn('gary_fog');
+  try {
+    check(!!g.boss, 'could not spawn a boss for the ground-pressure check');
+    const seen = new Map();
+    let peakGround = 0;
+    for (let i = 0; i < 60 * 90 && g.boss; i += 1) {
+      g.player.x = 60 + (Math.sin(i / 90) * 0.5 + 0.5) * (393 - 120);
+      g.player.y = 600;
+      g.playerHitClock = 1;
+      g.update(1 / 60);
+      const ground = g.hazards.filter((hazard) => hazard.ground && !friendlyGround(hazard));
+      peakGround = Math.max(peakGround, ground.length);
+      for (const hazard of ground) {
+        const first = seen.get(hazard);
+        if (!first) { seen.set(hazard, { y: hazard.y, moved: false }); continue; }
+        if (hazard.y - first.y > 30) first.moved = true;
+      }
+    }
+    const tracked = [...seen.values()];
+    check(tracked.length > 0,
+      'no hostile ground gun ever appeared during a boss fight -- the arena is still sterile');
+    check(tracked.some((entry) => entry.moved),
+      `${tracked.length} ground gun(s) appeared during the boss fight but none travelled -- `
+      + 'they are frozen, which is the bug this check exists for');
+    // And it stays a duel with something happening in it, not a second fight.
+    check(peakGround <= 3,
+      `${peakGround} ground guns at once during a boss fight -- that is a crowd, not a second axis`);
+    // The line above is not enough on its own: the spawner is on a 7.5s clock,
+    // so a fight is only long enough for a handful of chances and the observed
+    // peak never approaches a raised cap. Raising BOSS_GROUND_CAP to 9 survived
+    // that check. This ceiling is absolute and it is about the SCREEN -- a boss
+    // already owns most of the round budget, so the ground may add a threat to
+    // watch, never a second fight.
+    const cap = Number(/const BOSS_GROUND_CAP = (\d+)/.exec(source)?.[1]);
+    check(Number.isFinite(cap), 'BOSS_GROUND_CAP could not be read from the source');
+    check(cap >= 1 && cap <= 3,
+      `BOSS_GROUND_CAP is ${cap}; past 3 the duel stops being a duel`);
+    if (!process.env.QUIET) console.log(`  boss arena: ${tracked.length} ground gun(s) over the fight, peak ${peakGround} alive at once`);
+  } finally { restore(); }
 }
 
 // ---- 6. something the player can shoot down ------------------------------

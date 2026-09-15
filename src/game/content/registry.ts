@@ -637,7 +637,7 @@ export const BOSSES: Record<string, BossDef> = scaleCombatants({
       },
       {
         // Halfway down it starts launching fighters to defend it.
-        hpThreshold: 0.66, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18,
+        hpThreshold: 0.74, moveSpeed: 78, fireRate: 0.68, projectileSpeed: 245, projectileCount: 4, spread: 0.18,
         pattern: 'sweep', accent: '#ff3030', attacks: ['escort_screen', 'pincer', 'aimed_volley'],
       },
       {

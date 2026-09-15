@@ -647,6 +647,24 @@ const SCREEN_OVERLOAD_RECOVER = 2;
  */
 const BOSS_PRESSURE_INTERVAL = 3.4;
 const BOSS_PRESSURE_CAP = 5;
+/**
+ * Ground guns during a boss act.
+ *
+ * The arena was sterile by construction. `startGuardian` clears `this.hazards`
+ * -- correct, nobody wants the previous act's clutter scrolling into a duel --
+ * but `updateHazards` was then never called again while a boss was up, in
+ * EITHER the arcade branch or the campaign guardian branch. So an emplacement
+ * could not move, could not aim and could not be hit for the whole fight. That
+ * is the same shape as the escort bug three lines below: the only call site
+ * lived behind a branch the boss path skips.
+ *
+ * Two at a time, on a slow clock. The point is a second axis to watch, not a
+ * second fight -- a boss you must read while something on the ground is lining
+ * up on you. Capped low because `validate-boss-tactics` holds the screen to 48
+ * live rounds and a boss already owns most of that budget.
+ */
+const BOSS_GROUND_CAP = 2;
+const BOSS_GROUND_INTERVAL = 7.5;
 /** Warship hangar launches: engine phase, then faster once the hangar is up. */
 const WARSHIP_LAUNCH_INTERVAL = 4.2;
 const WARSHIP_LAUNCH_FAST = 2.6;
@@ -708,6 +726,7 @@ export class Game2A {
   private seekers: SeekerActor[] = [];
   private seekerClock = SEEKER_INTERVAL;
   private bossSpawnClock = BOSS_PRESSURE_INTERVAL;
+  private bossGroundClock = BOSS_GROUND_INTERVAL;
   /** Seconds of screen left. Zero means the boss is open. */
   private screenClock = 0;
   /** Seconds before another screen may launch. */
@@ -1086,6 +1105,10 @@ export class Game2A {
       this.startBossIfReady();
       if (this.boss) {
         this.updateBoss(dt);
+        // Hazards move and aim during a boss fight now. Without this call an
+        // emplacement spawned here would hang at its spawn y forever, unable
+        // to act and unable to be shot.
+        this.moveHazards(dt);
         // Escorts were frozen for the whole fight: moveDrones is the only
         // place stance, fire, dodge and patience advance, and it was reached
         // only through updateDrones, which this branch skips. So the screen
@@ -1162,6 +1185,7 @@ export class Game2A {
       if (!this.boss) this.startGuardian(guardian);
       this.updateBoss(dt);
       this.moveDrones(dt);
+      this.moveHazards(dt);
       return;
     }
 
@@ -1414,6 +1438,43 @@ export class Game2A {
     const air = this.drones.reduce((load, drone) => load + HULL_COMBAT[this.enemyDef(drone.enemyKey).hull].slots, 0);
     const ground = this.hazards.filter((hazard) => !friendlyGround(hazard)).length * CAMPAIGN_HAZARD_SLOTS;
     return air + ground;
+  }
+
+  /**
+   * A trickle of ground guns while a boss is up.
+   *
+   * Kept deliberately thin: one gun at a time, two alive at most, on a 7.5s
+   * clock. It exists so the arena has a second thing happening in it, not so
+   * the boss fight becomes a crowd. Hostile guns only -- the friendly repair
+   * beacon has no business appearing in a duel.
+   */
+  private bossGround(dt: number): void {
+    this.bossGroundClock -= dt;
+    if (this.bossGroundClock > 0) return;
+    this.bossGroundClock = BOSS_GROUND_INTERVAL;
+    if (this.hazards.filter((hazard) => !friendlyGround(hazard)).length >= BOSS_GROUND_CAP) return;
+    const def = HAZARDS[selectHazardKey(Math.max(DEFAULT_HAZARD.minWave, this.wave))] ?? DEFAULT_HAZARD;
+    const side: -1 | 1 = Math.random() < 0.5 ? -1 : 1;
+    const edgeBand = Math.min(this.w * 0.3, 150);
+    const x = def.placement === 'lane'
+      ? 70 + Math.random() * Math.max(1, this.w - 140)
+      : side < 0 ? 40 + Math.random() * edgeBand : this.w - 40 - Math.random() * edgeBand;
+    const ground = groundDefense(def.key, `boss:${this.boss?.bossKey ?? ''}`, 0);
+    if (friendlyGround({ x: 0, y: 0, w: 0, h: 0, ground })) return;
+    this.hazards.push({
+      x,
+      y: -def.draw.h,
+      w: def.hitbox.w,
+      h: def.hitbox.h,
+      vx: 0,
+      vy: this.currentStage().scrollSpeed,
+      hp: this.hazardHp(def) * EMPLACEMENT_HP_SCALE * this.loadoutScale(),
+      hpMax: this.hazardHp(def) * EMPLACEMENT_HP_SCALE * this.loadoutScale(),
+      hazardKey: def.key,
+      fireClock: 0.5 + Math.random() * 0.7,
+      side,
+      ground,
+    });
   }
 
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
@@ -2392,6 +2453,7 @@ export class Game2A {
    * cap, so a screened boss does not also bury the player.
    */
   private bossPressure(dt: number): void {
+    this.bossGround(dt);
     this.bossSpawnClock -= dt;
     if (this.bossSpawnClock > 0) return;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
