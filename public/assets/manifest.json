@@ -863,7 +863,8 @@
       "type": "model",
       "scenes": [
         "boarding",
-        "hub"
+        "hub",
+        "warship_district"
       ],
       "bytes": 3682900,
       "sha256": "f34cc6abfa191f73fe267f7656c2c9ce32483227c86dd14cab78210fad29b781",

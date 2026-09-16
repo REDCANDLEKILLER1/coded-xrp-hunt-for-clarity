@@ -1,0 +1,10 @@
+[
+  {
+    "id": "boarding",
+    "model": "boarding_deck",
+    "maxBytes": 4200000,
+    "maxTriangles": 60000,
+    "maxSurfaces": 36,
+    "maxLiveBytes": 12582912
+  }
+]
