@@ -6,6 +6,13 @@ export interface ManagedScene {
   saveBeforeLeave?():boolean;
 }
 
+/** Releases a scene without letting a failed release strand the caller mid-handoff. */
+function release(scene: ManagedScene | null | undefined, owner: { lastError: string | null }): void {
+  if (!scene) return;
+  try { scene.dispose(); }
+  catch (error) { owner.lastError = error instanceof Error ? error.message : 'Scene could not be released'; }
+}
+
 /** Serial ownership of simulation/input; a failed load resumes the previous scene. */
 export class SceneController {
   private current: ManagedScene | null = null;
@@ -30,7 +37,10 @@ export class SceneController {
       if (generation !== this.generation || pending.signal.aborted) { next.dispose(); return false; }
       next.setActive(true);
       this.current = next;
-      previous?.dispose();
+      // The handoff is committed here. A failure to release the outgoing scene is a
+      // leak, not a navigation failure, and must never roll back onto the scene that
+      // now owns the screen.
+      release(previous, this);
       return true;
     } catch (error) {
       next?.dispose();
@@ -54,7 +64,7 @@ export class SceneController {
     this.pending?.abort();
     this.pending = null;
     this.current?.setActive(false);
-    this.current?.dispose();
+    release(this.current, this);
     this.current = null;
   }
 }
