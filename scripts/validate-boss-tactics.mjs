@@ -58,6 +58,8 @@ const load = async (entry) => {
 const { Game2A } = await load('src/game/core/Game2A.ts');
 const { BOSSES } = await load('src/game/content/registry.ts');
 const { friendlyGround } = await load('src/game/content/GroundDefense.ts');
+const { ENEMIES: ENEMY_DEFS } = await load('src/game/content/registry.ts');
+const SLOT = { light: 1, medium: 2, heavy: 4 };
 
 /** A fight that runs past this on the STARTER gun is a slog, not a boss. */
 const FIGHT_LIMIT = 100;
@@ -256,6 +258,55 @@ for (const key of keys) {
     check(cap >= 1 && cap <= 3,
       `BOSS_GROUND_CAP is ${cap}; past 3 the duel stops being a duel`);
     if (!process.env.QUIET) console.log(`  boss arena: ${tracked.length} ground gun(s) over the fight, peak ${peakGround} alive at once`);
+  } finally { restore(); }
+}
+
+// ---- 5c. boss-fight trash is budgeted in SLOTS, not counted --------------
+//
+// `bossPressure` gated on `this.drones.length >= BOSS_PRESSURE_CAP`, and a
+// count is not a budget: a `whale_scout` is a heavy worth four slots and was
+// admitted as one. Measured on the shipped build, the four fights peaked at
+// 11, 12, 13 and 14 slots against an intended 5 -- two to three times the
+// stated pressure, on top of a boss, on a 393px screen. Precisely the defect
+// the arena slot system exists to stop, reached through a door that never
+// consulted it.
+//
+// Asserted PER ADMISSION rather than on the observed peak, because the peak
+// also contains escort screens -- three mediums arriving together is authored
+// boss content with its own cap, not trash, and it legitimately pushes the
+// total past the trash budget. Watching each admission is what isolates the
+// thing this check owns, and it does not drift with the seed.
+{
+  const source = await (await import('node:fs/promises')).readFile('src/game/core/Game2A.ts', 'utf8');
+  const budget = Number(/const BOSS_PRESSURE_SLOTS = (\d+)/.exec(source)?.[1]);
+  check(Number.isFinite(budget) && budget >= 3 && budget <= 8,
+    `BOSS_PRESSURE_SLOTS is ${budget}; outside 3-8 it is not a trickle`);
+  const slotsOf = (drones, defs) => drones.reduce((total, drone) => total + (SLOT[defs[drone.enemyKey]?.hull] ?? 1), 0);
+
+  const { g, restore } = spawn('gary_fog');
+  try {
+    check(!!g.boss, 'could not spawn a boss for the pressure-budget check');
+    let admissions = 0;
+    let worst = 0;
+    let previous = [...g.drones];
+    for (let i = 0; i < 60 * 150 && g.boss; i += 1) {
+      g.player.x = 60 + (Math.sin(i / 120) * 0.5 + 0.5) * (393 - 120);
+      g.player.y = 600;
+      g.playerHitClock = 1;
+      g.update(1 / 60);
+      const added = g.drones.filter((drone) => !previous.includes(drone));
+      // An escort screen arrives as a group and is boss content, not trash.
+      if (added.length && added.every((drone) => !drone.escort)) {
+        admissions += 1;
+        worst = Math.max(worst, slotsOf(g.drones.filter((drone) => !drone.escort), ENEMY_DEFS));
+      }
+      previous = [...g.drones];
+    }
+    check(admissions > 0, 'no trash ever arrived during the boss fight -- this check would prove nothing');
+    check(worst <= budget,
+      `a boss-fight trash spawn took the screen to ${worst} slots against a budget of ${budget} -- `
+      + 'the cap is counting drones again rather than spending slots');
+    if (!process.env.QUIET) console.log(`  boss trash: ${admissions} admissions, worst ${worst} slots against a ${budget} budget`);
   } finally { restore(); }
 }
 

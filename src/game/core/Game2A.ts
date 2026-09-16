@@ -646,7 +646,22 @@ const SCREEN_OVERLOAD_RECOVER = 2;
  * boss read.
  */
 const BOSS_PRESSURE_INTERVAL = 3.4;
-const BOSS_PRESSURE_CAP = 5;
+/**
+ * Boss-fight trash pressure, budgeted in SLOTS.
+ *
+ * This was a count of drones, and a count is not a budget: a `whale_scout` is
+ * a heavy worth four slots and was admitted as one. Measured on the shipped
+ * build, the four boss fights peaked at 11, 12, 13 and 14 slots against an
+ * intended 5 -- two to three times the pressure the constant claims, stacked
+ * on top of a boss, on a 393px screen. Exactly the defect the arena slot
+ * system was built to stop, reached through a door that never consulted it.
+ *
+ * 6 slots: one heavy and two lights, or three mediums. Enough that the screen
+ * has to be managed while the boss is read, not so much that the boss stops
+ * being the fight. Escorts are drones too, so they are counted here -- a
+ * screened boss must not also bury the player.
+ */
+const BOSS_PRESSURE_SLOTS = 6;
 /**
  * Ground guns during a boss act.
  *
@@ -2071,11 +2086,31 @@ export class Game2A {
    * does this substitute -- the largest formation that DOES fit, so a nearly
    * full arena still takes a light rather than going quiet.
    */
+  /**
+   * Whether a formation can arrive WHOLE.
+   *
+   * A heavy arrives as a formation, never as one big ship on its own -- the
+   * wing is what gives the eye the size comparison and gives the player a
+   * reason to pick a target. `spawnHeavyWing` bails when no light hull is
+   * unlocked, so a heavy admitted without one spawns ALONE and quietly breaks
+   * that contract; `formationCost` would also under-bill it at 4 slots instead
+   * of 6, because the wing it never got is the part that costs the other two.
+   *
+   * No wave can reach it today: `regulator_drone` (light) unlocks at wave 1
+   * and `whale_scout` (heavy) at wave 4, so the wing always exists by the time
+   * a heavy can roll -- I checked all 25 waves and found zero. This is the
+   * guard for the roster edit that reorders them, which is exactly the moment
+   * it would start happening with nothing to notice.
+   */
+  private formationEligible(enemyKey: string): boolean {
+    return this.enemyDef(enemyKey).hull !== 'heavy' || this.wingKey() !== undefined;
+  }
+
   private pickFormation(room: number): string | undefined {
     const rolled = selectEnemyKey(ENEMIES, this.wave, Math.random());
-    if (this.formationCost(rolled) <= room) return rolled;
+    if (this.formationEligible(rolled) && this.formationCost(rolled) <= room) return rolled;
     return availableEnemyKeys(ENEMIES, this.wave)
-      .filter((key) => this.formationCost(key) <= room)
+      .filter((key) => this.formationEligible(key) && this.formationCost(key) <= room)
       .sort((a, b) => this.formationCost(b) - this.formationCost(a))[0];
   }
 
@@ -2457,9 +2492,20 @@ export class Game2A {
     this.bossSpawnClock -= dt;
     if (this.bossSpawnClock > 0) return;
     this.bossSpawnClock = BOSS_PRESSURE_INTERVAL;
-    if (this.drones.length >= BOSS_PRESSURE_CAP) return;
+    const load = this.drones.reduce((total, drone) => total + HULL_COMBAT[this.enemyDef(drone.enemyKey).hull].slots, 0);
+    const room = BOSS_PRESSURE_SLOTS - load;
+    if (room <= 0) return;
 
-    const enemyKey = selectEnemyKey(ENEMIES, this.wave, Math.random());
+    // The same eligibility the arena uses. Without it this door admits a heavy
+    // with no wing whenever the roster stops unlocking a light first -- and it
+    // also under-counts, because the wing it never gets is what costs the rest.
+    const rolled = selectEnemyKey(ENEMIES, this.wave, Math.random());
+    const enemyKey = this.formationEligible(rolled) && HULL_COMBAT[this.enemyDef(rolled).hull].slots <= room
+      ? rolled
+      : availableEnemyKeys(ENEMIES, this.wave)
+        .filter((key) => this.formationEligible(key) && HULL_COMBAT[this.enemyDef(key).hull].slots <= room)
+        .sort((a, b) => HULL_COMBAT[this.enemyDef(b).hull].slots - HULL_COMBAT[this.enemyDef(a).hull].slots)[0];
+    if (enemyKey === undefined) return;
     const def = this.enemyDef(enemyKey);
     const x = 30 + Math.random() * Math.max(1, this.w - 60);
     this.drones.push({

@@ -12,6 +12,7 @@
 // than turning into a boss.
 
 import { build } from 'esbuild';
+import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 
 const failures = [];
@@ -204,6 +205,55 @@ check(/if \(def\.hull === 'heavy'\) this\.spawnHeavyWing\(/.test(spawnGate),
 const numOf = (cls, field) => Number(new RegExp(`${cls}: \\{[^}]*${field}: ([\\d.]+)`).exec(table)?.[1]);
 check(numOf('heavy', 'speed') < numOf('light', 'speed'), 'a heavy must be slower than a light');
 check(numOf('heavy', 'hp') > numOf('light', 'hp'), 'a heavy must be tougher than a light');
+
+// ---- a heavy never arrives alone ----------------------------------------
+//
+// `spawnHeavyWing` returns early when no light hull is unlocked, so a heavy
+// admitted without one spawns ALONE -- and `formationCost` under-bills it at
+// 4 slots instead of 6, because the wing it never got is the part that costs
+// the other two. The contract three comments away in Game2A is explicit: "a
+// heavy arrives as a formation, not as one big ship on its own".
+//
+// It cannot happen with today's roster. `regulator_drone` (light) unlocks at
+// wave 1 and `whale_scout` (heavy) at wave 4, so the wing always exists by the
+// time a heavy can roll -- all 25 waves checked, zero reachable. That is
+// precisely why it needs a guard: the roster edit that reorders them is the
+// moment it starts happening, in a file nobody is looking at.
+//
+// So this does not read the roster. It rebuilds the engine with every light
+// hull stripped out and plays the arena, asserting no heavy ever reaches the
+// screen alone.
+{
+  const strip = { name: 'strip-lights', setup(b) { b.onLoad({ filter: /registry\.ts$/ }, async (args) => ({
+    contents: (await readFile(args.path, 'utf8')).replace(/hull: 'light'/g, "hull: 'medium'"),
+    loader: 'ts',
+  })); } };
+  const out = await build({ entryPoints: ['src/game/core/Game2A.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent', plugins: [strip] });
+  const { Game2A } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString('base64')}`);
+  const { ENEMIES: STRIPPED } = await import(`data:text/javascript;base64,${Buffer.from((await build({ entryPoints: ['src/game/content/registry.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent', plugins: [strip] })).outputFiles[0].text).toString('base64')}`);
+  check(!Object.values(STRIPPED).some((def) => def.hull === 'light'),
+    'the stripped roster still has a light hull -- this section would prove nothing');
+  check(Object.values(STRIPPED).some((def) => def.hull === 'heavy'),
+    'the stripped roster has no heavy left to admit -- this section would prove nothing');
+
+  const game = new Game2A(stubCanvas());
+  game.deployTestMode();
+  game.reset();
+  let heavies = 0;
+  for (let wave = 1; wave <= 20; wave += 1) {
+    game.wave = wave;
+    game.drones = [];
+    for (let i = 0; i < 60 * 20; i += 1) {
+      game.playerHitClock = 1;
+      game.update(1 / 60);
+      heavies += game.drones.filter((drone) => STRIPPED[drone.enemyKey]?.hull === 'heavy').length;
+      if (heavies) break;
+    }
+    if (heavies) break;
+  }
+  check(heavies === 0,
+    `a heavy reached the arena with no light hull in the roster to wing it -- ${heavies} spawned alone`);
+}
 
 if (failures.length) {
   console.error('hull-classes: FAIL');

@@ -173,9 +173,17 @@ for (const key of ['gary_fog', 'regulatory_behemoth']) {
 // ---- the arena keeps some pressure on during a boss ---------------------
 const pressure = game.split('private bossPressure(')[1]?.split('\n  }\n')[0] ?? '';
 check(pressure.length > 0, 'bossPressure is missing -- the arena empties for every boss fight');
-check(/BOSS_PRESSURE_CAP/.test(pressure), 'boss-fight spawns need a cap, or the screen becomes a wall');
-const cap = Number(/const BOSS_PRESSURE_CAP = (\d+);/.exec(game)?.[1]);
-check(cap >= 3 && cap <= 8, `BOSS_PRESSURE_CAP of ${cap} is not a trickle`);
+check(/BOSS_PRESSURE_SLOTS/.test(pressure), 'boss-fight spawns need a cap, or the screen becomes a wall');
+const cap = Number(/const BOSS_PRESSURE_SLOTS = (\d+);/.exec(game)?.[1]);
+check(cap >= 3 && cap <= 8, `BOSS_PRESSURE_SLOTS of ${cap} is not a trickle`);
+// A COUNT is not a budget. This cap was `this.drones.length >= BOSS_PRESSURE_CAP`,
+// which admitted a four-slot heavy as one drone: the four fights measured 11,
+// 12, 13 and 14 slots against an intended 5. The cap has to be spent in the
+// same slots the arena uses, or it is a cap in name only.
+check(/HULL_COMBAT\[this\.enemyDef\(drone\.enemyKey\)\.hull\]\.slots/.test(pressure),
+  'boss pressure must budget in slots, not count drones -- a heavy is four slots and was passing as one');
+check(/formationEligible/.test(pressure),
+  'boss pressure must use the same formation eligibility as the arena, or it admits a heavy with no wing');
 check(/this\.bossPressure\(dt\)/.test(game), 'bossPressure is never called');
 
 // The capital ship scrambles fighters in its back half.
