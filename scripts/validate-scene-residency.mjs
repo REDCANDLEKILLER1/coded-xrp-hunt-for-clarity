@@ -19,15 +19,15 @@ const {SceneController}=await load('src/game/definitive/SceneController.ts');
 /** A district stand-in that holds "live resources" until it is actually disposed. */
 function rig(){
   const live=new Set(),order=[];
-  const mount=name=>{
-    const scene={name,active:false,disposals:0,updates:0,renders:0,
+  const mount=(name,district=true)=>{
+    const scene={name,district,active:false,disposals:0,updates:0,renders:0,
       setActive(active){scene.active=active;order.push(`${name}:active=${active}`);},
       update(){scene.updates++;},
       render(){scene.renders++;},
       dispose(){scene.disposals++;live.delete(scene);order.push(`${name}:dispose#${scene.disposals}`);}};
     live.add(scene);return scene;
   };
-  return {live,order,mount,resident:()=>[...live].map(scene=>scene.name).sort().join('+')||'(none)'};
+  return {live,order,mount,resident:()=>[...live].map(scene=>scene.name).sort().join('+')||'(none)',districts:()=>[...live].filter(scene=>scene.district).map(scene=>scene.name)};
 }
 const settle=()=>new Promise(resolve=>setTimeout(resolve,5));
 
@@ -92,17 +92,22 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,5));
   assert.equal(g.resident(),'cargo','only the winning district owns live resources');
 }
 
-// --- P4: after any commit, exactly one district owns live resources.
+// --- P4: the lightweight connector preserves retry without two district GLBs co-resident.
 {
   const g=rig(),controller=new SceneController(),boarding=g.mount('boarding');
   await controller.change(async()=>boarding);
-  let duringLoad=0;
-  await controller.change(async()=>{const civic=g.mount('civic');duringLoad=g.live.size;return civic;});
-  assert.equal(duringLoad,2,
-    'the fallback contract costs a two-district peak while a load is in flight; the live-byte budget must cover it');
-  assert.equal(g.live.size,1,'exactly one district owns live resources once the handoff commits');
+  const connector=g.mount('civic-lift',false);
+  await controller.change(async()=>connector);
+  assert.deepEqual(g.districts(),[],'entering the connector releases the departing district before the next district loads');
+  let districtPeak=0;
+  await controller.change(async()=>{const civic=g.mount('civic');districtPeak=g.districts().length;return civic;});
+  assert.equal(districtPeak,1,'only the arriving district GLB is resident during its load');
+  assert.deepEqual(g.districts(),['civic'],'exactly one district owns live resources once the handoff commits');
+  const cargoConnector=g.mount('cargo-lift',false);
+  await controller.change(async()=>cargoConnector);
+  assert.deepEqual(g.districts(),[],'the next connector releases Civic before Cargo loads');
   await controller.change(async()=>g.mount('cargo'));
-  assert.equal(g.live.size,1,'residency stays at one district across repeated handoffs');
+  assert.deepEqual(g.districts(),['cargo'],'single district residency survives repeated connector handoffs');
   controller.clear();
   assert.equal(g.live.size,0,'tearing down the controller releases the last district');
 }
@@ -133,4 +138,4 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,5));
   assert.equal(boarding.updates,0,'a torn-down controller drives nothing');
 }
 
-console.log('scene-residency: OK — committed handoffs leave exactly one district resident, failed and aborted loads keep the player in the district they are standing in, stale results are released once, and a departure that fails to release cannot strand the arrival.');
+console.log('scene-residency: OK — connector handoffs keep heavy districts singly resident, failed and aborted loads keep the player on a live retry surface, stale results are released once, and a departure that fails to release cannot strand the arrival.');
