@@ -81,6 +81,8 @@ assert.equal(parseDefinitiveSave(JSON.stringify({ ...newDefinitiveSave(), heroUp
 assert.equal(parseDefinitiveSave(JSON.stringify({ ...newDefinitiveSave(), inventory: { med_pack: -1 } })), null);
 const legacyInventory=newDefinitiveSave();delete legacyInventory.inventory;
 assert.deepEqual(parseDefinitiveSave(JSON.stringify(legacyInventory)).inventory,{},'older v1 saves gain empty cargo without losing progress');
+const nullInventory={...newDefinitiveSave(),credits:77,inventory:null};
+const migratedNullInventory=parseDefinitiveSave(JSON.stringify(nullInventory));assert.deepEqual(migratedNullInventory.inventory,{});assert.equal(migratedNullInventory.credits,77,'null cargo migrates without losing progress');
 const session = new CampaignSave(null, 'test:session');
 assert.equal(session.persistence, 'session');
 assert.equal(session.claim('test:one', (draft) => { draft.credits += 2; }).ok, true);

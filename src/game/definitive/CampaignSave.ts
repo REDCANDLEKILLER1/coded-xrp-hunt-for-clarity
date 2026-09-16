@@ -61,7 +61,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
     if (!['earth', 'boarding', 'hub', 'space', 'surface'].includes(String(place.mode)) || !(WORLD_KEYS as readonly unknown[]).includes(place.world) || !id(place.checkpoint)) return null;
     for (const key of ['quests', 'visitedRooms', 'clearedRooms', 'recruits', 'rewards', 'dialogueSeen']) if (!ids(value[key])) return null;
     if (!count(value.credits) || typeof value.warshipOwned !== 'boolean' || !id(value.fighterShipKey)) return null;
-    if (value.inventory !== undefined && !inventory(value.inventory)) return null;
+    if (value.inventory !== undefined && value.inventory !== null && !inventory(value.inventory)) return null;
     if (!upgrades(value.fighterUpgrades) || !upgrades(value.heroUpgrades) || !upgrades(value.capitalUpgrades)) return null;
     if(value.transit!==undefined&&value.transit!==null&&!validSpaceCheckpoint(value.transit))return null;
     if(value.convoy!==undefined&&value.convoy!==null&&!validConvoyCheckpoint(value.convoy))return null;
