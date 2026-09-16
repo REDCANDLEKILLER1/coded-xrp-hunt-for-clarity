@@ -44,7 +44,7 @@ export interface BoardingWeapon {
 export const BOARDING_WEAPONS:readonly BoardingWeapon[]=[
   {level:1,label:'ION SIDEARM',damage:14,cooldown:.23,shots:1,spread:0},
   {level:2,label:'PULSE REPEATER',damage:12,cooldown:.13,shots:1,spread:0},
-  {level:3,label:'ARC SCATTERGUN',damage:11,cooldown:.3,shots:3,spread:.04},
+  {level:3,label:'ARC SCATTERGUN',damage:11,cooldown:.3,shots:3,spread:.025},
   {level:4,label:'LEDGER CANNON',damage:22,cooldown:.22,shots:2,spread:.04},
 ];
 export function boardingWeapon(level:unknown):BoardingWeapon {

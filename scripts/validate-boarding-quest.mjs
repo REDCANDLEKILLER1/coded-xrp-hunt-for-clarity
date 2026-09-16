@@ -41,8 +41,8 @@ assert.equal(canCrossExitField(35.5,36.5,36,false),false,'unshielded hero cannot
 assert.equal(canCrossExitField(35.5,36.5,36,true),true,'active Ledger Shield permits crossing');
 assert.equal(canCrossExitField(35.5,36.5,36,false,true),true,'captured green bridge stays accessible without Shield');
 assert.equal(boardingWeapon(1).label,'ION SIDEARM');assert.equal(boardingWeapon(3).shots,3);assert.equal(boardingWeapon(99).level,4);assert.equal(boardingWeapon('3').level,3);assert.equal(boardingWeapon('corrupt').level,1);
-const weaponDps=[1,2,3,4].map(level=>boardingWeaponDamagePerSecond(level,15));
-assert.ok(weaponDps.every((damage,index)=>index===0||damage>weaponDps[index-1]),`boarding weapon output must rise at authored range: ${weaponDps.join(', ')}`);
+const longestDeckSightline=Math.max(...DECK.map(room=>Math.hypot(room.width,room.depth))),weaponDps=[1,2,3,4].map(level=>boardingWeaponDamagePerSecond(level,longestDeckSightline));
+assert.ok(weaponDps.every((damage,index)=>index===0||damage>weaponDps[index-1]),`boarding weapon output must rise across the ${longestDeckSightline.toFixed(1)}m authored sightline: ${weaponDps.join(', ')}`);
 assert.equal(companionGait(.2),'Idle');assert.equal(companionGait(1),'Walk');assert.equal(companionGait(2),'Run');
 assert.equal(boardingEnemyHealth('captain'),520);assert.equal(boardingEnemyHealth('warden'),210);assert.equal(boardingEnemyVolley('captain',0).length,5);
 assert.equal(boardingEnemyHealth('breacher'),140);assert.equal(boardingEnemyHealth('technician'),70);assert.equal(boardingEnemyVolley('breacher',0).length,3);
