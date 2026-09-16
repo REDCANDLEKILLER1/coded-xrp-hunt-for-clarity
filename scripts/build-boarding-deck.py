@@ -6,7 +6,7 @@ remain interactive runtime consumers. Private master is retained separately.
 import argparse,json,math,pathlib,sys
 import bpy,bmesh
 from mathutils import Vector
-p=argparse.ArgumentParser();p.add_argument('--layout',required=True);p.add_argument('--material-master',required=True);p.add_argument('--directory',required=True)
+p=argparse.ArgumentParser();p.add_argument('--layout',required=True);p.add_argument('--material-master',required=True);p.add_argument('--directory',required=True);p.add_argument('--module-source')
 a=p.parse_args(sys.argv[sys.argv.index('--')+1:]);layout=json.loads(pathlib.Path(a.layout).read_text(encoding='utf-8-sig'));folder=pathlib.Path(a.directory);folder.mkdir(parents=True,exist_ok=True)
 master=folder/'boarding_deck_master.blend'
 if master.exists():raise RuntimeError('Use a new version directory; preserve existing masters')
@@ -20,6 +20,8 @@ def mat(name,color,metal=.6,rough=.5,glow=0):
 wall=mat('Deck carbon ceramic',(.025,.037,.049),.35,.62)
 trim=mat('Deck brushed rib',(.12,.16,.19),.8,.43)
 light=mat('Deck warm working light',(.42,.57,.65),.0,.7,1.2)
+warning=mat('Deck regulatory warning',(.72,.018,.008),.48,.34,.25)
+screen=mat('Deck security display',(.01,.19,.42),.18,.24,2.4)
 objects=[]
 def box(name,x,z,y,w,d,h,material,bevel=.025):
     # Function arguments use runtime X,Z ground plane; Blender Y=-runtime Z.
@@ -38,6 +40,28 @@ def box(name,x,z,y,w,d,h,material,bevel=.025):
             co=obj.data.vertices[obj.data.loops[index].vertex_index].co
             uv.data[index].uv=((co.y,co.z) if axis==0 else (co.x,co.z) if axis==1 else (co.x,co.y));uv.data[index].uv/=4
     objects.append(obj);return obj
+def module(parent,name,x,z,y,scale=1,rotation=0):
+    if not a.module_source:return
+    source=pathlib.Path(a.module_source)/(name+'.glb')
+    if not source.exists():raise RuntimeError('Missing licensed module '+str(source))
+    before=set(scene.objects);bpy.ops.import_scene.gltf(filepath=str(source));imported=[obj for obj in scene.objects if obj not in before]
+    root=bpy.data.objects.new('CC0_'+name,None);scene.collection.objects.link(root);root.parent=parent;root.location=(x,-z,y);root.rotation_euler[2]=-rotation;root.scale=(scale,scale,scale)
+    for obj in imported:
+        if obj.parent is None:obj.parent=root
+        if obj.type!='MESH':continue
+        for slot in obj.material_slots:
+            color=slot.material.diffuse_color if slot.material else (0,0,0,1)
+            slot.material=warning if color[0]>color[1]*1.2 else screen if color[2]>color[0]*1.2 else trim if sum(color[:3])>1.35 else wall
+    # Bake module transforms into the room and feed them through the same
+    # material batching pass as authored plates. The source kit stays modular;
+    # the browser receives a small number of room-level drawables.
+    scene.view_layers[0].update()
+    meshes=[obj for obj in imported if obj.type=='MESH']
+    for obj in meshes:
+        world=obj.matrix_world.copy();obj.parent=parent;obj.matrix_world=world;objects.append(obj)
+    for obj in [root,*imported]:
+        if obj.type!='MESH' and obj.users_collection:bpy.data.objects.remove(obj,do_unlink=True)
+    return meshes
 for room in layout['rooms']:
     objects=[];x,z,w,d=room['x'],room['z'],room['width'],room['depth']
     root=bpy.data.objects.new('Deck_'+room['id'],None);scene.collection.objects.link(root)
@@ -65,6 +89,20 @@ for room in layout['rooms']:
     if room['id']=='hangar':
         for px in [-4.33,4.33]:box('Recovery platform surround',px,-28,.018,.08,12.1,.036,trim,.008)
         for pz in [-34.04,-21.96]:box('Recovery platform end',0,pz,.018,8.74,.08,.036,trim,.008)
+    if room['id']=='rescue' and a.module_source:
+        # A licensed modular kit supplies reusable secondary forms. CODED materials,
+        # placement and silhouette treatment keep the Atrium visually coherent.
+        for px in [-9,9]:
+            for pz in [-5,0,5]:module(root,'balcony-floor',px,pz,1.42,1.18,math.pi/2)
+            for pz in [-5,0,5]:module(root,'balcony-rail',px-(1.3 if px>0 else -1.3),pz,2.22,1.18,math.pi/2)
+        for px in [-8.6,8.6]:module(root,'stairs-ramp',px,-5.8,.02,1.05,math.pi if px>0 else 0)
+        for px in [-7,0,7]:module(root,'wall-window',px,8.15,.08,1.35,math.pi)
+        module(root,'display-wall-wide',7.5,2,.15,1.18,-math.pi/2)
+        module(root,'computer-wide',5.1,-3,.02,1.1,0)
+        module(root,'computer-wide',-5.1,3,.02,1.1,math.pi)
+        for pz in [-5.6,5.6]:module(root,'structure-barrier-high',0,pz,.02,.9,math.pi/2)
+        for pz in [-5,5]:module(root,'pipe',-11.35,pz,.45,1.3,0)
+        module(root,'pipe-bend',-11.35,7,.45,1.3,0)
     groups={}
     for obj in objects:obj.parent=root;groups.setdefault(obj.data.materials[0].name,[]).append(obj)
     for index,group in enumerate(groups.values()):

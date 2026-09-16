@@ -12,8 +12,8 @@ const add = (values: string[], value: string): void => { if (!values.includes(va
 export const BOARDING_OBJECTIVES: Record<BoardingStep, string> = {
   hangar_safe: 'Survive the arrival ambush. Clear the bay, then claim its terminal.',
   security_relay: 'Break Security’s synchronized crossfire, then disable the door relay.',
-  rescue_junction: 'Search the crew junction for the hidden detention route and find Mr Zamn.',
-  engineering_power: 'Push through the Crew Junction to Engineering. Defeat its Warden and restore scanner power.',
+  rescue_junction: 'Break the Security Atrium team, restore scanner power, expose the detention route, and find Mr Zamn.',
+  engineering_power: 'Cross the Security Atrium to Engineering. Defeat its Warden and restore scanner power.',
   command_access: 'Flank the command table, clear the deck, and open the Core chamber.',
   core_defeated: 'Break the two relays, then defeat the Ledger Defense Core.',
   bridge_secured: 'Use Ledger Shield through the exit field. Secure the bridge.',
@@ -144,4 +144,19 @@ export class BoardingQuest {
 export function boardingRetryRoom(state: DefinitiveSave): BoardingRoom {
   const saved = state.location.checkpoint.replace('boarding.', '') as BoardingRoom;
   return BOARDING_ROOMS.includes(saved) ? saved : 'hangar';
+}
+
+/** Deterministic room fixture for isolated browser playtests; campaign saves cannot call it. */
+export function prepareBoardingRoomReview(save:CampaignSave,room:BoardingRoom):SaveResult {
+  if(!save.testSlot||room!=='rescue')return{ok:false,reason:'condition'};
+  return save.update(d=>{
+    d.quests=d.quests.filter(q=>!q.startsWith('boarding.'));
+    d.clearedRooms=d.clearedRooms.filter(q=>!q.startsWith('boarding.'));
+    d.visitedRooms=d.visitedRooms.filter(q=>!q.startsWith('boarding.'));
+    for(const prior of ['hangar','security'] as BoardingRoom[]){add(d.clearedRooms,roomFlag(prior));add(d.visitedRooms,roomFlag(prior));}
+    for(const step of ['hangar_safe','security_relay'] as BoardingStep[])add(d.quests,questFlag(step));
+    add(d.visitedRooms,roomFlag(room));d.recruits=d.recruits.filter(id=>id!=='mr_zamn');d.warshipOwned=false;
+    d.heroUpgrades.boarding_weapon=2;delete d.heroUpgrades.ledger_shield;
+    d.location={mode:'boarding',world:'ledger_prime',checkpoint:roomFlag(room)};
+  });
 }

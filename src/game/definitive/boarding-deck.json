@@ -3,7 +3,7 @@
   "rooms": [
     { "id":"hangar", "title":"01 · ARRIVAL BAY", "x":0, "z":-28, "width":16, "depth":18, "terminal":[5,-23], "enemies":[[-6,-22],[6,-22],[-6,-34],[6,-34]] },
     { "id":"security", "title":"02 · SECURITY RELAY", "x":0, "z":-14, "width":14, "depth":10, "terminal":[-4,-11], "enemies":[[-5,-17],[5,-17],[0,-14],[5,-11]] },
-    { "id":"rescue", "title":"03 · CREW JUNCTION", "x":0, "z":0, "width":24, "depth":18, "terminal":[7,2], "enemies":[[-8,-5],[0,-5],[-8,5],[8,5]] },
+    { "id":"rescue", "title":"03 · SECURITY ATRIUM", "x":0, "z":0, "width":24, "depth":18, "terminal":[7,2], "enemies":[[-8,-5],[0,-5],[-8,5],[8,5]] },
     { "id":"engineering", "title":"04 · ENGINEERING", "x":-18, "z":0, "width":14, "depth":12, "terminal":[-22,3.8], "enemies":[[-15,-5],[-19,-5],[-22,-4],[-15,5],[-19,5]] },
     { "id":"cache", "title":"05 · SHIELD CACHE", "x":18, "z":0, "width":14, "depth":12, "terminal":[23,0], "enemies":[[15,-5],[19,-5],[15,5],[19,5]] },
     { "id":"command", "title":"06 · COMMAND ACCESS", "x":0, "z":14, "width":18, "depth":10, "terminal":[-5,16], "enemies":[[-6,11],[0,11],[6,11],[4,16]] },

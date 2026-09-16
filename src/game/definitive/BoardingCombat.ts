@@ -51,22 +51,31 @@ export function boardingWeapon(level:unknown):BoardingWeapon {
   const parsed=Number(level??1);const safeLevel=Number.isFinite(parsed)?parsed:1;
   return BOARDING_WEAPONS[Math.max(0,Math.min(BOARDING_WEAPONS.length-1,Math.floor(safeLevel)-1))];
 }
-export type BoardingEnemyKind='guard'|'relay'|'core'|'warden'|'captain';
+export type BoardingEnemyKind='guard'|'rifle'|'breacher'|'technician'|'ceiling'|'relay'|'core'|'warden'|'captain';
 export function boardingEnemyHealth(kind:BoardingEnemyKind):number {
-  return kind==='captain'?520:kind==='core'?650:kind==='warden'?210:kind==='relay'?65:42;
+  return kind==='captain'?520:kind==='core'?650:kind==='warden'?210:kind==='breacher'?140:kind==='technician'?70:kind==='rifle'?55:kind==='ceiling'?50:kind==='relay'?65:42;
 }
 export function boardingEnemyVolley(kind:BoardingEnemyKind,tactic:number):readonly number[] {
   if(kind==='captain')return [-.48,-.24,0,.24,.48];
   if(kind==='core')return [-.28,0,.28];
   if(kind==='warden')return tactic%2?[-.2,0,.2]:[-.1,.1];
+  if(kind==='breacher')return [-.16,0,.16];
+  if(kind==='ceiling')return [-.1,.1];
   return [0];
 }
 export interface BoardingPressure { attackers:number; cadence:number }
 export function boardingPressure(room:string):BoardingPressure {
   if(room==='security')return {attackers:4,cadence:.72};
+  if(room==='rescue')return {attackers:4,cadence:.74};
   if(room==='engineering')return {attackers:4,cadence:.8};
   if(room==='command')return {attackers:4,cadence:.85};
   return {attackers:3,cadence:1};
+}
+/** The breacher's visible forward shield rewards movement and melee instead of extra health. */
+export function boardingEnemyDamage(kind:BoardingEnemyKind,damage:number,frontHit=false,melee=false):number {
+  if(kind==='breacher'&&frontHit&&!melee)return damage*.35;
+  if(kind==='ceiling'&&melee)return damage*.5;
+  return damage;
 }
 /** Boarding weapon mastery remains useful on every later on-foot world. */
 export function campaignHeroDamage(base:number,boardingLevel:unknown):number {

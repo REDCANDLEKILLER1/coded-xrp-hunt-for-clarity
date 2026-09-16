@@ -6,7 +6,7 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingObstacleBlocksMove, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -389,7 +389,10 @@ export class BoardingScene implements ManagedScene {
   }
   private spawnRoom(room:BoardingRoom):void {
     if(this.host.quest.isClear(room)||this.enemies.some(e=>e.room===room))return;
-    for(const [x,z] of deckRoom(room).enemies)this.enemy(room,x,z,'guard');
+    if(room==='rescue'){
+      const roles:readonly BoardingEnemyKind[]=['rifle','breacher','technician','ceiling'];
+      deckRoom(room).enemies.forEach(([x,z],index)=>this.enemy(room,x,z,roles[index%roles.length]));
+    }else for(const [x,z] of deckRoom(room).enemies)this.enemy(room,x,z,'guard');
     const miniboss:Partial<Record<BoardingRoom,readonly [number,number,BoardingEnemyKind]>>={
       hangar:[0,-22,'warden'],security:[0,-12,'warden'],rescue:[7,-6,'warden'],engineering:[-18,3,'warden'],
       cache:[18,3,'warden'],command:[0,16,'warden'],bridge:[0,40,'captain'],
@@ -402,15 +405,32 @@ export class BoardingScene implements ManagedScene {
     }
   }
   private enemy(room:BoardingRoom,x:number,z:number,kind:Enemy['kind']):void {
-    const core=kind==='core',relay=kind==='relay',captain=kind==='captain',warden=kind==='warden',elite=captain||warden;
-    const group=new Group();group.position.set(x,core?1.8:elite?1.35:1.1,z);this.scene.add(group);
-    this.part(group,[0,0,0],core?[2.6,2.2,2.6]:captain?[2,1.65,1.8]:warden?[1.45,1.2,1.3]:relay?[.7,1.6,.7]:[.9,.55,.85],elite?this.bossMetal:this.metal);
+    const core=kind==='core',relay=kind==='relay',captain=kind==='captain',warden=kind==='warden',elite=captain||warden,ceiling=kind==='ceiling',human=['rifle','breacher','technician'].includes(kind);
+    const group=new Group();group.position.set(x,core?1.8:ceiling?2.45:elite?1.35:human?1.02:1.1,z);this.scene.add(group);
+    this.part(group,[0,0,0],core?[2.6,2.2,2.6]:captain?[2,1.65,1.8]:warden?[1.45,1.2,1.3]:relay?[.7,1.6,.7]:ceiling?[1.1,.35,.85]:human?[.68,1.05,.48]:[.9,.55,.85],elite?this.bossMetal:this.metal);
     this.part(group,[0,.05,-(core?1.32:captain?.94:warden?.69:.44)],core?[1.8,.5,.07]:elite?[1.05,.28,.08]:[.6,.15,.07],this.red);
-    if(!relay)for(const sign of [-1,1])this.part(group,[sign*(core?1.6:captain?1.2:warden?.9:.7),-.1,0],core?[.5,.9,2.1]:captain?[.42,.4,1.55]:warden?[.35,.3,1.2]:[.35,.22,.95],this.trim);
+    if(!relay)for(const sign of [-1,1])this.part(group,[sign*(core?1.6:captain?1.2:warden?.9:human?.48:.7),human?-.18:-.1,0],core?[.5,.9,2.1]:captain?[.42,.4,1.55]:warden?[.35,.3,1.2]:human?[.18,.62,.2]:[.35,.22,.95],this.trim);
     if(elite){this.part(group,[0,.75,0],[captain?.7:.48,captain?.42:.34,captain?.65:.45],this.red);for(const sign of [-1,1])this.part(group,[sign*(captain?.72:.5),.48,-.45],[.16,.16,.7],this.red);}
+    if(human){
+      const head=new Mesh(new SphereGeometry(.28,12,8),this.trim);head.position.y=.72;group.add(head);
+      for(const sign of [-1,1])this.part(group,[sign*.19,-.72,0],[.19,.55,.22],this.bossMetal);
+      if(kind==='rifle')this.part(group,[.43,.05,-.48],[.14,.14,.86],this.red);
+      if(kind==='breacher'){
+        const shield=this.part(group,[0,.02,.57],[1.05,1.25,.12],this.bossMetal);shield.rotation.x=-.08;
+        this.part(group,[0,.03,.65],[.62,.72,.035],this.red);
+      }
+      if(kind==='technician'){
+        this.part(group,[0,.08,-.42],[.8,.72,.28],this.blue);
+        for(const sign of [-1,1])this.part(group,[sign*.24,.14,-.61],[.1,.45,.09],this.green);
+      }
+    }
+    if(ceiling){
+      for(const sign of [-1,1])this.part(group,[sign*.7,.05,0],[.52,.12,.24],this.trim);
+      this.part(group,[0,-.28,0],[.32,.38,.32],this.red);
+    }
     const tell=new Mesh(this.box,this.red);tell.visible=false;this.scene.add(tell);
     let barrier:Mesh|undefined;if(core){barrier=new Mesh(new SphereGeometry(2.3,18,12),this.barrierMaterial);group.add(barrier);}
-    const tactic=this.enemies.filter(enemy=>enemy.room===room&&enemy.kind==='guard').length%3,maxHp=boardingEnemyHealth(kind);
+    const tactic=this.enemies.filter(enemy=>enemy.room===room&&!['core','relay','warden','captain'].includes(enemy.kind)).length%3,maxHp=boardingEnemyHealth(kind);
     this.enemies.push({mesh:group,tell,barrier,room,hp:maxHp,maxHp,clock:.6+tactic*.25,charge:0,target:new Vector3(),base:group.position.clone(),tactic,kind});
   }
   private play(name:string):void {
@@ -422,7 +442,7 @@ export class BoardingScene implements ManagedScene {
   private punch():void {
     if(!this.canAct())return;const hit=selectBoardingTarget(this.enemies.filter(enemy=>enemy.room===this.room&&enemy.hp>0&&this.hero.position.distanceTo(enemy.mesh.position)<2.55).map(enemy=>({enemy,kind:enemy.kind,hp:enemy.hp,x:enemy.mesh.position.x,z:enemy.mesh.position.z})),this.hero.position.x,this.hero.position.z)?.enemy;
     this.meleeClock=.38;this.play('Interact');this.invulnerability=Math.max(this.invulnerability,.18);if(!hit){this.meleeCombo=0;this.say('Punch missed. Close the distance or use your boarding weapon.');return;}
-    this.meleeCombo=Math.min(3,this.meleeCombo+1);const damage=this.hero.position.y>.35?42:20+this.meleeCombo*6;hit.hp-=damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
+    this.meleeCombo=Math.min(3,this.meleeCombo+1);const raw=this.hero.position.y>.35?42:20+this.meleeCombo*6,damage=boardingEnemyDamage(hit.kind,raw,false,true);hit.hp-=damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
   }
   private playCrew(name:'Idle'|'Interact'|'Walk'|'Run'):void {
     if(this.crewClip===name)return;const clip=this.host.crew.animations.find(candidate=>candidate.name===name);if(!clip)return;
@@ -570,14 +590,27 @@ export class BoardingScene implements ManagedScene {
       if(enemy.room!==this.room||enemy.hp<=0)continue;
       if(enemy.kind==='relay')continue;
       enemy.clock-=dt;
-      if(enemy.kind==='guard'){const orbit=this.clock*(.42+enemy.tactic*.08)+enemy.base.z*.31;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*(1+enemy.tactic*.35);enemy.mesh.position.z=enemy.base.z+Math.cos(orbit*.83)*(.45+enemy.tactic*.18);enemy.mesh.position.y=enemy.base.y+Math.sin(this.clock*2+enemy.tactic)*.08;}
+      if(enemy.kind==='guard'||enemy.kind==='rifle'){const orbit=this.clock*(.42+enemy.tactic*.08)+enemy.base.z*.31;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*(1+enemy.tactic*.35);enemy.mesh.position.z=enemy.base.z+Math.cos(orbit*.83)*(.45+enemy.tactic*.18);enemy.mesh.position.y=enemy.base.y+Math.sin(this.clock*2+enemy.tactic)*.08;}
+      else if(enemy.kind==='ceiling'){const orbit=this.clock*.55+enemy.tactic;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*2.2;enemy.mesh.position.z=enemy.base.z+Math.cos(orbit*.8)*1.1;enemy.mesh.position.y=enemy.base.y+Math.sin(this.clock*1.7)*.22;}
+      else if(enemy.kind==='technician'){const orbit=this.clock*.24+enemy.base.x;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*.7;enemy.mesh.position.z=enemy.base.z+Math.cos(orbit)*.45;}
+      else if(enemy.kind==='breacher'){
+        const approach=this.hero.position.clone().sub(enemy.mesh.position).setY(0),range=approach.length();
+        if(range>4.2)enemy.mesh.position.addScaledVector(approach.normalize(),dt*1.15);
+      }
       else enemy.mesh.rotation.y+=dt*.25;
+      if(['rifle','breacher','technician','ceiling'].includes(enemy.kind)){
+        const face=this.hero.position.clone().sub(enemy.mesh.position);enemy.mesh.rotation.y=Math.atan2(face.x,face.z);
+      }
       if(enemy.charge>0){enemy.charge-=dt;enemy.mesh.scale.setScalar(1+Math.sin(this.clock*24)*.035);
         const direction=enemy.target.clone().sub(enemy.mesh.position);direction.y=0;
         enemy.tell.position.copy(enemy.mesh.position).addScaledVector(direction,.5);enemy.tell.position.y=.035;
         enemy.tell.rotation.y=Math.atan2(direction.x,direction.z);enemy.tell.scale.set(.18+.12*Math.sin(this.clock*18)**2,.025,direction.length());
-        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=(enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:1.9+enemy.tactic*.25)*pressure.cadence;enemy.mesh.scale.setScalar(1);}
-      }else if(enemy.clock<=0&&attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:.68+enemy.tactic*.09;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
+        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:enemy.kind==='breacher'?9:enemy.kind==='technician'?8:enemy.kind==='ceiling'?8:enemy.kind==='rifle'?10:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=(enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:enemy.kind==='breacher'?2.2:enemy.kind==='technician'?2.65:enemy.kind==='ceiling'?2.1:1.7+enemy.tactic*.18)*pressure.cadence;enemy.mesh.scale.setScalar(1);}
+      }else if(enemy.clock<=0&&enemy.kind==='technician'){
+        const wounded=this.enemies.filter(other=>other.room===this.room&&other!==enemy&&other.hp>0&&other.hp<other.maxHp).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
+        if(wounded){wounded.hp=Math.min(wounded.maxHp,wounded.hp+16);enemy.clock=4.5;enemy.tell.visible=true;enemy.tell.position.copy(wounded.mesh.position);enemy.tell.position.y=.04;enemy.tell.scale.set(1.1,.025,1.1);this.say('SECURITY TECHNICIAN · Repair pulse. Break line and remove support.');}
+        else if(attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=.82;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
+      }else if(enemy.clock<=0&&attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:enemy.kind==='breacher'?.95:enemy.kind==='ceiling'?.76:.62+enemy.tactic*.08;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
     }
   }
   private updateBolts(dt:number):void {
@@ -591,7 +624,7 @@ export class BoardingScene implements ManagedScene {
       else{
         const hit=this.enemies.find(e=>e.room===this.room&&e.hp>0&&swept(e.mesh.position,e.kind==='core'?1.7:e.kind==='captain'?1.45:e.kind==='warden'?1.15:.8));
         if(hit){const exposed=hit.kind!=='core'||this.coreExposed();
-          if(exposed){hit.hp-=bolt.damage;sfx.play('hit',.5);}else this.say('Core shield active. Relays first; strike during the exposure window.');
+          if(exposed){const forward=new Vector3(Math.sin(hit.mesh.rotation.y),0,Math.cos(hit.mesh.rotation.y)),incoming=start.clone().sub(hit.mesh.position).setY(0).normalize(),frontHit=hit.kind==='breacher'&&forward.dot(incoming)>.2,damage=boardingEnemyDamage(hit.kind,bolt.damage,frontHit);hit.hp-=damage;sfx.play('hit',.5);if(frontHit)this.say('BREACHER SHIELD · Flank, dodge past, or close for melee.');}else this.say('Core shield active. Relays first; strike during the exposure window.');
           if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
           remove(i);continue;
         }

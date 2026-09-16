@@ -273,7 +273,11 @@ void game.start().then(() => {
       else if(params.get('review')==='fog'){const {prepareFogReview}=await import('./game/definitive/FogMoon');if(!prepareFogReview(definitiveSave).ok)throw new Error('The isolated Fog Moon section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showFogMoon(definitiveSave);}
       else if (params.get('review') === 'mars') {const {prepareMarsReliefReview}=await import('./game/definitive/MarsRelief');const ready=prepareMarsReliefReview(definitiveSave);if(!ready.ok)throw new Error('The isolated Mars section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else if(savedChapterScene(definitiveSave)==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
       else if (params.get('review') === 'excavation') {const {prepareExcavationReview}=await import('./game/definitive/MarsExcavation');const ready=prepareExcavationReview(definitiveSave);if(!ready.ok)throw new Error('The isolated extraction section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else if(savedChapterScene(definitiveSave)==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
-      else if (params.get('review') === 'boarding') {if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showBoarding(definitiveSave);}
+      else if (params.get('review') === 'boarding') {
+        const requested=params.get('room');
+        if(requested==='rescue'){const {prepareBoardingRoomReview}=await import('./game/definitive/BoardingQuest');const ready=prepareBoardingRoomReview(definitiveSave,'rescue');if(!ready.ok)throw new Error('The isolated boarding room save is unavailable');}
+        if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showBoarding(definitiveSave);
+      }
       else await meshRuntime.showModel(params.get('review') === 'crew' ? 'mr_zamn' : params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');
     }).catch((error) => { previewNotice.textContent = `3D could not start: ${error instanceof Error ? error.message : 'Graphics unavailable'}. Reload to retry.`; });
     return;
