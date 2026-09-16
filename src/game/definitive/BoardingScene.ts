@@ -6,10 +6,10 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingMeleePower, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, sapperRangeMove, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingMeleePower, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, resolveSupportedDamage, sapperRangeMove, selectBoardingTarget, technicianSupportTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
-interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
+interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
 interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void }
 
@@ -86,6 +86,7 @@ export class BoardingScene implements ManagedScene {
   private captureClock = 0;
   private readonly box = new BoxGeometry(1,1,1);
   private readonly boltGeometry = new SphereGeometry(.09,8,6);
+  private readonly supportBarrierGeometry = new SphereGeometry(1.05,12,8);
   private readonly metal = new MeshStandardMaterial({ color:0x25303c, roughness:.58, metalness:.68 });
   private readonly trim = new MeshStandardMaterial({ color:0x56616c, roughness:.4, metalness:.7 });
   private readonly red = new MeshBasicMaterial({ color:0xff351e, toneMapped:false });
@@ -448,7 +449,7 @@ export class BoardingScene implements ManagedScene {
     const tell=new Mesh(this.box,this.red);tell.visible=false;this.scene.add(tell);
     let barrier:Mesh|undefined;if(core){barrier=new Mesh(new SphereGeometry(2.3,18,12),this.barrierMaterial);group.add(barrier);}
     const tactic=this.enemies.filter(enemy=>enemy.room===room&&!['core','relay','warden','captain'].includes(enemy.kind)).length%3,maxHp=boardingEnemyHealth(kind);
-    this.enemies.push({mesh:group,tell,barrier,room,hp:maxHp,maxHp,clock:.6+tactic*.25,charge:0,target:new Vector3(),base:group.position.clone(),tactic,kind});
+    this.enemies.push({mesh:group,tell,barrier,supportShield:false,room,hp:maxHp,maxHp,clock:.6+tactic*.25,charge:0,target:new Vector3(),base:group.position.clone(),tactic,kind});
   }
   private play(name:string):void {
     if(this.clip===name)return;const clip=this.host.hero.animations.find(a=>a.name===name);if(!clip)return;
@@ -460,7 +461,7 @@ export class BoardingScene implements ManagedScene {
   private punch():void {
     if(!this.canAct())return;const hit=selectBoardingTarget(this.enemies.filter(enemy=>enemy.room===this.room&&enemy.hp>0&&this.hero.position.distanceTo(enemy.mesh.position)<2.55).map(enemy=>({enemy,kind:enemy.kind,hp:enemy.hp,x:enemy.mesh.position.x,z:enemy.mesh.position.z})),this.hero.position.x,this.hero.position.z)?.enemy;
     this.meleeClock=.38;this.play('Interact');this.invulnerability=Math.max(this.invulnerability,.18);if(!hit){this.meleeCombo=0;this.say('Punch missed. Close the distance or use your boarding weapon.');return;}
-    this.meleeCombo=Math.min(3,this.meleeCombo+1);const base=this.hero.position.y>.35?42:20+this.meleeCombo*6,raw=boardingMeleePower(base,!!this.host.quest.save.snapshot.heroUpgrades.melee_capacitor),damage=boardingEnemyDamage(hit.kind,raw,false,true);hit.hp-=damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
+    this.meleeCombo=Math.min(3,this.meleeCombo+1);const base=this.hero.position.y>.35?42:20+this.meleeCombo*6,raw=boardingMeleePower(base,!!this.host.quest.save.snapshot.heroUpgrades.melee_capacitor),damage=boardingEnemyDamage(hit.kind,raw,false,true),resolved=resolveSupportedDamage(hit.supportShield,damage),blocked=resolved.damage===0;hit.supportShield=resolved.supportShield;hit.hp-=resolved.damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(blocked?'SUPPORT BARRIER BROKEN · Technician can restore it.':this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
   }
   private playCrew(name:'Idle'|'Interact'|'Walk'|'Run'):void {
     if(this.crewClip===name)return;const clip=this.host.crew.animations.find(candidate=>candidate.name===name);if(!clip)return;
@@ -604,6 +605,7 @@ export class BoardingScene implements ManagedScene {
     for(const enemy of this.enemies){
       enemy.mesh.visible=enemy.room===this.room;
       enemy.tell.visible=enemy.room===this.room&&enemy.hp>0&&enemy.charge>0;
+      if(enemy.supportBarrier)enemy.supportBarrier.visible=enemy.room===this.room&&enemy.hp>0&&enemy.supportShield;
       if(enemy.barrier)enemy.barrier.visible=!this.coreExposed();
       if(enemy.room!==this.room||enemy.hp<=0)continue;
       if(enemy.kind==='relay')continue;
@@ -631,8 +633,8 @@ export class BoardingScene implements ManagedScene {
         enemy.tell.rotation.y=Math.atan2(direction.x,direction.z);enemy.tell.scale.set(.18+.12*Math.sin(this.clock*18)**2,.025,direction.length());
         if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:enemy.kind==='breacher'?9:enemy.kind==='sapper'?7:enemy.kind==='technician'?8:enemy.kind==='ceiling'?8:enemy.kind==='rifle'?10:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=(enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:enemy.kind==='breacher'?2.2:enemy.kind==='sapper'?2.7:enemy.kind==='technician'?2.65:enemy.kind==='ceiling'?2.1:1.7+enemy.tactic*.18)*pressure.cadence;enemy.mesh.scale.setScalar(1);}
       }else if(enemy.clock<=0&&enemy.kind==='technician'){
-        const wounded=this.enemies.filter(other=>other.room===this.room&&other!==enemy&&other.hp>0&&other.hp<other.maxHp).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
-        if(wounded){wounded.hp=Math.min(wounded.maxHp,wounded.hp+16);enemy.clock=4.5;enemy.tell.visible=true;enemy.tell.position.copy(wounded.mesh.position);enemy.tell.position.y=.04;enemy.tell.scale.set(1.1,.025,1.1);this.say('SECURITY TECHNICIAN · Repair pulse. Break line and remove support.');}
+        const supported=technicianSupportTarget(this.enemies.filter(other=>other.room===this.room&&other!==enemy&&!['technician','relay','core'].includes(other.kind)));
+        if(supported){supported.supportShield=true;if(!supported.supportBarrier){supported.supportBarrier=new Mesh(this.supportBarrierGeometry,this.barrierMaterial);supported.mesh.add(supported.supportBarrier);}enemy.clock=5.5;enemy.tell.visible=true;enemy.tell.position.copy(supported.mesh.position);enemy.tell.position.y=.04;enemy.tell.scale.set(1.1,.025,1.1);this.say('SECURITY TECHNICIAN · Support barrier. Remove support or strip the extra layer.');}
         else if(attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=.82;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
       }else if(enemy.clock<=0&&attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:enemy.kind==='breacher'?.95:enemy.kind==='sapper'?1.05:enemy.kind==='ceiling'?.76:.62+enemy.tactic*.08;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));if(enemy.kind==='sapper')this.say('ARC SAPPER · Five-lane discharge. Read the fan and dodge through a gap.');attackers++;}
     }
@@ -648,7 +650,7 @@ export class BoardingScene implements ManagedScene {
       else{
         const hit=this.enemies.find(e=>e.room===this.room&&e.hp>0&&swept(e.mesh.position,e.kind==='core'?1.7:e.kind==='captain'?1.45:e.kind==='warden'?1.15:.8));
         if(hit){const exposed=hit.kind!=='core'||this.coreExposed();
-          if(exposed){const forward=new Vector3(Math.sin(hit.mesh.rotation.y),0,Math.cos(hit.mesh.rotation.y)),incoming=start.clone().sub(hit.mesh.position).setY(0).normalize(),frontHit=hit.kind==='breacher'&&forward.dot(incoming)>.2,damage=boardingEnemyDamage(hit.kind,bolt.damage,frontHit);hit.hp-=damage;sfx.play('hit',.5);if(frontHit)this.say('BREACHER SHIELD · Flank, dodge past, or close for melee.');}else this.say('Core shield active. Relays first; strike during the exposure window.');
+          if(exposed){const forward=new Vector3(Math.sin(hit.mesh.rotation.y),0,Math.cos(hit.mesh.rotation.y)),incoming=start.clone().sub(hit.mesh.position).setY(0).normalize(),frontHit=hit.kind==='breacher'&&forward.dot(incoming)>.2,damage=boardingEnemyDamage(hit.kind,bolt.damage,frontHit),resolved=resolveSupportedDamage(hit.supportShield,damage);hit.supportShield=resolved.supportShield;hit.hp-=resolved.damage;if(resolved.damage===0)this.say('SUPPORT BARRIER BROKEN · Technician can restore it.');else if(frontHit)this.say('BREACHER SHIELD · Flank, dodge past, or close for melee.');sfx.play('hit',.5);}else this.say('Core shield active. Relays first; strike during the exposure window.');
           if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
           remove(i);continue;
         }
@@ -690,7 +692,7 @@ export class BoardingScene implements ManagedScene {
     this.active=false;this.clearInput();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
     // Include pooled/dead objects so shared GPU resources are released exactly once.
     for(const enemy of this.enemies)this.scene.add(enemy.mesh,enemy.tell);
-    this.scene.add(new Mesh(this.boltGeometry,this.red),new Mesh(this.box,this.barrierMaterial));
+    this.scene.add(new Mesh(this.boltGeometry,this.red),new Mesh(this.box,this.barrierMaterial),new Mesh(this.supportBarrierGeometry,this.barrierMaterial));
     disposeObject(this.scene);
   }
 }

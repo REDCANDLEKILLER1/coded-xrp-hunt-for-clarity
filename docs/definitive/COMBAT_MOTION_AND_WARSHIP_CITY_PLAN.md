@@ -38,3 +38,5 @@ The warship is a persistent city-sized hub rather than one bridge menu. Its dist
 9. **Residential and service ring:** vendors, crew stories, allies, repairs, rumors, and an evolving population after each planetary chapter.
 
 The first implemented foundation is persistent cargo, repeatable med-pack buying and selling, combat use, a melee-capacitor upgrade, and crew-quarter save/heal. Physical districts can use the same transactions without inventing incompatible currencies or duplicate save systems.
+
+Only the current physical district remains loaded. Connector rides, pressure doors, lifts, and short transit scenes conceal the handoff while the previous district is disposed before the next one becomes interactive. Every district model must be tagged in the asset manifest and enrolled in the district registry, so its geometry, encoded size, and complete live phone budget are checked before it can ship.

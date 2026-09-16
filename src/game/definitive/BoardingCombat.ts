@@ -44,12 +44,21 @@ export interface BoardingWeapon {
 export const BOARDING_WEAPONS:readonly BoardingWeapon[]=[
   {level:1,label:'ION SIDEARM',damage:14,cooldown:.23,shots:1,spread:0},
   {level:2,label:'PULSE REPEATER',damage:12,cooldown:.13,shots:1,spread:0},
-  {level:3,label:'ARC SCATTERGUN',damage:10,cooldown:.34,shots:3,spread:.19},
-  {level:4,label:'LEDGER CANNON',damage:22,cooldown:.22,shots:2,spread:.075},
+  {level:3,label:'ARC SCATTERGUN',damage:11,cooldown:.3,shots:3,spread:.04},
+  {level:4,label:'LEDGER CANNON',damage:22,cooldown:.22,shots:2,spread:.04},
 ];
 export function boardingWeapon(level:unknown):BoardingWeapon {
   const parsed=Number(level??1);const safeLevel=Number.isFinite(parsed)?parsed:1;
   return BOARDING_WEAPONS[Math.max(0,Math.min(BOARDING_WEAPONS.length-1,Math.floor(safeLevel)-1))];
+}
+/** Expected direct-fire output against an ordinary target at authored range. */
+export function boardingWeaponDamagePerSecond(level:unknown,range:number,targetRadius=.8):number {
+  const weapon=boardingWeapon(level);let hits=0;
+  for(let shot=0;shot<weapon.shots;shot++){
+    const offset=(shot-(weapon.shots-1)/2)*weapon.spread;
+    if(Math.abs(Math.sin(offset)*range)<=targetRadius)hits++;
+  }
+  return hits*weapon.damage/weapon.cooldown;
 }
 export type BoardingEnemyKind='guard'|'rifle'|'breacher'|'technician'|'sapper'|'ceiling'|'relay'|'core'|'warden'|'captain';
 export function boardingEnemyHealth(kind:BoardingEnemyKind):number {
@@ -77,6 +86,14 @@ export function boardingEnemyDamage(kind:BoardingEnemyKind,damage:number,frontHi
   if(kind==='breacher'&&frontHit&&!melee)return damage*.35;
   if(kind==='ceiling'&&melee)return damage*.5;
   return damage;
+}
+export interface SupportTarget {kind:BoardingEnemyKind;hp:number;maxHp:number;supportShield:boolean}
+/** Technicians visibly protect a frontline ally; they do not add invisible trickle healing. */
+export function technicianSupportTarget<T extends SupportTarget>(targets:readonly T[]):T|undefined {
+  return targets.filter(target=>target.hp>0&&!target.supportShield).sort((a,b)=>Number(b.kind==='breacher')-Number(a.kind==='breacher')||a.hp/a.maxHp-b.hp/b.maxHp)[0];
+}
+export function resolveSupportedDamage(supportShield:boolean,damage:number):{supportShield:boolean;damage:number} {
+  return supportShield?{supportShield:false,damage:0}:{supportShield:false,damage};
 }
 export function boardingMeleePower(base:number,capacitor:boolean):number{return base+(capacitor?8:0);}
 /** Arc Sappers seek a readable middle range for their five-lane discharge. */

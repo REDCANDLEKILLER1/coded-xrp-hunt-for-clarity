@@ -8,7 +8,7 @@ const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {BoardingQuest,prepareBoardingRoomReview}=await load('src/game/definitive/BoardingQuest.ts');
 const {Dialogue,BOARDING_DIALOGUE}=await load('src/game/definitive/Dialogue.ts');
 const {DECK,DECK_DOORS,canCross,roomAt,insideWallMargin}=await load('src/game/definitive/BoardingLayout.ts');
-const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,boardingEnemyDamage,boardingMeleePower,sapperRangeMove,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
+const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingWeaponDamagePerSecond,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,boardingEnemyDamage,boardingMeleePower,resolveSupportedDamage,sapperRangeMove,technicianSupportTarget,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
 assert.equal(DECK.length,8);
 for(const room of DECK){assert.equal(roomAt(room.x,room.z).id,room.id);assert.ok(insideWallMargin(room,room.x,room.z));}
 for(const door of DECK_DOORS){
@@ -41,6 +41,8 @@ assert.equal(canCrossExitField(35.5,36.5,36,false),false,'unshielded hero cannot
 assert.equal(canCrossExitField(35.5,36.5,36,true),true,'active Ledger Shield permits crossing');
 assert.equal(canCrossExitField(35.5,36.5,36,false,true),true,'captured green bridge stays accessible without Shield');
 assert.equal(boardingWeapon(1).label,'ION SIDEARM');assert.equal(boardingWeapon(3).shots,3);assert.equal(boardingWeapon(99).level,4);assert.equal(boardingWeapon('3').level,3);assert.equal(boardingWeapon('corrupt').level,1);
+const weaponDps=[1,2,3,4].map(level=>boardingWeaponDamagePerSecond(level,15));
+assert.ok(weaponDps.every((damage,index)=>index===0||damage>weaponDps[index-1]),`boarding weapon output must rise at authored range: ${weaponDps.join(', ')}`);
 assert.equal(companionGait(.2),'Idle');assert.equal(companionGait(1),'Walk');assert.equal(companionGait(2),'Run');
 assert.equal(boardingEnemyHealth('captain'),520);assert.equal(boardingEnemyHealth('warden'),210);assert.equal(boardingEnemyVolley('captain',0).length,5);
 assert.equal(boardingEnemyHealth('breacher'),140);assert.equal(boardingEnemyHealth('technician'),70);assert.equal(boardingEnemyVolley('breacher',0).length,3);
@@ -48,6 +50,11 @@ assert.equal(boardingEnemyHealth('sapper'),90);assert.equal(boardingEnemyVolley(
 assert.equal(sapperRangeMove(8),1);assert.equal(sapperRangeMove(6),0);assert.equal(sapperRangeMove(4),-1);
 assert.equal(boardingEnemyDamage('breacher',20,true),7);assert.equal(boardingEnemyDamage('breacher',20,true,true),20);assert.equal(boardingEnemyDamage('rifle',20,true),20);
 assert.equal(boardingMeleePower(26,false),26);assert.equal(boardingMeleePower(26,true),34);
+const rifleSupport={kind:'rifle',hp:15,maxHp:55,supportShield:false},breacherSupport={kind:'breacher',hp:140,maxHp:140,supportShield:false};
+assert.equal(technicianSupportTarget([rifleSupport,breacherSupport]),breacherSupport,'technician fortifies the frontline breacher first');
+breacherSupport.supportShield=true;assert.equal(technicianSupportTarget([rifleSupport,breacherSupport]),rifleSupport,'technician does not waste a pulse on an active barrier');
+assert.deepEqual(resolveSupportedDamage(true,22),{supportShield:false,damage:0},'support barrier absorbs one complete hit');
+assert.deepEqual(resolveSupportedDamage(false,22),{supportShield:false,damage:22},'unshielded damage reaches the enemy');
 assert.deepEqual(boardingPressure('security'),{attackers:4,cadence:.72});assert.deepEqual(boardingPressure('rescue'),{attackers:4,cadence:.74});assert.deepEqual(boardingPressure('engineering'),{attackers:4,cadence:.8});assert.deepEqual(boardingPressure('bridge'),{attackers:3,cadence:1});
 assert.ok(Math.abs(campaignHeroDamage(12,4)-19.8)<1e-9);
 assert.equal(campaignHeroDamage(12,'corrupt'),12,'corrupt boarding weapon save falls back to base damage');
