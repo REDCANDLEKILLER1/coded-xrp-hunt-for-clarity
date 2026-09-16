@@ -73,14 +73,14 @@
     {
       "id": "models:boarding_deck",
       "path": "public/assets/models/boarding_deck.glb",
-      "bytes": 3556128,
-      "sha256": "e0a2696cb6a58701421f387b8d6c78fda889674c1622d01ccaf8fa3f949ea1be",
-      "triangles": 41684,
+      "bytes": 3682900,
+      "sha256": "f34cc6abfa191f73fe267f7656c2c9ce32483227c86dd14cab78210fad29b781",
+      "triangles": 43010,
       "materialGroups": 34,
       "nodes": 8,
       "consumer": "boarding, hub",
-      "source": "Blender-authored eight-sector cutaway architecture from shared metre layout. Security Atrium and Engineering secondary forms derive from the CC0 Kenney Space Station Kit 1.0 and are restyled, transformed and material-batched during the build.",
-      "status": "Production derivative; rebuilt from collision-authoritative layout; Atrium and Engineering gameplay passes active"
+      "source": "Blender-authored eight-sector cutaway architecture from shared metre layout. Security Atrium, Engineering and Command Access secondary forms derive from the CC0 Kenney Space Station Kit 1.0 and are restyled, transformed and material-batched during the build.",
+      "status": "Production derivative; rebuilt from collision-authoritative layout; Atrium, Engineering and Command gameplay passes active"
     },
     {
       "id": "models:fighter_ledger_warden",

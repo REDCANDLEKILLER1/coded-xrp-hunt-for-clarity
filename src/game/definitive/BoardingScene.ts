@@ -395,6 +395,9 @@ export class BoardingScene implements ManagedScene {
     }else if(room==='engineering'){
       const roles:readonly BoardingEnemyKind[]=['breacher','sapper','technician','rifle','ceiling'];
       deckRoom(room).enemies.forEach(([x,z],index)=>this.enemy(room,x,z,roles[index%roles.length]));
+    }else if(room==='command'){
+      const roles:readonly BoardingEnemyKind[]=['rifle','sapper','breacher','technician'];
+      deckRoom(room).enemies.forEach(([x,z],index)=>this.enemy(room,x,z,roles[index%roles.length]));
     }else for(const [x,z] of deckRoom(room).enemies)this.enemy(room,x,z,'guard');
     const miniboss:Partial<Record<BoardingRoom,readonly [number,number,BoardingEnemyKind]>>={
       hangar:[0,-22,'warden'],security:[0,-12,'warden'],rescue:[7,-6,'warden'],engineering:[-18,3,'warden'],

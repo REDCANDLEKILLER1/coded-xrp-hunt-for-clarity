@@ -275,7 +275,7 @@ void game.start().then(() => {
       else if (params.get('review') === 'excavation') {const {prepareExcavationReview}=await import('./game/definitive/MarsExcavation');const ready=prepareExcavationReview(definitiveSave);if(!ready.ok)throw new Error('The isolated extraction section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else if(savedChapterScene(definitiveSave)==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
       else if (params.get('review') === 'boarding') {
         const requested=params.get('room');
-        if(requested==='rescue'||requested==='engineering'){const {prepareBoardingRoomReview}=await import('./game/definitive/BoardingQuest');const ready=prepareBoardingRoomReview(definitiveSave,requested);if(!ready.ok)throw new Error('The isolated boarding room save is unavailable');}
+        if(requested==='rescue'||requested==='engineering'||requested==='command'){const {prepareBoardingRoomReview}=await import('./game/definitive/BoardingQuest');const ready=prepareBoardingRoomReview(definitiveSave,requested);if(!ready.ok)throw new Error('The isolated boarding room save is unavailable');}
         if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showBoarding(definitiveSave);
       }
       else await meshRuntime.showModel(params.get('review') === 'crew' ? 'mr_zamn' : params.get('review') === 'character' ? 'xrpman' : 'regulatory_warship');

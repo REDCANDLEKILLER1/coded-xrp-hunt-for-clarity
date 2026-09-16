@@ -148,7 +148,7 @@ export function boardingRetryRoom(state: DefinitiveSave): BoardingRoom {
 
 /** Deterministic room fixture for isolated browser playtests; campaign saves cannot call it. */
 export function prepareBoardingRoomReview(save:CampaignSave,room:BoardingRoom):SaveResult {
-  if(!save.testSlot||!['rescue','engineering'].includes(room))return{ok:false,reason:'condition'};
+  if(!save.testSlot||!['rescue','engineering','command'].includes(room))return{ok:false,reason:'condition'};
   return save.update(d=>{
     d.quests=d.quests.filter(q=>!q.startsWith('boarding.'));
     d.clearedRooms=d.clearedRooms.filter(q=>!q.startsWith('boarding.'));
@@ -156,8 +156,14 @@ export function prepareBoardingRoomReview(save:CampaignSave,room:BoardingRoom):S
     for(const prior of ['hangar','security'] as BoardingRoom[]){add(d.clearedRooms,roomFlag(prior));add(d.visitedRooms,roomFlag(prior));}
     for(const step of ['hangar_safe','security_relay'] as BoardingStep[])add(d.quests,questFlag(step));
     if(room==='engineering')add(d.visitedRooms,roomFlag('rescue'));
-    add(d.visitedRooms,roomFlag(room));d.recruits=d.recruits.filter(id=>id!=='mr_zamn');d.warshipOwned=false;
-    d.heroUpgrades.boarding_weapon=2;delete d.heroUpgrades.ledger_shield;
+    d.recruits=d.recruits.filter(id=>id!=='mr_zamn');
+    if(room==='command'){
+      for(const prior of ['rescue','engineering'] as BoardingRoom[]){add(d.clearedRooms,roomFlag(prior));add(d.visitedRooms,roomFlag(prior));}
+      for(const step of ['engineering_power','rescue_junction'] as BoardingStep[])add(d.quests,questFlag(step));
+      add(d.quests,'boarding.hidden_route');add(d.recruits,'mr_zamn');
+    }
+    add(d.visitedRooms,roomFlag(room));d.warshipOwned=false;
+    d.heroUpgrades.boarding_weapon=room==='command'?3:2;delete d.heroUpgrades.ledger_shield;
     d.location={mode:'boarding',world:'ledger_prime',checkpoint:roomFlag(room)};
   });
 }

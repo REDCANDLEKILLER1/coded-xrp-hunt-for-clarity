@@ -865,9 +865,9 @@
         "boarding",
         "hub"
       ],
-      "bytes": 3556128,
-      "sha256": "e0a2696cb6a58701421f387b8d6c78fda889674c1622d01ccaf8fa3f949ea1be",
-      "notes": "Blender-authored eight-sector cutaway architecture from shared metre layout. Security Atrium and Engineering use a restyled and batched CC0 Kenney Space Station structural subset; see docs/definitive/BOARDING_ASSET_CREDITS.md. Embedded materials and BoardingScene consumer."
+      "bytes": 3682900,
+      "sha256": "f34cc6abfa191f73fe267f7656c2c9ce32483227c86dd14cab78210fad29b781",
+      "notes": "Blender-authored eight-sector cutaway architecture from shared metre layout. Security Atrium, Engineering and Command Access use a restyled and batched CC0 Kenney Space Station structural subset; see docs/definitive/BOARDING_ASSET_CREDITS.md. Embedded materials and BoardingScene consumer."
     },
     "space_regulator_drone": {
       "src": "/assets/models/space_regulator_drone.glb",

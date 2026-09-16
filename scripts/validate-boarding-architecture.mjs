@@ -26,7 +26,7 @@ for(const room of layout.rooms){
   const group=gltf.scene.getObjectByName(`Deck_${room.id}`);assert.ok(group);
   const box=new Box3().setFromObject(group),center=box.getCenter(new Vector3()),size=box.getSize(new Vector3());
   assert.ok(Math.abs(center.x-room.x)<.1&&Math.abs(center.z-room.z)<.1,'architecture follows navigation room origin');
-  const heightLimit=['rescue','engineering'].includes(room.id)?3.05:1.3;
+  const heightLimit=['rescue','engineering','command'].includes(room.id)?3.05:1.3;
   assert.ok(size.x<=room.width+.5&&size.z<=room.depth+.5&&box.max.y<heightLimit,'cutaway envelope preserves measured deck and tactical-sector clearance');
   for(let i=0;i<9;i++)for(let j=0;j<9;j++){
     const x=room.x+(i/8-.5)*(room.width-2),z=room.z+(j/8-.5)*(room.depth-2);

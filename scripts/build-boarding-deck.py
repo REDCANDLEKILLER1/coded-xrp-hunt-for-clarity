@@ -117,6 +117,16 @@ for room in layout['rooms']:
         for px in [-20.5,-15.5]:
             box('Engineering power bus',px,0,.13,.3,7.2,.22,warning,.04)
             for pz in [-2.7,0,2.7]:box('Engineering bus node',px,pz,.32,.72,.72,.42,screen,.08)
+    if room['id']=='command' and a.module_source:
+        # Command Access is a surveillance deck wrapped around the holographic
+        # table. Side hardware preserves the north/south assault lane.
+        for px in [-6,0,6]:module(root,'wall-window',px,18.15,.08,1.12,math.pi)
+        module(root,'display-wall-wide',5.8,17.75,.12,1.08,math.pi)
+        module(root,'computer-wide',-6.2,11.1,.02,1.02,0)
+        module(root,'computer-wide',6.2,11.1,.02,1.02,0)
+        module(root,'wall-switch',-8.35,16,.15,1.08,math.pi/2)
+        for px in [-6.7,6.7]:module(root,'structure-barrier-high',px,15.8,.02,.86,0)
+        for pz in [11.2,16.8]:module(root,'pipe',8.35,pz,.42,1.18,0)
     groups={}
     for obj in objects:obj.parent=root;groups.setdefault(obj.data.materials[0].name,[]).append(obj)
     for index,group in enumerate(groups.values()):
