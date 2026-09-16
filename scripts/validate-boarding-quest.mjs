@@ -113,11 +113,14 @@ assert.equal(save.snapshot.credits,300); assert.equal(save.snapshot.warshipOwned
 assert.deepEqual(save.snapshot.recruits,['mr_zamn']); assert.equal(save.snapshot.fighterShipKey,'xrpl_striker');
 assert.equal(quest.complete('bridge_secured').ok,false); assert.equal(save.snapshot.credits,300);
 const citySave=new CampaignSave(storage,'test:warship-city');citySave.update(d=>{d.warshipOwned=true;d.credits=500;d.location={mode:'hub',world:'ledger_prime',checkpoint:'boarding.bridge'};});const city=new BoardingQuest(citySave);
+assert.equal(city.tradeMedPack('buy').ok,false,'physical market refuses bridge-menu trading');
+assert.ok(city.enterCivic().ok);assert.equal(citySave.snapshot.location.checkpoint,'civic.market');
 assert.ok(city.tradeMedPack('buy').ok);assert.equal(citySave.snapshot.credits,465);assert.equal(citySave.snapshot.inventory.med_pack,1);
 assert.ok(city.tradeMedPack('sell').ok);assert.equal(citySave.snapshot.credits,483);assert.equal(citySave.snapshot.inventory.med_pack,0);
 assert.ok(city.tradeMedPack('buy').ok);assert.ok(city.useMedPack().ok);assert.equal(citySave.snapshot.inventory.med_pack,0);assert.equal(city.useMedPack().ok,false);
 assert.ok(city.installMeleeCapacitor().ok);assert.equal(citySave.snapshot.heroUpgrades.melee_capacitor,1);assert.equal(city.installMeleeCapacitor().ok,false);
-assert.ok(city.restAtQuarters().ok);assert.equal(citySave.snapshot.location.checkpoint,'boarding.bridge');
+assert.ok(city.restAtQuarters().ok);assert.equal(citySave.snapshot.location.checkpoint,'civic.quarters');
+assert.ok(city.returnToBridge().ok);assert.equal(citySave.snapshot.location.checkpoint,'boarding.bridge');
 assert.ok(quest.purchase('repair').ok); assert.ok(quest.purchase('shield_module').ok);
 assert.equal(save.snapshot.credits,100); assert.equal(quest.purchase('repair').ok,false);
 assert.ok(quest.cache().ok); assert.equal(save.snapshot.credits,200); assert.equal(quest.cache().ok,false);

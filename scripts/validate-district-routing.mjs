@@ -106,14 +106,14 @@ for (const name of Object.getOwnPropertyNames(runtime.MeshRuntime.prototype)) {
   }
 }
 
-const ROUTES = ['showLanding', 'showBoarding', 'showSpace', 'showBullionReach', 'showFogMoon', 'showMars', 'showExcavation'];
+const ROUTES = ['showLanding', 'showBoarding', 'showDistrictConnector', 'showCivic', 'showSpace', 'showBullionReach', 'showFogMoon', 'showMars', 'showExcavation'];
 const observed = [];
 for (const route of ROUTES) {
   const stored = new Map();
   const save = new CampaignSave({ getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) }, `routing:${route}`);
   if (route !== 'showLanding') save.update(draft => { draft.warshipOwned = true; });
   handoffs.length = 0;
-  try { await runtime.MeshRuntime.prototype[route].call(host, save); } catch { /* a route that cannot finish headlessly still recorded its loads */ }
+  try { await runtime.MeshRuntime.prototype[route].call(host, save,...(route==='showDistrictConnector'?['civic']:[])); } catch { /* a route that cannot finish headlessly still recorded its loads */ }
   observed.push({ route, handoffs: handoffs.map(models => [...models]) });
 }
 

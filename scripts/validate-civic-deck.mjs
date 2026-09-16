@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {build} from 'esbuild';
+const load=async path=>{const r=await build({entryPoints:[path],bundle:true,write:false,format:'esm',logLevel:'silent'});return import(`data:text/javascript;base64,${Buffer.from(r.outputFiles[0].text).toString('base64')}`);};
+const manifest=JSON.parse(readFileSync('public/assets/manifest.json','utf8')),entry=manifest.models.civic_deck,bytes=readFileSync(`public${entry.src}`),doc=JSON.parse(bytes.subarray(20,20+bytes.readUInt32LE(12)));
+const names=new Set(doc.nodes.map(node=>node.name));
+for(const name of ['Lift_Boarding','Market_Med','Armory_Capacitor','Bank_Kiosk','Quarters_Save','Casino_Door','Brig_Door','Residential_Door','Hangar_Door'])assert.ok(names.has(name),`physical Civic service anchor: ${name}`);
+assert.ok(doc.meshes.length<=16,'Civic draw surfaces remain batched');
+const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts'),{BoardingQuest}=await load('src/game/definitive/BoardingQuest.ts');
+const records=new Map(),storage={getItem:key=>records.get(key)??null,setItem:(key,value)=>records.set(key,value)};
+let save=new CampaignSave(storage,'test:civic-deck');save.update(d=>{d.warshipOwned=true;d.credits=500;d.location={mode:'hub',world:'ledger_prime',checkpoint:'boarding.bridge'};});let civic=new BoardingQuest(save);
+assert.equal(civic.tradeMedPack('buy').ok,false,'market transaction requires physical Civic checkpoint');
+assert.ok(civic.enterCivic().ok);const before=save.snapshot.revision;assert.ok(civic.tradeMedPack('buy').ok);assert.equal(save.snapshot.credits,465);assert.equal(save.snapshot.inventory.med_pack,1);assert.equal(save.snapshot.revision,before+1,'purchase commits balance and cargo exactly once');
+save=new CampaignSave(storage,'test:civic-deck');civic=new BoardingQuest(save);assert.equal(save.snapshot.credits,465);assert.equal(save.snapshot.inventory.med_pack,1,'purchase survives reload');
+for(let i=0;i<8;i++)assert.ok(civic.tradeMedPack('buy').ok);assert.equal(civic.tradeMedPack('buy').ok,false,'cargo cap refuses tenth pack');
+for(let i=0;i<9;i++)assert.ok(civic.tradeMedPack('sell').ok);assert.equal(save.snapshot.credits,347,'nine buy/sell round trips lose 153 credits and cannot print money');assert.equal(civic.tradeMedPack('sell').ok,false);
+assert.ok(civic.restAtQuarters().ok);assert.equal(save.snapshot.location.checkpoint,'civic.quarters');save=new CampaignSave(storage,'test:civic-deck');civic=new BoardingQuest(save);assert.ok(civic.enterCivic().ok);assert.equal(save.snapshot.location.checkpoint,'civic.quarters','quarters checkpoint survives district reload');assert.ok(civic.returnToBridge().ok);assert.equal(save.snapshot.location.checkpoint,'boarding.bridge');
+console.log(`civic-deck: OK — ${doc.meshes.length} batched surfaces, 9 physical service/district anchors, location-gated economy commits once, survives reload, respects cargo cap and cannot loop credits.`);

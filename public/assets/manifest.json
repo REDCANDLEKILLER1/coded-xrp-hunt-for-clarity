@@ -1081,6 +1081,17 @@
         "space"
       ],
       "notes": "Original 720 m Red Candle dreadnought; 878 m carrier variant. Five physical damage components and armored hull. Private Blender master retained, no private image pixels."
+    },
+    "civic_deck": {
+      "src": "/assets/models/civic_deck.glb",
+      "type": "model",
+      "scenes": [
+        "hub",
+        "warship_district"
+      ],
+      "bytes": 393360,
+      "sha256": "bebc01cb200daba000862e8dda801f52b05b92dd8890c497768a68d6671f522e",
+      "notes": "Original Blender-authored captured-Warship Civic Deck: walkable market, armory, bank, crew quarters, transit lift and sealed future district gates. Eleven batched colour-coded surfaces; no external source assets."
     }
   },
   "audio": {

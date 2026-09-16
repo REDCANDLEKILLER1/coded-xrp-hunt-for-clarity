@@ -24,7 +24,7 @@ for(const district of districts){
   assert.equal(entry.bytes,bytes.length);assert.equal(entry.sha256,createHash('sha256').update(bytes).digest('hex'));
   assert.ok(bytes.length<=district.maxBytes,`${district.model} stays inside its encoded phone budget`);
   const doc=JSON.parse(bytes.subarray(20,20+bytes.readUInt32LE(12)));
-  assert.ok(doc.images.every(i=>!i.uri&&Number.isInteger(i.bufferView)),`${district.model} embeds textures instead of making surprise network requests`);
+  assert.ok((doc.images??[]).every(i=>!i.uri&&Number.isInteger(i.bufferView)),`${district.model} embeds textures instead of making surprise network requests`);
   const gltf=await loader.parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length),'');gltf.scene.updateMatrixWorld(true);
   const geometry=[];let triangles=0;
   gltf.scene.traverse(o=>{if(o.isMesh){geometry.push(o);o.material.side=DoubleSide;triangles+=o.geometry.index?.count/3??o.geometry.attributes.position.count/3;if(o.material.map)assert.equal(o.material.map.colorSpace,SRGBColorSpace);}});

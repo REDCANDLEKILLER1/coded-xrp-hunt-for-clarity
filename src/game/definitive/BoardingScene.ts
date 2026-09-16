@@ -11,7 +11,7 @@ import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
@@ -384,10 +384,7 @@ export class BoardingScene implements ManagedScene {
       const module=document.createElement('button');module.textContent='Convoy service module · 180';module.disabled=!!this.host.quest.save.snapshot.heroUpgrades.logistics_service;
       module.addEventListener('click',()=>{const result=this.host.quest.purchase('logistics_module');if(result.ok){module.disabled=true;paint();this.say('Convoy repair cooldown reduced from 18 to 10 seconds.');}else this.say('The module could not install. Check salvage and retry.');});panel.append(note,module);
     }
-    const buy=document.createElement('button');buy.textContent='Buy med pack · 35';buy.addEventListener('click',()=>{const result=this.host.quest.tradeMedPack('buy');this.say(result.ok?'Med pack added to cargo.':'Need 35 credits or cargo is full.');paint();});panel.appendChild(buy);
-    const sell=document.createElement('button');sell.textContent='Sell med pack · 18';sell.addEventListener('click',()=>{const result=this.host.quest.tradeMedPack('sell');this.say(result.ok?'Med pack sold.':'No med packs in cargo.');paint();});panel.appendChild(sell);
-    const capacitor=document.createElement('button');capacitor.textContent='Melee capacitor · 140';capacitor.disabled=!!this.host.quest.save.snapshot.heroUpgrades.melee_capacitor;capacitor.addEventListener('click',()=>{const result=this.host.quest.installMeleeCapacitor();if(result.ok){capacitor.disabled=true;this.say('Melee capacitor installed: close strikes gain +8 damage.');}else this.say('Already installed or insufficient salvage.');paint();});panel.appendChild(capacitor);
-    const quarters=document.createElement('button');quarters.textContent='Crew quarters · save + full heal';quarters.addEventListener('click',()=>{const result=this.host.quest.restAtQuarters();if(result.ok){this.life=100;this.shield=100;this.say('Rest complete. Progress saved and vitals restored.');}else this.say('Crew quarters are unavailable.');paint();});panel.appendChild(quarters);
+    const civic=document.createElement('button');civic.textContent='ENTER CIVIC DECK';civic.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();this.host.onCivic();});panel.appendChild(civic);
     const depart=document.createElement('button');depart.textContent=this.host.quest.has('departure_ready')?'DEPART WARSHIP':'PREPARE DEPARTURE';depart.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();if(this.host.quest.has('departure_ready'))this.host.onDeparture();else this.conversation(BOARDING_DIALOGUE.outbound,'departure_ready');});panel.appendChild(depart);
     const close=document.createElement('button');close.textContent='BACK';close.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();});panel.appendChild(close);
     this.ui.appendChild(panel);this.paused=true;this.clearInput();

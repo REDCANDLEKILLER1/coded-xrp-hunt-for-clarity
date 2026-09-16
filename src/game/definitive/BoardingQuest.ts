@@ -138,7 +138,7 @@ export class BoardingQuest {
 
   tradeMedPack(action: 'buy' | 'sell'): SaveResult {
     return this.save.update(draft => {
-      if (!draft.warshipOwned || draft.location.mode !== 'hub' || draft.location.checkpoint !== 'boarding.bridge') return false;
+      if (!draft.warshipOwned || draft.location.mode !== 'hub' || draft.location.checkpoint !== 'civic.market') return false;
       const stock=draft.inventory.med_pack??0;
       if(action==='buy'){
         if(draft.credits<35||stock>=9)return false;
@@ -152,7 +152,7 @@ export class BoardingQuest {
 
   installMeleeCapacitor(): SaveResult {
     return this.save.purchase('purchase.bridge.melee_capacitor',140,draft=>{
-      if(!draft.warshipOwned||draft.location.mode!=='hub'||draft.location.checkpoint!=='boarding.bridge')return false;
+      if(!draft.warshipOwned||draft.location.mode!=='hub'||draft.location.checkpoint!=='civic.market')return false;
       draft.heroUpgrades.melee_capacitor=1;
     });
   }
@@ -166,7 +166,22 @@ export class BoardingQuest {
 
   restAtQuarters(): SaveResult {
     return this.save.update(draft=>{
-      if(!draft.warshipOwned||draft.location.mode!=='hub')return false;
+      if(!draft.warshipOwned||draft.location.mode!=='hub'||!draft.location.checkpoint.startsWith('civic.'))return false;
+      draft.location={mode:'hub',world:draft.location.world,checkpoint:'civic.quarters'};
+    });
+  }
+
+  enterCivic(): SaveResult {
+    return this.save.update(draft=>{
+      if(!draft.warshipOwned||!['hub','space'].includes(draft.location.mode))return false;
+      if(draft.location.mode==='hub'&&draft.location.checkpoint.startsWith('civic.'))return;
+      draft.location={mode:'hub',world:draft.location.world,checkpoint:'civic.market'};
+    });
+  }
+
+  returnToBridge(): SaveResult {
+    return this.save.update(draft=>{
+      if(!draft.warshipOwned||draft.location.mode!=='hub'||!draft.location.checkpoint.startsWith('civic.'))return false;
       draft.location={mode:'hub',world:draft.location.world,checkpoint:'boarding.bridge'};
     });
   }
@@ -200,5 +215,14 @@ export function prepareBoardingRoomReview(save:CampaignSave,room:BoardingRoom):S
     add(d.visitedRooms,roomFlag(room));d.warshipOwned=false;
     d.heroUpgrades.boarding_weapon=room==='command'?3:2;delete d.heroUpgrades.ledger_shield;
     d.location={mode:'boarding',world:'ledger_prime',checkpoint:roomFlag(room)};
+  });
+}
+
+/** Isolated captured-city fixture. It can never alter the campaign slot. */
+export function prepareCivicReview(save:CampaignSave):SaveResult {
+  if(!save.testSlot)return{ok:false,reason:'condition'};
+  return save.update(d=>{
+    d.warshipOwned=true;d.credits=Math.max(d.credits,500);d.location={mode:'hub',world:'ledger_prime',checkpoint:'civic.market'};
+    add(d.recruits,'mr_zamn');for(const step of BOARDING_STEPS)add(d.quests,questFlag(step));for(const room of BOARDING_ROOMS){add(d.clearedRooms,roomFlag(room));add(d.visitedRooms,roomFlag(room));}d.heroUpgrades.boarding_weapon=Math.max(4,d.heroUpgrades.boarding_weapon??1);d.heroUpgrades.ledger_shield=1;
   });
 }
