@@ -17,6 +17,7 @@ export interface DefinitiveSave {
   earth: CampaignProgress;
   location: { mode: ChapterMode; world: WorldKey; checkpoint: string };
   credits: number;
+  inventory: Record<string, number>;
   quests: string[];
   visitedRooms: string[];
   clearedRooms: string[];
@@ -38,12 +39,13 @@ const count = (value: unknown): value is number => Number.isSafeInteger(value) &
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const ids = (value: unknown): value is string[] => Array.isArray(value) && value.length <= 4096 && value.every(id) && new Set(value).size === value.length;
 const upgrades = (value: unknown): value is Record<string, number> => record(value) && Object.keys(value).length <= 64 && Object.entries(value).every(([key, rank]) => id(key) && Number.isInteger(rank) && Number(rank) >= 0 && Number(rank) <= 20);
+const inventory = (value: unknown): value is Record<string, number> => record(value) && Object.keys(value).length <= 128 && Object.entries(value).every(([key, amount]) => id(key) && Number.isSafeInteger(amount) && Number(amount) >= 0 && Number(amount) <= 999);
 
 export function newDefinitiveSave(earth = parseCampaignProgress(null)): DefinitiveSave {
   return {
     version: SAVE_VERSION, revision: 0, updatedAt: 0, earth: clone(earth),
     location: { mode: 'earth', world: 'ledger_prime', checkpoint: 'earth.launch' },
-    credits: 0, quests: [], visitedRooms: [], clearedRooms: [], recruits: [], rewards: [], dialogueSeen: [],
+    credits: 0, inventory: {}, quests: [], visitedRooms: [], clearedRooms: [], recruits: [], rewards: [], dialogueSeen: [],
     warshipOwned: false, fighterShipKey: earth.missionCheckpoints.ledger_prime?.shipKey ?? 'player',
     fighterUpgrades: {}, heroUpgrades: {}, capitalUpgrades: {}, transit:null, convoy:null,
   };
@@ -59,6 +61,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
     if (!['earth', 'boarding', 'hub', 'space', 'surface'].includes(String(place.mode)) || !(WORLD_KEYS as readonly unknown[]).includes(place.world) || !id(place.checkpoint)) return null;
     for (const key of ['quests', 'visitedRooms', 'clearedRooms', 'recruits', 'rewards', 'dialogueSeen']) if (!ids(value[key])) return null;
     if (!count(value.credits) || typeof value.warshipOwned !== 'boolean' || !id(value.fighterShipKey)) return null;
+    if (value.inventory !== undefined && !inventory(value.inventory)) return null;
     if (!upgrades(value.fighterUpgrades) || !upgrades(value.heroUpgrades) || !upgrades(value.capitalUpgrades)) return null;
     if(value.transit!==undefined&&value.transit!==null&&!validSpaceCheckpoint(value.transit))return null;
     if(value.convoy!==undefined&&value.convoy!==null&&!validConvoyCheckpoint(value.convoy))return null;
@@ -67,7 +70,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
       version: SAVE_VERSION, revision: value.revision as number, updatedAt: Number(value.updatedAt),
       earth: parseCampaignProgress(JSON.stringify(value.earth)),
       location: { mode: place.mode as ChapterMode, world: place.world as WorldKey, checkpoint: String(place.checkpoint) },
-      credits: Number(value.credits), warshipOwned: value.warshipOwned, fighterShipKey: value.fighterShipKey,
+      credits: Number(value.credits), inventory: value.inventory ? { ...value.inventory } as Record<string, number> : {}, warshipOwned: value.warshipOwned, fighterShipKey: value.fighterShipKey,
       quests: [...value.quests as string[]], visitedRooms: [...value.visitedRooms as string[]], clearedRooms: [...value.clearedRooms as string[]],
       recruits: [...value.recruits as string[]], rewards: [...value.rewards as string[]], dialogueSeen: [...value.dialogueSeen as string[]],
       fighterUpgrades: { ...value.fighterUpgrades }, heroUpgrades: { ...value.heroUpgrades }, capitalUpgrades: { ...value.capitalUpgrades },

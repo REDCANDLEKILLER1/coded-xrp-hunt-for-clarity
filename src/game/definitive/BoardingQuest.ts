@@ -136,6 +136,41 @@ export class BoardingQuest {
     });
   }
 
+  tradeMedPack(action: 'buy' | 'sell'): SaveResult {
+    return this.save.update(draft => {
+      if (!draft.warshipOwned || draft.location.mode !== 'hub' || draft.location.checkpoint !== 'boarding.bridge') return false;
+      const stock=draft.inventory.med_pack??0;
+      if(action==='buy'){
+        if(draft.credits<35||stock>=9)return false;
+        draft.credits-=35;draft.inventory.med_pack=stock+1;
+      }else{
+        if(stock<1)return false;
+        draft.inventory.med_pack=stock-1;draft.credits+=18;
+      }
+    });
+  }
+
+  installMeleeCapacitor(): SaveResult {
+    return this.save.purchase('purchase.bridge.melee_capacitor',140,draft=>{
+      if(!draft.warshipOwned||draft.location.mode!=='hub'||draft.location.checkpoint!=='boarding.bridge')return false;
+      draft.heroUpgrades.melee_capacitor=1;
+    });
+  }
+
+  useMedPack(): SaveResult {
+    return this.save.update(draft=>{
+      const stock=draft.inventory.med_pack??0;if(stock<1)return false;
+      draft.inventory.med_pack=stock-1;
+    });
+  }
+
+  restAtQuarters(): SaveResult {
+    return this.save.update(draft=>{
+      if(!draft.warshipOwned||draft.location.mode!=='hub')return false;
+      draft.location={mode:'hub',world:draft.location.world,checkpoint:'boarding.bridge'};
+    });
+  }
+
   recordDialogue(id: string): SaveResult {
     return this.save.update(draft => { add(draft.dialogueSeen, id); });
   }

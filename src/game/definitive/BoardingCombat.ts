@@ -78,6 +78,7 @@ export function boardingEnemyDamage(kind:BoardingEnemyKind,damage:number,frontHi
   if(kind==='ceiling'&&melee)return damage*.5;
   return damage;
 }
+export function boardingMeleePower(base:number,capacitor:boolean):number{return base+(capacitor?8:0);}
 /** Arc Sappers seek a readable middle range for their five-lane discharge. */
 export function sapperRangeMove(range:number):-1|0|1 {
   return range>7.2?1:range<4.6?-1:0;

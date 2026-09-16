@@ -6,7 +6,7 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, sapperRangeMove, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingMeleePower, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, sapperRangeMove, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -287,7 +287,7 @@ export class BoardingScene implements ManagedScene {
     const fire=button('BLAST',()=>{});fire.className='boarding-fire';
     fire.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();if(!this.canAct())return;this.firingPointer=e.pointerId;fire.setPointerCapture(e.pointerId);},{signal:this.lifetime.signal});
     for(const name of ['pointerup','pointercancel','lostpointercapture'])fire.addEventListener(name,e=>{if((e as PointerEvent).pointerId===this.firingPointer)this.firingPointer=null;},{signal:this.lifetime.signal});
-    button('INTERACT',()=>this.interact());button('PUNCH',()=>this.punch());button('JUMP',()=>this.jump());button('DODGE',()=>this.dodge());
+    button('INTERACT',()=>this.interact());button('PUNCH',()=>this.punch());button('JUMP',()=>this.jump());button('DODGE',()=>this.dodge());button('MED PACK',()=>this.useMedPack());
     button('SHIELD',()=>{if(this.host.quest.save.snapshot.heroUpgrades.ledger_shield)this.shieldOn=!this.shieldOn;else this.say('Ledger Shield is earned by defeating the Core.');});
     const top=document.createElement('div');top.className='boarding-top';
     const pause=button('PAUSE',()=>{if(this.ui.querySelector('.boarding-shop'))return;this.paused=!this.paused;pause.textContent=this.paused?'RESUME':'PAUSE';this.clearInput();},top);
@@ -373,8 +373,8 @@ export class BoardingScene implements ManagedScene {
   }
   private openShop():void {
     const panel=document.createElement('section');panel.className='boarding-shop';
-    const title=document.createElement('h2');title.textContent='WARSHIP TERMINAL';const balance=document.createElement('p');
-    const paint=()=>{balance.textContent=`${this.host.quest.save.snapshot.credits} SALVAGE CREDITS`;};paint();panel.append(title,balance);
+    const title=document.createElement('h2');title.textContent='CAPTURED WARSHIP · CIVIC DECK';const balance=document.createElement('p');
+    const paint=()=>{const save=this.host.quest.save.snapshot;balance.textContent=`${save.credits} SALVAGE CREDITS · ${save.inventory.med_pack??0} MED PACKS`;};paint();panel.append(title,balance);
     for(const [label,item] of [['Repair hull · 50','repair'],['Shield capacity · 150','shield_module']] as const){
       const b=document.createElement('button');b.textContent=label;b.addEventListener('click',()=>{const result=this.host.quest.purchase(item);if(result.ok){this.say('Installed on the capital ship.');paint();b.disabled=true;}else this.say('Already installed or insufficient salvage.');});panel.appendChild(b);
     }
@@ -383,6 +383,10 @@ export class BoardingScene implements ManagedScene {
       const module=document.createElement('button');module.textContent='Convoy service module · 180';module.disabled=!!this.host.quest.save.snapshot.heroUpgrades.logistics_service;
       module.addEventListener('click',()=>{const result=this.host.quest.purchase('logistics_module');if(result.ok){module.disabled=true;paint();this.say('Convoy repair cooldown reduced from 18 to 10 seconds.');}else this.say('The module could not install. Check salvage and retry.');});panel.append(note,module);
     }
+    const buy=document.createElement('button');buy.textContent='Buy med pack · 35';buy.addEventListener('click',()=>{const result=this.host.quest.tradeMedPack('buy');this.say(result.ok?'Med pack added to cargo.':'Need 35 credits or cargo is full.');paint();});panel.appendChild(buy);
+    const sell=document.createElement('button');sell.textContent='Sell med pack · 18';sell.addEventListener('click',()=>{const result=this.host.quest.tradeMedPack('sell');this.say(result.ok?'Med pack sold.':'No med packs in cargo.');paint();});panel.appendChild(sell);
+    const capacitor=document.createElement('button');capacitor.textContent='Melee capacitor · 140';capacitor.disabled=!!this.host.quest.save.snapshot.heroUpgrades.melee_capacitor;capacitor.addEventListener('click',()=>{const result=this.host.quest.installMeleeCapacitor();if(result.ok){capacitor.disabled=true;this.say('Melee capacitor installed: close strikes gain +8 damage.');}else this.say('Already installed or insufficient salvage.');paint();});panel.appendChild(capacitor);
+    const quarters=document.createElement('button');quarters.textContent='Crew quarters · save + full heal';quarters.addEventListener('click',()=>{const result=this.host.quest.restAtQuarters();if(result.ok){this.life=100;this.shield=100;this.say('Rest complete. Progress saved and vitals restored.');}else this.say('Crew quarters are unavailable.');paint();});panel.appendChild(quarters);
     const depart=document.createElement('button');depart.textContent=this.host.quest.has('departure_ready')?'DEPART WARSHIP':'PREPARE DEPARTURE';depart.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();if(this.host.quest.has('departure_ready'))this.host.onDeparture();else this.conversation(BOARDING_DIALOGUE.outbound,'departure_ready');});panel.appendChild(depart);
     const close=document.createElement('button');close.textContent='BACK';close.addEventListener('click',()=>{panel.remove();this.paused=false;this.clearInput();});panel.appendChild(close);
     this.ui.appendChild(panel);this.paused=true;this.clearInput();
@@ -452,10 +456,11 @@ export class BoardingScene implements ManagedScene {
     if(previous)action.crossFadeFrom(this.mixer.clipAction(previous),.12,false);this.clip=name;
   }
   private jump():void {if(!this.canAct()||this.hero.position.y>.04)return;this.verticalVelocity=6.4;this.jumpCount++;sfx.play('pulse',.3);}
+  private useMedPack():void {if(!this.canAct())return;if(this.life>=100){this.say('Vitals already full.');return;}const result=this.host.quest.useMedPack();if(!result.ok){this.say('No med packs in cargo. Buy them on the Civic Deck.');return;}this.life=Math.min(100,this.life+45);sfx.play('pulse',.45);this.say(`MED PACK · ${this.host.quest.save.snapshot.inventory.med_pack??0} REMAINING`);}
   private punch():void {
     if(!this.canAct())return;const hit=selectBoardingTarget(this.enemies.filter(enemy=>enemy.room===this.room&&enemy.hp>0&&this.hero.position.distanceTo(enemy.mesh.position)<2.55).map(enemy=>({enemy,kind:enemy.kind,hp:enemy.hp,x:enemy.mesh.position.x,z:enemy.mesh.position.z})),this.hero.position.x,this.hero.position.z)?.enemy;
     this.meleeClock=.38;this.play('Interact');this.invulnerability=Math.max(this.invulnerability,.18);if(!hit){this.meleeCombo=0;this.say('Punch missed. Close the distance or use your boarding weapon.');return;}
-    this.meleeCombo=Math.min(3,this.meleeCombo+1);const raw=this.hero.position.y>.35?42:20+this.meleeCombo*6,damage=boardingEnemyDamage(hit.kind,raw,false,true);hit.hp-=damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
+    this.meleeCombo=Math.min(3,this.meleeCombo+1);const base=this.hero.position.y>.35?42:20+this.meleeCombo*6,raw=boardingMeleePower(base,!!this.host.quest.save.snapshot.heroUpgrades.melee_capacitor),damage=boardingEnemyDamage(hit.kind,raw,false,true);hit.hp-=damage;const push=hit.mesh.position.clone().sub(this.hero.position).setY(0).normalize().multiplyScalar(.55);hit.mesh.position.add(push);sfx.play('hit',.65);this.say(this.hero.position.y>.35?'JUMP STRIKE · '+damage:'FIST COMBO · '+damage);if(hit.hp<=0){this.scene.remove(hit.mesh,hit.tell);sfx.play('explode',.6);}
   }
   private playCrew(name:'Idle'|'Interact'|'Walk'|'Run'):void {
     if(this.crewClip===name)return;const clip=this.host.crew.animations.find(candidate=>candidate.name===name);if(!clip)return;

@@ -788,7 +788,7 @@ canvas {
 .boarding-ui.is-conversation .boarding-actions, .boarding-ui.is-conversation .boarding-stick, .boarding-ui.is-conversation .boarding-map, .boarding-ui.is-conversation .boarding-status { visibility: hidden; }
 .boarding-dialogue span { margin-right: 20px; color: #77919f; }
 .boarding-dialogue button, .boarding-shop button { margin: 4px; }
-.boarding-shop { bottom: 50%; transform: translate(-50%,50%); }
+.boarding-shop { bottom: 50%; transform: translate(-50%,50%); max-height:calc(100% - 24px); overflow:auto; }
 @media (orientation: portrait) { .boarding-status { max-width: calc(100% - 115px); font-size: 11px; } .boarding-map { top: 120px; width: 70px; height: 92px; } .boarding-stick { left: 14px; width: 103px; height: 103px; } .boarding-actions { width: 226px; } }
 .mesh-runtime[data-review="character"] .mesh-controls { position: fixed; left: 17px; top: 145px; width: 170px; }
 .mesh-runtime[data-review="character"] .mesh-controls > div { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }

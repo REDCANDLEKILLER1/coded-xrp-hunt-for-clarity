@@ -8,7 +8,7 @@ const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {BoardingQuest,prepareBoardingRoomReview}=await load('src/game/definitive/BoardingQuest.ts');
 const {Dialogue,BOARDING_DIALOGUE}=await load('src/game/definitive/Dialogue.ts');
 const {DECK,DECK_DOORS,canCross,roomAt,insideWallMargin}=await load('src/game/definitive/BoardingLayout.ts');
-const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,boardingEnemyDamage,sapperRangeMove,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
+const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,boardingEnemyDamage,boardingMeleePower,sapperRangeMove,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
 assert.equal(DECK.length,8);
 for(const room of DECK){assert.equal(roomAt(room.x,room.z).id,room.id);assert.ok(insideWallMargin(room,room.x,room.z));}
 for(const door of DECK_DOORS){
@@ -47,6 +47,7 @@ assert.equal(boardingEnemyHealth('breacher'),140);assert.equal(boardingEnemyHeal
 assert.equal(boardingEnemyHealth('sapper'),90);assert.equal(boardingEnemyVolley('sapper',0).length,5);
 assert.equal(sapperRangeMove(8),1);assert.equal(sapperRangeMove(6),0);assert.equal(sapperRangeMove(4),-1);
 assert.equal(boardingEnemyDamage('breacher',20,true),7);assert.equal(boardingEnemyDamage('breacher',20,true,true),20);assert.equal(boardingEnemyDamage('rifle',20,true),20);
+assert.equal(boardingMeleePower(26,false),26);assert.equal(boardingMeleePower(26,true),34);
 assert.deepEqual(boardingPressure('security'),{attackers:4,cadence:.72});assert.deepEqual(boardingPressure('rescue'),{attackers:4,cadence:.74});assert.deepEqual(boardingPressure('engineering'),{attackers:4,cadence:.8});assert.deepEqual(boardingPressure('bridge'),{attackers:3,cadence:1});
 assert.ok(Math.abs(campaignHeroDamage(12,4)-19.8)<1e-9);
 assert.equal(campaignHeroDamage(12,'corrupt'),12,'corrupt boarding weapon save falls back to base damage');
@@ -101,6 +102,12 @@ assert.ok(quest.clear('bridge').ok);assert.ok(quest.complete('bridge_secured',BO
 assert.equal(save.snapshot.credits,300); assert.equal(save.snapshot.warshipOwned,true);
 assert.deepEqual(save.snapshot.recruits,['mr_zamn']); assert.equal(save.snapshot.fighterShipKey,'xrpl_striker');
 assert.equal(quest.complete('bridge_secured').ok,false); assert.equal(save.snapshot.credits,300);
+const citySave=new CampaignSave(storage,'test:warship-city');citySave.update(d=>{d.warshipOwned=true;d.credits=500;d.location={mode:'hub',world:'ledger_prime',checkpoint:'boarding.bridge'};});const city=new BoardingQuest(citySave);
+assert.ok(city.tradeMedPack('buy').ok);assert.equal(citySave.snapshot.credits,465);assert.equal(citySave.snapshot.inventory.med_pack,1);
+assert.ok(city.tradeMedPack('sell').ok);assert.equal(citySave.snapshot.credits,483);assert.equal(citySave.snapshot.inventory.med_pack,0);
+assert.ok(city.tradeMedPack('buy').ok);assert.ok(city.useMedPack().ok);assert.equal(citySave.snapshot.inventory.med_pack,0);assert.equal(city.useMedPack().ok,false);
+assert.ok(city.installMeleeCapacitor().ok);assert.equal(citySave.snapshot.heroUpgrades.melee_capacitor,1);assert.equal(city.installMeleeCapacitor().ok,false);
+assert.ok(city.restAtQuarters().ok);assert.equal(citySave.snapshot.location.checkpoint,'boarding.bridge');
 assert.ok(quest.purchase('repair').ok); assert.ok(quest.purchase('shield_module').ok);
 assert.equal(save.snapshot.credits,100); assert.equal(quest.purchase('repair').ok,false);
 assert.ok(quest.cache().ok); assert.equal(save.snapshot.credits,200); assert.equal(quest.cache().ok,false);
