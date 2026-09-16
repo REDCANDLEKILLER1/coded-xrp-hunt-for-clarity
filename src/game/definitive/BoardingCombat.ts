@@ -51,15 +51,16 @@ export function boardingWeapon(level:unknown):BoardingWeapon {
   const parsed=Number(level??1);const safeLevel=Number.isFinite(parsed)?parsed:1;
   return BOARDING_WEAPONS[Math.max(0,Math.min(BOARDING_WEAPONS.length-1,Math.floor(safeLevel)-1))];
 }
-export type BoardingEnemyKind='guard'|'rifle'|'breacher'|'technician'|'ceiling'|'relay'|'core'|'warden'|'captain';
+export type BoardingEnemyKind='guard'|'rifle'|'breacher'|'technician'|'sapper'|'ceiling'|'relay'|'core'|'warden'|'captain';
 export function boardingEnemyHealth(kind:BoardingEnemyKind):number {
-  return kind==='captain'?520:kind==='core'?650:kind==='warden'?210:kind==='breacher'?140:kind==='technician'?70:kind==='rifle'?55:kind==='ceiling'?50:kind==='relay'?65:42;
+  return kind==='captain'?520:kind==='core'?650:kind==='warden'?210:kind==='breacher'?140:kind==='sapper'?90:kind==='technician'?70:kind==='rifle'?55:kind==='ceiling'?50:kind==='relay'?65:42;
 }
 export function boardingEnemyVolley(kind:BoardingEnemyKind,tactic:number):readonly number[] {
   if(kind==='captain')return [-.48,-.24,0,.24,.48];
   if(kind==='core')return [-.28,0,.28];
   if(kind==='warden')return tactic%2?[-.2,0,.2]:[-.1,.1];
   if(kind==='breacher')return [-.16,0,.16];
+  if(kind==='sapper')return [-.34,-.17,0,.17,.34];
   if(kind==='ceiling')return [-.1,.1];
   return [0];
 }
@@ -76,6 +77,10 @@ export function boardingEnemyDamage(kind:BoardingEnemyKind,damage:number,frontHi
   if(kind==='breacher'&&frontHit&&!melee)return damage*.35;
   if(kind==='ceiling'&&melee)return damage*.5;
   return damage;
+}
+/** Arc Sappers seek a readable middle range for their five-lane discharge. */
+export function sapperRangeMove(range:number):-1|0|1 {
+  return range>7.2?1:range<4.6?-1:0;
 }
 /** Boarding weapon mastery remains useful on every later on-foot world. */
 export function campaignHeroDamage(base:number,boardingLevel:unknown):number {

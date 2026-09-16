@@ -103,6 +103,20 @@ for room in layout['rooms']:
         for pz in [-5.6,5.6]:module(root,'structure-barrier-high',0,pz,.02,.9,math.pi/2)
         for pz in [-5,5]:module(root,'pipe',-11.35,pz,.45,1.3,0)
         module(root,'pipe-bend',-11.35,7,.45,1.3,0)
+    if room['id']=='engineering' and a.module_source:
+        # Engineering is a denser power-control sector rather than another flat
+        # corridor. Keep the east doorway clear for the Atrium return route.
+        for px in [-22,-18,-14]:module(root,'wall-window',px,5.15,.08,1.05,math.pi)
+        for pz in [-3.6,0,3.6]:module(root,'pipe',-24.35,pz,.42,1.2,0)
+        module(root,'pipe-bend',-24.35,-5,.42,1.2,0)
+        module(root,'display-wall-wide',-22,4.55,.12,1.02,math.pi)
+        module(root,'computer-wide',-20.4,1.3,.02,.92,math.pi/2)
+        module(root,'wall-switch',-23.55,2.2,.15,1.08,-math.pi/2)
+        for pz in [-3.4,3.4]:module(root,'structure-barrier-high',-16.2,pz,.02,.82,math.pi/2)
+        # Twin energized bus bars create an unmistakable power-room silhouette.
+        for px in [-20.5,-15.5]:
+            box('Engineering power bus',px,0,.13,.3,7.2,.22,warning,.04)
+            for pz in [-2.7,0,2.7]:box('Engineering bus node',px,pz,.32,.72,.72,.42,screen,.08)
     groups={}
     for obj in objects:obj.parent=root;groups.setdefault(obj.data.materials[0].name,[]).append(obj)
     for index,group in enumerate(groups.values()):

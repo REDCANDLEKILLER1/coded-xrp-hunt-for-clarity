@@ -20,14 +20,14 @@ globalThis.self=globalThis;globalThis.createImageBitmap=async()=>({width:1024,he
 const gltf=await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.length),'');gltf.scene.updateMatrixWorld(true);
 const geometry=[];let triangles=0;
 gltf.scene.traverse(o=>{if(o.isMesh){geometry.push(o);o.material.side=DoubleSide;triangles+=o.geometry.index.count/3;if(o.material.map)assert.equal(o.material.map.colorSpace,SRGBColorSpace);}});
-assert.ok(triangles<60_000&&geometry.length<=layout.rooms.length*4,'four batched architecture materials per room');
+assert.ok(triangles<60_000&&geometry.length<=layout.rooms.length*4+4,'room-level material batching stays within the expanded tactical-sector budget');
 const ray=new Raycaster();let samples=0;
 for(const room of layout.rooms){
   const group=gltf.scene.getObjectByName(`Deck_${room.id}`);assert.ok(group);
   const box=new Box3().setFromObject(group),center=box.getCenter(new Vector3()),size=box.getSize(new Vector3());
   assert.ok(Math.abs(center.x-room.x)<.1&&Math.abs(center.z-room.z)<.1,'architecture follows navigation room origin');
-  const heightLimit=room.id==='rescue'?3.05:1.3;
-  assert.ok(size.x<=room.width+.5&&size.z<=room.depth+.5&&box.max.y<heightLimit,'cutaway envelope preserves measured deck and Atrium clearance');
+  const heightLimit=['rescue','engineering'].includes(room.id)?3.05:1.3;
+  assert.ok(size.x<=room.width+.5&&size.z<=room.depth+.5&&box.max.y<heightLimit,'cutaway envelope preserves measured deck and tactical-sector clearance');
   for(let i=0;i<9;i++)for(let j=0;j<9;j++){
     const x=room.x+(i/8-.5)*(room.width-2),z=room.z+(j/8-.5)*(room.depth-2);
     ray.set(new Vector3(x,2,z),new Vector3(0,-1,0));ray.far=3;

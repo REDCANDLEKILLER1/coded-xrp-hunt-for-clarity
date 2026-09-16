@@ -148,13 +148,14 @@ export function boardingRetryRoom(state: DefinitiveSave): BoardingRoom {
 
 /** Deterministic room fixture for isolated browser playtests; campaign saves cannot call it. */
 export function prepareBoardingRoomReview(save:CampaignSave,room:BoardingRoom):SaveResult {
-  if(!save.testSlot||room!=='rescue')return{ok:false,reason:'condition'};
+  if(!save.testSlot||!['rescue','engineering'].includes(room))return{ok:false,reason:'condition'};
   return save.update(d=>{
     d.quests=d.quests.filter(q=>!q.startsWith('boarding.'));
     d.clearedRooms=d.clearedRooms.filter(q=>!q.startsWith('boarding.'));
     d.visitedRooms=d.visitedRooms.filter(q=>!q.startsWith('boarding.'));
     for(const prior of ['hangar','security'] as BoardingRoom[]){add(d.clearedRooms,roomFlag(prior));add(d.visitedRooms,roomFlag(prior));}
     for(const step of ['hangar_safe','security_relay'] as BoardingStep[])add(d.quests,questFlag(step));
+    if(room==='engineering')add(d.visitedRooms,roomFlag('rescue'));
     add(d.visitedRooms,roomFlag(room));d.recruits=d.recruits.filter(id=>id!=='mr_zamn');d.warshipOwned=false;
     d.heroUpgrades.boarding_weapon=2;delete d.heroUpgrades.ledger_shield;
     d.location={mode:'boarding',world:'ledger_prime',checkpoint:roomFlag(room)};

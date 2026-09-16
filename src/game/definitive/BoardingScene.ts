@@ -6,7 +6,7 @@ import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, ro
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
-import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
+import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, sapperRangeMove, selectBoardingTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -363,7 +363,7 @@ export class BoardingScene implements ManagedScene {
     switch(this.room){
       case 'hangar':if(!q.isClear('hangar'))this.say('Terminal locked under fire. Clear the arrival bay, then return to claim it.');else{q.complete('hangar_safe');this.say('Bay secured. PULSE REPEATER acquired. Security deck open.');}break;
       case 'security':if(!q.isClear('security'))this.say('Clear the security detail first.');else{q.complete('security_relay');this.say('Door relay disabled. Crew junction unlocked.');}break;
-      case 'rescue':this.say(!q.isClear('rescue')?'Clear the crew junction.':!q.has('engineering_power')?'Restore Engineering power, then search the outer wall seams.':!q.save.snapshot.quests.includes('boarding.hidden_route')?'The scanner marks a false wall near the far red panel.':'The detention passage is open. Find Mr Zamn behind it.');break;
+      case 'rescue':this.say(!q.isClear('rescue')?'Clear the Security Atrium.':!q.has('engineering_power')?'Restore Engineering power, then search the outer wall seams.':!q.save.snapshot.quests.includes('boarding.hidden_route')?'The scanner marks a false wall near the far red panel.':'The detention passage is open. Find Mr Zamn behind it.');break;
       case 'engineering':if(!q.isClear('engineering'))this.say('Clear engineering before rerouting power.');else if(!q.has('engineering_power'))this.conversation(BOARDING_DIALOGUE.engineering,'engineering_power');else this.say('Hangar power is restored.');break;
       case 'command':if(!q.isClear('command'))this.say('Clear command access before opening the Core chamber.');else{q.complete('command_access');this.say('Core chamber open. Destroy its two relays.');}break;
       case 'core':if(q.has('core_defeated'))this.say('Ledger Shield acquired. Activate SHIELD before the bridge exit field.');else this.say('Break both red relays, then strike while the Core is exposed.');break;
@@ -392,6 +392,9 @@ export class BoardingScene implements ManagedScene {
     if(room==='rescue'){
       const roles:readonly BoardingEnemyKind[]=['rifle','breacher','technician','ceiling'];
       deckRoom(room).enemies.forEach(([x,z],index)=>this.enemy(room,x,z,roles[index%roles.length]));
+    }else if(room==='engineering'){
+      const roles:readonly BoardingEnemyKind[]=['breacher','sapper','technician','rifle','ceiling'];
+      deckRoom(room).enemies.forEach(([x,z],index)=>this.enemy(room,x,z,roles[index%roles.length]));
     }else for(const [x,z] of deckRoom(room).enemies)this.enemy(room,x,z,'guard');
     const miniboss:Partial<Record<BoardingRoom,readonly [number,number,BoardingEnemyKind]>>={
       hangar:[0,-22,'warden'],security:[0,-12,'warden'],rescue:[7,-6,'warden'],engineering:[-18,3,'warden'],
@@ -405,7 +408,7 @@ export class BoardingScene implements ManagedScene {
     }
   }
   private enemy(room:BoardingRoom,x:number,z:number,kind:Enemy['kind']):void {
-    const core=kind==='core',relay=kind==='relay',captain=kind==='captain',warden=kind==='warden',elite=captain||warden,ceiling=kind==='ceiling',human=['rifle','breacher','technician'].includes(kind);
+    const core=kind==='core',relay=kind==='relay',captain=kind==='captain',warden=kind==='warden',elite=captain||warden,ceiling=kind==='ceiling',human=['rifle','breacher','technician','sapper'].includes(kind);
     const group=new Group();group.position.set(x,core?1.8:ceiling?2.45:elite?1.35:human?1.02:1.1,z);this.scene.add(group);
     this.part(group,[0,0,0],core?[2.6,2.2,2.6]:captain?[2,1.65,1.8]:warden?[1.45,1.2,1.3]:relay?[.7,1.6,.7]:ceiling?[1.1,.35,.85]:human?[.68,1.05,.48]:[.9,.55,.85],elite?this.bossMetal:this.metal);
     this.part(group,[0,.05,-(core?1.32:captain?.94:warden?.69:.44)],core?[1.8,.5,.07]:elite?[1.05,.28,.08]:[.6,.15,.07],this.red);
@@ -422,6 +425,13 @@ export class BoardingScene implements ManagedScene {
       if(kind==='technician'){
         this.part(group,[0,.08,-.42],[.8,.72,.28],this.blue);
         for(const sign of [-1,1])this.part(group,[sign*.24,.14,-.61],[.1,.45,.09],this.green);
+      }
+      if(kind==='sapper'){
+        this.part(group,[0,.12,-.46],[.84,.86,.32],this.bossMetal);
+        for(const sign of [-1,1]){
+          const coil=new Mesh(new CylinderGeometry(.17,.17,.48,10),this.blue);coil.position.set(sign*.28,.16,-.68);coil.rotation.x=Math.PI/2;group.add(coil);
+        }
+        this.part(group,[.46,.02,-.5],[.18,.2,1.02],this.red);
       }
     }
     if(ceiling){
@@ -593,24 +603,30 @@ export class BoardingScene implements ManagedScene {
       if(enemy.kind==='guard'||enemy.kind==='rifle'){const orbit=this.clock*(.42+enemy.tactic*.08)+enemy.base.z*.31;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*(1+enemy.tactic*.35);enemy.mesh.position.z=enemy.base.z+Math.cos(orbit*.83)*(.45+enemy.tactic*.18);enemy.mesh.position.y=enemy.base.y+Math.sin(this.clock*2+enemy.tactic)*.08;}
       else if(enemy.kind==='ceiling'){const orbit=this.clock*.55+enemy.tactic;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*2.2;enemy.mesh.position.z=enemy.base.z+Math.cos(orbit*.8)*1.1;enemy.mesh.position.y=enemy.base.y+Math.sin(this.clock*1.7)*.22;}
       else if(enemy.kind==='technician'){const orbit=this.clock*.24+enemy.base.x;enemy.mesh.position.x=enemy.base.x+Math.sin(orbit)*.7;enemy.mesh.position.z=enemy.base.z+Math.cos(orbit)*.45;}
+      else if(enemy.kind==='sapper'){
+        const offset=this.hero.position.clone().sub(enemy.mesh.position).setY(0),range=offset.length();
+        const move=sapperRangeMove(range);
+        if(move)enemy.mesh.position.addScaledVector(offset.normalize(),dt*(move>0?.8:-.9));
+        else enemy.mesh.position.add(new Vector3(Math.cos(this.clock+enemy.tactic),0,-Math.sin(this.clock+enemy.tactic)).multiplyScalar(dt*.55));
+      }
       else if(enemy.kind==='breacher'){
         const approach=this.hero.position.clone().sub(enemy.mesh.position).setY(0),range=approach.length();
         if(range>4.2)enemy.mesh.position.addScaledVector(approach.normalize(),dt*1.15);
       }
       else enemy.mesh.rotation.y+=dt*.25;
-      if(['rifle','breacher','technician','ceiling'].includes(enemy.kind)){
+      if(['rifle','breacher','technician','sapper','ceiling'].includes(enemy.kind)){
         const face=this.hero.position.clone().sub(enemy.mesh.position);enemy.mesh.rotation.y=Math.atan2(face.x,face.z);
       }
       if(enemy.charge>0){enemy.charge-=dt;enemy.mesh.scale.setScalar(1+Math.sin(this.clock*24)*.035);
         const direction=enemy.target.clone().sub(enemy.mesh.position);direction.y=0;
         enemy.tell.position.copy(enemy.mesh.position).addScaledVector(direction,.5);enemy.tell.position.y=.035;
         enemy.tell.rotation.y=Math.atan2(direction.x,direction.z);enemy.tell.scale.set(.18+.12*Math.sin(this.clock*18)**2,.025,direction.length());
-        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:enemy.kind==='breacher'?9:enemy.kind==='technician'?8:enemy.kind==='ceiling'?8:enemy.kind==='rifle'?10:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=(enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:enemy.kind==='breacher'?2.2:enemy.kind==='technician'?2.65:enemy.kind==='ceiling'?2.1:1.7+enemy.tactic*.18)*pressure.cadence;enemy.mesh.scale.setScalar(1);}
+        if(enemy.charge<=0){const origin=enemy.mesh.position.clone(),direction=enemy.target.clone().sub(origin),damage=enemy.kind==='captain'?15:enemy.kind==='core'?15:enemy.kind==='warden'?12:enemy.kind==='breacher'?9:enemy.kind==='sapper'?7:enemy.kind==='technician'?8:enemy.kind==='ceiling'?8:enemy.kind==='rifle'?10:11;for(const angle of boardingEnemyVolley(enemy.kind,enemy.tactic))this.fire(origin,direction.clone().applyAxisAngle(new Vector3(0,1,0),angle),'enemy',damage);enemy.clock=(enemy.kind==='captain'?1.25:enemy.kind==='core'?1.65:enemy.kind==='warden'?1.55:enemy.kind==='breacher'?2.2:enemy.kind==='sapper'?2.7:enemy.kind==='technician'?2.65:enemy.kind==='ceiling'?2.1:1.7+enemy.tactic*.18)*pressure.cadence;enemy.mesh.scale.setScalar(1);}
       }else if(enemy.clock<=0&&enemy.kind==='technician'){
         const wounded=this.enemies.filter(other=>other.room===this.room&&other!==enemy&&other.hp>0&&other.hp<other.maxHp).sort((a,b)=>a.hp/a.maxHp-b.hp/b.maxHp)[0];
         if(wounded){wounded.hp=Math.min(wounded.maxHp,wounded.hp+16);enemy.clock=4.5;enemy.tell.visible=true;enemy.tell.position.copy(wounded.mesh.position);enemy.tell.position.y=.04;enemy.tell.scale.set(1.1,.025,1.1);this.say('SECURITY TECHNICIAN · Repair pulse. Break line and remove support.');}
         else if(attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=.82;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
-      }else if(enemy.clock<=0&&attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:enemy.kind==='breacher'?.95:enemy.kind==='ceiling'?.76:.62+enemy.tactic*.08;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));attackers++;}
+      }else if(enemy.clock<=0&&attackers<pressure.attackers&&this.onScreen(enemy.mesh.position)){enemy.charge=enemy.kind==='captain'?.95:enemy.kind==='warden'?.82:enemy.kind==='breacher'?.95:enemy.kind==='sapper'?1.05:enemy.kind==='ceiling'?.76:.62+enemy.tactic*.08;enemy.target.copy(this.hero.position).add(new Vector3(0,1.1,0));if(enemy.kind==='sapper')this.say('ARC SAPPER · Five-lane discharge. Read the fan and dodge through a gap.');attackers++;}
     }
   }
   private updateBolts(dt:number):void {

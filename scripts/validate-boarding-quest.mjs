@@ -8,7 +8,7 @@ const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {BoardingQuest,prepareBoardingRoomReview}=await load('src/game/definitive/BoardingQuest.ts');
 const {Dialogue,BOARDING_DIALOGUE}=await load('src/game/definitive/Dialogue.ts');
 const {DECK,DECK_DOORS,canCross,roomAt,insideWallMargin}=await load('src/game/definitive/BoardingLayout.ts');
-const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,boardingEnemyDamage,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
+const {boardingObstacleBlocksMove,selectBoardingTarget,coreExposure,companionGait,companionPlan,boardingInteraction,canCrossExitField,boardingWeapon,boardingEnemyHealth,boardingEnemyVolley,boardingPressure,boardingEnemyDamage,sapperRangeMove,campaignHeroDamage}=await load('src/game/definitive/BoardingCombat.ts');
 assert.equal(DECK.length,8);
 for(const room of DECK){assert.equal(roomAt(room.x,room.z).id,room.id);assert.ok(insideWallMargin(room,room.x,room.z));}
 for(const door of DECK_DOORS){
@@ -44,6 +44,8 @@ assert.equal(boardingWeapon(1).label,'ION SIDEARM');assert.equal(boardingWeapon(
 assert.equal(companionGait(.2),'Idle');assert.equal(companionGait(1),'Walk');assert.equal(companionGait(2),'Run');
 assert.equal(boardingEnemyHealth('captain'),520);assert.equal(boardingEnemyHealth('warden'),210);assert.equal(boardingEnemyVolley('captain',0).length,5);
 assert.equal(boardingEnemyHealth('breacher'),140);assert.equal(boardingEnemyHealth('technician'),70);assert.equal(boardingEnemyVolley('breacher',0).length,3);
+assert.equal(boardingEnemyHealth('sapper'),90);assert.equal(boardingEnemyVolley('sapper',0).length,5);
+assert.equal(sapperRangeMove(8),1);assert.equal(sapperRangeMove(6),0);assert.equal(sapperRangeMove(4),-1);
 assert.equal(boardingEnemyDamage('breacher',20,true),7);assert.equal(boardingEnemyDamage('breacher',20,true,true),20);assert.equal(boardingEnemyDamage('rifle',20,true),20);
 assert.deepEqual(boardingPressure('security'),{attackers:4,cadence:.72});assert.deepEqual(boardingPressure('rescue'),{attackers:4,cadence:.74});assert.deepEqual(boardingPressure('engineering'),{attackers:4,cadence:.8});assert.deepEqual(boardingPressure('bridge'),{attackers:3,cadence:1});
 assert.ok(Math.abs(campaignHeroDamage(12,4)-19.8)<1e-9);
@@ -54,6 +56,7 @@ const data=new Map(); let fail=false;
 const storage={getItem:key=>data.get(key)??null,setItem:(key,value)=>{if(fail)throw new Error('quota');data.set(key,value);}};
 let save=new CampaignSave(storage,'test:boarding'); let quest=new BoardingQuest(save);
 const fixtureSave=new CampaignSave(storage,'test:boarding-atrium');assert.ok(prepareBoardingRoomReview(fixtureSave,'rescue').ok);assert.equal(fixtureSave.snapshot.location.checkpoint,'boarding.rescue');assert.ok(fixtureSave.snapshot.clearedRooms.includes('boarding.security'));assert.ok(fixtureSave.snapshot.quests.includes('boarding.security_relay'));assert.equal(fixtureSave.snapshot.clearedRooms.includes('boarding.rescue'),false);assert.equal(fixtureSave.snapshot.recruits.includes('mr_zamn'),false);
+const engineeringFixture=new CampaignSave(storage,'test:boarding-engineering');assert.ok(prepareBoardingRoomReview(engineeringFixture,'engineering').ok);assert.equal(engineeringFixture.snapshot.location.checkpoint,'boarding.engineering');assert.ok(engineeringFixture.snapshot.visitedRooms.includes('boarding.rescue'));assert.equal(engineeringFixture.snapshot.clearedRooms.includes('boarding.engineering'),false);
 assert.ok(quest.begin('xrpl_striker').ok);
 assert.equal(save.snapshot.fighterShipKey,'xrpl_striker');
 assert.ok(quest.lockReason('core'));
