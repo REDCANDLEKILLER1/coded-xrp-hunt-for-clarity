@@ -150,6 +150,7 @@ for(const line of meshRuntimeSource.split(/\r?\n/)){
     methodBodies.set(current,methodBodies.get(current)+line+'\n');
   }
 }
+for(const route of ROUTES)assert.ok(methodBodies.has(route),`driven route ${route} was not parsed out of MeshRuntime, so its transition edges are invisible to the graph guard`);
 const edges=[];
 for(const [from,body] of methodBodies){
   for(const match of body.matchAll(/this\.(show[A-Z]\w*)\s*\(/g))if(match[1]!==from&&!edges.some(edge=>edge.from===from&&edge.to===match[1]))edges.push({from,to:match[1]});
