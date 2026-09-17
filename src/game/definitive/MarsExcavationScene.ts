@@ -13,6 +13,7 @@ import {segmentSphere} from './SpaceGeometry';
 import {frameWarden} from './WardenFrame';
 import {SurfaceOcclusion} from './SurfaceOcclusion';
 import {sfx} from '../audio/Sfx';
+import {bindFocusPolicy} from './FocusPolicy';
 import {campaignHeroDamage} from './BoardingCombat';
 import './surface.css';
 interface Host{renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];onRelief:(at:GroundPosition)=>void;onRetry:()=>void}
@@ -56,7 +57,7 @@ export class MarsExcavationScene implements ManagedScene{
     this.scene.traverse(o=>{if(o instanceof Mesh){o.receiveShadow=true;o.castShadow=true;for(const mat of Array.isArray(o.material)?o.material:[o.material])if(/Liquidity|liquidity|#00FF00|#FF2200/.test(mat.name))mat.toneMapped=false;}});
     this.ui.className='surface-ui excavation-ui';this.comms=new CommsPanel(this.ui);this.buildUI();
     this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield(),dash:()=>this.startDash()});
-    window.addEventListener('blur',this.pause,{signal:this.lifetime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifetime.signal});
+    bindFocusPolicy(this.lifetime.signal,()=>this.input.clear(),this.pause);
     this.play('Idle');this.mixer.update(0);this.refreshMachine();this.updateCamera(true);this.paint();
   }
   private buildUI():void{

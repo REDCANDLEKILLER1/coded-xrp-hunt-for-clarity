@@ -13,6 +13,7 @@ import {frameConversation} from './ConversationFrame';
 import {RELIEF_EXIT} from './MarsExcavation';
 import {SurfaceDash} from './SurfaceDash';
 import {sfx} from '../audio/Sfx';
+import {bindFocusPolicy} from './FocusPolicy';
 import {campaignHeroDamage} from './BoardingCombat';
 import './surface.css';
 
@@ -116,7 +117,7 @@ export class MarsSurfaceScene implements ManagedScene{
     this.scene.traverse(o=>{if(o instanceof Mesh){o.receiveShadow=true;o.castShadow=true;for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.name.startsWith('Liquidity')||m.name.startsWith('Relief friendly'))m.toneMapped=false;}});
     this.comms=new CommsPanel(this.ui);this.buildUI();
     this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield(),dash:()=>this.startDash()});
-    window.addEventListener('blur',this.pause,{signal:this.lifetime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifetime.signal});
+    bindFocusPolicy(this.lifetime.signal,()=>this.input.clear(),this.pause);
     this.play('Idle');this.mixer.update(0);this.cornMixer.update(0);this.updateCamera(true);this.refreshSite();this.paint();
   }
   private buildUI():void{

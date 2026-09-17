@@ -8,6 +8,7 @@ import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
 import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingMeleePower, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, resolveSupportedDamage, sapperRangeMove, selectBoardingTarget, technicianSupportTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
+import {bindFocusPolicy} from './FocusPolicy';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
@@ -323,8 +324,7 @@ export class BoardingScene implements ManagedScene {
       if(!event.repeat){if(event.code==='KeyE')this.interact();if(event.code==='KeyF')this.punch();if(event.code==='KeyJ')this.jump();if(event.code==='ShiftLeft')this.dodge();if(event.code==='KeyQ'&&this.host.quest.save.snapshot.heroUpgrades.ledger_shield)this.shieldOn=!this.shieldOn;}
     },options);
     window.addEventListener('keyup',event=>this.keys.delete(event.code),options);
-    window.addEventListener('blur',()=>{this.clearInput();if(this.active)this.paused=true;},options);
-    document.addEventListener('visibilitychange',()=>{if(document.hidden){this.clearInput();if(this.active)this.paused=true;}},options);
+    bindFocusPolicy(this.lifetime.signal,()=>this.clearInput(),()=>{this.clearInput();if(this.active)this.paused=true;});
   }
   private mouseAim(event:PointerEvent):void {
     const bounds=this.host.renderer.domElement.getBoundingClientRect();

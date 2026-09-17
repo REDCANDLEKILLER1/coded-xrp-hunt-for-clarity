@@ -5,6 +5,7 @@ import type { ManagedScene } from './SceneController';
 import { disposeObject } from './ModelAssets';
 import { LANDING_DURATION, landingPose, PARKED_HEIGHT, dockFighter } from './LandingPlan';
 import deck from './boarding-deck.json';
+import {bindFocusPolicy} from './FocusPolicy';
 
 interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;warship:GLTF;fighter:GLTF;onDock:()=>void}
 
@@ -40,7 +41,7 @@ export class LandingScene implements ManagedScene {
     this.ui.className='landing-ui';const heading=document.createElement('strong');heading.textContent='REGULATORY WARSHIP · RECOVERY BAY';
     this.button.type='button';this.button.addEventListener('click',()=>{if(!this.active||this.finishing)return;this.paused=!this.paused;this.paint();},{signal:this.lifetime.signal});
     this.ui.append(heading,this.text,this.button);host.root.appendChild(this.ui);
-    window.addEventListener('blur',this.pause,{signal:this.lifetime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifetime.signal});
+    bindFocusPolicy(this.lifetime.signal,()=>{},this.pause);
     this.applyPose();this.paint();
   }
   private readonly pause=():void=>{if(this.active){this.paused=true;this.paint();}};

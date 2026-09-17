@@ -9,6 +9,7 @@ import {CITADEL,FogCitadel} from './FogCitadel';
 import {SurfaceInput,bindSurfaceButton} from './SurfaceInput';
 import {SurfaceDash} from './SurfaceDash';
 import {SpectralReveal} from './SpectralReveal';
+import {bindFocusPolicy} from './FocusPolicy';
 import {fieldRepair,slideSurface,surfaceSegmentHit} from './SurfaceCombat';
 import {segmentSphere} from './SpaceGeometry';
 import {frameConversation} from './ConversationFrame';
@@ -51,7 +52,7 @@ export class FogMoonScene implements ManagedScene{
     this.revealRing.rotation.x=Math.PI/2;this.revealRing.visible=false;this.targetRing.visible=false;this.shield.scale.set(.8,1.05,.8);this.shield.visible=false;this.scene.add(this.revealRing,this.targetRing,this.shield);
     this.scene.traverse(o=>{if(o instanceof Mesh){o.castShadow=true;o.receiveShadow=true;for(const m of Array.isArray(o.material)?o.material:[o.material])if(/Liquidity|#00FF00|#FF2200/.test(m.name))m.toneMapped=false;}});
     this.ui.className='surface-ui fog-ui';this.comms=new CommsPanel(this.ui);this.buildUI();this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield(),dash:()=>this.startDash(),reveal:()=>this.pulse()});
-    window.addEventListener('blur',this.pause,{signal:this.lifetime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifetime.signal});this.booAnimation('Idle');this.play('Idle');this.refresh();this.updateCamera(true);this.paint();
+    bindFocusPolicy(this.lifetime.signal,()=>this.input.clear(),this.pause);this.booAnimation('Idle');this.play('Idle');this.refresh();this.updateCamera(true);this.paint();
   }
   private buildUI():void{
     this.status.className='surface-status';this.hint.className='surface-hint';this.notice.className='surface-message';const top=document.createElement('div');top.className='surface-top';const bottom=document.createElement('div');bottom.className='surface-actions';

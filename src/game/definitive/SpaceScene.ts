@@ -18,7 +18,8 @@ import {CAPITAL_PARTS,routeShields,type ShieldFocus} from './CapitalTactics';
 import {disposeSpaceBackdrop} from './SpaceBackdrop';
 import {commitBomberLanes,bomberVolley} from './BomberLanes';
 import { arriveSpaceDestination,canPlotFogMoon,canPlotBullionReach,checkpointTransit,clearSpaceWave,finishDeparture,SPACE_ENEMIES,type SpaceEnemyKey } from './SpaceProgress';
-import {commandedSpeed,stepThrottle} from './SpaceThrottle';
+import {bindThrottleWheel,commandedSpeed,createThrottleUI,stepThrottle} from './SpaceThrottle';
+import {bindFocusPolicy} from './FocusPolicy';
 
 interface Host {renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];backdrop?:Texture;checkpoint?:SpaceCheckpoint;onHub:()=>void;onRetry:()=>void;onSurface:()=>void;onFogVoyage?:()=>void;onBullionVoyage?:()=>void}
 interface Enemy {key:SpaceEnemyKey;pose:Group;sweep:HullSweep;hp:number;slot:number;age:number;nextShot:number;tell:number;velocity:Vector3;retreat:number;approach:Quaternion;bomber:boolean;lanes:Vector3[]|null}
@@ -87,6 +88,7 @@ export class SpaceScene implements ManagedScene {
   private overheated=false;
   private collisionClock=0;
   private readonly tacticsHud=document.createElement('p');
+  private updateThrottleReadout:()=>void=()=>{};
 
   constructor(private readonly host:Host){
     const saved=host.checkpoint??host.save.snapshot.transit;if(!saved)throw new Error('Departure checkpoint is missing');this.state=structuredClone(saved);this.route=spaceRoute(saved);this.portalPoint=new Vector3(...this.route.portal);
@@ -145,7 +147,7 @@ export class SpaceScene implements ManagedScene {
     this.nextRouteButton=button('PLOT NEXT ROUTE',()=>{if(!this.canFly())return;const next=canPlotFogMoon(this.host.save)?this.host.onFogVoyage:canPlotBullionReach(this.host.save)?this.host.onBullionVoyage:undefined;if(next&&this.persist()){this.input.clear();next();}});
     const bottom=document.createElement('div');bottom.className='space-mesh-bottom';
     const hint=document.createElement('span');hint.textContent='DRAG TO STEER · WHEEL CHANGES THROTTLE';bottom.appendChild(hint);
-    const throttle=document.createElement('div');throttle.className='space-throttle';const down=button('−',()=>this.changeThrottle(-1),throttle);down.setAttribute('aria-label','Decrease throttle');const readout=document.createElement('b');readout.dataset.throttle='readout';throttle.appendChild(readout);const up=button('+',()=>this.changeThrottle(1),throttle);up.setAttribute('aria-label','Increase throttle');bottom.appendChild(throttle);
+    const throttle=createThrottleUI(document,direction=>this.changeThrottle(direction),this.lifetime.signal);this.updateThrottleReadout=()=>throttle.update(this.throttle);bottom.appendChild(throttle.root);
     const shield=button('SHIELDS: BAL',()=>{this.shieldFocus=this.shieldFocus==='balanced'?'fore':this.shieldFocus==='fore'?'aft':'balanced';shield.textContent='SHIELDS: '+(this.shieldFocus==='balanced'?'BAL':this.shieldFocus.toUpperCase());this.say(this.shieldFocus==='balanced'?'BALANCED SHIELDS · Both banks recover after a quiet interval.':`CHARGE TO ${this.shieldFocus.toUpperCase()} · The opposite bank gives up charge.`);},bottom);shield.className='space-shield-control';
     for(const [label,action] of [['BRAKE','brake'],['BOOST','boost'],['GUNS','guns']] as const){const b=document.createElement('button');b.type='button';b.textContent=label;b.dataset.action=action;bottom.appendChild(b);}
     this.tacticsHud.className='space-tactics-status';this.ui.append(this.tacticsHud,this.hud,top,this.message,this.reticle,this.nav,this.contacts,bottom);this.host.root.appendChild(this.ui);
@@ -158,9 +160,9 @@ export class SpaceScene implements ManagedScene {
     root.addEventListener('pointermove',e=>{this.input.move(e.pointerId,e.clientX,e.clientY,Math.min(root.clientWidth,root.clientHeight)*.26);},{signal});
     const end=(e:PointerEvent)=>{this.input.up(e.pointerId);if(root.hasPointerCapture(e.pointerId))root.releasePointerCapture(e.pointerId);};
     root.addEventListener('pointerup',end,{signal});root.addEventListener('pointercancel',end,{signal});root.addEventListener('lostpointercapture',e=>this.input.up(e.pointerId),{signal});
-    root.addEventListener('wheel',e=>{if(!this.canFly())return;e.preventDefault();this.changeThrottle(e.deltaY<0?1:-1);},{signal,passive:false});
+    bindThrottleWheel(root,direction=>{if(this.canFly())this.changeThrottle(direction);},signal);
     window.addEventListener('keydown',e=>{if(!this.active||e.repeat)return;if(e.code==='Escape'){this.pause();return;}if(e.code==='KeyC'){camera.click();return;}if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','KeyQ','KeyE','Space','ShiftLeft','ShiftRight','KeyX'].includes(e.code)){e.preventDefault();if(this.canFly())this.input.key(e.code,true);}},{signal});
-    window.addEventListener('resize',()=>this.input.clear(),{signal});window.addEventListener('keyup',e=>this.input.key(e.code,false),{signal});window.addEventListener('blur',()=>this.input.clear(),{signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal});
+    window.addEventListener('resize',()=>this.input.clear(),{signal});window.addEventListener('keyup',e=>this.input.key(e.code,false),{signal});bindFocusPolicy(signal,()=>this.input.clear(),this.pause);
     this.say(this.state.phase==='departure'?'MR ZAMN · Four guns online. The original fighter is secured below.':'Flight checkpoint restored. Drag to steer; hold GUNS to fire.');
   }
   private canFly():boolean{return this.active&&!this.paused&&!this.dead&&!this.comms.active;}
@@ -367,7 +369,7 @@ export class SpaceScene implements ManagedScene {
     this.pauseButton.textContent=this.paused?(this.state.phase==='departure'&&this.state.seconds===0?'BEGIN DEPARTURE':'RESUME'):'PAUSE';
     const arrived=atSpaceDestination(this.state),distance=this.ship.position.distanceTo(this.portalPoint),phase=arrived?this.route.arrivalLabel:this.state.phase==='departure'?'ENGINE START':this.route.label;
     this.hud.textContent=`${phase}\nHULL ${Math.ceil(this.state.hull)} · FORE ${Math.ceil(this.state.fore)} · AFT ${Math.ceil(this.state.aft)}\nTHROTTLE ${Math.round(this.throttle*100)}% · ${Math.round(this.speed)} m/s\n${arrived?this.route.approachLabel:`${(distance/1000).toFixed(1)} km TO PORTAL · PATROL ${Math.min(this.route.waves.length,this.state.wave+1)}/${this.route.waves.length}`}`;
-    const throttleReadout=this.ui.querySelector<HTMLElement>('[data-throttle=readout]');if(throttleReadout)throttleReadout.textContent=`${Math.round(this.throttle*100)}%`;
+    this.updateThrottleReadout();
     this.reticle.style.opacity=this.state.phase==='departure'?'0':'1';this.place(this.reticle,forwardPoint(this.ship,this.aimRange()));
     const navigation=arrived?this.route.approach:this.portalPoint;this.place(this.nav,navigation,true);this.nav.textContent=arrived?`◇ ${this.route.approachLabel} ${(this.ship.position.distanceTo(navigation)/1000).toFixed(1)} km`:`◇ PORTAL ${(distance/1000).toFixed(1)} km`;
     this.contacts.replaceChildren();

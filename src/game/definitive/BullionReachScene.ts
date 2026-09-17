@@ -13,6 +13,7 @@ import {CommsPanel} from './CommsPanel';
 import {SurfaceInput,bindSurfaceButton} from './SurfaceInput';
 import {SurfaceDash} from './SurfaceDash';
 import {SpectralReveal} from './SpectralReveal';
+import {bindFocusPolicy} from './FocusPolicy';
 import {fieldRepair,slideSurface} from './SurfaceCombat';
 import {fighterFootprint,withinFootprint,type GroundPoint} from './FighterFootprint';
 import {PARKED_HEIGHT} from './LandingPlan';
@@ -70,7 +71,7 @@ export class BullionReachScene implements ManagedScene{
     this.scene.traverse(o=>{if(o instanceof Mesh){o.castShadow=true;o.receiveShadow=true;for(const m of Array.isArray(o.material)?o.material:[o.material])if(/#00FF00|#FF1600/.test(m.name))m.toneMapped=false;}});
     this.syncActors(0);if(!this.clear(this.hero.position)){const origin=this.hero.position.clone();let found=false;for(let radius=1;radius<=12&&!found;radius++)for(let i=0;i<16;i++){const p={x:origin.x+Math.cos(i*Math.PI/8)*radius,z:origin.z+Math.sin(i*Math.PI/8)*radius};if(this.clear(p)){this.hero.position.set(p.x,0,p.z);found=true;break;}}if(!found)throw Error('No valid freight checkpoint spawn');}
     this.ui.className='surface-ui fog-ui bullion-ui';this.comms=new CommsPanel(this.ui);this.buildUI();this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield(),dash:()=>this.startDash(),reveal:()=>this.pulse()});
-    window.addEventListener('blur',this.pause,{signal:this.lifeTime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifeTime.signal});this.play('Idle');this.playLex('Idle');this.refresh();this.updateCamera(true);this.paint();
+    bindFocusPolicy(this.lifeTime.signal,()=>this.input.clear(),this.pause);this.play('Idle');this.playLex('Idle');this.refresh();this.updateCamera(true);this.paint();
   }
   private buildUI():void{
     this.status.className='surface-status';this.hint.className='surface-hint';this.notice.className='surface-message';this.beacon.className='freight-route-beacon';const top=document.createElement('div');top.className='surface-top';const bottom=document.createElement('div');bottom.className='surface-actions';
