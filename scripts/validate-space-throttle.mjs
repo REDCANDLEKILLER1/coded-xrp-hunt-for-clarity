@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 const load=async path=>{const result=await build({entryPoints:[path],bundle:true,write:false,format:'esm',logLevel:'silent'});return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);};
 const throttle=await load('src/game/definitive/SpaceThrottle.ts');
@@ -36,6 +36,8 @@ let clears=0,pauses=0;const life=new AbortController();focus.bindFocusPolicy(lif
 fakeWindow.dispatchEvent(new Event('blur'));assert.equal(clears,1);assert.equal(pauses,0,'desktop focus loss clears held input without pausing');
 fakeDocument.hidden=true;fakeDocument.dispatchEvent(new Event('visibilitychange'));assert.equal(pauses,1,'actually hiding the game pauses safely');life.abort();
 
-const scenes=['BoardingScene','BullionReachScene','FogMoonScene','LandingScene','MarsExcavationScene','MarsSurfaceScene','SpaceScene'];
+const surfaceScenes=readdirSync('src/game/definitive').filter(name=>name.endsWith('Scene.ts')&&readFileSync(`src/game/definitive/${name}`,'utf8').includes('new SurfaceInput')).map(name=>name.slice(0,-3));
+assert.ok(surfaceScenes.includes('CivicScene'),'the derived focus-policy list must enroll CivicScene');
+const scenes=[...new Set([...surfaceScenes,'BoardingScene','LandingScene','SpaceScene'])];
 for(const name of scenes){const source=readFileSync(`src/game/definitive/${name}.ts`,'utf8');assert.match(source,/bindFocusPolicy\(/,`${name} must use the shared focus policy`);assert.doesNotMatch(source,/addEventListener\('blur'/,`${name} must not bypass the shared focus policy`);}
 console.log(`space-throttle: OK — reversible bounded throttle, real wheel/touch controls and one driven focus policy across ${scenes.length} gameplay scenes.`);
