@@ -13,6 +13,8 @@ import {frameConversation} from './ConversationFrame';
 import {RELIEF_EXIT} from './MarsExcavation';
 import {SurfaceDash} from './SurfaceDash';
 import {sfx} from '../audio/Sfx';
+import {bindFocusPolicy} from './FocusPolicy';
+import {campaignHeroDamage} from './BoardingCombat';
 import './surface.css';
 
 interface Host{renderer:WebGLRenderer;environment:Texture;root:HTMLElement;save:CampaignSave;models:GLTF[];arrival:boolean;checkpoint?:string;onOrbit:()=>void;onRetry:()=>void;onExcavation:(at:{x:number;z:number})=>void}
@@ -115,7 +117,7 @@ export class MarsSurfaceScene implements ManagedScene{
     this.scene.traverse(o=>{if(o instanceof Mesh){o.receiveShadow=true;o.castShadow=true;for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.name.startsWith('Liquidity')||m.name.startsWith('Relief friendly'))m.toneMapped=false;}});
     this.comms=new CommsPanel(this.ui);this.buildUI();
     this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.canAct(),{interact:()=>this.interact(),pause:()=>this.togglePause(),repair:()=>this.repair(),shield:()=>this.toggleShield(),dash:()=>this.startDash()});
-    window.addEventListener('blur',this.pause,{signal:this.lifetime.signal});document.addEventListener('visibilitychange',()=>{if(document.hidden)this.pause();},{signal:this.lifetime.signal});
+    bindFocusPolicy(this.lifetime.signal,()=>this.input.clear(),this.pause);
     this.play('Idle');this.mixer.update(0);this.cornMixer.update(0);this.updateCamera(true);this.refreshSite();this.paint();
   }
   private buildUI():void{
@@ -219,7 +221,7 @@ export class MarsSurfaceScene implements ManagedScene{
       const b=this.bolts[i],previous=b.mesh.position.clone();b.life-=dt;b.mesh.position.addScaledVector(b.velocity,dt);
       if(!surfaceLineClear(previous,b.mesh.position))b.life=0;
       if(b.life>0&&b.hostile&&surfaceSegmentHit(previous,b.mesh.position,this.hero.position,.48)){this.damage();b.life=0;}
-      if(b.life>0&&!b.hostile){const hit=this.guards.find(g=>g.hp>0&&surfaceSegmentHit(previous,b.mesh.position,g.mesh.position,.7));if(hit){hit.hp-=SURFACE_COMBAT.heroDamage;this.hits++;b.life=0;sfx.play('hit',.3);if(hit.hp<=0){hit.mesh.visible=false;hit.tell.visible=false;sfx.play('explode',.4);}}}
+      if(b.life>0&&!b.hostile){const hit=this.guards.find(g=>g.hp>0&&surfaceSegmentHit(previous,b.mesh.position,g.mesh.position,.7));if(hit){hit.hp-=campaignHeroDamage(SURFACE_COMBAT.heroDamage,this.host.save.snapshot.heroUpgrades.boarding_weapon);this.hits++;b.life=0;sfx.play('hit',.3);if(hit.hp<=0){hit.mesh.visible=false;hit.tell.visible=false;sfx.play('explode',.4);}}}
       if(b.life<=0){this.scene.remove(b.mesh);this.bolts.splice(i,1);}
     }
   }

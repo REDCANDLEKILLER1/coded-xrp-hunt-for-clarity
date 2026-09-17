@@ -22,6 +22,7 @@ const main = readFileSync('src/main.ts', 'utf8');
 const game2a = readFileSync('src/game/core/Game2A.ts', 'utf8');
 const onFoot = readFileSync('src/game/onfoot/OnFootGame.ts', 'utf8');
 const styles = readFileSync('src/style.css', 'utf8');
+const MAX_TRACK_BYTES=5_000_000,MAX_MUSIC_BYTES=25_000_000;let totalMusicBytes=0;
 
 // ---- every declared track is a real, non-trivial file ---------------------
 for (const [key, def] of Object.entries(manifest.tracks)) {
@@ -30,6 +31,7 @@ for (const [key, def] of Object.entries(manifest.tracks)) {
   let size = 0;
   try { size = statSync(path).size; } catch { /* reported below */ }
   check(size > 100_000, `tracks.${key}: ${path} is missing or truncated (${size} bytes)`);
+  check(size <= MAX_TRACK_BYTES, `tracks.${key}: ${size} bytes exceeds the ${MAX_TRACK_BYTES} byte streaming cap`);totalMusicBytes+=size;
   check(def.gain > 0 && def.gain <= 1, `tracks.${key}: gain must be in (0, 1]`);
   check(typeof def.title === 'string' && def.title.length > 0, `tracks.${key}: title is empty`);
 
@@ -38,6 +40,7 @@ for (const [key, def] of Object.entries(manifest.tracks)) {
   const isMp3 = head.subarray(0, 3).toString('latin1') === 'ID3' || (head[0] === 0xff && (head[1] & 0xe0) === 0xe0);
   check(isMp3, `tracks.${key}: ${path} is not an MP3 (no ID3 tag and no frame sync)`);
 }
+check(totalMusicBytes<=MAX_MUSIC_BYTES,`music payload ${totalMusicBytes} bytes exceeds the ${MAX_MUSIC_BYTES} byte chapter budget`);
 
 // ---- no orphan audio files, and no cue pointing at nothing -----------------
 const onDisk = readdirSync('public/assets/audio').filter((name) => name.endsWith('.mp3'));

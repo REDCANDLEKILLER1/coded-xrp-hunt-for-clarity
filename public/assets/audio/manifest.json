@@ -22,6 +22,11 @@
       "loop": true,
       "gain": 0.45
     },
+    "from_enemy_to_home": {
+      "title": "From Enemy to Home",
+      "loop": true,
+      "gain": 0.42
+    },
     "guardian_protocol": {
       "title": "Guardian Protocol",
       "loop": true,
@@ -35,6 +40,7 @@
     "level1": "level_one",
     "warship_disabled": "level_one",
     "warship_interior": "level_one",
+    "warship_home": "from_enemy_to_home",
     "boss_gary_fog": "boss_fight",
     "boss_regulatory_warship": "boss_fight",
     "boss_ledger_defense_core": "boss_fight",

@@ -9,7 +9,8 @@ assert.equal(entry.bytes,bytes.length);assert.ok(bytes.length<4_000_000);
 assert.equal(entry.sha256,createHash('sha256').update(bytes).digest('hex'));
 const length=bytes.readUInt32LE(12),doc=JSON.parse(bytes.subarray(20,20+length));
 assert.equal(doc.skins.length,1);assert.equal(doc.images.length,3);assert.ok(doc.meshes.length<=10);
-assert.deepEqual(doc.animations.map(a=>a.name).sort(),['Hit','Idle','Interact']);
+assert.deepEqual(doc.animations.map(a=>a.name).sort(),['Hit','Idle','Interact','Run','Walk']);
+for(const name of ['Walk','Run']){const clip=doc.animations.find(animation=>animation.name===name);const targets=new Set(clip.channels.map(channel=>doc.nodes[channel.target.node].name));for(const bone of ['upperleg01.L','upperleg01.R','lowerleg01.L','lowerleg01.R','foot.L','foot.R'])assert.ok(targets.has(bone),`${name} drives ${bone}`);}
 assert.ok(doc.buffers.every(buffer=>!buffer.uri)&&doc.images.every(image=>!image.uri));
 assert.ok(doc.materials.some(material=>material.name==='TruFi blue'));
 assert.ok(doc.materials.every(material=>!material.name.startsWith('Liquidity')),'crew retains blue identity');
@@ -32,4 +33,4 @@ for(const clip of gltf.animations){
   }
   assert.ok(travel>.0001,`${clip.name} animates the actual rig`);
 }
-console.log(`crew: OK — ${bytes.length} bytes, ${triangles} triangles, distinct blue material, three actual skinned clips and bounded palm nodes.`);
+console.log(`crew: OK — ${bytes.length} bytes, ${triangles} triangles, distinct blue material, five actual skinned clips, driven leg chains and bounded palm nodes.`);

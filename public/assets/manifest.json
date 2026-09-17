@@ -408,7 +408,8 @@
       "type": "image",
       "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_security_checkpoint": {
@@ -416,7 +417,8 @@
       "type": "image",
       "notes": "L1-I1 1024x576 optimized runtime environment from the approved Regulatory Warship interior batch",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_access_corridor": {
@@ -424,7 +426,8 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_maintenance_shaft": {
@@ -432,7 +435,8 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_field_control": {
@@ -440,7 +444,8 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
       ]
     },
     "regulatory_defense_deck": {
@@ -448,7 +453,38 @@
       "type": "image",
       "notes": "L1-I 1024x576; sha256 verified against the handoff manifest before install",
       "scenes": [
-        "legacy_onfoot"
+        "legacy_onfoot",
+        "boarding"
+      ]
+    },
+    "regulatory_core_chamber": {
+      "src": "/assets/interior/regulatory_core_chamber.webp",
+      "type": "image",
+      "bytes": 102932,
+      "sha256": "4c703922e1f6bc49598711eea0b3c99f75936edef4bfac68cb21a43e8aac5d4d",
+      "notes": "Generated 1024x576 Ledger Defense Core chamber display; original generation retained in Codex generated-images storage.",
+      "scenes": [
+        "boarding"
+      ]
+    },
+    "regulatory_security_atrium": {
+      "src": "/assets/interior/regulatory_security_atrium.webp",
+      "type": "image",
+      "bytes": 99172,
+      "sha256": "05aaf04a0277eb0a8176af6d8aaa31246ad87ce63446340f53a2a6831ca0ff3a",
+      "notes": "Vast hostile multi-level security atrium, red emergency lighting, consoles and catwalks. Original generation retained in Codex generated-images storage.",
+      "scenes": [
+        "boarding"
+      ]
+    },
+    "regulatory_bridge_arena": {
+      "src": "/assets/interior/regulatory_bridge_arena.webp",
+      "type": "image",
+      "bytes": 113478,
+      "sha256": "558316100fc267824859aee228ad3b08c131b9ed067b44dc7f870c69e47c0b18",
+      "notes": "Large hostile bridge boss arena, command dais, cover and fleet viewport. Original generation retained in Codex generated-images storage.",
+      "scenes": [
+        "boarding"
       ]
     }
   },
@@ -755,20 +791,20 @@
         "mars_surface",
         "bullion"
       ],
-      "bytes": 3062212,
-      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f"
+      "bytes": 3066484,
+      "sha256": "daf20943dcf656630e82aec32ea26fb6f71122b9ead4d2aef9a775703e4fc030"
     },
     "mr_zamn": {
       "src": "/assets/models/mr_zamn.glb",
-      "notes": "Original blue heavy armor, shield, fitted beard and three clips on pinned CC0 anatomy. Private master remains outside repository.",
-      "bytes": 3237384,
+      "notes": "Original blue heavy armor, shield and five clips on pinned CC0 anatomy. Walk and Run now drive the shared leg chain; private Blender masters remain outside the repository.",
+      "bytes": 3253384,
       "type": "model",
       "scenes": [
         "boarding",
         "hub",
         "crew_review"
       ],
-      "sha256": "b0815bd995e74ac813b93d461899a50119610aaf4518d867d5961f52823c499c"
+      "sha256": "2aa650bd50d95bae6b3d9449ca0ea8febb1a504bfdb7545c62ff4f045664bdd0"
     },
     "fighter_player": {
       "src": "/assets/models/fighter_player.glb",
@@ -827,11 +863,12 @@
       "type": "model",
       "scenes": [
         "boarding",
-        "hub"
+        "hub",
+        "warship_district"
       ],
-      "bytes": 4046020,
-      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
-      "notes": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer."
+      "bytes": 3682900,
+      "sha256": "f34cc6abfa191f73fe267f7656c2c9ce32483227c86dd14cab78210fad29b781",
+      "notes": "Blender-authored eight-sector cutaway architecture from shared metre layout. Security Atrium, Engineering and Command Access use a restyled and batched CC0 Kenney Space Station structural subset; see docs/definitive/BOARDING_ASSET_CREDITS.md. Embedded materials and BoardingScene consumer."
     },
     "space_regulator_drone": {
       "src": "/assets/models/space_regulator_drone.glb",
@@ -1044,6 +1081,17 @@
         "space"
       ],
       "notes": "Original 720 m Red Candle dreadnought; 878 m carrier variant. Five physical damage components and armored hull. Private Blender master retained, no private image pixels."
+    },
+    "civic_deck": {
+      "src": "/assets/models/civic_deck.glb",
+      "type": "model",
+      "scenes": [
+        "hub",
+        "warship_district"
+      ],
+      "bytes": 393360,
+      "sha256": "bebc01cb200daba000862e8dda801f52b05b92dd8890c497768a68d6671f522e",
+      "notes": "Original Blender-authored captured-Warship Civic Deck: walkable market, armory, bank, crew quarters, transit lift and sealed future district gates. Eleven batched colour-coded surfaces; no external source assets."
     }
   },
   "audio": {
@@ -1082,6 +1130,15 @@
       ],
       "bytes": 1191048,
       "sha256": "9b23b21a923b6cba9b53eb2e9db4694e65c36b0efe85d835293659eb57ec1996"
+    },
+    "from_enemy_to_home": {
+      "src": "/assets/audio/from_enemy_to_home.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 4485475,
+      "sha256": "1add36c501f948556dd979c0566c45d48cb8fa2376fb8a2278d4ac4ae3ec5ddd"
     },
     "guardian_protocol": {
       "src": "/assets/audio/guardian_protocol.mp3",

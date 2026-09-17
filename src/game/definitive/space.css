@@ -27,7 +27,8 @@
 .space-capital-target[data-locked=true]{color:#82909c;border-color:#52616a}
 .space-capital-target[data-behind=true]::before{content:'↶ '}
 .space-mesh-bottom{gap:8px}.space-mesh-bottom .space-shield-control{min-width:78px;max-width:94px;font-size:10px}.space-mesh-bottom button[data-action=brake]{min-width:64px}
-@media(orientation:portrait){.space-tactics-status{top:158px;right:14px;font-size:10px;max-width:210px}.space-mesh-bottom{left:10px;right:10px;gap:5px}.space-mesh-bottom>span{display:none}.space-mesh-bottom button{min-width:55px;flex:1;padding:8px 5px}.space-mesh-bottom button[data-action=guns]{min-width:65px}.space-mesh-message{bottom:110px}}
+.space-throttle{display:grid;grid-template-columns:42px 58px 42px;align-items:center;gap:3px;pointer-events:auto;background:#020a10dd;border:1px solid #00aaff66;border-radius:7px;padding:3px}.space-throttle button{min-width:42px!important;min-height:46px!important;padding:4px!important;font-size:20px}.space-throttle b{text-align:center;color:#a9eaff;font:800 11px/1 system-ui;font-variant-numeric:tabular-nums}
+@media(orientation:portrait){.space-tactics-status{top:158px;right:14px;font-size:10px;max-width:210px}.space-mesh-bottom{left:10px;right:10px;gap:5px;flex-wrap:wrap;justify-content:flex-end}.space-mesh-bottom>span{display:none}.space-mesh-bottom button{min-width:55px;flex:1;padding:8px 5px}.space-mesh-bottom button[data-action=guns]{min-width:65px}.space-throttle{order:-1;margin-left:auto}.space-throttle button{flex:none}.space-mesh-message{bottom:158px}}
 @media(orientation:landscape) and (max-height:500px){.space-tactics-status{top:54px;font-size:9px;max-width:210px}.space-mesh-bottom>span{display:none}.space-mesh-bottom{left:auto}.space-capital-target{font-size:9px;padding:3px}}
 
 @media(orientation:landscape){.space-mesh-top{right:104px}.space-tactics-status{top:72px}}

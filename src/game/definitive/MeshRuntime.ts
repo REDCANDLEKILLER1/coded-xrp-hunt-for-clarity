@@ -4,6 +4,8 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject, loadModel, loadModels } from './ModelAssets';
 import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
+import {CivicScene} from './CivicScene';
+import {DistrictConnectorScene} from './DistrictConnectorScene';
 import { LandingScene } from './LandingScene';
 import {loadSpaceBackdrop,disposeSpaceBackdrop} from './SpaceBackdrop';
 import { SpaceScene } from './SpaceScene';
@@ -214,6 +216,7 @@ export class MeshRuntime {
 
   async showLanding(save: CampaignSave): Promise<void> {
     if(save.snapshot.location.mode==='space'&&save.snapshot.transit)return this.showSpace(save);
+    if(save.snapshot.warshipOwned&&save.snapshot.location.checkpoint.startsWith('civic.'))return this.showCivic(save);
     if(save.snapshot.warshipOwned||save.snapshot.quests.includes('boarding.landed'))return this.showBoarding(save);
     this.root.dataset.review='landing';this.root.hidden=false;this.hud.hidden=false;
     this.status.textContent='Approaching the disabled Warship…';this.controls.replaceChildren();this.resize();this.startLoop();
@@ -239,7 +242,7 @@ export class MeshRuntime {
       const [hero,crew,fighter,deck] = await loadModels(['xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
       let scene:BoardingScene|undefined;
       try {
-        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, onDeparture: () => void this.showSpace(save) });
+        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         if(save.snapshot.revision!==before.revision)throw new Error('The saved route changed while the bridge was loading');
         if(!quest.begin(before.fighterShipKey).ok)throw new Error('The boarding checkpoint could not be saved');
@@ -255,6 +258,24 @@ export class MeshRuntime {
     }
   }
 
+  async showDistrictConnector(save:CampaignSave,destination:'civic'|'boarding'):Promise<void>{
+    this.root.dataset.review='connector';this.root.hidden=false;this.hud.hidden=true;this.resize();this.startLoop();
+    await this.controller.change(async signal=>{
+      if(signal.aborted)throw new DOMException('Lift cancelled','AbortError');
+      return new DistrictConnectorScene({renderer:this.renderer,root:this.root,label:destination==='civic'?'CIVIC DECK':'BOARDING DECK',onArrive:()=>void (destination==='civic'?this.showCivic(save):this.showBoarding(save))});
+    });
+  }
+
+  async showCivic(save:CampaignSave):Promise<void>{
+    this.root.dataset.review='civic';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Opening the captured Warship Civic Deck…';this.controls.replaceChildren();this.resize();this.startLoop();const quest=new BoardingQuest(save);
+    const loaded=await this.controller.change(async signal=>{
+      const before=save.snapshot;const [hero,crew,deck]=await loadModels(['xrpman','mr_zamn','civic_deck'],signal);let scene:CivicScene|undefined;
+      try{scene=new CivicScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,quest,hero,crew,deck,onBridge:()=>void this.showDistrictConnector(save,'boarding')});if(signal.aborted)throw new DOMException('Civic Deck load cancelled','AbortError');if(save.snapshot.revision!==before.revision)throw new Error('The saved district changed while Civic Deck was loading');if(!quest.enterCivic().ok)throw new Error('Civic Deck requires the captured Warship');return scene;}
+      catch(error){if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(deck.scene);}throw error;}
+    });
+    if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.hud.dataset.recovery='true';this.status.textContent='Civic Deck could not load. The transit lift remains safe; retry when ready.';const retry=document.createElement('button');retry.textContent='Retry Civic Deck';retry.addEventListener('click',()=>void this.showCivic(save));this.controls.replaceChildren(retry);}
+  }
+
   async showSpace(save:CampaignSave,fogVoyage=false,revisit?:RevisitWorld,bullionVoyage=false):Promise<void>{
     this.root.dataset.review='space';this.root.hidden=false;this.hud.hidden=false;this.status.textContent=revisit?`Returning to ${revisit.replace(/_/g,' ')} orbit…`:'Preparing captured Warship departure…';this.controls.replaceChildren();this.resize();this.startLoop();
     const loaded=await this.controller.change(async signal=>{
@@ -265,7 +286,7 @@ export class MeshRuntime {
       try{backdrop=await loadSpaceBackdrop(checkpoint.route==='fog_bullion_reach',signal);}catch(error){for(const model of models)disposeObject(model.scene);throw error;}
       let scene:SpaceScene|undefined;
       try{
-        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,backdrop,checkpoint,onHub:()=>void this.showBoarding(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void (save.snapshot.transit?.route==='fog_bullion_reach'?this.showBullionReach(save):save.snapshot.transit?.route==='mars_fog_moon'?this.showFogMoon(save):this.showMars(save)),onFogVoyage:()=>void this.showSpace(save,true),onBullionVoyage:()=>void this.showSpace(save,false,undefined,true)});
+        scene=new SpaceScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,save,models,backdrop,checkpoint,onHub:()=>void this.showCivic(save),onRetry:()=>void this.showSpace(save),onSurface:()=>void (save.snapshot.transit?.route==='fog_bullion_reach'?this.showBullionReach(save):save.snapshot.transit?.route==='mars_fog_moon'?this.showFogMoon(save):this.showMars(save)),onFogVoyage:()=>void this.showSpace(save,true),onBullionVoyage:()=>void this.showSpace(save,false,undefined,true)});
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         if(save.snapshot.revision!==revision)throw new Error('The saved route changed during loading');
         const started=revisit?beginRevisit(save,revisit,revision):bullionVoyage?beginBullionVoyage(save):fogVoyage?beginFogVoyage(save):startTransit(save);if(!started.ok)throw new Error('Departure requires the saved owned-ship route checkpoint');

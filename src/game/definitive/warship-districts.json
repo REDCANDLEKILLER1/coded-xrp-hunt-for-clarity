@@ -1,0 +1,18 @@
+[
+  {
+    "id": "boarding",
+    "model": "boarding_deck",
+    "maxBytes": 4200000,
+    "maxTriangles": 60000,
+    "maxSurfaces": 36,
+    "maxLiveBytes": 12582912
+  },
+  {
+    "id": "civic",
+    "model": "civic_deck",
+    "maxBytes": 900000,
+    "maxTriangles": 12000,
+    "maxSurfaces": 16,
+    "maxLiveBytes": 12582912
+  }
+]

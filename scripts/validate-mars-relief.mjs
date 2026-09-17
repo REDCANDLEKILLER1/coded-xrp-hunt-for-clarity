@@ -11,7 +11,7 @@ const mutant=mutation?{name:'mars-contract-control',setup(build){build.onLoad({f
  if(mutation==='approach'&&args.path.endsWith('MarsRelief.ts'))contents=contents.replace('<=480;','<=50000;');
  if(mutation==='defenders'&&args.path.endsWith('MarsRelief.ts'))contents=contents.replace('remainingGuards!==0','false');
  if(mutation==='held-key'&&args.path.endsWith('SurfaceInput.ts'))contents=contents.replace('this.keys.clear();','');
- if(mutation==='damage'&&args.path.endsWith('MarsSurfaceScene.ts'))contents=contents.replace('hit.hp-=SURFACE_COMBAT.heroDamage','hit.hp-=SURFACE_COMBAT.heroDamage/2');
+ if(mutation==='damage'&&args.path.endsWith('MarsSurfaceScene.ts'))contents=contents.replace('campaignHeroDamage(SURFACE_COMBAT.heroDamage,','campaignHeroDamage(SURFACE_COMBAT.heroDamage/2,');
  return{contents,loader:'ts'};
 });}}:null;
 
@@ -106,7 +106,7 @@ const f=fixture(),s=f.scene;assert.equal(s.quest.introduced,false);s.interact();
 assert.equal(s.camera.view.enabled,true);s.repairCooldown=8;s.shoot(new Vector3(0,1,16),new Vector3(0,0,-1),true);const heldBolt=s.bolts[0].mesh.position.clone(),heldGuards=s.guards.map(g=>g.clock);
 s.update(.5);assert.ok(s.bolts[0].mesh.position.equals(heldBolt));assert.equal(s.repairCooldown,8);assert.deepEqual(s.guards.map(g=>g.clock),heldGuards);assert.equal(s.life,100);
 // A click can close the panel between update frames, including after blur.
-window.dispatchEvent(new Event('blur'));assert.ok(s.paused);
+window.dispatchEvent(new Event('blur'));assert.equal(s.paused,false);document.hidden=true;document.dispatchEvent(new Event('visibilitychange'));assert.ok(s.paused);document.hidden=false;
 fail=true;s.comms.dialogue.skip();assert.ok(s.comms.active);assert.equal(s.quest.introduced,false);fail=false;s.comms.dialogue.skip();assert.equal(s.comms.active,false);assert.ok(s.quest.introduced);s.update(.05);assert.ok(s.hero.position.equals(held));
 assert.equal(s.camera.view.enabled,false,'gameplay camera restores even if dialogue was closed while paused');s.bolts[0].life=0;s.updateBolts(0);s.repairCooldown=0;s.togglePause();s.update(.05);assert.ok(s.hero.position.equals(held),'held movement must not resume after the dialogue and pause close');key('keyup','KeyD');
 s.hero.position.set(-18,0,5.4);s.interact();assert.equal(s.quest.pumpClear('intake'),false,'real remaining defenders block valve');
@@ -117,7 +117,7 @@ s.hero.position.set(-13.2,0,9);s.updateCamera(true);s.render();key('keydown','Sp
 for(let i=0;i<150&&s.guards[1].hp>0;i++)s.update(1/60);key('keyup','Space');assert.equal(s.guards[1].hp,0,'real muzzle volleys defeat defender');assert.equal(s.hits,4);assert.ok(s.shots>=4&&s.shots<=6);
 s.hero.position.set(-18,0,5.4);fail=true;s.interact();assert.equal(s.quest.pumpClear('intake'),false);fail=false;s.interact();assert.ok(s.quest.pumpClear('intake'));const money=f.save.snapshot.credits;s.interact();assert.equal(f.save.snapshot.credits,money);assert.equal(s.host.models[3].scene.getObjectByName('Pump_intake_Lights').material,s.green);
 // Separate pointers coexist, release/cancel/blur/ownership changes clear them.
-s.hero.position.set(5,0,15);pointer(f.canvas,'pointerdown',11,80,500);pointer(f.canvas,'pointermove',11,128,500);pointer(s.fire,'pointerdown',12,340,700);assert.equal(s.input.firing,true);assert.equal(s.input.move.x,1);const beforeMove=s.hero.position.x;s.update(.05);assert.ok(s.hero.position.x>beforeMove);pointer(s.fire,'pointercancel',12,340,700);assert.equal(s.input.firing,false);assert.equal(s.input.move.x,1);window.dispatchEvent(new Event('blur'));assert.equal(s.input.move.x,0);assert.equal(s.paused,true);s.togglePause();s.setActive(false);pointer(f.canvas,'pointerdown',13,80,500);key('keydown','Space');assert.equal(s.input.firing,false);s.setActive(true);assert.equal(s.input.move.x,0);
+s.hero.position.set(5,0,15);pointer(f.canvas,'pointerdown',11,80,500);pointer(f.canvas,'pointermove',11,128,500);pointer(s.fire,'pointerdown',12,340,700);assert.equal(s.input.firing,true);assert.equal(s.input.move.x,1);const beforeMove=s.hero.position.x;s.update(.05);assert.ok(s.hero.position.x>beforeMove);pointer(s.fire,'pointercancel',12,340,700);assert.equal(s.input.firing,false);assert.equal(s.input.move.x,1);window.dispatchEvent(new Event('blur'));assert.equal(s.input.move.x,0);assert.equal(s.paused,false);document.hidden=true;document.dispatchEvent(new Event('visibilitychange'));assert.equal(s.paused,true);document.hidden=false;s.togglePause();s.setActive(false);pointer(f.canvas,'pointerdown',13,80,500);key('keydown','Space');assert.equal(s.input.firing,false);s.setActive(true);assert.equal(s.input.move.x,0);
 // Incoming swept bolts, shield cost, bounded tells and actual repair consumer.
 pointer(f.canvas,'pointerdown',14,80,500);pointer(f.canvas,'pointermove',14,128,500);pointer(s.fire,'pointerdown',15,340,700);window.dispatchEvent(new Event('resize'));assert.equal(s.input.move.x,0);assert.equal(s.input.firing,false,'orientation change clears both pointer owners');
 s.hero.position.set(5,0,15);s.life=64;s.shielding=false;s.invulnerable=0;s.shoot(new Vector3(5,1,14),new Vector3(0,0,1),true);s.updateBolts(.2);assert.equal(s.life,56);s.invulnerable=0;s.shielding=true;const charge=s.shieldCharge;s.damage();assert.equal(s.life,56);assert.equal(s.shieldCharge,charge-16);

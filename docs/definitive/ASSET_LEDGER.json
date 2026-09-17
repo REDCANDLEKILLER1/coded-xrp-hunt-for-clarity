@@ -4,8 +4,8 @@
     {
       "id": "models:xrpman",
       "path": "public/assets/models/xrpman.glb",
-      "bytes": 3062212,
-      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f",
+      "bytes": 3066484,
+      "sha256": "daf20943dcf656630e82aec32ea26fb6f71122b9ead4d2aef9a775703e4fc030",
       "triangles": 46725,
       "materialGroups": 10,
       "bones": 163,
@@ -28,21 +28,23 @@
     {
       "id": "models:mr_zamn",
       "path": "public/assets/models/mr_zamn.glb",
-      "bytes": 3237384,
-      "sha256": "b0815bd995e74ac813b93d461899a50119610aaf4518d867d5961f52823c499c",
+      "bytes": 3253384,
+      "sha256": "2aa650bd50d95bae6b3d9449ca0ea8febb1a504bfdb7545c62ff4f045664bdd0",
       "triangles": 43654,
       "materialGroups": 9,
       "bones": 163,
       "animations": [
         "Idle",
+        "Walk",
+        "Run",
         "Interact",
         "Hit"
       ],
       "textures": "1024 albedo, 1024 normal, 512 roughness; embedded",
-      "consumer": "Crew review and BoardingScene rescue/hub NPC",
+      "consumer": "Crew review and BoardingScene rescue/follow/combat companion",
       "source": "Pinned CC0 MakeHuman anatomy and original blue armor/shield/animation",
-      "status": "Physical crew foundation, private master v03; realism refinement remains",
-      "motion": "Relaxed anatomical stance and gesture clips from new private master; runtime geometry, maps, skins, sockets and combat clips verified unchanged"
+      "status": "Physical crew foundation with locomotion, private master v04; browser verified in boarding",
+      "motion": "Anatomically folding Walk and Run clips use the shared hip/knee/foot chain; runtime geometry, maps, skins, sockets and retained clips preserved"
     },
     {
       "id": "models:fighter_player",
@@ -71,14 +73,14 @@
     {
       "id": "models:boarding_deck",
       "path": "public/assets/models/boarding_deck.glb",
-      "bytes": 4046020,
-      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
-      "triangles": 48924,
-      "materialGroups": 32,
+      "bytes": 3682900,
+      "sha256": "f34cc6abfa191f73fe267f7656c2c9ce32483227c86dd14cab78210fad29b781",
+      "triangles": 43010,
+      "materialGroups": 34,
       "nodes": 8,
       "consumer": "boarding, hub",
-      "source": "Blender-authored eight-room cutaway architecture from shared metre layout, with embedded plate materials; BoardingScene consumer.",
-      "status": "Production derivative; actual Blender roundtrip verified; further art refinement remains"
+      "source": "Blender-authored eight-sector cutaway architecture from shared metre layout. Security Atrium, Engineering and Command Access secondary forms derive from the CC0 Kenney Space Station Kit 1.0 and are restyled, transformed and material-batched during the build.",
+      "status": "Production derivative; rebuilt from collision-authoritative layout; Atrium, Engineering and Command gameplay passes active"
     },
     {
       "id": "models:fighter_ledger_warden",
@@ -338,6 +340,24 @@
       "status": "Earned connected route, native desktop touch, actual-model validators, Blender roundtrip and current ten-minute Fog combat/resource soak verified. Provisional art; private masters retained. Physical-phone acceptance pending.",
       "animations": [],
       "images": 0
+    },
+    {
+      "id": "interiors:regulatory_security_atrium",
+      "path": "public/assets/interior/regulatory_security_atrium.webp",
+      "bytes": 99172,
+      "sha256": "05aaf04a0277eb0a8176af6d8aaa31246ad87ce63446340f53a2a6831ca0ff3a",
+      "consumer": "BoardingScene",
+      "source": "Original generated image: C:\\Users\\Michael\\.codex\\generated_images\\01a07f9b-fe5f-70b0-b9c8-7f89b4f1f510\\exec-1420d180-d93f-4be0-867b-b1c5d5753d50.png",
+      "status": "Vast hostile multi-level security atrium, red emergency lighting, consoles and catwalks."
+    },
+    {
+      "id": "interiors:regulatory_bridge_arena",
+      "path": "public/assets/interior/regulatory_bridge_arena.webp",
+      "bytes": 113478,
+      "sha256": "558316100fc267824859aee228ad3b08c131b9ed067b44dc7f870c69e47c0b18",
+      "consumer": "BoardingScene",
+      "source": "Original generated image: C:\\Users\\Michael\\.codex\\generated_images\\01a07f9b-fe5f-70b0-b9c8-7f89b4f1f510\\exec-b0bc8cd2-cda8-4271-ae6b-4a7b3954dfbf.png",
+      "status": "Large hostile bridge boss arena, command dais, cover and fleet viewport."
     }
   ],
   "catalog": "All image, model and audio paths are declared in the shared main catalog. Audio cue configuration contains metadata and IDs only. Flight loads 47 images; eleven legacy interior/character images wait until interior entry. Music streams after the existing user gesture gate.",

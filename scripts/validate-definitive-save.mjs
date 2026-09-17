@@ -41,6 +41,7 @@ assert.equal(data.get(legacyKey), legacyRaw, 'legacy source bytes stay untouched
 assert.ok(writes.every((key) => key.startsWith(SAVE_PREFIX)), 'all writes belong to the definitive namespace');
 assert.deepEqual(after.capitalUpgrades, {}, 'hero reward cannot upgrade capital guns');
 assert.deepEqual(after.fighterUpgrades, {}, 'hero reward cannot upgrade fighter guns');
+assert.deepEqual(after.inventory, {}, 'established saves migrate to an empty cargo inventory');
 
 assert.equal(reloaded.purchase('shop:capacitor', 80, (draft) => { draft.heroUpgrades.capacitor = 1; }).ok, true);
 assert.equal(reloaded.snapshot.credits, 40);
@@ -77,6 +78,11 @@ for (const raw of ['{broken', JSON.stringify({ ...newDefinitiveSave(), version: 
 }
 assert.equal(parseDefinitiveSave(JSON.stringify({ ...newDefinitiveSave(), rewards: ['same', 'same'] })), null);
 assert.equal(parseDefinitiveSave(JSON.stringify({ ...newDefinitiveSave(), heroUpgrades: { blast: 2000 } })), null);
+assert.equal(parseDefinitiveSave(JSON.stringify({ ...newDefinitiveSave(), inventory: { med_pack: -1 } })), null);
+const legacyInventory=newDefinitiveSave();delete legacyInventory.inventory;
+assert.deepEqual(parseDefinitiveSave(JSON.stringify(legacyInventory)).inventory,{},'older v1 saves gain empty cargo without losing progress');
+const nullInventory={...newDefinitiveSave(),credits:77,inventory:null};
+const migratedNullInventory=parseDefinitiveSave(JSON.stringify(nullInventory));assert.deepEqual(migratedNullInventory.inventory,{});assert.equal(migratedNullInventory.credits,77,'null cargo migrates without losing progress');
 const session = new CampaignSave(null, 'test:session');
 assert.equal(session.persistence, 'session');
 assert.equal(session.claim('test:one', (draft) => { draft.credits += 2; }).ok, true);
