@@ -1131,6 +1131,15 @@
       "bytes": 1191048,
       "sha256": "9b23b21a923b6cba9b53eb2e9db4694e65c36b0efe85d835293659eb57ec1996"
     },
+    "from_enemy_to_home": {
+      "src": "/assets/audio/from_enemy_to_home.mp3",
+      "type": "audio",
+      "scenes": [
+        "music_stream"
+      ],
+      "bytes": 4485475,
+      "sha256": "1add36c501f948556dd979c0566c45d48cb8fa2376fb8a2278d4ac4ae3ec5ddd"
+    },
     "guardian_protocol": {
       "src": "/assets/audio/guardian_protocol.mp3",
       "type": "audio",

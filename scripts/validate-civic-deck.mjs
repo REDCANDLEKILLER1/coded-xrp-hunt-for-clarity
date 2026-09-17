@@ -6,6 +6,10 @@ const manifest=JSON.parse(readFileSync('public/assets/manifest.json','utf8')),en
 const names=new Set(doc.nodes.map(node=>node.name));
 for(const name of ['Lift_Boarding','Market_Med','Armory_Capacitor','Bank_Kiosk','Quarters_Save','Casino_Door','Brig_Door','Residential_Door','Hangar_Door'])assert.ok(names.has(name),`physical Civic service anchor: ${name}`);
 assert.ok(doc.meshes.length<=16,'Civic draw surfaces remain batched');
+const civicSource=readFileSync('src/game/definitive/CivicScene.ts','utf8');
+assert.match(civicSource,/cameraDistance=Math\.max\(8,Math\.min\(24,/,'Civic camera zoom remains bounded around the character');
+assert.match(civicSource,/addEventListener\('wheel'.*this\.zoom/s,'desktop wheel controls Civic camera zoom');
+assert.match(civicSource,/ZOOM −.*ZOOM \+/s,'touch-visible zoom controls remain available');
 const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts'),{BoardingQuest}=await load('src/game/definitive/BoardingQuest.ts');
 const records=new Map(),storage={getItem:key=>records.get(key)??null,setItem:(key,value)=>records.set(key,value)};
 const lockedSave=new CampaignSave(storage,'test:civic-ownership');lockedSave.update(d=>{d.location={mode:'hub',world:'ledger_prime',checkpoint:'boarding.bridge'};});const lockedCivic=new BoardingQuest(lockedSave);assert.equal(lockedCivic.enterCivic().ok,false,'Civic refuses entry until the Warship is captured');assert.equal(lockedSave.snapshot.location.checkpoint,'boarding.bridge');
