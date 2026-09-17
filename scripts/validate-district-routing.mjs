@@ -134,6 +134,35 @@ assert.deepEqual(overloaded(districts, observed), [],
   'no route may bring two warship districts onto the device in a single handoff');
 
 /**
+ * Per-handoff counting is insufficient on its own: a connector that quietly starts
+ * loading a district while Boarding is still resident still requests only one model.
+ * Read the production callbacks and reject every direct edge between two routes that
+ * load districts. Self-edges are recovery retries after a failed load and retain the
+ * previous safe scene, so they are deliberately excluded.
+ */
+const meshRuntimeSource=readFileSync('src/game/definitive/MeshRuntime.ts','utf8');
+const methodBodies=new Map();let current=null;
+for(const line of meshRuntimeSource.split(/\r?\n/)){
+  const start=line.match(/^  async (show[A-Z]\w*)\s*\(/);
+  if(start){current=start[1];methodBodies.set(current,line+'\n');continue;}
+  if(current){
+    if(/^  (?:async \w+|hide\s*\(|dispose\s*\(|private )/.test(line)){current=null;continue;}
+    methodBodies.set(current,methodBodies.get(current)+line+'\n');
+  }
+}
+const edges=[];
+for(const [from,body] of methodBodies){
+  for(const match of body.matchAll(/this\.(show[A-Z]\w*)\s*\(/g))if(match[1]!==from&&!edges.some(edge=>edge.from===from&&edge.to===match[1]))edges.push({from,to:match[1]});
+}
+assert.ok(edges.length,'no MeshRuntime transition edges were extracted; the graph guard is not exercising production routing');
+for(const edge of edges)assert.ok(ROUTES.includes(edge.from)&&ROUTES.includes(edge.to),`route graph edge ${edge.from} -> ${edge.to} must be enrolled in the driven route list`);
+const unsafeEdges=(entries,routeEdges)=>{
+  const counts=new Map(entries.map(entry=>[entry.route,new Set(entry.handoffs.flat().filter(model=>districts.includes(model))).size]));
+  return routeEdges.filter(edge=>(counts.get(edge.from)??0)>0&&(counts.get(edge.to)??0)>0);
+};
+assert.deepEqual(unsafeEdges(observed,edges),[],'a district-loading route may only reach another district through a zero-district connector');
+
+/**
  * Negative control. The registry currently holds one district on this branch, so the
  * assertion above could pass simply because a second district does not exist yet.
  * Re-resolve the same recorded requests against a registry fixture that additionally
@@ -146,8 +175,16 @@ assert.ok(alsoLoaded, 'showBoarding must load something beyond the district for 
 assert.ok(overloaded([...districts, alsoLoaded], observed).length,
   `the rule must fail when a second district is registered (fixture: ${alsoLoaded})`);
 
+// Negative controls mutate the route graph and route request fixtures, never the
+// assertion: both regressions must become unsafe consecutive handoffs.
+const civicDistrict=districts.find(model=>model!=='boarding_deck');
+assert.ok(civicDistrict,'the consecutive-handoff controls require a registered Civic district');
+const connectorPreload=observed.map(entry=>entry.route==='showDistrictConnector'?{...entry,handoffs:[[civicDistrict]]}:entry);
+assert.ok(unsafeEdges(connectorPreload,edges).some(edge=>edge.from==='showBoarding'&&edge.to==='showDistrictConnector'),'preloading Civic in the connector must be rejected while Boarding is resident');
+assert.ok(unsafeEdges(observed,[...edges,{from:'showBoarding',to:'showCivic'}]).some(edge=>edge.from==='showBoarding'&&edge.to==='showCivic'),'a direct Boarding to Civic route must be rejected');
+
 const report = observed.map(entry => {
   const resident = entry.handoffs.flat().filter(model => districts.includes(model));
   return `${entry.route} ${resident.length}${resident.length ? ` [${resident.join(', ')}]` : ''}`;
 }).join('; ');
-console.log(`district-routing: OK — ${ROUTES.length} real MeshRuntime routes driven, districts from ${source}: ${districts.join(', ')}; districts per route: ${report}; negative control fires when a second district is registered.`);
+console.log(`district-routing: OK — ${ROUTES.length} real MeshRuntime routes driven, ${edges.length} production transition edges checked, districts from ${source}: ${districts.join(', ')}; districts per route: ${report}; handoff and consecutive-route negative controls fire.`);
