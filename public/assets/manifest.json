@@ -1089,9 +1089,9 @@
         "hub",
         "warship_district"
       ],
-      "bytes": 393360,
-      "sha256": "bebc01cb200daba000862e8dda801f52b05b92dd8890c497768a68d6671f522e",
-      "notes": "Original Blender-authored captured-Warship Civic Deck: walkable market, armory, bank, crew quarters, transit lift and sealed future district gates. Eleven batched colour-coded surfaces; no external source assets."
+      "bytes": 497876,
+      "sha256": "e0b572e8e7c9ca6d1d750c54fc6649ef68fa5dd675f3e7cce9f7e318820995fb",
+      "notes": "Original Blender-authored Civic market district: four separate service rooms on a 64 by 52 metre promenade; shared authored navigation partitions. 11 batched surfaces, 8244 triangles. Private versioned master retained."
     }
   },
   "audio": {

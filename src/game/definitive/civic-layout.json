@@ -1,0 +1,320 @@
+{
+  "bounds": {
+    "x": 31,
+    "z": 25
+  },
+  "services": [
+    [
+      "Lift_Boarding",
+      "BOARDING LIFT",
+      0,
+      22
+    ],
+    [
+      "Market_Med",
+      "MEDICAL EXCHANGE",
+      -20,
+      8
+    ],
+    [
+      "Armory_Capacitor",
+      "CAPACITOR WORKSHOP",
+      -20,
+      -12
+    ],
+    [
+      "Bank_Kiosk",
+      "WARSHIP BANK",
+      20,
+      -12
+    ],
+    [
+      "Quarters_Save",
+      "CREW QUARTERS",
+      20,
+      8
+    ],
+    [
+      "Casino_Door",
+      "CASINO",
+      -24,
+      -23
+    ],
+    [
+      "Brig_Door",
+      "BRIG",
+      -8,
+      -23
+    ],
+    [
+      "Residential_Door",
+      "RESIDENTIAL RING",
+      8,
+      -23
+    ],
+    [
+      "Hangar_Door",
+      "HANGAR",
+      24,
+      -23
+    ]
+  ],
+  "obstacles": [
+    {
+      "name": "Shop partition",
+      "x": -20,
+      "z": -20,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop partition",
+      "x": -20,
+      "z": -4,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": -9,
+      "z": -17.25,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": -9,
+      "z": -6.75,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Service counter",
+      "x": -20,
+      "z": -15,
+      "w": 10,
+      "d": 1.5,
+      "h": 1.05
+    },
+    {
+      "name": "Stock wall",
+      "x": -20,
+      "z": -18.7,
+      "w": 15,
+      "d": 1.1,
+      "h": 2.1
+    },
+    {
+      "name": "Shop partition",
+      "x": -20,
+      "z": 0,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop partition",
+      "x": -20,
+      "z": 16,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": -9,
+      "z": 2.75,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": -9,
+      "z": 13.25,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Service counter",
+      "x": -20,
+      "z": 5,
+      "w": 10,
+      "d": 1.5,
+      "h": 1.05
+    },
+    {
+      "name": "Stock wall",
+      "x": -20,
+      "z": 1.2999999999999998,
+      "w": 15,
+      "d": 1.1,
+      "h": 2.1
+    },
+    {
+      "name": "Shop partition",
+      "x": 20,
+      "z": -20,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop partition",
+      "x": 20,
+      "z": -4,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": 9,
+      "z": -17.25,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": 9,
+      "z": -6.75,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Service counter",
+      "x": 20,
+      "z": -15,
+      "w": 10,
+      "d": 1.5,
+      "h": 1.05
+    },
+    {
+      "name": "Stock wall",
+      "x": 20,
+      "z": -18.7,
+      "w": 15,
+      "d": 1.1,
+      "h": 2.1
+    },
+    {
+      "name": "Shop partition",
+      "x": 20,
+      "z": 0,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop partition",
+      "x": 20,
+      "z": 16,
+      "w": 22,
+      "d": 0.4,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": 9,
+      "z": 2.75,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Shop frontage",
+      "x": 9,
+      "z": 13.25,
+      "w": 0.4,
+      "d": 5.5,
+      "h": 1.25
+    },
+    {
+      "name": "Service counter",
+      "x": 20,
+      "z": 5,
+      "w": 10,
+      "d": 1.5,
+      "h": 1.05
+    },
+    {
+      "name": "Stock wall",
+      "x": 20,
+      "z": 1.2999999999999998,
+      "w": 15,
+      "d": 1.1,
+      "h": 2.1
+    },
+    {
+      "name": "Promenade planter",
+      "x": -5,
+      "z": -12,
+      "w": 1.4,
+      "d": 4,
+      "h": 0.7
+    },
+    {
+      "name": "Promenade planter",
+      "x": -5,
+      "z": 8,
+      "w": 1.4,
+      "d": 4,
+      "h": 0.7
+    },
+    {
+      "name": "Promenade planter",
+      "x": 5,
+      "z": -12,
+      "w": 1.4,
+      "d": 4,
+      "h": 0.7
+    },
+    {
+      "name": "Promenade planter",
+      "x": 5,
+      "z": 8,
+      "w": 1.4,
+      "d": 4,
+      "h": 0.7
+    },
+    {
+      "name": "Bunk frame",
+      "x": 16,
+      "z": 13,
+      "w": 2.4,
+      "d": 3,
+      "h": 0.6
+    },
+    {
+      "name": "Bunk frame",
+      "x": 20,
+      "z": 13,
+      "w": 2.4,
+      "d": 3,
+      "h": 0.6
+    },
+    {
+      "name": "Bunk frame",
+      "x": 24,
+      "z": 13,
+      "w": 2.4,
+      "d": 3,
+      "h": 0.6
+    },
+    {
+      "name": "Lift backing",
+      "x": 0,
+      "z": 24,
+      "w": 6,
+      "d": 0.6,
+      "h": 3
+    }
+  ]
+}

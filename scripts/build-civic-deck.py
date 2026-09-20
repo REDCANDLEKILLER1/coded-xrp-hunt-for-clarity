@@ -33,47 +33,51 @@ def box(name,x,z,y,w,d,h,material,bevel=.04,parent=None):
 def anchor(name,x,z,y=.02):
     o=bpy.data.objects.new(name,None);scene.collection.objects.link(o);o.location=(x,-z,y);return o
 
-# A broad promenade with readable neighbourhoods and no ceiling, designed for
-# the game's high three-quarter camera. Repeated geometry is joined by material.
-box('Continuous civic pressure deck',0,0,-.18,34,28,.22,floor,.02)
-for x in range(-16,17,4):
-    for z in range(-12,13,4):box('Civic floor plate',x,z,-.055,3.88,3.88,.09,wall,.025)
-for x in [-16.8,16.8]:
-    box('Outer pressure wall',x,0,.72,.36,28,1.5,wall)
-    for z in range(-11,12,4):box('Wall light',x-(.2 if x>0 else -.2),z,.76,.05,2.25,.14,green if z<0 else cyan,.01)
-for z in [-13.8,13.8]:
-    box('Outer pressure wall',0,z,.72,34,.36,1.5,wall)
-    for x in range(-14,15,4):box('Wall light',x,z-(.2 if z>0 else -.2),.76,2.25,.05,.14,green if x<0 else amber,.01)
-
-# Central concourse and luminous captured-route spine.
-for z in range(-11,12,2):box('Captured floor route',0,z,.015,1.15,1.65,.035,green,.008)
-for x in [-5,5]:
-    box('Concourse bench',x,0,.24,3.2,.75,.45,trim,.1);box('Bench cushion',x,0,.5,2.7,.62,.12,dark,.05)
-box('Civic directory',0,2.7,.72,2.8,.35,1.45,cyan,.04);box('Directory frame',0,2.7,1.55,3.25,.42,.15,trim,.03)
-
-# South arrival lift.
-box('Lift arch',0,12.7,1.35,5.5,1.0,2.7,wall,.12);box('Lift door',0,13.18,1.05,3.4,.12,2.1,green,.02);box('Lift threshold',0,11.9,.06,5.4,1.15,.12,trim,.03)
-anchor('Lift_Boarding',0,11.2)
-
-# West market: individual counters, canopy, goods, and strong colour blocks.
-box('Market canopy',-11,-3,2.35,9,7,.3,cyan,.1);box('Market counter',-11,-.5,.55,8,1.3,1.05,trim,.08)
-for x,color in [(-14,violet),(-11,amber),(-8,cyan)]:
-    box('Vendor tower',x,-4.4,1.05,2.25,2.5,2.1,dark,.12);box('Vendor sign',x,-3.08,1.55,1.75,.08,.7,color,.025)
-for x in [-13,-11,-9]:box('Cargo display',x,.55,.86,1.15,.65,.55,amber,.07)
-anchor('Market_Med',-11,1.55);anchor('Armory_Capacitor',-7.6,-1.15)
-
-# East civic services: bank and quarters are deliberately different spaces.
-box('Bank wall',11,-4,1.2,9,.7,2.4,blue,.08);box('Bank teller',11,-1.3,.6,7.4,1.05,1.2,trim,.07)
-for x in [8.5,11,13.5]:box('Bank screen',x,-3.58,1.25,1.65,.08,.78,blue,.02)
-anchor('Bank_Kiosk',11,-.15)
-box('Quarters canopy',11,7.2,2.2,9,5.8,.25,cream,.1);box('Quarters desk',11,4.9,.55,7.2,1.0,1.05,wall,.08)
-for x in [8.3,11,13.7]:box('Bunk alcove',x,8.0,.85,2.1,2.2,1.7,dark,.12)
-for x in [8.3,11,13.7]:box('Bunk light',x,6.85,1.35,1.45,.08,.28,cream,.02)
-anchor('Quarters_Save',11,3.75)
-
-# Northern routes announce the future city without exposing unfinished rooms.
-for x,label,color in [(-12,'Casino_Door',amber),(-4,'Brig_Door',red),(4,'Residential_Door',cream),(12,'Hangar_Door',cyan)]:
-    box('District gate',x,-13.15,1.25,5.1,.45,2.5,wall,.09);box('District seal',x,-12.88,1.22,3.5,.08,1.25,color,.025);anchor(label,x,-11.9)
+# Shared layout drives both collision and architecture: no invisible shop walls.
+layout=json.loads((pathlib.Path(__file__).resolve().parents[1]/'src/game/definitive/civic-layout.json').read_text())
+box('Continuous civic pressure deck',0,0,-.18,64,52,.22,floor,.02)
+for x in range(-30,31,4):
+    for z in range(-24,25,4):box('Deck plate',x,z,-.055,3.91,3.91,.09,wall,0)
+for x in [-31.6,31.6]:
+    box('Pressure hull',x,0,1,.4,52,2,wall)
+    for z in range(-22,23,8):
+        box('Hull rib',x,z,1.6,.7,.65,3.2,trim)
+        box('Hull light',x-.25*(1 if x>0 else -1),z,1.5,.05,3,.16,cyan,0)
+for z in [-25.6,25.6]:box('End bulkhead',0,z,.65,64,.4,1.3,wall)
+for o in layout['obstacles']:
+    material=trim if o['name'] in ['Service counter','Bunk frame'] else dark if o['name'] in ['Stock wall','Lift backing'] else wall
+    box(o['name'],o['x'],o['z'],o['h']/2,o['w'],o['d'],o['h'],material)
+    if o['name']=='Shop frontage':box('Frontage inset',o['x'],o['z'],.78,.46,o['d']-.4,.12,cyan,0)
+    if o['name']=='Promenade planter':
+        box('Hydroponic bed',o['x'],o['z'],.76,1.1,3.6,.14,dark)
+        for dz in [-1.2,0,1.2]:box('Living foliage',o['x'],o['z']+dz,1.05,.8,.8,.55,green,.16)
+# Open central avenue with lanes, inset floor panels and a view down the ship.
+for z in range(-22,23,3):
+    for x in [-7,7]:box('Promenade guide',x,z,.015,.12,2.2,.035,green,0)
+for x,z,color,label in [(-20,8,violet,'MEDICAL'),(-20,-12,cyan,'ARMORY'),(20,-12,blue,'BANK'),(20,8,cream,'QUARTERS')]:
+    box('Shop inset floor',x,z,-.002,20,15,.035,floor,0)
+    box('Door threshold',-9 if x<0 else 9,z,.025,1.4,4.6,.05,color,0)
+    box('Counter edge',x,z-2.2,.94,10,.08,.13,color,0)
+    for dx in [-5,0,5]:
+        box('Display case',x+dx,z-6.05,1.2,3,.15,1.3,color)
+        box('Display inset',x+dx,z-5.94,1.2,2.6,.08,.9,dark,0)
+    for dx in [-3,0,3]:
+        box('Counter merchandise',x+dx,z-3,.0+1.28,1.1,.7,.4,color,.07)
+    # Flat floor typography stays readable with the cutaway camera.
+    curve=bpy.data.curves.new(label,'FONT');curve.body=label;curve.align_x='CENTER';curve.size=1.1;curve.extrude=0;curve.resolution_u=2
+    obj=bpy.data.objects.new(label,curve);scene.collection.objects.link(obj);obj.location=(x,-(z+4),.035);curve.materials.append(color)
+    bpy.ops.object.select_all(action='DESELECT');obj.select_set(True);bpy.context.view_layer.objects.active=obj;bpy.ops.object.convert(target='MESH');objects.append(bpy.context.object)
+# Residential furnishings, visibly separated from commercial counters.
+for x in [16,20,24]:
+    box('Mattress',x,13,.68,2.15,2.8,.2,cream)
+    box('Pillow',x,12.1,.84,1.7,.65,.15,wall)
+# A recessed docking lift and four future district entrances.
+for x in [-3,3]:box('Lift jamb',x,24,1.5,.4,.9,3,trim)
+box('Lift lamp',0,23.6,2.8,5.5,.1,.18,green,0)
+for x,color in [(-24,amber),(-8,red),(8,cream),(24,cyan)]:
+    box('Sealed district door',x,-24,1.3,5,.4,2.6,dark)
+    box('District status',x,-23.75,1.6,3,.05,.18,color,0)
+for name,label,x,z in layout['services']:anchor(name,x,z)
 
 # Batch the many authored pieces into one drawable per material.
 groups={}

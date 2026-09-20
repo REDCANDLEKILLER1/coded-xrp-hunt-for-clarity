@@ -138,7 +138,7 @@ export class BoardingQuest {
 
   tradeMedPack(action: 'buy' | 'sell'): SaveResult {
     return this.save.update(draft => {
-      if (!draft.warshipOwned || draft.location.mode !== 'hub' || draft.location.checkpoint !== 'civic.market') return false;
+      if (!draft.warshipOwned || draft.location.mode !== 'hub' || !draft.location.checkpoint.startsWith('civic.')) return false;
       const stock=draft.inventory.med_pack??0;
       if(action==='buy'){
         if(draft.credits<35||stock>=9)return false;
@@ -152,7 +152,7 @@ export class BoardingQuest {
 
   installMeleeCapacitor(): SaveResult {
     return this.save.purchase('purchase.bridge.melee_capacitor',140,draft=>{
-      if(!draft.warshipOwned||draft.location.mode!=='hub'||draft.location.checkpoint!=='civic.market')return false;
+      if(!draft.warshipOwned||draft.location.mode!=='hub'||!draft.location.checkpoint.startsWith('civic.'))return false;
       draft.heroUpgrades.melee_capacitor=1;
     });
   }
