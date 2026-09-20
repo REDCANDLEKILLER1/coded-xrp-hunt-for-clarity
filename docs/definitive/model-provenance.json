@@ -1,0 +1,626 @@
+{
+  "generated": "scripts/record-model-provenance.mjs",
+  "models": {
+    "boarding_deck": {
+      "src": "/assets/models/boarding_deck.glb",
+      "bytes": 4046020,
+      "sha256": "9cac259cbcf994f83590868c59ff106a13967c021b8e8f6205a47d656ffc14b1",
+      "triangles": 48924,
+      "materialGroups": 32,
+      "materials": 4,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Deck_bridge",
+        "Deck_cache",
+        "Deck_command",
+        "Deck_core",
+        "Deck_engineering",
+        "Deck_hangar",
+        "Deck_rescue",
+        "Deck_security"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "boo": {
+      "src": "/assets/models/boo.glb",
+      "bytes": 3318968,
+      "sha256": "0aa0f6780f6501a575becd8c4dab007dfeaea247a16933a0800c96db2c767db0",
+      "triangles": 40136,
+      "materialGroups": 10,
+      "materials": 10,
+      "images": 3,
+      "bones": 8,
+      "animations": [
+        "Glide",
+        "Idle",
+        "Interact"
+      ],
+      "anchors": [
+        "Boo_Origin",
+        "Boo_Rig",
+        "Face_Focus",
+        "Pulse_Origin",
+        "Tail_Anchor"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "bullion_freight_yard": {
+      "src": "/assets/models/bullion_freight_yard.glb",
+      "bytes": 2496832,
+      "sha256": "4c60c582b73c602f2a91fa55b2e7bb6a44da0357c78f87f7bce4896d9ac87161",
+      "triangles": 31780,
+      "materialGroups": 17,
+      "materials": 6,
+      "images": 1,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Blockade_apron",
+        "Blockade_covered",
+        "Blockade_east",
+        "Blockade_express",
+        "Blockade_west",
+        "Delivery",
+        "LEX_Anchor",
+        "Landing",
+        "Public_Delivery_Light",
+        "Scanner_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "capital_blockade": {
+      "src": "/assets/models/capital_blockade.glb",
+      "bytes": 758040,
+      "sha256": "76c0aea2b771d8ff311f16ef5d6f22efbb6a3b9bc79733b99a392bdefd0de154",
+      "triangles": 10106,
+      "materialGroups": 15,
+      "materials": 6,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "corn": {
+      "src": "/assets/models/corn.glb",
+      "bytes": 5197356,
+      "sha256": "e80f4d9eadbf46db77cf48e38af02825e591c778479ca7e7230669c0f4d754f1",
+      "triangles": 72549,
+      "materialGroups": 23,
+      "materials": 23,
+      "images": 6,
+      "bones": 166,
+      "animations": [
+        "Hit",
+        "Idle",
+        "Interact"
+      ],
+      "anchors": [
+        "Corn_Rig",
+        "Hand_L",
+        "Hand_R",
+        "Hero_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "fighter_ledger_warden": {
+      "src": "/assets/models/fighter_ledger_warden.glb",
+      "bytes": 372648,
+      "sha256": "207c4a023aff57e9d539f7cb0e10b151b7f1fb8772c091dd09392f9143d040c8",
+      "triangles": 6984,
+      "materialGroups": 7,
+      "materials": 6,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Canopy_Hinge",
+        "Engine_L",
+        "Engine_R",
+        "Fighter_Origin",
+        "Muzzle_L",
+        "Muzzle_R",
+        "Pilot_Exit",
+        "Pilot_Seat"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "fighter_player": {
+      "src": "/assets/models/fighter_player.glb",
+      "bytes": 360680,
+      "sha256": "49b78ed1cdc029c1d902353781460891dcd0c5cf28f46ec1c702ed823b515c6b",
+      "triangles": 6776,
+      "materialGroups": 7,
+      "materials": 6,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Canopy_Hinge",
+        "Engine_L",
+        "Engine_R",
+        "Fighter_Origin",
+        "Muzzle_L",
+        "Muzzle_R",
+        "Pilot_Exit",
+        "Pilot_Seat"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "fighter_xrpl_striker": {
+      "src": "/assets/models/fighter_xrpl_striker.glb",
+      "bytes": 372640,
+      "sha256": "80cb43c0501b491ee2b4c248b11ca55b7a95aa686e50b2874c5ffbe97bf0bdc1",
+      "triangles": 6984,
+      "materialGroups": 7,
+      "materials": 6,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Canopy_Hinge",
+        "Engine_L",
+        "Engine_R",
+        "Fighter_Origin",
+        "Muzzle_L",
+        "Muzzle_R",
+        "Pilot_Exit",
+        "Pilot_Seat"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "fog_canyon": {
+      "src": "/assets/models/fog_canyon.glb",
+      "bytes": 1622336,
+      "sha256": "27abcb68841387d215c51aa9b7c4f14a0a592f8d6aa76a6abcdbdd981027f4de",
+      "triangles": 23808,
+      "materialGroups": 16,
+      "materials": 5,
+      "images": 1,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "ArenaCheckpoint",
+        "Boo_Anchor",
+        "Citadel_Anchor",
+        "Landing",
+        "Relay_east",
+        "Relay_east_Feed_0",
+        "Relay_east_Feed_1",
+        "Relay_east_Feed_2",
+        "Relay_west",
+        "Relay_west_Feed_0",
+        "Relay_west_Feed_1",
+        "Relay_west_Feed_2"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "fog_citadel": {
+      "src": "/assets/models/fog_citadel.glb",
+      "bytes": 516900,
+      "sha256": "449fe8d0ae9c486920e025ce2ff01177110ef262acd5c16fb9c5f80200cbde1a",
+      "triangles": 11368,
+      "materialGroups": 16,
+      "materials": 4,
+      "images": 1,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Citadel_Origin",
+        "Feed_0",
+        "Feed_1",
+        "Feed_2",
+        "Reflector_0",
+        "Reflector_1",
+        "Reflector_2",
+        "Seeker_Left",
+        "Seeker_Right"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "lex": {
+      "src": "/assets/models/lex.glb",
+      "bytes": 3971012,
+      "sha256": "26ed1ea4a610bea437d6aa96c196fd271ffcf130047ab2e1f19a7c0113d36978",
+      "triangles": 44559,
+      "materialGroups": 17,
+      "materials": 17,
+      "images": 7,
+      "bones": 163,
+      "animations": [
+        "Hit",
+        "Idle",
+        "Interact",
+        "Walk"
+      ],
+      "anchors": [
+        "Hand_L",
+        "Hand_R",
+        "Hero_Origin",
+        "LEX_Rig"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "margin_warden": {
+      "src": "/assets/models/margin_warden.glb",
+      "bytes": 2241964,
+      "sha256": "6c0a8236d29eeddcf791ba14a3af49fb2b1d971a5d6ff6c17df432d21ba9d808",
+      "triangles": 25616,
+      "materialGroups": 13,
+      "materials": 7,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Core_Containment",
+        "Core_Target",
+        "Cutter_Axis",
+        "Laser_Muzzle",
+        "Pylon_Left",
+        "Pylon_Left_Lights",
+        "Pylon_Right",
+        "Pylon_Right_Lights"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "market_siege_engine": {
+      "src": "/assets/models/market_siege_engine.glb",
+      "bytes": 364448,
+      "sha256": "36a1016fcddeff8cf11702b415c25e423e0db1f98ffedea8d5f5e526ef0a6017",
+      "triangles": 7644,
+      "materialGroups": 10,
+      "materials": 5,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Mortar_L0",
+        "Mortar_L1",
+        "Mortar_R0",
+        "Mortar_R1",
+        "Rear_Control",
+        "Rear_Shutter_L",
+        "Rear_Shutter_R",
+        "Siege_Focus",
+        "Siege_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "mars_excavation": {
+      "src": "/assets/models/mars_excavation.glb",
+      "bytes": 1789176,
+      "sha256": "a86040daef9a003b63c1d4d1d00cf4c58ff27d4c5e7f4c3fb8d9ca04e22216de",
+      "triangles": 26892,
+      "materialGroups": 11,
+      "materials": 5,
+      "images": 1,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "BossAnchor",
+        "Entry",
+        "Gate_Frame",
+        "RouteCheckpoint",
+        "Route_Gate"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "mars_relief": {
+      "src": "/assets/models/mars_relief.glb",
+      "bytes": 2219192,
+      "sha256": "4e5ed2dbd3c36996aa04ebc33e364d38255f32a85b13f9648d6491f4f28aa63b",
+      "triangles": 31264,
+      "materialGroups": 16,
+      "materials": 8,
+      "images": 4,
+      "bones": 0,
+      "animations": [],
+      "anchors": [],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "mr_zamn": {
+      "src": "/assets/models/mr_zamn.glb",
+      "bytes": 3237384,
+      "sha256": "b0815bd995e74ac813b93d461899a50119610aaf4518d867d5961f52823c499c",
+      "triangles": 43654,
+      "materialGroups": 9,
+      "materials": 9,
+      "images": 3,
+      "bones": 163,
+      "animations": [
+        "Hit",
+        "Idle",
+        "Interact"
+      ],
+      "anchors": [
+        "Hand_L",
+        "Hand_R",
+        "Hero_Origin",
+        "MrZamn_Rig"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "planet_bullion_reach": {
+      "src": "/assets/models/planet_bullion_reach.glb",
+      "bytes": 467020,
+      "sha256": "1f15e3ce4692917badcb354b2888e785b1c4a96ccc89d1649aeca84ec441f277",
+      "triangles": 16128,
+      "materialGroups": 1,
+      "materials": 1,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Planet_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "planet_earth": {
+      "src": "/assets/models/planet_earth.glb",
+      "bytes": 305480,
+      "sha256": "d29fb68ce5ec63a536c0b2c90e3b4e46cb7b8b7efef45ed046fb37daaa7d9450",
+      "triangles": 9024,
+      "materialGroups": 1,
+      "materials": 1,
+      "images": 1,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Planet_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "planet_fog_moon": {
+      "src": "/assets/models/planet_fog_moon.glb",
+      "bytes": 1043852,
+      "sha256": "613602718f5a78da6c7076f4195cf7abdcbb39c4835f23f685525127cbb80547",
+      "triangles": 36480,
+      "materialGroups": 1,
+      "materials": 1,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Planet_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "planet_mars": {
+      "src": "/assets/models/planet_mars.glb",
+      "bytes": 326696,
+      "sha256": "c82d8a650643dec1fe5f9e3a45073a700221892bdd0528c4068c984ad86fe1c9",
+      "triangles": 9024,
+      "materialGroups": 1,
+      "materials": 1,
+      "images": 1,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Planet_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "regulatory_warship": {
+      "src": "/assets/models/regulatory_warship.glb",
+      "bytes": 1726968,
+      "sha256": "e2762930ff378b993b749fb9c02a02267fd81296133939f8a55d3063af4e626e",
+      "triangles": 19250,
+      "materialGroups": 6,
+      "materials": 6,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Camera_Chase",
+        "Camera_Cockpit_Forward",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_FL",
+        "Muzzle_FR",
+        "Muzzle_L",
+        "Muzzle_R",
+        "Ship_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "regulatory_warship_open": {
+      "src": "/assets/models/regulatory_warship_open.glb",
+      "bytes": 1254520,
+      "sha256": "2a4e6e831e74319506405ac826aaf4d4fb337f39910b67ff52bc7938815e1cd4",
+      "triangles": 19326,
+      "materialGroups": 6,
+      "materials": 6,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Camera_Chase",
+        "Camera_Cockpit_Forward",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_FL",
+        "Muzzle_FR",
+        "Muzzle_L",
+        "Muzzle_R",
+        "Ship_Origin"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "relief_hauler": {
+      "src": "/assets/models/relief_hauler.glb",
+      "bytes": 153208,
+      "sha256": "ba3fdd73050337fc64f9b81ecb71d67fc36141e9912d2bef68e62f166b84cdc8",
+      "triangles": 3074,
+      "materialGroups": 17,
+      "materials": 6,
+      "images": 0,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Cargo_Focus",
+        "Hauler_Origin",
+        "Repair_Port",
+        "Wheel_L0",
+        "Wheel_L1",
+        "Wheel_L2",
+        "Wheel_R0",
+        "Wheel_R1",
+        "Wheel_R2"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "space_fast_scout": {
+      "src": "/assets/models/space_fast_scout.glb",
+      "bytes": 688908,
+      "sha256": "0877a025128d7e41138d49d353c7ca7fce04e71877f5a447358c86bbcced7f51",
+      "triangles": 4812,
+      "materialGroups": 5,
+      "materials": 5,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Enemy_Origin",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_L",
+        "Muzzle_R"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "space_fog_raider": {
+      "src": "/assets/models/space_fog_raider.glb",
+      "bytes": 653320,
+      "sha256": "0e01645aa4762ec1e5db2330862d033be1db3dc7cfcfd0b14a7c1264509954da",
+      "triangles": 4324,
+      "materialGroups": 5,
+      "materials": 5,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Enemy_Origin",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_L",
+        "Muzzle_R"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "space_regulator_drone": {
+      "src": "/assets/models/space_regulator_drone.glb",
+      "bytes": 704228,
+      "sha256": "92846736a970669232b6b678b06f2a51fb8b31ef43ed3995da1a1f35f3196209",
+      "triangles": 5480,
+      "materialGroups": 5,
+      "materials": 5,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Enemy_Origin",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_L",
+        "Muzzle_R"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "space_rug_fighter": {
+      "src": "/assets/models/space_rug_fighter.glb",
+      "bytes": 667460,
+      "sha256": "b7d3d1f66a3b6b383e10e2fe2dea7292434ac5ee1657600e037e8a5247a1e35f",
+      "triangles": 4500,
+      "materialGroups": 5,
+      "materials": 5,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Enemy_Origin",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_L",
+        "Muzzle_R"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "space_whale_scout": {
+      "src": "/assets/models/space_whale_scout.glb",
+      "bytes": 944808,
+      "sha256": "7cf9bc05b9532b45f9b12ee3178d33f9f91f0c13e6447404aa8aa105a0fbc3e3",
+      "triangles": 8712,
+      "materialGroups": 5,
+      "materials": 5,
+      "images": 3,
+      "bones": 0,
+      "animations": [],
+      "anchors": [
+        "Enemy_Origin",
+        "Engine_L",
+        "Engine_R",
+        "Muzzle_L",
+        "Muzzle_R"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    },
+    "xrpman": {
+      "src": "/assets/models/xrpman.glb",
+      "bytes": 3062212,
+      "sha256": "316e1e9192a1e586863e9eb5709c00dc087018188928377c489896b3a564ea2f",
+      "triangles": 46725,
+      "materialGroups": 10,
+      "materials": 10,
+      "images": 3,
+      "bones": 163,
+      "animations": [
+        "AimFire",
+        "Dodge",
+        "Hit",
+        "Idle",
+        "Interact",
+        "KnockdownRecover",
+        "Run",
+        "Walk"
+      ],
+      "anchors": [
+        "Hand_L",
+        "Hand_R",
+        "Hero_Origin",
+        "XRPMan_Rig"
+      ],
+      "externalBuffers": 0,
+      "externalImages": 0
+    }
+  }
+}

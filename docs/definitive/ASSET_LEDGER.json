@@ -249,13 +249,14 @@
     {
       "id": "models:corn",
       "path": "public/assets/models/corn.glb",
-      "bytes": 4724576,
-      "sha256": "17ddf8dfb92324e814ba66f508303ca8d5f2009241f9e58659cd5d894c72b093",
-      "triangles": 43681,
+      "bytes": 5197356,
+      "sha256": "e80f4d9eadbf46db77cf48e38af02825e591c778479ca7e7230669c0f4d754f1",
+      "triangles": 72549,
       "consumer": "MarsSurfaceScene",
       "source": "Original provisional Corn modeling study: corn head, sunglasses, leaf features and gold/green field armor on pinned CC0 anatomy. Six embedded maps and three clips. Private source art was unavailable; this is not a verified canon turnaround.",
       "status": "Playable relief opening; actual-model, browser and controlled soak checks pass. Further art refinement remains.",
-      "motion": "Relaxed anatomical stance and gesture clips from new private master; runtime geometry, maps, skins, sockets and combat clips verified unchanged"
+      "motion": "Relaxed anatomical stance and gesture clips from new private master; runtime geometry, maps, skins, sockets and combat clips verified unchanged",
+      "ledgerNote": "Re-recorded 2026-09-20 from the committed model. The ledger still described the pre-rebuild model: cd08052 (2026-09-08) rebuilt this asset and updated the manifest without updating this record. Animation names are unchanged; the rebuild raised detail."
     },
     {
       "id": "models:mars_relief",
@@ -290,9 +291,9 @@
     {
       "id": "models:boo",
       "path": "public/assets/models/boo.glb",
-      "bytes": 415752,
-      "sha256": "514b73a2097bdae02f53253f989077971e89befa49ebdf639efeee81f60e4133",
-      "triangles": 9064,
+      "bytes": 3318968,
+      "sha256": "0aa0f6780f6501a575becd8c4dab007dfeaea247a16933a0800c96db2c767db0",
+      "triangles": 40136,
       "consumer": "FogMoonScene through MeshRuntime",
       "source": "Original provisional limbless Boo: written canon constraints, original generated spectral albedo, 7-bone rig, three float/interaction clips. Private source sheet was unavailable.",
       "status": "Earned connected route, native desktop touch, actual-model validators, Blender roundtrip and current ten-minute Fog combat/resource soak verified. Provisional art; private masters retained. Physical-phone acceptance pending.",
@@ -301,7 +302,8 @@
         "Idle",
         "Interact"
       ],
-      "images": 1
+      "images": 3,
+      "ledgerNote": "Re-recorded 2026-09-20 from the committed model. The ledger still described the pre-rebuild model: cd08052 (2026-09-08) rebuilt this asset and updated the manifest without updating this record. Animation names are unchanged; the rebuild raised detail."
     },
     {
       "id": "models:fog_canyon",
