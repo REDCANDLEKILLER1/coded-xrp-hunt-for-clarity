@@ -8,9 +8,15 @@
 //   node scripts/district-budget.mjs
 //   node scripts/district-budget.mjs --candidate path/to/market_deck.glb
 //
-// The ceiling is not the live budget. A district shares the device with the
-// hero, the crew rig, the largest fighter and a renderer reserve, all of which
-// are resident whatever district is loaded:
+// What this is NOT: a measurement of GPU memory. maxLiveBytes guards the sum of
+// *encoded payload bytes* -- what the device downloads and decodes -- and a GLB's
+// footprint once uploaded as vertex buffers and decompressed textures is a
+// different, larger number this cannot see. Treat the output as a payload guard.
+// Real device memory, frame rate and heat remain unmeasurable from here.
+//
+// The ceiling is not the whole budget either. A district shares the device with
+// the hero, the crew rig, the largest fighter and a renderer reserve, all of
+// which are resident whatever district is loaded:
 //
 //   ceiling = maxLiveBytes - (xrpman + mr_zamn + largest fighter) - reserve
 //
@@ -40,7 +46,7 @@ const persistent = cast + fighter + RENDERER_RESERVE;
 const liveBudget = Math.min(...districts.map((d) => d.maxLiveBytes));
 const ceiling = liveBudget - persistent;
 
-console.log(`live budget            ${n(liveBudget).padStart(12)}`);
+console.log(`encoded payload budget ${n(liveBudget).padStart(12)}   (payload bytes, not GPU memory)`);
 for (const id of RESIDENT_CAST) console.log(`  - ${id.padEnd(18)} ${n(bytesOf(id)).padStart(12)}`);
 console.log(`  - largest fighter    ${n(fighter).padStart(12)}`);
 console.log(`  - renderer reserve   ${n(RENDERER_RESERVE).padStart(12)}`);
@@ -84,7 +90,7 @@ const anchors = (doc.nodes ?? []).filter((node, i) => node.name && node.mesh ===
 // district is most likely to be asked to match.
 const tightest = districts.reduce((a, b) => (a.maxTriangles <= b.maxTriangles ? a : b));
 const rows = [
-  ['bytes', bytes.length, ceiling, 'live ceiling'],
+  ['bytes', bytes.length, ceiling, 'district payload ceiling'],
   ['triangles', triangles, tightest.maxTriangles, `tightest registry cap (${tightest.id})`],
   ['draw surfaces', surfaces, tightest.maxSurfaces, `tightest registry cap (${tightest.id})`],
 ];
