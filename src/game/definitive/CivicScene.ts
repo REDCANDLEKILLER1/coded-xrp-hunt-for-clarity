@@ -4,6 +4,7 @@ import type {ManagedScene} from './SceneController';
 import {disposeObject} from './ModelAssets';
 import {SurfaceInput,bindSurfaceButton} from './SurfaceInput';
 import {BoardingQuest} from './BoardingQuest';
+import {companionGait} from './BoardingCombat';
 import {bindFocusPolicy} from './FocusPolicy';
 import './surface.css';import './civic.css';
 
@@ -12,6 +13,9 @@ const services=[
   ['Lift_Boarding','BOARDING LIFT',0,11.2],['Market_Med','MEDICAL MARKET',-11,1.55],['Armory_Capacitor','ARMORY BENCH',-7.6,-1.15],['Bank_Kiosk','WARSHIP BANK',11,-.15],['Quarters_Save','CREW QUARTERS',11,3.75],
   ['Casino_Door','CASINO',-12,-11.9],['Brig_Door','BRIG',-4,-11.9],['Residential_Door','RESIDENTIAL RING',4,-11.9],['Hangar_Door','HANGAR',12,-11.9],
 ] as const;
+/** The companion holds this far back so it never crowds the player at a counter. */
+const CREW_STOP_DISTANCE=2.4;
+const CREW_SPEED=4;
 const blocked=(x:number,z:number):boolean=>Math.abs(x)>15.8||z>12.1||z<-12.5||
   (x>-15&&x<-7&&z>-1.15&&z<.35)||(x>7&&x<15&&z>-2&&z<-.55)||(x>7&&x<15&&z>4.25&&z<5.6)||
   (Math.abs(x)>3.1&&Math.abs(x)<6.9&&Math.abs(z)<.65);
@@ -30,7 +34,12 @@ export class CivicScene implements ManagedScene{
     this.input=new SurfaceInput(host.renderer.domElement,this.fire,()=>this.active&&!this.paused&&!this.ui.querySelector('.boarding-shop'),{interact:()=>this.interact(),pause:()=>{this.paused=true;},repair:()=>{},shield:()=>{}});bindFocusPolicy(this.lifetime.signal,()=>this.input.clear(),()=>{if(this.active){this.paused=true;this.input.clear();this.paint();}});host.root.addEventListener('wheel',e=>{if(!this.active)return;e.preventDefault();this.zoom(Math.sign(e.deltaY));},{signal:this.lifetime.signal,passive:false});this.play('Idle');this.playCrew('Idle');this.updateCamera(true);this.paint();
   }
   private play(name:string):void{if(name===this.clip)return;const clip=this.host.hero.animations.find(a=>a.name===name);if(clip){this.mixer.stopAllAction();this.mixer.clipAction(clip).reset().play();this.clip=name;}}
-  private playCrew(name:string):void{if(name===this.crewClip)return;const clip=this.host.crew.animations.find(a=>a.name===name);if(clip){this.crewMixer.stopAllAction();this.crewMixer.clipAction(clip).reset().play();this.crewClip=name;}}
+  /** Crew gait, crossfaded the way BoardingScene does it: a hard cut reads as a pop mid-stride. */
+  private playCrew(name:string):void{
+    if(name===this.crewClip)return;const clip=this.host.crew.animations.find(a=>a.name===name);if(!clip)return;
+    const previous=this.host.crew.animations.find(a=>a.name===this.crewClip);const action=this.crewMixer.clipAction(clip).reset().play();
+    if(previous)action.crossFadeFrom(this.crewMixer.clipAction(previous),.1,false);this.crewClip=name;
+  }
   private nearest(){const p=this.host.hero.scene.position;return services.map(s=>({service:s,d:Math.hypot(p.x-s[2],p.z-s[3])})).sort((a,b)=>a.d-b.d)[0];}
   private say(text:string):void{this.notice.textContent=text;this.noticeClock=5;}
   private zoom(direction:number):void{this.cameraDistance=Math.max(8,Math.min(24,this.cameraDistance+direction*1.5));this.say(`CAMERA ${Math.round((24-this.cameraDistance)/16*100)}% · Mouse wheel or ZOOM buttons.`);this.updateCamera(true);}
@@ -45,7 +54,7 @@ export class CivicScene implements ManagedScene{
     this.say(`${label} SEALED · Restore more of the Warship city to open this route.`);
   }
   setActive(v:boolean):void{this.active=v;this.ui.hidden=!v;this.input.setActive(v);window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:v?'warship_home':'silence'}}));}
-  update(dt:number):void{if(!this.active)return;this.age+=dt;if(this.noticeClock>0&&(this.noticeClock-=dt)<=0)this.notice.textContent='';if(this.paused){this.paint();return;}const move=this.input.move,hero=this.host.hero.scene,dx=move.x*5.5*dt,dz=move.y*5.5*dt;let nx=hero.position.x+dx,nz=hero.position.z;if(!blocked(nx,nz))hero.position.x=nx;nx=hero.position.x;nz=hero.position.z+dz;if(!blocked(nx,nz))hero.position.z=nz;if(Math.hypot(move.x,move.y)>.1)hero.rotation.y=Math.atan2(move.x,move.y);this.play(Math.hypot(move.x,move.y)>.1?'Run':'Idle');const crew=this.host.crew.scene,delta=hero.position.clone().sub(crew.position);if(delta.length()>2.4){crew.position.addScaledVector(delta.normalize(),Math.min(4*dt,delta.length()-.15));crew.rotation.y=Math.atan2(delta.x,delta.z);this.playCrew('Run');}else this.playCrew('Idle');this.mixer.update(dt);this.crewMixer.update(dt);this.updateCamera();this.paint();}
+  update(dt:number):void{if(!this.active)return;this.age+=dt;if(this.noticeClock>0&&(this.noticeClock-=dt)<=0)this.notice.textContent='';if(this.paused){this.paint();return;}const move=this.input.move,hero=this.host.hero.scene,dx=move.x*5.5*dt,dz=move.y*5.5*dt;let nx=hero.position.x+dx,nz=hero.position.z;if(!blocked(nx,nz))hero.position.x=nx;nx=hero.position.x;nz=hero.position.z+dz;if(!blocked(nx,nz))hero.position.z=nz;if(Math.hypot(move.x,move.y)>.1)hero.rotation.y=Math.atan2(move.x,move.y);this.play(Math.hypot(move.x,move.y)>.1?'Run':'Idle');const crew=this.host.crew.scene,delta=hero.position.clone().sub(crew.position),gap=delta.length(),follow=Math.max(0,gap-CREW_STOP_DISTANCE);if(follow>0){crew.position.addScaledVector(delta.normalize(),Math.min(CREW_SPEED*dt,gap-.15));crew.rotation.y=Math.atan2(delta.x,delta.z);}this.playCrew(companionGait(follow));this.mixer.update(dt);this.crewMixer.update(dt);this.updateCamera();this.paint();}
   private updateCamera(snap=false):void{const hero=this.host.hero.scene.position,aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight),distance=this.cameraDistance*(aspect<1?1.1:1),goal=hero.clone().add(new Vector3(0,distance,distance));if(snap)this.camera.position.copy(goal);else this.camera.position.lerp(goal,.13);this.camera.lookAt(hero.x,0,hero.z-2);this.camera.aspect=aspect;this.camera.updateProjectionMatrix();}
   private paint():void{const s=this.host.quest.save.snapshot,n=this.nearest();this.status.textContent=`CAPTURED WARSHIP · CIVIC DECK\n${s.credits} SALVAGE · ${s.inventory.med_pack??0}/9 MED PACKS\nHERO ${s.heroUpgrades.boarding_weapon??1} · FIGHTER ${Object.values(s.fighterUpgrades).reduce((a,b)=>a+b,0)} · WARSHIP ${Object.keys(s.capitalUpgrades).length}`;this.hint.textContent=n.d<2.4?`${n.service[1]} · INTERACT`:'Explore the market, armory, bank, quarters, and sealed district gates.';this.interactButton.textContent=n.d<2.4?n.service[1]:'INTERACT';if(this.host.quest.save.testSlot)Object.assign(this.ui.dataset,{position:JSON.stringify(this.host.hero.scene.position.toArray()),nearest:n.service[0],distance:n.d.toFixed(2),credits:String(s.credits),medPacks:String(s.inventory.med_pack??0),paused:String(this.paused)});}
   render():void{this.host.renderer.render(this.scene,this.camera);}

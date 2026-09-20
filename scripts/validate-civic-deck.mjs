@@ -20,4 +20,58 @@ save=new CampaignSave(storage,'test:civic-deck');civic=new BoardingQuest(save);a
 for(let i=0;i<8;i++)assert.ok(civic.tradeMedPack('buy').ok);assert.equal(civic.tradeMedPack('buy').ok,false,'cargo cap refuses tenth pack');
 for(let i=0;i<9;i++)assert.ok(civic.tradeMedPack('sell').ok);assert.equal(save.snapshot.credits,347,'nine buy/sell round trips lose 153 credits and cannot print money');assert.equal(civic.tradeMedPack('sell').ok,false);
 assert.ok(civic.restAtQuarters().ok);assert.equal(save.snapshot.location.checkpoint,'civic.quarters');save=new CampaignSave(storage,'test:civic-deck');civic=new BoardingQuest(save);assert.ok(civic.enterCivic().ok);assert.equal(save.snapshot.location.checkpoint,'civic.quarters','quarters checkpoint survives district reload');assert.ok(civic.returnToBridge().ok);assert.equal(save.snapshot.location.checkpoint,'boarding.bridge');
-console.log(`civic-deck: OK — ${doc.meshes.length} batched surfaces, 9 physical service/district anchors, ownership and location-gated economy commits once, survives reload, respects cargo cap and cannot loop credits.`);
+
+/**
+ * Companion locomotion in the Civic district.
+ *
+ * mr_zamn now ships Walk and Run, and BoardingScene picks between them with
+ * companionGait. Civic did not: it chose Run above a single 2.4 m threshold and
+ * Idle below it, so the companion had exactly two states and the Walk clip was
+ * unreachable. Driven, that produced Idle/Run only across 260 frames.
+ *
+ * These drive the real CivicScene.update with a stub host, so the gait comes out
+ * of production movement code rather than a re-implementation of it.
+ */
+const civicBundle=await build({entryPoints:['src/game/definitive/CivicScene.ts'],bundle:true,write:false,format:'esm',logLevel:'silent',loader:{'.css':'empty'}});
+const stubNode=()=>({dataset:{},hidden:true,textContent:'',className:'',style:{},appendChild(){},append(){},addEventListener(){},removeEventListener(){},remove(){},querySelector:()=>null,getBoundingClientRect:()=>({left:0,top:0,width:390,height:844})});
+globalThis.document={createElement:stubNode,body:stubNode()};
+globalThis.window={addEventListener(){},removeEventListener(){},devicePixelRatio:3,innerWidth:390,innerHeight:844};
+const {CivicScene}=await import(`data:text/javascript;base64,${Buffer.from(civicBundle.outputFiles[0].text).toString('base64')}`);
+const {Vector3}=await import('three');
+
+/** One driven frame with the hero parked `gap` metres ahead; returns the chosen clip. */
+const gaitAtGap=gap=>{
+  const hero={position:new Vector3(0,0,gap),rotation:{y:0}},crew={position:new Vector3(0,0,0),rotation:{y:0}};
+  let chosen='';
+  const rig={active:true,paused:false,age:0,noticeClock:0,cameraDistance:17,clip:'',crewClip:'',
+    notice:stubNode(),ui:{querySelector:()=>null},input:{move:{x:0,y:0},clear(){}},
+    host:{hero:{scene:hero,animations:[]},crew:{scene:crew,animations:[]},quest:{save:{snapshot:{credits:0,inventory:{}}}}},
+    mixer:{update(){}},crewMixer:{update(){}},play(){},playCrew(name){chosen=name;},updateCamera(){},paint(){},say(){}};
+  CivicScene.prototype.update.call(rig,1/60);
+  return chosen;
+};
+
+const gaits=[0.5,1.5,2.4,2.5,2.7,3.0,3.9,4.0,6.0,10].map(gap=>({gap,clip:gaitAtGap(gap)}));
+assert.equal(new Set(gaits.map(g=>g.clip)).size,3,`the Civic companion must use all three gaits, saw ${[...new Set(gaits.map(g=>g.clip))].join('/')}`);
+for(const {gap,clip} of gaits){
+  const expected=gap<=2.65?'Idle':gap<=3.9?'Walk':'Run';
+  assert.equal(clip,expected,`companion at ${gap} m should be ${expected}, played ${clip}`);
+}
+
+// The companion must never run on the spot: standing still is Idle, at any distance
+// inside the stop radius. This is the defect class, not one threshold.
+for(const gap of [0,.1,1,2,2.4])assert.equal(gaitAtGap(gap),'Idle',`stationary companion at ${gap} m must be Idle`);
+
+// A gait the crew model cannot play is a silent no-op at runtime, so require the clips to exist.
+const crewDoc=(()=>{const b=readFileSync('public/assets/models/mr_zamn.glb');return JSON.parse(b.subarray(20,20+b.readUInt32LE(12)));})();
+const crewClips=new Set(crewDoc.animations.map(clip=>clip.name));
+for(const clip of new Set(gaits.map(g=>g.clip)))assert.ok(crewClips.has(clip),`CivicScene selects ${clip} but mr_zamn.glb has no such clip`);
+
+// Negative control: re-resolve the same driven gaps through the pre-fix rule
+// (binary Run above the stop distance) and require the band check to reject it.
+// Mutates the rule under test, never the assertion.
+const legacyGait=gap=>gap>2.4?'Run':'Idle';
+assert.throws(()=>{for(const {gap} of gaits){const expected=gap<=2.65?'Idle':gap<=3.9?'Walk':'Run';assert.equal(legacyGait(gap),expected);}},
+  'the band check must reject the single-threshold gait it replaced');
+
+console.log(`civic-deck: OK — ${doc.meshes.length} batched surfaces, 9 physical service/district anchors, ownership and location-gated economy commits once, survives reload, respects cargo cap and cannot loop credits; companion gait Idle/Walk/Run driven through real CivicScene movement across ${gaits.length} distances, all clips present in mr_zamn.glb, negative control rejects the single-threshold rule.`);
