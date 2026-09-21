@@ -108,3 +108,27 @@ const reviewBefore=shopSave.snapshot;
 assert.ok(prepareCivicReview(shopSave).ok);
 assert.deepEqual(shopSave.snapshot,reviewBefore,'Civic review reload must preserve earned balance, inventory and quarters');
 for(const id of ['med_pack','melee_capacitor']){const entry=manifest.items[id];assert.ok(entry&&entry.bytes<=80000,'shop art encoded budget');assert.equal(readFileSync(`public${entry.src}`).length,entry.bytes);}
+
+// Authored vendor positions and navigation share one source of truth.
+for(const [i,v] of layout.vendors.entries()){
+ assert.ok(civicBlocked(v.x,v.z),'vendor body blocks movement');
+ assert.equal(vendors.roots[i].position.x,v.x);assert.equal(vendors.roots[i].position.z,v.z);
+ const counter=layout.obstacles.filter(o=>o.name==='Service counter').sort((a,b)=>Math.hypot(v.x-a.x,v.z-a.z)-Math.hypot(v.x-b.x,v.z-b.z))[0];
+ assert.ok(Math.hypot(v.x-counter.x,v.z-counter.z)<1.5,'vendor stands behind own counter');
+}
+const {CIVIC_ART}=await load('src/game/definitive/CivicArt.ts');
+let artBytes=0;for(const [id] of CIVIC_ART){const e=manifest.civic_art[id];assert.ok(e,'every display enrolled');const b=readFileSync('public'+e.src);assert.equal(b.length,e.bytes);artBytes+=b.length;}
+assert.ok(artBytes<300000,'Civic signage and posters fit 300KB encoded allowance');
+assert.equal(CIVIC_ART.length,6,'six authored art surfaces');
+
+const civicModelBytes=['xrpman','mr_zamn','civic_deck','civic_vendor'].reduce((n,id)=>n+manifest.models[id].bytes,0);
+assert.ok(civicModelBytes+artBytes+900000<=12582912,'Civic models AND new artwork fit resident encoded ceiling');
+
+const {createCivicService}=await load('src/game/definitive/CivicServices.ts');
+const beforeBank=shopSave.snapshot;createCivicService(shopQuest,'bank',()=>{});assert.deepEqual(shopSave.snapshot,beforeBank,'account overview cannot move funds');
+const quarters=createCivicService(shopQuest,'quarters',()=>{});quarters.children.find(e=>e.textContent==='REST & SAVE · FREE').click();
+assert.equal(shopSave.snapshot.location.checkpoint,'civic.quarters');assert.equal(shopSave.snapshot.credits,beforeBank.credits,'rest is free');
+const failedQuarters=createCivicService({save:shopSave,restAtQuarters:()=>({ok:false})},'quarters',()=>{});failedQuarters.children.find(e=>e.textContent==='REST & SAVE · FREE').click();assert.ok(failedQuarters.children.some(e=>e.textContent.startsWith('Save failed.')),'failed save never reports success');
+
+let portraitBytes=0;for(const id of ['sera_vale_v1','ivo_rook_v1']){const entry=manifest.portraits[id];assert.ok(entry.bytes<60000,'compact shop portrait');assert.equal(readFileSync('public'+entry.src).length,entry.bytes);portraitBytes+=entry.bytes;}
+assert.ok(civicModelBytes+artBytes+portraitBytes+manifest.items.med_pack.bytes+manifest.items.melee_capacitor.bytes+900000<=12582912,'Civic plus both shop inventories remains below encoded ceiling');

@@ -1099,8 +1099,8 @@
       "scenes": [
         "hub"
       ],
-      "bytes": 201704,
-      "sha256": "e0b00804710633239d56f44782795b2427f3a2073585f325d3925f568fa86626",
+      "bytes": 192004,
+      "sha256": "a11b7ce6fbd20c589584926b974f610753d78b71c04da326099cd4e459b934db",
       "notes": "Original civilian vendor geometry derived from Claude f3baab9 proof rig, reusing owned XRPMan skeletal hierarchy and animation. Two independent runtime skeletons share one asset. No external textures."
     }
   },
@@ -1180,6 +1180,88 @@
       "bytes": 56360,
       "sha256": "a588fd86f1d08e43df8b5a09d87cd15b05dfec9ca956b2ee3b1666b6c9747adf",
       "notes": "Original AI-generated CODED dark military item artwork; generated with built-in image tool, optimized to 512px WebP with alpha."
+    }
+  },
+  "civic_art": {
+    "medical_exchange_sign_v1": {
+      "src": "/assets/civic/medical-exchange-sign-v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_art"
+      ],
+      "bytes": 34762,
+      "sha256": "2de90ba975c6c9eddc6ba65e5fe607c29284a840007498959305be49ab448cb5",
+      "notes": "Original built-in image generation; full prompts recorded in Civic art delivery notes."
+    },
+    "armory_sign_v1": {
+      "src": "/assets/civic/armory-sign-v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_art"
+      ],
+      "bytes": 37568,
+      "sha256": "8345b0e556d941317b543b3b44863673fc066364e8e3708348896aeb34e4bfd9",
+      "notes": "Original built-in image generation; full prompts recorded in Civic art delivery notes."
+    },
+    "warship_bank_sign_v1": {
+      "src": "/assets/civic/warship-bank-sign-v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_art"
+      ],
+      "bytes": 40014,
+      "sha256": "db0facedaedcc6f71b39916c399ca6e0d8fac35fac11b6d919626816dcb1a06f",
+      "notes": "Original built-in image generation; full prompts recorded in Civic art delivery notes."
+    },
+    "crew_quarters_sign_v1": {
+      "src": "/assets/civic/crew-quarters-sign-v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_art"
+      ],
+      "bytes": 39494,
+      "sha256": "04008cd9557284014fcc710f15b5986c841430bb4324ca2ad4f08193c94af5fd",
+      "notes": "Original built-in image generation; full prompts recorded in Civic art delivery notes."
+    },
+    "water_is_life_poster_v1": {
+      "src": "/assets/civic/water-is-life-poster-v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_art"
+      ],
+      "bytes": 67042,
+      "sha256": "c9cd4eda1dfa4d83239454507a1ab8162a2136d0da06b1a653ae5866c10049aa",
+      "notes": "Original built-in image generation; full prompts recorded in Civic art delivery notes."
+    },
+    "ship_remembers_poster_v1": {
+      "src": "/assets/civic/ship-remembers-poster-v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_art"
+      ],
+      "bytes": 52624,
+      "sha256": "4b3c27a4983dbc677e1930cfd37f615343d7760ac1f5dcb3986930510d0efdbc",
+      "notes": "Original built-in image generation; full prompts recorded in Civic art delivery notes."
+    }
+  },
+  "portraits": {
+    "sera_vale_v1": {
+      "src": "/assets/portraits/sera_vale_v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_shop"
+      ],
+      "bytes": 26334,
+      "sha256": "35351205be186c0404de17e2294d7ec2c2c09453edea862890f2d2df9db4d5fb"
+    },
+    "ivo_rook_v1": {
+      "src": "/assets/portraits/ivo_rook_v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_shop"
+      ],
+      "bytes": 26358,
+      "sha256": "57dd0abfc50e4c0dd946e2843ed86240b5aa50419c05f33917595cea37732a6f"
     }
   }
 }

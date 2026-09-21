@@ -1,4 +1,6 @@
+import {createCivicService} from './CivicServices';
 import {AmbientLight,AnimationMixer,Color,DirectionalLight,Fog,Mesh,MeshStandardMaterial,PerspectiveCamera,PointLight,Scene,Vector3,type Texture,type WebGLRenderer} from 'three';
+import {createCivicArt} from './CivicArt';
 import {createCivicVendors} from './CivicVendors';
 import {createCivicShop} from './CivicShops';
 import type {GLTF} from 'three/addons/loaders/GLTFLoader.js';
@@ -21,6 +23,7 @@ export class CivicScene implements ManagedScene{
     for(const [name] of services)if(!host.deck.scene.getObjectByName(name))throw new Error('Missing Civic service anchor: '+name);
     const hero=host.hero.scene,crew=host.crew.scene,rested=host.quest.save.snapshot.location.checkpoint==='civic.quarters';hero.position.set(rested?20:0,0,rested?8:21);crew.position.copy(hero.position).add(new Vector3(-1.3,0,.6));crew.scale.setScalar(.96);this.mixer=new AnimationMixer(hero);this.crewMixer=new AnimationMixer(crew);
     this.scene.background=new Color(0x06111c);this.scene.fog=new Fog(0x06111c,65,115);this.scene.environment=host.environment;this.scene.environmentIntensity=.32;this.scene.add(host.deck.scene,hero,crew,new AmbientLight(0x718496,.42));
+    this.scene.add(createCivicArt(this.lifetime.signal));
     const vendors=createCivicVendors(host.vendor,host.hero.animations);
     this.scene.add(...vendors.roots);this.vendorMixers.push(...vendors.mixers);
     const sun=new DirectionalLight(0x9eb4c7,1.25);sun.position.set(-12,25,14);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-35,right:35,top:32,bottom:-32,near:1,far:70});sun.shadow.camera.updateProjectionMatrix();this.scene.add(sun);
@@ -47,10 +50,11 @@ export class CivicScene implements ManagedScene{
     if(!this.active||this.paused||this.ui.querySelector('.boarding-shop'))return;const near=this.nearest();if(near.d>2.4){this.say('Follow the luminous route to a marked service counter.');return;}const [id,label]=near.service;
     if(id==='Lift_Boarding'){if(this.host.quest.returnToBridge().ok)this.host.onBridge();return;}
     if(id==='Market_Med'||id==='Armory_Capacitor'){
-      this.input.clear();const panel=createCivicShop(this.host.quest,id==='Market_Med'?'medical':'armory',()=>{panel.remove();this.input.clear();});this.ui.append(panel);return;
+      this.input.clear();const panel=createCivicShop(this.host.quest,id==='Market_Med'?'medical':'armory',()=>{panel.remove();this.input.clear();});this.ui.append(panel);panel.querySelector('button')?.focus();return;
     }
-    if(id==='Quarters_Save'){const r=this.host.quest.restAtQuarters();this.say(r.ok?'REST COMPLETE · Progress saved and vitals restored.':'Quarters could not save. Retry.');return;}
-    if(id==='Bank_Kiosk'){this.say('BANK ONLINE · Shared salvage balance verified. Vault and contracts unlock after Mars.');return;}
+    if(id==='Quarters_Save'||id==='Bank_Kiosk'){
+      this.input.clear();const panel=createCivicService(this.host.quest,id==='Bank_Kiosk'?'bank':'quarters',()=>{panel.remove();this.input.clear();this.interactButton.focus();});this.ui.append(panel);panel.querySelector('button')?.focus();return;
+    }
     this.say(`${label} SEALED · Restore more of the Warship city to open this route.`);
   }
   setActive(v:boolean):void{this.active=v;this.ui.hidden=!v;this.input.setActive(v);window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:v?'warship_home':'silence'}}));}

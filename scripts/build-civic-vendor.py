@@ -112,7 +112,7 @@ head_head, head_tail = rest['head']
 head_centre=(head_head+head_tail)/2
 # Original rounded facial forms and workwear details.
 def ellipsoid(name, centre, size, mat, bone):
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=12,ring_count=8,radius=1,location=centre)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2,radius=1,location=centre)
     o=bpy.context.object;o.name=name;o.scale=Vector(size)/2
     bpy.ops.object.transform_apply(location=False,rotation=False,scale=True);o.data.materials.append(mat)
     for f in o.data.polygons:f.use_smooth=True

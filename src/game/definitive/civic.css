@@ -18,3 +18,5 @@
 .civic-ui .civic-shop{color:#ced9df}.civic-ui .civic-shop button{color:#dceae7;border:1px solid #47756e;background:#142a2c;border-radius:5px;font-weight:700}.civic-ui .civic-shop.armory button{border-color:#887049;background:#2b2620;color:#eee0c9}.civic-ui .civic-shop button:hover:not(:disabled){background:#24423f}
 
 .civic-item-art{display:block;width:160px;height:160px;object-fit:contain;margin:8px auto;filter:drop-shadow(0 8px 18px #0008)}@media(max-height:650px){.civic-item-art{width:100px;height:100px}.civic-shop{padding:16px!important}.civic-dialogue{padding:6px 0;margin:6px 0}}
+
+.civic-vendor-portrait{float:left;width:80px;height:80px;object-fit:cover;border:1px solid #588e83;border-radius:6px;margin:12px 14px 8px 0}.civic-dialogue{display:flow-root}.civic-service .civic-dialogue{font-style:normal}

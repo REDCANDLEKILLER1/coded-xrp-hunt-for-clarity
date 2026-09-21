@@ -9,6 +9,8 @@ export function createCivicShop(quest:BoardingQuest,kind:'medical'|'armory',clos
   panel.setAttribute('aria-labelledby',heading.id);
   const seller=document.createElement('p');seller.className='civic-vendor-name';
   seller.textContent=kind==='medical'?'SERA VALE · FIELD MEDIC':'IVO ROOK · ARMORER';
+  const portrait=document.createElement('img');portrait.className='civic-vendor-portrait';portrait.alt=kind==='medical'?'Sera Vale, field medic':'Ivo Rook, armorer';portrait.width=96;portrait.height=96;
+  void loadAssetCatalog().then(catalog=>{const entry=catalog.portraits?.[kind==='medical'?'sera_vale_v1':'ivo_rook_v1'];if(entry)portrait.src=typeof entry==='string'?entry:entry.src;}).catch(()=>{portrait.hidden=true;});
   const dialogue=document.createElement('p');dialogue.className='civic-dialogue';
   dialogue.textContent=kind==='medical'?'“This was a weapons locker. Now it keeps people alive. Bring back what you don’t need—someone else will.”':'“They built this ship to keep us out. Now we use its tools to keep our people standing.”';
   const balance=document.createElement('p');balance.className='civic-shop-balance';
@@ -37,6 +39,6 @@ export function createCivicShop(quest:BoardingQuest,kind:'medical'|'armory',clos
   sell.addEventListener('click',()=>{const result=quest.tradeMedPack('sell');feedback.textContent=result.ok?'Med pack sold for 18 credits. Sale saved.':'Sale could not be completed.';paint();});
   back.textContent='RETURN TO MARKET';back.addEventListener('click',close);
   panel.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}});
-  panel.append(heading,back,seller,dialogue,art,balance,description,buy);if(kind==='medical')panel.append(sell);panel.append(feedback);paint();
+  panel.append(heading,back,portrait,seller,dialogue,art,balance,description,buy);if(kind==='medical')panel.append(sell);panel.append(feedback);paint();
   return panel;
 }
