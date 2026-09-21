@@ -30,7 +30,7 @@ for(const district of districts){
   gltf.scene.traverse(o=>{if(o.isMesh){geometry.push(o);o.material.side=DoubleSide;triangles+=o.geometry.index?.count/3??o.geometry.attributes.position.count/3;if(o.material.map)assert.equal(o.material.map.colorSpace,SRGBColorSpace);}});
   assert.ok(triangles<=district.maxTriangles,`${district.model} triangle budget`);
   assert.ok(geometry.length<=district.maxSurfaces,`${district.model} draw-surface budget`);
-  const liveBytes=['xrpman','mr_zamn',district.model].reduce((sum,id)=>sum+catalog.models[id].bytes,0)+Math.max(...['fighter_player','fighter_xrpl_striker','fighter_ledger_warden'].map(id=>catalog.models[id].bytes))+900_000;
+  const liveBytes=[...new Set(['xrpman','mr_zamn',district.model,...(district.residentModels??[])])].reduce((sum,id)=>sum+catalog.models[id].bytes,0)+Math.max(...['fighter_player','fighter_xrpl_striker','fighter_ledger_warden'].map(id=>catalog.models[id].bytes))+900_000;
   assert.ok(liveBytes<=district.maxLiveBytes,`${district.model} plus hero, crew, fighter and renderer reserve stays in its live phone budget`);
   results.push({district,gltf,geometry,triangles,bytes:bytes.length,liveBytes});
 }

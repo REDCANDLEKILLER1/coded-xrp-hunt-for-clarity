@@ -64,3 +64,47 @@ assert.ok(civic.tradeMedPack('sell').ok,'selling works after resting');
 assert.ok(civic.installMeleeCapacitor().ok,'armory works after resting');
 assert.equal(civic.installMeleeCapacitor().ok,false,'permanent upgrade cannot charge twice');
 console.log(`civic-deck: OK — ${doc.meshes.length} batched surfaces, 9 physical service/district anchors, ownership and location-gated economy commits once, survives reload, respects cargo cap and cannot loop credits.`);
+
+// Runtime vendor instances must be drawable, independently animated and released together.
+globalThis.self=globalThis;globalThis.createImageBitmap=async()=>({width:1,height:1,close(){}});
+const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
+const loadGltf=async id=>{const b=readFileSync(`public/assets/models/${id}.glb`);return new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.length),'');};
+const [vendorAsset,heroAsset]=await Promise.all([loadGltf('civic_vendor'),loadGltf('xrpman')]);
+const {createCivicVendors}=await load('src/game/definitive/CivicVendors.ts');
+const vendors=createCivicVendors(vendorAsset,heroAsset.animations);assert.equal(vendors.roots.length,2);
+const meshes=vendors.roots.map(root=>{const out=[];root.traverse(o=>{if(o.isSkinnedMesh)out.push(o);});return out;});
+assert.equal(meshes[0].length,3);assert.equal(meshes[1].length,3);
+for(let i=0;i<3;i++){
+ assert.equal(meshes[0][i].geometry,meshes[1][i].geometry,'instances share geometry');
+ assert.notEqual(meshes[0][i].skeleton,meshes[1][i].skeleton,'instances own skeletons');
+ for(const mesh of [meshes[0][i],meshes[1][i]])assert.ok(!Array.isArray(mesh.material)||mesh.geometry.groups.length>0,'material arrays need drawable geometry groups');
+}
+const {Box3}=await import('three');
+for(const [i,root] of vendors.roots.entries()){
+ vendors.mixers[i].update(.5);root.updateMatrixWorld(true);
+ const box=new Box3().setFromObject(root);
+ assert.ok(box.min.y>-.12&&box.max.y<2.2&&box.max.y>1.5,'vendor remains standing at deck level');
+ assert.ok(box.max.x-box.min.x<1.5,'no limbs rotating around world origin');
+}
+const resources=new Set(),skeletons=new Set();let freed=0;
+for(const root of vendors.roots)root.traverse(o=>{if(o.isMesh){resources.add(o.geometry);for(const m of Array.isArray(o.material)?o.material:[o.material])resources.add(m);if(o.skeleton)skeletons.add(o.skeleton);}});
+for(const resource of resources)resource.addEventListener('dispose',()=>freed++);
+const {Group}=await import('three');const group=new Group();group.add(...vendors.roots);
+const {disposeObject}=await load('src/game/definitive/ModelAssets.ts');disposeObject(group);assert.equal(freed,resources.size,'shared vendor resources disposed once');
+// Drive actual rendered shop button handlers through a minimal DOM.
+class ShopElement{children=[];listeners={};disabled=false;textContent='';className='';append(...items){this.children.push(...items);}setAttribute(){}addEventListener(name,fn){this.listeners[name]=fn;}click(){if(!this.disabled)this.listeners.click?.({});}}
+globalThis.document={createElement:()=>new ShopElement()};
+const {createCivicShop}=await load('src/game/definitive/CivicShops.ts');
+const shopSave=new CampaignSave(storage,'test:civic-shop-ui');shopSave.update(d=>{d.warshipOwned=true;d.credits=200;d.location={mode:'hub',world:'ledger_prime',checkpoint:'civic.quarters'};});
+const shopQuest=new BoardingQuest(shopSave),panel=createCivicShop(shopQuest,'medical',()=>{});
+const buttons=panel.children.filter(e=>e.listeners.click&&e.textContent!=='RETURN TO MARKET');assert.equal(buttons[1].disabled,true);
+buttons[0].click();assert.equal(shopSave.snapshot.credits,165);assert.equal(buttons[1].disabled,false);
+buttons[1].click();assert.equal(shopSave.snapshot.credits,183);assert.equal(buttons[1].disabled,true);
+const armory=createCivicShop(shopQuest,'armory',()=>{}),install=armory.children.find(e=>e.listeners.click&&e.textContent!=='RETURN TO MARKET');install.click();assert.equal(shopSave.snapshot.credits,43);assert.equal(install.disabled,true);install.click();assert.equal(shopSave.snapshot.credits,43);
+console.log('civic-vendors/shops: OK - independent skeletons, visible materials, standing animated bounds, shared-resource disposal, real shop button transactions.');
+
+const {prepareCivicReview}=await load('src/game/definitive/BoardingQuest.ts');
+const reviewBefore=shopSave.snapshot;
+assert.ok(prepareCivicReview(shopSave).ok);
+assert.deepEqual(shopSave.snapshot,reviewBefore,'Civic review reload must preserve earned balance, inventory and quarters');
+for(const id of ['med_pack','melee_capacitor']){const entry=manifest.items[id];assert.ok(entry&&entry.bytes<=80000,'shop art encoded budget');assert.equal(readFileSync(`public${entry.src}`).length,entry.bytes);}

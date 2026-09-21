@@ -17,10 +17,10 @@ def mat(name,color,metal=.35,rough=.48,glow=0):
     if glow:b.inputs['Emission Color'].default_value=(*color,1);b.inputs['Emission Strength'].default_value=glow
     return m
 
-floor=mat('Civic navy deck',(0.018,.035,.07),.72,.34);wall=mat('Civic pearl armor',(.22,.3,.36),.56,.4);trim=mat('Civic gold trim',(.52,.29,.055),.8,.3)
-green=mat('Captured route green',(0,.72,.2),.12,.25,5);cyan=mat('Market cyan',(0,.26,.62),.1,.23,4);amber=mat('Trade amber',(.95,.28,.015),.15,.28,4)
-violet=mat('Medical violet',(.35,.04,.8),.1,.28,4);blue=mat('Bank blue',(.025,.18,.85),.14,.25,4);red=mat('Restricted red',(.9,.025,.01),.15,.28,4)
-cream=mat('Residential warm light',(.86,.62,.31),.0,.7,2.2);dark=mat('Inset charcoal',(.012,.016,.026),.3,.72)
+floor=mat('Civic navy deck',(0.018,.035,.07),.72,.34);wall=mat('Civic pearl armor',(.045,.06,.075),.72,.54);trim=mat('Civic gold trim',(.16,.105,.065),.7,.55)
+green=mat('Captured route green',(.015,.22,.085),.12,.4,1.4);cyan=mat('Market cyan',(.025,.13,.22),.1,.4,1.8);amber=mat('Trade amber',(.3,.09,.015),.15,.4,1.6)
+violet=mat('Medical violet',(.055,.23,.19),.1,.4,1.8);blue=mat('Bank blue',(.035,.09,.25),.14,.4,1.6);red=mat('Restricted red',(.4,.012,.006),.15,.4,2.2)
+cream=mat('Residential warm light',(.22,.19,.15),.1,.7,.4);dark=mat('Inset charcoal',(.012,.016,.026),.3,.72)
 objects=[]
 def box(name,x,z,y,w,d,h,material,bevel=.04,parent=None):
     v=[(x+sx*w/2,-z+sy*d/2,y+sz*h/2) for sz in [-1,1] for sy in [-1,1] for sx in [-1,1]]
@@ -42,7 +42,7 @@ for x in [-31.6,31.6]:
     box('Pressure hull',x,0,1,.4,52,2,wall)
     for z in range(-22,23,8):
         box('Hull rib',x,z,1.6,.7,.65,3.2,trim)
-        box('Hull light',x-.25*(1 if x>0 else -1),z,1.5,.05,3,.16,cyan,0)
+        box('Hull light',x-.25*(1 if x>0 else -1),z,1.5,.05,3,.16,red,0)
 for z in [-25.6,25.6]:box('End bulkhead',0,z,.65,64,.4,1.3,wall)
 for o in layout['obstacles']:
     material=trim if o['name'] in ['Service counter','Bunk frame'] else dark if o['name'] in ['Stock wall','Lift backing'] else wall
@@ -67,6 +67,29 @@ for x,z,color,label in [(-20,8,violet,'MEDICAL'),(-20,-12,cyan,'ARMORY'),(20,-12
     curve=bpy.data.curves.new(label,'FONT');curve.body=label;curve.align_x='CENTER';curve.size=1.1;curve.extrude=0;curve.resolution_u=2
     obj=bpy.data.objects.new(label,curve);scene.collection.objects.link(obj);obj.location=(x,-(z+4),.035);curve.materials.append(color)
     bpy.ops.object.select_all(action='DESELECT');obj.select_set(True);bpy.context.view_layer.objects.active=obj;bpy.ops.object.convert(target='MESH');objects.append(bpy.context.object)
+# Medical and armory work surfaces: reusable palette, no extra draw materials.
+for z,color in [(8,violet),(-12,cyan)]:
+    for x in [-24,-16]:
+        for shelf_y in [.5,1.1,1.7]:
+            box('Supply shelf',x,z-6.0,shelf_y,3,.7,.08,trim,.015)
+            for dx in [-.9,0,.9]:
+                box('Supply container',x+dx,z-6.0,shelf_y+.18,.5,.45,.28,wall,.03)
+                box('Container label',x+dx,z-5.76,shelf_y+.2,.25,.015,.08,color,0)
+    box('Checkout terminal',-16.5,z-3,1.28,.8,.55,.42,dark,.04)
+    box('Terminal screen',-16.5,z-2.71,1.35,.62,.025,.25,color,0)
+    box('Counter work mat',-20,z-3,1.087,4,1,.035,dark,0)
+# First aid cases and a readable medical cross on the back wall.
+for x in [-22,-20,-18]:
+    box('Medical supply case',x,5,1.28,.7,.6,.36,cream,.055)
+    box('Medical cross upright',x,5.31,1.28,.08,.025,.24,violet,0)
+    box('Medical cross horizontal',x,5.31,1.28,.24,.025,.08,violet,0)
+# Original weapon silhouettes secured to the armory stock wall.
+for x in [-24,-20,-16]:
+    box('Rifle receiver',x,-18.0,1.25,1.35,.22,.23,dark,.025)
+    box('Rifle barrel',x+.9,-18.0,1.29,.75,.13,.10,trim,.012)
+    box('Rifle grip',x-.1,-18.0,1.02,.18,.18,.4,dark,.025)
+    box('Rifle stock',x-.9,-18.0,1.2,.5,.25,.36,trim,.035)
+
 # Residential furnishings, visibly separated from commercial counters.
 for x in [16,20,24]:
     box('Mattress',x,13,.68,2.15,2.8,.2,cream)

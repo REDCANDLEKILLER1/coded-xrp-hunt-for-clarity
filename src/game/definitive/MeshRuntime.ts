@@ -269,9 +269,9 @@ export class MeshRuntime {
   async showCivic(save:CampaignSave):Promise<void>{
     this.root.dataset.review='civic';this.root.hidden=false;this.hud.hidden=false;this.status.textContent='Opening the captured Warship Civic Deck…';this.controls.replaceChildren();this.resize();this.startLoop();const quest=new BoardingQuest(save);
     const loaded=await this.controller.change(async signal=>{
-      const before=save.snapshot;const [hero,crew,deck]=await loadModels(['xrpman','mr_zamn','civic_deck'],signal);let scene:CivicScene|undefined;
-      try{scene=new CivicScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,quest,hero,crew,deck,onBridge:()=>void this.showDistrictConnector(save,'boarding')});if(signal.aborted)throw new DOMException('Civic Deck load cancelled','AbortError');if(save.snapshot.revision!==before.revision)throw new Error('The saved district changed while Civic Deck was loading');if(!quest.enterCivic().ok)throw new Error('Civic Deck requires the captured Warship');return scene;}
-      catch(error){if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(deck.scene);}throw error;}
+      const before=save.snapshot;const [hero,crew,deck,vendor]=await loadModels(['xrpman','mr_zamn','civic_deck','civic_vendor'],signal);let scene:CivicScene|undefined;
+      try{scene=new CivicScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,quest,hero,crew,deck,vendor,onBridge:()=>void this.showDistrictConnector(save,'boarding')});if(signal.aborted)throw new DOMException('Civic Deck load cancelled','AbortError');if(save.snapshot.revision!==before.revision)throw new Error('The saved district changed while Civic Deck was loading');if(!quest.enterCivic().ok)throw new Error('Civic Deck requires the captured Warship');return scene;}
+      catch(error){if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(deck.scene);disposeObject(vendor.scene);}throw error;}
     });
     if(loaded)this.hud.hidden=true;else if(this.controller.lastError){this.hud.dataset.recovery='true';this.status.textContent='Civic Deck could not load. The transit lift remains safe; retry when ready.';const retry=document.createElement('button');retry.textContent='Retry Civic Deck';retry.addEventListener('click',()=>void this.showCivic(save));this.controls.replaceChildren(retry);}
   }

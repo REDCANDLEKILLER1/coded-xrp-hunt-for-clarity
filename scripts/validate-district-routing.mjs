@@ -184,8 +184,65 @@ const connectorPreload=observed.map(entry=>entry.route==='showDistrictConnector'
 assert.ok(unsafeEdges(connectorPreload,edges).some(edge=>edge.from==='showBoarding'&&edge.to==='showDistrictConnector'),'preloading Civic in the connector must be rejected while Boarding is resident');
 assert.ok(unsafeEdges(observed,[...edges,{from:'showBoarding',to:'showCivic'}]).some(edge=>edge.from==='showBoarding'&&edge.to==='showCivic'),'a direct Boarding to Civic route must be rejected');
 
+/**
+ * Resident encoded payload, per route, derived from what each route actually loads.
+ *
+ * What this measures: the sum of *encoded payload bytes* of the distinct model files
+ * a route requests -- what the device downloads and decodes. It is NOT a measurement
+ * of GPU or system memory, and it does NOT establish the transition peak: an uploaded
+ * GLB costs a different, larger amount as vertex buffers and decompressed textures,
+ * and two scenes briefly overlapping during a handoff is a separate question the
+ * connector rule above governs. No claim here depends on either.
+ *
+ * Why it exists: validate-boarding-architecture computes its live-byte sum from a
+ * fixed list -- ['xrpman','mr_zamn',district.model] plus the largest fighter. That list
+ * is not derived from anything, so a model added to a route's load call does not move
+ * the number, and the check stays green while the resident set grows. It also runs only
+ * for registered districts, leaving every non-district route unbudgeted. Measured, the
+ * two heaviest routes in the game were the unguarded ones.
+ *
+ * THRESHOLD PROVENANCE -- read this before trusting a pass.
+ * `maxLiveBytes` is declared per district in warship-districts.json and was written as a
+ * district budget. Applying it to every driven route is a NEW POLICY introduced by this
+ * guard, not an existing rule that was being skipped. It is adopted because it is the
+ * only declared payload ceiling in the repository and every current route already sits
+ * under it, so it costs nothing today and catches growth tomorrow. If a route ever needs
+ * a different ceiling, raise it deliberately here rather than discovering it at bake time.
+ */
+const catalog = JSON.parse(readFileSync('public/assets/manifest.json', 'utf8'));
+const RENDERER_ALLOWANCE = 900_000;   // counted separately from asset bytes, as in validate-boarding-architecture
+const residentCeiling = Math.min(...JSON.parse(readFileSync(DISTRICT_REGISTRY, 'utf8')).map(entry => entry.maxLiveBytes));
+assert.ok(Number.isFinite(residentCeiling) && residentCeiling > 0, 'no resident payload ceiling could be resolved from the district registry');
+
+/** Distinct model ids a route requests. Instances and repeat requests are the same file. */
+const uniqueModels = entry => [...new Set(entry.handoffs.flat())];
+const residency = observed.map(entry => {
+  const models = uniqueModels(entry);
+  for (const id of models) {
+    assert.ok(catalog.models[id],
+      `${entry.route} loads ${id}, which has no manifest entry, so it would cost nothing in this accounting`);
+  }
+  for(const id of models)assert.ok(Number.isSafeInteger(catalog.models[id].bytes)&&catalog.models[id].bytes>0,`${id} needs a positive encoded byte count`);
+  const assetBytes = models.reduce((sum, id) => sum + catalog.models[id].bytes, 0);
+  return { route: entry.route, models, assetBytes, total: assetBytes + RENDERER_ALLOWANCE };
+});
+
+const over = residency.filter(row => row.total > residentCeiling);
+assert.deepEqual(over.map(row => `${row.route} holds ${row.total} encoded bytes of ${residentCeiling}`), [],
+  'every driven route must keep its distinct loaded models plus the renderer allowance inside the resident payload ceiling');
+
+// Growth must be visible: a route that gains a model gains its bytes here, automatically.
+assert.ok(residency.some(row => row.models.length >= 5),
+  'no route loads enough models for this accounting to be exercising anything');
+// A duplicated actual request must leave the counted set unchanged.
+const sample=observed.find(entry=>entry.handoffs.flat().length>0);
+assert.ok(sample);
+assert.deepEqual(uniqueModels({...sample,handoffs:[...sample.handoffs,[sample.handoffs.flat()[0]]]}),uniqueModels(sample),'repeated asset request is counted once');
+
+const tightest = residency.reduce((a, b) => (a.total >= b.total ? a : b));
+
 const report = observed.map(entry => {
   const resident = entry.handoffs.flat().filter(model => districts.includes(model));
   return `${entry.route} ${resident.length}${resident.length ? ` [${resident.join(', ')}]` : ''}`;
 }).join('; ');
-console.log(`district-routing: OK — ${ROUTES.length} real MeshRuntime routes driven, ${edges.length} production transition edges checked, districts from ${source}: ${districts.join(', ')}; districts per route: ${report}; handoff and consecutive-route negative controls fire.`);
+console.log(`district-routing: OK — ${ROUTES.length} real MeshRuntime routes driven, ${edges.length} production transition edges checked, districts from ${source}: ${districts.join(', ')}; districts per route: ${report}; handoff and consecutive-route negative controls fire; resident encoded payload accounted for ${residency.length} routes, heaviest ${tightest.route} at ${tightest.total} of ${residentCeiling} bytes (encoded payload only, not GPU memory).`);

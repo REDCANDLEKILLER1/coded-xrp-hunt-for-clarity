@@ -221,6 +221,7 @@ export function prepareBoardingRoomReview(save:CampaignSave,room:BoardingRoom):S
 /** Isolated captured-city fixture. It can never alter the campaign slot. */
 export function prepareCivicReview(save:CampaignSave):SaveResult {
   if(!save.testSlot)return{ok:false,reason:'condition'};
+  if(save.snapshot.warshipOwned&&save.snapshot.location.mode==='hub'&&save.snapshot.location.checkpoint.startsWith('civic.'))return{ok:true,changed:false};
   return save.update(d=>{
     d.warshipOwned=true;d.credits=Math.max(d.credits,500);d.location={mode:'hub',world:'ledger_prime',checkpoint:'civic.market'};
     add(d.recruits,'mr_zamn');for(const step of BOARDING_STEPS)add(d.quests,questFlag(step));for(const room of BOARDING_ROOMS){add(d.clearedRooms,roomFlag(room));add(d.visitedRooms,roomFlag(room));}d.heroUpgrades.boarding_weapon=Math.max(4,d.heroUpgrades.boarding_weapon??1);d.heroUpgrades.ledger_shield=1;

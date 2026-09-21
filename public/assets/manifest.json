@@ -1089,9 +1089,19 @@
         "hub",
         "warship_district"
       ],
-      "bytes": 497876,
-      "sha256": "e0b572e8e7c9ca6d1d750c54fc6649ef68fa5dd675f3e7cce9f7e318820995fb",
-      "notes": "Original Blender-authored Civic market district: four separate service rooms on a 64 by 52 metre promenade; shared authored navigation partitions. 11 batched surfaces, 8244 triangles. Private versioned master retained."
+      "bytes": 702856,
+      "sha256": "a673f6e084381324573607604d40d9bf6bf812941a5d48041cbc960c36df40f9",
+      "notes": "Original Civic promenade with separated service rooms, medical supplies, armory displays and checkout terminals. 11 surfaces / 11656 triangles; tracked script and shared layout, private versioned master."
+    },
+    "civic_vendor": {
+      "src": "/assets/models/civic_vendor.glb",
+      "type": "model",
+      "scenes": [
+        "hub"
+      ],
+      "bytes": 201704,
+      "sha256": "e0b00804710633239d56f44782795b2427f3a2073585f325d3925f568fa86626",
+      "notes": "Original civilian vendor geometry derived from Claude f3baab9 proof rig, reusing owned XRPMan skeletal hierarchy and animation. Two independent runtime skeletons share one asset. No external textures."
     }
   },
   "audio": {
@@ -1148,6 +1158,28 @@
       ],
       "bytes": 4015790,
       "sha256": "298eb9ccddb763a56f31a2af8d79d9367512712eee0b0693350d21749009dc41"
+    }
+  },
+  "items": {
+    "med_pack": {
+      "src": "/assets/items/med_pack_v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_shop"
+      ],
+      "bytes": 49342,
+      "sha256": "3aec42ec2ba20f5c03eb38356a4483a0ffc1345ceff61a9c648ff2eb6219a348",
+      "notes": "Original AI-generated CODED dark military item artwork; generated with built-in image tool, optimized to 512px WebP with alpha."
+    },
+    "melee_capacitor": {
+      "src": "/assets/items/melee_capacitor_v1.webp",
+      "type": "image",
+      "scenes": [
+        "civic_shop"
+      ],
+      "bytes": 56360,
+      "sha256": "a588fd86f1d08e43df8b5a09d87cd15b05dfec9ca956b2ee3b1666b6c9747adf",
+      "notes": "Original AI-generated CODED dark military item artwork; generated with built-in image tool, optimized to 512px WebP with alpha."
     }
   }
 }

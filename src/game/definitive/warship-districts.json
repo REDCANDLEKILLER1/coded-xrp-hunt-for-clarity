@@ -13,6 +13,9 @@
     "maxBytes": 900000,
     "maxTriangles": 12000,
     "maxSurfaces": 16,
-    "maxLiveBytes": 12582912
+    "maxLiveBytes": 12582912,
+    "residentModels": [
+      "civic_vendor"
+    ]
   }
 ]
