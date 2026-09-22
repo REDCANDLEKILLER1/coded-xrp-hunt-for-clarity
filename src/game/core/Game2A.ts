@@ -50,7 +50,9 @@ type EnemyActor = Actor & {
   /** Launched by a boss to screen it. The boss is immune while any survive. */
   escort: boolean;
 };
-type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1; ground?:GroundDefense };
+type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1; ground?:GroundDefense;
+  /** The hp this hazard actually SPAWNED with. The bar divides by this. */
+  hpMax?: number };
 type HostileProjectile = Actor & {
   damage: number;
   color: string;
@@ -227,6 +229,24 @@ const ARENA_MAX_ENEMIES_BASE = 5;
 const ARENA_MAX_ENEMIES_CAP = 10;
 /** How soon to re-check when nothing that fits can be spawned. */
 const ARENA_FULL_RETRY = 0.35;
+/**
+ * How much tougher a CAMPAIGN emplacement is than its registry base.
+ *
+ * The registry numbers were tuned for the arcade path, where a hazard may fire
+ * from y > 20 on a 0.5-1.2 s clock. The campaign path routes through
+ * GroundDefense, whose telegraph is long by design, and nobody re-tuned the
+ * health: 97% of emplacements were destroyed at y < 76 with a median death
+ * height of 10px. They were content the player never met.
+ *
+ * The flat part is small because the LOADOUT does the rest. A fixed number
+ * cannot work here: player damage spans 7.1 to 106.6 dps across one level, so
+ * any health that lets a starting gun feel like a threat is deleted instantly
+ * by a maxed one, and any health a maxed gun respects is a wall at level 1.
+ * Emplacements are set-piece content the player is meant to survive, not trash,
+ * so they scale the way BOSSES already do -- against the gun actually pointed
+ * at them -- which holds time-to-kill roughly constant across the whole ladder.
+ */
+const EMPLACEMENT_HP_SCALE = 4;
 // Enemies were never able to shoot: EnemyDef had no firing fields and the only
 // hostile fire in the game came from bosses and ground turrets. Armed enemies
 // only fire while holding station or diving, never while entering or fleeing,
@@ -460,6 +480,27 @@ const BOSS_RESUPPLY_DRIFT = 0.5;
 const PLAYER_SHIELD_COLOR = '#00FF00';
 const ENEMY_SHIELD_COLOR = '#ff3355';
 /** Peak opacity of a rim light. Low enough that the sprite still wins. */
+/**
+ * The contrast pass that actually reaches the hull.
+ *
+ * Measured on the shipped build at the Earth descent: the enemy sprites are
+ * blue-grey (regulator_drone 56,91,139; fog_raider 45,57,91) and 76.6% of the
+ * band they fly in renders RGB (1,1,2) -- so the ships are near-black on
+ * near-black, contrast 1.83:1. The rim light was the only pass on them and it
+ * peaks 1.18x to 1.90x BEYOND the sprite's ink, lighting empty space: it moved
+ * the hull by +0.0016 relative luminance out of 0.0437.
+ *
+ * A canvas shadow follows the drawn alpha, so unlike a radial gradient it hugs
+ * the silhouette however the sprite is shaped -- no per-hull art, and it works
+ * for the sprites that do not exist yet. The dark pass separates a light hull
+ * from a light backdrop; the bright pass is what makes a dark hull visible on
+ * black. This is the same technique that already makes whale_scout the
+ * best-reading enemy in the roster (1.59:1 against fog_raider's 1.20:1) --
+ * drawHeavyHull strokes an edge, and an edge is what works.
+ */
+const HULL_EDGE_PX = 2;
+const HULL_SHADOW_BLUR = 5;
+const HULL_SHADOW_DY = 2;
 const RIM_GLOW_ALPHA = 0.2;
 /** Rim radius as a fraction of the hull's larger side. */
 const RIM_GLOW_SCALE = 0.86;
@@ -667,6 +708,8 @@ export class Game2A {
   /** Counts up while a fog gate or shield cover is being cut automatically. */
   private fogCutClock = 0;
   private shieldCutClock = 0;
+  /** Accent silhouettes for the hull edge, keyed by sprite, size and colour. */
+  private readonly hullEdges = new Map<string, HTMLCanvasElement | null>();
   /** Rim-light gradients, keyed by colour and radius. See drawRimGlow. */
   private readonly rimGlows = new Map<string, CanvasGradient>();
   private progress: CampaignProgress = this.loadProgress();
@@ -1289,6 +1332,13 @@ export class Game2A {
     const def = this.hazardDef(hazardKey);
     const side: -1 | 1 = requestedSide ?? (xRatio < 0.5 ? -1 : 1);
     const x = clamp(xRatio * this.w, 28, this.w - 28);
+    // The beacon is the one emplacement the player FLIES THROUGH to repair a
+    // district, so it is excluded: `friendlyGround` is the same helper the
+    // renderer and the damage path already use, rather than a second list of
+    // roles that could drift out of step with them.
+    const ground = groundDefense(def.key, `${this.missionDirector.currentAct?.key}:${this.earthEncounterDirector.currentGroupNumber}`, xRatio * 0.4);
+    const hostile = !friendlyGround({ x: 0, y: 0, w: 0, h: 0, ground });
+    const hazardHp = this.hazardHp(def) * (hostile ? EMPLACEMENT_HP_SCALE * this.loadoutScale() : 1);
     this.hazards.push({
       x,
       y: -def.draw.h,
@@ -1296,11 +1346,12 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: this.currentStage().scrollSpeed,
-      hp: this.hazardHp(def),
+      hp: hazardHp,
+      hpMax: hazardHp,
       hazardKey: def.key,
       fireClock: def.fires ? 0.95 : 0,
       side,
-      ground:groundDefense(def.key,`${this.missionDirector.currentAct?.key}:${this.earthEncounterDirector.currentGroupNumber}`,xRatio*.4),
+      ground,
     });
   }
 
@@ -2020,8 +2071,28 @@ export class Game2A {
   }
 
   /** Every actual damage path observes linked shields and friendly beacons. */
-  private damageGround(hazard:HazardActor,damage:number):void {
+  /**
+   * `forced` is for scripted destruction -- a relay restoration, an act
+   * teardown -- which must land regardless of where the body currently is.
+   */
+  private damageGround(hazard:HazardActor,damage:number,forced=false):void {
     if((hazard.hp??0)<=0||friendlyGround(hazard)||linkedRelay(hazard,this.hazards))return;
+    // An emplacement that is not yet allowed to AIM is not yet allowed to DIE.
+    //
+    // This asymmetry is the whole "words on them but none of them are
+    // shooting" bug. A gun spawns at y = -draw.h and is damageable from that
+    // frame, but `groundVisible` forbids it from even starting its telegraph
+    // until it is properly on screen. Traced on the shipped build: a turret
+    // spawned at y=-25 with the player's bolts already reaching it, lost its
+    // health between y=7 and y=25, and died with `phase` still 'idle' -- it
+    // never got to the tell the player was being shown by the OTHER guns that
+    // survived. 88 of 91 died that way across a full Earth run.
+    //
+    // Matching the two windows is the fix that makes the label honest: every
+    // gun the player sees a warning from is a gun that was allowed to fire, and
+    // killing one before it shoots now takes reacting to it on screen rather
+    // than spraying the top edge.
+    if(!forced&&hazard.ground&&!groundVisible(hazard,this.h))return;
     const linked=hazard.ground?.role==='relay'&&this.hazards.some(other=>linkedRelay(other,this.hazards)===hazard);
     hazard.hp=(hazard.hp??1)-damage;if(hazard.hp>0)return;
     const def=this.hazardDef(hazard.hazardKey);this.score+=def.score;this.special=Math.min(100,this.special+12);this.awardXp(def.score*XP_PER_SCORE);
@@ -2657,7 +2728,7 @@ export class Game2A {
           hazard.hp=0;this.player.hp=Math.min(this.playerDef().hp,(this.player.hp??0)+1);this.shield=Math.min(this.shieldMax,this.shield+25);
           this.missionBannerText='CLARITY BEACON // REPAIRED';this.missionBannerClock=2.8;this.ring(hazard.x,hazard.y);continue;
         }
-        if(hazard.ground)this.damageGround(hazard,999);else hazard.hp=0;
+        if(hazard.ground)this.damageGround(hazard,999,true);else hazard.hp=0;
         this.damagePlayer(1, hazard.x, hazard.y);
       }
     }
@@ -3088,6 +3159,71 @@ export class Game2A {
    * there are only a handful of distinct pairs, and a fresh gradient per ship
    * per frame is a few thousand allocations a second for a halo.
    */
+  /**
+   * A sprite with an edge on it.
+   *
+   * Returns whatever `drawCentered` returns, so callers keep their existing
+   * procedural fallback when the manifest has not loaded.
+   */
+  private drawWithEdge(sprite: SpriteRef, x: number, y: number, w: number, h: number, color: string): boolean {
+    const c = this.ctx;
+    const silhouette = this.hullSilhouette(sprite, w, h, color);
+    c.save();
+    // Dark first, offset down: separation from a bright backdrop.
+    c.shadowColor = 'rgba(0,0,0,0.85)';
+    c.shadowBlur = HULL_SHADOW_BLUR;
+    c.shadowOffsetY = HULL_SHADOW_DY;
+    this.drawCentered(sprite, x, y, w, h);
+    c.restore();
+    // Then a HARD edge, stamped around the silhouette. A blurred shadow was
+    // tried first and measured: it lit 3.3x more pixels but moved peak contrast
+    // 9.19:1 to 9.40:1 and LOWERED the share of pixels clearing 3:1, because a
+    // blur spreads dim light exactly the way the rim gradient already did. An
+    // edge has to be opaque to be an edge.
+    if (silhouette) {
+      c.save();
+      for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        c.drawImage(silhouette, x - w / 2 + dx * HULL_EDGE_PX, y - h / 2 + dy * HULL_EDGE_PX, w, h);
+      }
+      c.restore();
+    }
+    return this.drawCentered(sprite, x, y, w, h);
+  }
+
+  /**
+   * An opaque, accent-coloured copy of a sprite's alpha, cached per hull.
+   *
+   * Built with `source-in`, so it follows whatever shape the art actually has
+   * and costs nothing per frame after the first. Returns null whenever an
+   * offscreen canvas is unavailable -- the headless validators stub
+   * `createElement`, and a missing edge must degrade to the plain sprite rather
+   * than throw.
+   */
+  private hullSilhouette(sprite: SpriteRef, w: number, h: number, color: string): HTMLCanvasElement | null {
+    const key = `${sprite.category}/${sprite.id}@${Math.round(w)}x${Math.round(h)}/${color}`;
+    const cached = this.hullEdges.get(key);
+    if (cached !== undefined) return cached;
+    let built: HTMLCanvasElement | null = null;
+    try {
+      const image = this.assets.getImage(sprite.category, sprite.id);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w));
+      canvas.height = Math.max(1, Math.round(h));
+      const ctx = canvas.getContext('2d');
+      if (image && ctx && typeof ctx.drawImage === 'function') {
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        ctx.globalCompositeOperation = 'source-in';
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        built = canvas;
+      }
+    } catch {
+      built = null;
+    }
+    this.hullEdges.set(key, built);
+    return built;
+  }
+
   private drawRimGlow(x: number, y: number, size: number, color: string): void {
     const radius = size * RIM_GLOW_SCALE;
     if (radius <= 0) return;
@@ -3230,7 +3366,7 @@ export class Game2A {
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
     this.drawRimGlow(drone.x, drone.y, Math.max(def.draw.w, def.draw.h), def.accent);
-    const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    const drawn = this.drawWithEdge(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h, def.accent);
     if (def.hull === 'heavy') this.drawHeavyHull(drone, def);
     if (!drawn) {
       this.ctx.save();
@@ -3350,7 +3486,7 @@ export class Game2A {
       const angle=ground!.phase==='tell'||ground!.phase==='active'?ground!.angle:Math.atan2(this.player.y-hazard.y,this.player.x-hazard.x);
       this.ctx.save();this.ctx.translate(hazard.x,hazard.y);if(art.rotate)this.ctx.rotate(angle+Math.PI/2);
       this.ctx.drawImage(image,-art.size/2,-art.size*art.pivotY,art.size,art.size);this.ctx.restore();drawn=true;
-    }else drawn=this.drawCentered(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h);
+    }else drawn=this.drawWithEdge(def.sprite, hazard.x, hazard.y, def.draw.w, def.draw.h, def.accent);
 
     if (!drawn) {
       const aim = Math.atan2(this.player.y - hazard.y, this.player.x - hazard.x);
@@ -3385,7 +3521,12 @@ export class Game2A {
         this.ctx.save();this.ctx.fillStyle='#061018';this.ctx.fillRect(x,y-10,width,16);this.ctx.fillStyle=friendlyGround(hazard)?'#00ff00':'#ff5555';this.ctx.textAlign='center';this.ctx.font='800 10px ui-sans-serif,system-ui';this.ctx.fillText(text,x+width/2,y+2,width-8);this.ctx.restore();
       }
     }
-    if(!friendlyGround(hazard))bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+    // Divided by the hp this hazard SPAWNED with, not the registry base. The
+    // bar used to divide by def.hp, so a scaled emplacement rendered 100% full
+    // for most of its life and then emptied in one volley -- the player's read
+    // being "I am shooting it and nothing is happening", which is a new
+    // complaint in the same family as the one the hp scale exists to fix.
+    if(!friendlyGround(hazard))bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / (hazard.hpMax ?? def.hp), def.accent);
   }
 
   private drawHostileShot(shot: HostileProjectile): void {
@@ -4262,7 +4403,7 @@ export class Game2A {
     // because a button that gates progress is a button people get stuck behind.
     if (hasFogBreaker(this.progress)) {
       this.hostileShots = [];
-      for(const hazard of this.hazards)if(hazard.ground?.role==='jammer'&&groundVisible(hazard,this.h))this.damageGround(hazard,999);
+      for(const hazard of this.hazards)if(hazard.ground?.role==='jammer'&&groundVisible(hazard,this.h))this.damageGround(hazard,999,true);
     }
   }
 
@@ -4292,7 +4433,7 @@ export class Game2A {
     this.drones = [];
     // Break power feeds before their guns; repair beacons survive ordnance.
     for(const hazard of [...this.hazards].sort((a,b)=>Number(b.ground?.role==='relay')-Number(a.ground?.role==='relay'))){
-      if(hazard.ground)this.damageGround(hazard,999);
+      if(hazard.ground)this.damageGround(hazard,999,true);
       else{this.score+=75;this.ring(hazard.x,hazard.y);hazard.hp=0;}
     }
     this.hazards = this.hazards.filter(h=>(h.hp??0)>0);
@@ -4582,10 +4723,15 @@ export class Game2A {
       nextAt: Math.round(this.xpForNextLevel()),
     });
     if (levelled) {
+      // `barrels` is the ARCADE track. In campaign the same pickup feeds
+      // `armory.state.rapid`, so this line reported 0 for a whole playthrough
+      // while the player was actually banking rapid-fire ranks -- which is part
+      // of why the owner's log read as though nothing was progressing at all.
       debugLog.log('combat', 'level up', {
         level: this.xpLevel,
         weapon: this.currentWeapon().label,
-        barrels: this.barrels,
+        barrels: this.campaignArmory ? this.campaignArmory.state.rapid : this.barrels,
+        track: this.campaignArmory ? 'rapid' : 'barrels',
         pending: this.pendingUpgrades,
         nextAt: Math.round(this.xpForNextLevel()),
       });
@@ -4620,7 +4766,13 @@ export class Game2A {
         const reward=ALL_MAXED_SCORE*Math.max(1,this.pendingUpgrades);this.score+=reward;this.pendingUpgrades=0;this.upgradeOffer=[];
         this.missionBannerText=`ALL SYSTEMS MAX // +${reward}`;this.missionBannerClock=2.4;return;
       }
-      this.upgradeOffer=[...open].sort(()=>Math.random()-.5).slice(0,UPGRADE_CHOICES);this.upgradeArmClock=UPGRADE_ARM_SECONDS;sfx.play('levelUp');return;
+      this.upgradeOffer=[...open].sort(()=>Math.random()-.5).slice(0,UPGRADE_CHOICES);this.upgradeArmClock=UPGRADE_ARM_SECONDS;sfx.play('levelUp');
+      // The campaign DOES present a choice every level; this branch simply
+      // returned above the one log line, which sat on the arcade tail. A device
+      // log that shows level ups and upgrade takes but zero offers sent the
+      // diagnosis looking for a missing card that was on screen the whole time.
+      debugLog.log('combat','upgrade offer',{level:this.xpLevel,offer:this.upgradeOffer,pending:this.pendingUpgrades});
+      return;
     }
 
     if (open.length === 0) {
