@@ -27,6 +27,7 @@ export interface DefinitiveSave {
   warshipOwned: boolean;
   fighterShipKey: string;
   fighterUpgrades: Record<string, number>;
+  fighterWeaponPoints: number;
   heroUpgrades: Record<string, number>;
   capitalUpgrades: Record<string, number>;
   transit: SpaceCheckpoint | null;
@@ -47,7 +48,7 @@ export function newDefinitiveSave(earth = parseCampaignProgress(null)): Definiti
     location: { mode: 'earth', world: 'ledger_prime', checkpoint: 'earth.launch' },
     credits: 0, inventory: {}, quests: [], visitedRooms: [], clearedRooms: [], recruits: [], rewards: [], dialogueSeen: [],
     warshipOwned: false, fighterShipKey: earth.missionCheckpoints.ledger_prime?.shipKey ?? 'player',
-    fighterUpgrades: {}, heroUpgrades: {}, capitalUpgrades: {}, transit:null, convoy:null,
+    fighterUpgrades: {}, fighterWeaponPoints: 0, heroUpgrades: {}, capitalUpgrades: {}, transit:null, convoy:null,
   };
 }
 
@@ -62,6 +63,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
     for (const key of ['quests', 'visitedRooms', 'clearedRooms', 'recruits', 'rewards', 'dialogueSeen']) if (!ids(value[key])) return null;
     if (!count(value.credits) || typeof value.warshipOwned !== 'boolean' || !id(value.fighterShipKey)) return null;
     if (value.inventory !== undefined && value.inventory !== null && !inventory(value.inventory)) return null;
+    if(value.fighterWeaponPoints!==undefined&&!count(value.fighterWeaponPoints))return null;
     if (!upgrades(value.fighterUpgrades) || !upgrades(value.heroUpgrades) || !upgrades(value.capitalUpgrades)) return null;
     if(value.transit!==undefined&&value.transit!==null&&!validSpaceCheckpoint(value.transit))return null;
     if(value.convoy!==undefined&&value.convoy!==null&&!validConvoyCheckpoint(value.convoy))return null;
@@ -73,7 +75,7 @@ export function parseDefinitiveSave(raw: string): DefinitiveSave | null {
       credits: Number(value.credits), inventory: value.inventory ? { ...value.inventory } as Record<string, number> : {}, warshipOwned: value.warshipOwned, fighterShipKey: value.fighterShipKey,
       quests: [...value.quests as string[]], visitedRooms: [...value.visitedRooms as string[]], clearedRooms: [...value.clearedRooms as string[]],
       recruits: [...value.recruits as string[]], rewards: [...value.rewards as string[]], dialogueSeen: [...value.dialogueSeen as string[]],
-      fighterUpgrades: { ...value.fighterUpgrades }, heroUpgrades: { ...value.heroUpgrades }, capitalUpgrades: { ...value.capitalUpgrades },
+      fighterUpgrades: { ...value.fighterUpgrades }, fighterWeaponPoints:Number(value.fighterWeaponPoints??0), heroUpgrades: { ...value.heroUpgrades }, capitalUpgrades: { ...value.capitalUpgrades },
       transit:value.transit?clone(value.transit as SpaceCheckpoint):null,
       convoy:value.convoy?clone(value.convoy as ConvoyCheckpoint):null,
     };

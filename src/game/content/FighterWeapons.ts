@@ -3,7 +3,7 @@ import type {WeaponDef} from './types';
 export const FIGHTER_FAMILIES=['bb','pulse','rocket','plasma','ledger'] as const;
 export type FighterFamily=typeof FIGHTER_FAMILIES[number];
 export interface FighterWeapon extends WeaponDef {family:FighterFamily;stage:number;speed:number;splash:number;chain:number;laserPulse?:boolean}
-export interface FighterWeaponState {family:FighterFamily;rank:number;rapid:number;level?:number;power?:number}
+export interface FighterWeaponState {family:FighterFamily;rank:number;rapid:number;level?:number;points?:number;power?:number}
 export const FAMILY_INFO:Record<FighterFamily,{label:string;unlock:number;description:string}>={
   bb:{label:'LIQUIDITY BEAM',unlock:1,description:'Single, twin, tri and quad forward coverage.'},
   pulse:{label:'PULSE LANCE',unlock:4,description:'Penetrates a line of enemies.'},
@@ -12,6 +12,13 @@ export const FAMILY_INFO:Record<FighterFamily,{label:string;unlock:number;descri
   ledger:{label:'LEDGER ARC',unlock:13,description:'Energy chains to a bounded number of nearby enemies.'},
 };
 export const RAPID_CAP=4;
+// Earth grants three beam refinements and one new weapon, spread across a run.
+export const EARTH_WEAPON_CAP=5;
+export const EARTH_WEAPON_THRESHOLDS=[0,24,64,120,200] as const;
+export function earthWeaponLevel(points:number):number {return EARTH_WEAPON_THRESHOLDS.filter(at=>points>=at).length;}
+export function weaponPointsLabel(state:FighterWeaponState):string {
+  return (state.level??1)>=EARTH_WEAPON_CAP?'EARTH ARSENAL COMPLETE':`${state.points??0}/${EARTH_WEAPON_THRESHOLDS[state.level??1]} WPN POINTS`;
+}
 /** Compact earned firepower tier fits the existing 0..20 upgrade save format. */
 const POWER_BASE=1/.14,POWER_STEP=1.14;
 export function retainedWeaponPower(state:FighterWeaponState):number {
@@ -46,6 +53,12 @@ export function fighterWeapon(state:FighterWeaponState):FighterWeapon {
   else if(family==='rocket')weapon={...base,damage:[5,7,10,14][i],fireRate:[.45,.43,.4,.37][i],shots:lanes(i===3?[-3,3]:[0]),speed:520,splash:[44,54,64,76][i]};
   else if(family==='plasma')weapon={...base,damage:[7,10,16,19][i],fireRate:[.52,.49,.46,.42][i],shots:lanes([0]),speed:570,splash:[0,16,22,30][i]};
   else weapon={...base,damage:[5,7,9,12][i],fireRate:[.3,.28,.26,.24][i],shots:lanes([0]),speed:840,chain:[1,2,2,3][i],projectileKey:'clarity_beam'};
+  // Core-run stages grow coverage and utility without multiplying sustained
+  // damage by eight on the opening world. Legacy arcade tuning is unchanged.
+  if(state.level!==undefined){
+    const output:Record<FighterFamily,number[]>={bb:[1,1.45,1.95,2.5],pulse:[2.5,2.9,3.3,3.8],rocket:[3.8,4.2,4.7,5.3],plasma:[5.3,5.9,6.6,7.4],ledger:[7.4,8.3,9.3,10.5]};
+    weapon.damage=POWER_BASE*output[family][i]*weapon.fireRate/weapon.shots.length;
+  }
   const floor=state.power?POWER_BASE*Math.pow(POWER_STEP,Math.min(20,state.power)):0;
   weapon.damage=Math.max(weapon.damage,floor*weapon.fireRate/weapon.shots.length);
   const rapid=Math.max(0,Math.min(RAPID_CAP,Math.floor(state.rapid)));
@@ -79,6 +92,7 @@ export interface FighterArmoryPort {
   rankUp(rank:number):boolean;
   upgradeRapid():boolean;
   upgradeWeapon():boolean;
+  awardWeaponPoints(amount:number):boolean;
   setActive(value:boolean):void;
   block():void;
   update(safe:boolean):boolean;

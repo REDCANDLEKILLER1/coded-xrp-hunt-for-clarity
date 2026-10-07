@@ -1,5 +1,7 @@
 # Fresh test runs and weapon cores — October 7, 2026
 
+Weapon-core progression below is superseded by [WEAPON_POINTS_MILESTONES.md](WEAPON_POINTS_MILESTONES.md). The fresh-page save policy remains active.
+
 Public testing now starts a new campaign on every page opening. The boot helper removes known campaign v1/v2/v3 and definitive campaign/section records, preserves unrelated sound/settings records, and uses an in-memory CampaignSave. Storage failures cannot restore old weapons. Checkpoints support retries and chapter travel within the open page; reload or the hamburger restart starts from the beginning. Manual persistent save/load is deferred.
 
 Fresh fighter state is weapon level 1, basic single beam, rapid fire 0. Pilot rank no longer automatically advances the campaign gun. Dedicated WPN cores drop every six enemy kills while weapon level is below 20. Collection directly advances the weapon; it does not spend a general upgrade choice or add rapid fire. General upgrade caps do not suppress these drops. Arcade crates retain their upgrade-choice behavior.

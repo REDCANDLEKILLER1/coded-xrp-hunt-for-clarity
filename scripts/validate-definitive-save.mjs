@@ -136,3 +136,8 @@ const blockedStorage={get length(){throw Error('blocked');},removeItem(){throw E
 assert.equal(startFreshTestRun(blockedStorage).snapshot.fighterUpgrades.rapid_fire,0);
 assert.equal(startFreshTestRun(null).snapshot.fighterUpgrades.weapon_level,1);
 console.log('fresh test opening: legacy purge, settings preserved, session-only retry checkpoints, reload reset and blocked storage passed');
+
+const withoutPoints=newDefinitiveSave();delete withoutPoints.fighterWeaponPoints;
+assert.equal(parseDefinitiveSave(JSON.stringify(withoutPoints)).fighterWeaponPoints,0,'older saves migrate with zero weapon points');
+for(const value of [-1,NaN,1.5,'24'])assert.equal(parseDefinitiveSave(JSON.stringify({...newDefinitiveSave(),fighterWeaponPoints:value})),null);
+assert.equal(startFreshTestRun(null).snapshot.fighterWeaponPoints,0,'every page opening resets weapon points');

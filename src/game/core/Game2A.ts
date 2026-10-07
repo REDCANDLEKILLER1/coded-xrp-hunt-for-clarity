@@ -15,7 +15,7 @@ import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../conten
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
-import {RAPID_CAP,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
+import {RAPID_CAP,EARTH_WEAPON_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
@@ -2041,7 +2041,7 @@ export class Game2A {
     if((hazard.hp??0)<=0||friendlyGround(hazard)||linkedRelay(hazard,this.hazards))return;
     const linked=hazard.ground?.role==='relay'&&this.hazards.some(other=>linkedRelay(other,this.hazards)===hazard);
     hazard.hp=(hazard.hp??1)-damage;if(hazard.hp>0)return;
-    const def=this.hazardDef(hazard.hazardKey);this.score+=def.score;this.special=Math.min(100,this.special+12);this.awardXp(def.score*XP_PER_SCORE);
+    const def=this.hazardDef(hazard.hazardKey);this.score+=def.score;this.special=Math.min(100,this.special+12);this.awardXp(def.score*XP_PER_SCORE);this.campaignArmory?.awardWeaponPoints(1);
     this.ring(hazard.x,hazard.y);sfx.play('explode',1.2);
     if(hazard.ground?.role==='relay'){
       const group=hazard.ground.group;
@@ -4518,6 +4518,7 @@ export class Game2A {
     this.killedThisWave += 1;
     this.special = Math.min(100, this.special + 8 * this.pulsePower);
     this.kills += 1;
+    this.campaignArmory?.awardWeaponPoints(1);
     this.awardXp(def.score * XP_PER_SCORE);
     this.ring(drone.x, drone.y);
     sfx.play('explode');
@@ -4525,8 +4526,8 @@ export class Game2A {
     if (this.kills % SHIELD_PICKUP_EVERY_KILLS === 0) this.dropPickup(PICKUPS.shield_cell, drone.x, drone.y);
 
     const weaponLevel=this.campaignArmory?.state.level;
-    // Weapon cores keep dropping independently of the general upgrade caps.
-    const coreDue=weaponLevel!==undefined?this.kills%6===0&&weaponLevel<20:this.kills%UPGRADE_EVERY_KILLS===0&&!this.allUpgradesMaxed();
+    // Sparse point caches support earned milestones, independent of general caps.
+    const coreDue=weaponLevel!==undefined?this.kills%UPGRADE_EVERY_KILLS===0&&weaponLevel<EARTH_WEAPON_CAP:this.kills%UPGRADE_EVERY_KILLS===0&&!this.allUpgradesMaxed();
     if (coreDue) {
       this.dropPickup(PICKUPS.weapon_upgrade, drone.x, drone.y);
     }
@@ -4802,9 +4803,9 @@ export class Game2A {
     switch (def.effect) {
       case 'weapon_upgrade':
         if(this.campaignArmory?.state.level!==undefined){
-          if(this.campaignArmory.state.level>=20)banner='WEAPON CORES MAX // 20/20';
-          else if(this.campaignArmory.upgradeWeapon())banner=`WEAPON CORE // ${this.campaignArmory.weapon.label} · ${this.campaignArmory.state.level}/20`;
-          else {this.missionBannerText='WEAPON CORE // RETRY';this.missionBannerClock=2.2;return false;}
+          if(this.campaignArmory.state.level>=EARTH_WEAPON_CAP)banner='EARTH ARSENAL COMPLETE';
+          else if(this.campaignArmory.awardWeaponPoints(4))banner=`+4 WEAPON POINTS // ${weaponPointsLabel(this.campaignArmory.state)}`;
+          else {this.missionBannerText='WEAPON POINTS // RETRY';this.missionBannerClock=2.2;return false;}
           break;
         }
         this.pendingUpgrades += 1;
@@ -5108,16 +5109,24 @@ export class Game2A {
   private enemyHp(def: EnemyDef): number {
     const scaled = def.hp * HULL_COMBAT[def.hull].hp
       * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
-    return Math.max(1, Math.round(scaled));
+    return Math.max(1, Math.round(scaled*this.campaignThreatScale()));
   }
 
   /** Mines and turrets are shot at too, so they ride the same curve. */
   private hazardHp(def: HazardDef): number {
     const scaled = def.hp * (1 - ENEMY_SCALE_SHARE + ENEMY_SCALE_SHARE * this.pressureScale());
-    return Math.max(1, Math.round(scaled));
+    return Math.max(1, Math.round(scaled*this.campaignThreatScale()));
   }
 
-  /** A drone's speed, which climbs with the wave and with the gun facing it. */
+  /** Run milestones strengthen new campaign enemy and ground-defense spawns. */
+  private campaignThreatScale():number {
+    const level=this.campaignArmory?.state.level;
+    // Earned run milestones strengthen future spawns. Manual loadout changes
+    // cannot lower this curve or heal enemies already on screen.
+    return level===undefined?1:1+Math.max(0,Math.min(EARTH_WEAPON_CAP,level)-1)*.3;
+  }
+
+  /** A drone's speed climbs with the run's wave and elapsed pressure. */
   private enemySpeed(def: EnemyDef): number {
     const base = def.baseSpeed * HULL_COMBAT[def.hull].speed;
     return base + this.wave * 7 + (this.pressureScale() - 1) * ENEMY_SPEED_PER_SCALE;
