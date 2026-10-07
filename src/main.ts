@@ -1,4 +1,5 @@
 import './style.css';
+import { mountGameMenu } from './game/ui/GameMenu';
 import { watchForUpdates } from './game/core/UpdateWatch';
 import './landscape.css';
 import { Game2A } from './game/core/Game2A';
@@ -109,6 +110,17 @@ logButton.addEventListener('click', (event) => {
   showDebugLogView();
 });
 document.body.appendChild(logButton);
+
+mountGameMenu(() => {
+  const campaign = definitiveSave.testSlot ? new CampaignSave(previewStorage) : definitiveSave;
+  const result = campaign.restart();
+  if (!result.ok) return 'Restart could not save. Your checkpoint is retained. Reload and try again.';
+  const destination = new URL(location.href);
+  destination.search = '';
+  destination.hash = '';
+  location.replace(destination.href);
+  return null;
+});
 
 new LandscapeMode();
 const game = new Game2A(canvas);

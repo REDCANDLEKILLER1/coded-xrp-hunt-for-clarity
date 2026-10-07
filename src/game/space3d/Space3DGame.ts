@@ -1,3 +1,4 @@
+import { isGameMenuOpen } from '../ui/GameMenu';
 import { AssetLoader } from '../core/AssetLoader';
 import { Loop } from '../core/Loop';
 import { SpriteRenderer } from '../core/Sprite';
@@ -975,6 +976,7 @@ export class Space3DGame {
   // ---- frame ------------------------------------------------------------
 
   private tick(dt: number): void {
+    if (isGameMenuOpen()) return;
     if (!this.visible) return;
     this.clock += dt;
     if (this.bannerClock > 0) this.bannerClock = Math.max(0, this.bannerClock - dt);

@@ -146,6 +146,11 @@ export class CampaignSave {
     } catch { return this.report({ ok: false, reason: 'storage' }); }
   }
 
+  /** Persist a fresh record atomically so legacy checkpoints cannot reappear. */
+  restart(): SaveResult {
+    return this.update((draft) => { Object.assign(draft, newDefinitiveSave()); });
+  }
+
   claim(rewardId: string, apply: (draft: DefinitiveSave) => boolean | void): SaveResult {
     if (!id(rewardId)) return this.report({ ok: false, reason: 'invalid' });
     if (this.state.rewards.includes(rewardId)) return this.report({ ok: false, reason: 'duplicate' });

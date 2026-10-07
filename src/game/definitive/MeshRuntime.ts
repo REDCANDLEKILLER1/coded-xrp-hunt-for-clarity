@@ -1,3 +1,4 @@
+import { isGameMenuOpen } from '../ui/GameMenu';
 import { ACESFilmicToneMapping, AmbientLight, AnimationMixer, Box3, Color, DirectionalLight, GridHelper, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry, SRGBColorSpace, Vector3, WebGLRenderer, PMREMGenerator, PCFSoftShadowMap } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -361,7 +362,8 @@ export class MeshRuntime {
     if (this.frameId) return;
     this.previousTime = performance.now();
     const frame = (time: number): void => {
-      this.controller.frame((time - this.previousTime) / 1000); this.previousTime = time;
+      if (!isGameMenuOpen()) this.controller.frame((time - this.previousTime) / 1000);
+      this.previousTime = time;
       this.frameId = requestAnimationFrame(frame);
     };
     this.frameId = requestAnimationFrame(frame);

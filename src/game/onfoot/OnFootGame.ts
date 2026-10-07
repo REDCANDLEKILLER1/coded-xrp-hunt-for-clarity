@@ -1,3 +1,4 @@
+import { isGameMenuOpen } from '../ui/GameMenu';
 import { sfx } from '../audio/Sfx';
 import {
   ONFOOT_PHYSICS,
@@ -170,7 +171,7 @@ export class OnFootGame {
   private frame(time: number): void {
     const dt = Math.min(0.033, Math.max(0, (time - this.lastTime) / 1000));
     this.lastTime = time;
-    if (this.visible) {
+    if (this.visible && !isGameMenuOpen()) {
       this.update(dt);
       this.draw();
     }

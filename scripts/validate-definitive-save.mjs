@@ -95,3 +95,23 @@ saveCampaignProgress(earth);
 assert.equal(new CampaignSave(storage).snapshot.earth.highScore, 1244);
 assert.equal(data.get(legacyKey), legacyRaw);
 console.log('definitive-save: OK — separate campaign/test saves, read-only migration, atomic rewards/purchases, reload deduplication, quota and tab conflicts, protected future saves, actual 2D adapter.');
+
+// Restart must overwrite the active record, never remove it and reimport legacy progress.
+const restartSave = new CampaignSave(storage, 'test:restart');
+restartSave.update(draft => { draft.credits = 800; draft.warshipOwned = true; draft.quests.push('captured'); draft.earth.highScore = 500; draft.location = { mode: 'hub', world: 'ledger_prime', checkpoint: 'bridge.secured' }; });
+const beforeRestart = restartSave.snapshot;
+failWrites = true;
+assert.equal(restartSave.restart().ok, false);
+assert.deepEqual(restartSave.snapshot, beforeRestart, 'failed restart retains the checkpoint');
+failWrites = false;
+assert.equal(restartSave.restart().ok, true);
+const restarted = new CampaignSave(storage, 'test:restart').snapshot;
+const expectedFresh = newDefinitiveSave();
+assert.deepEqual({ ...restarted, revision: 0, updatedAt: 0 }, expectedFresh, 'fresh state survives a reload');
+assert.equal(data.get(legacyKey), legacyRaw, 'restart leaves legacy records alone');
+const staleRestart = new CampaignSave(storage, 'test:restart');
+restartSave.update(draft => { draft.credits = 5; });
+assert.deepEqual(staleRestart.restart(), { ok: false, reason: 'conflict' }, 'restart cannot overwrite newer progress from another tab');
+const protectedRestart = new CampaignSave(storage, 'test:protected');
+assert.deepEqual(protectedRestart.restart(), { ok: false, reason: 'protected' });
+console.log('Campaign restart checks passed');

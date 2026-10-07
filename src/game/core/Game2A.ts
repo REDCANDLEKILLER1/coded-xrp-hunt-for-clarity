@@ -1,3 +1,4 @@
+import { isGameMenuOpen } from '../ui/GameMenu';
 import { AssetLoader } from './AssetLoader';
 import { Input } from './Input';
 import { Loop } from './Loop';
@@ -860,6 +861,7 @@ export class Game2A {
   }
 
   private frame(dt: number): void {
+    if (isGameMenuOpen()) return;
     this.clock += dt;
     if(this.mode==='play'&&this.campaignArmory&&this.clock>=this.fighterSyncClock&&(!this.fighterReady||this.campaignArmory.state.rank<Math.min(20,this.xpLevel)))this.syncFighterMastery();
     const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused&&!this.campaignArmory?.active?this.missionDirector.currentAct?.key??null:null;
