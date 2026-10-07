@@ -383,7 +383,7 @@ for (const boss of scripted) {
   for(const [act,expected] of [['regulatory_behemoth','deep_space_lane'],['clarity_destroyer','ledger_ground_neon_v2'],['regulatory_warship','ledger_ground_neon_v2']]){
     const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset();g.earthEncounterDirector.clear();g.missionDirector.startAtAct(mission,act);
     const refs=[];g.assets.getImage=(category,id)=>{refs.push(id);return{width:1024,height:683};};
-    g.drawStageBackdrop(g.currentStage());check(expected==='deep_space_lane'?refs.length>0&&refs.every(id=>id.startsWith('space_path_')):refs.length===1&&refs[0]===expected,`${act}: actual draw must inherit the chapter environment`);
+    g.drawStageBackdrop(g.currentStage());check(expected==='deep_space_lane'?refs.length>0&&refs.every(id=>id.startsWith('space_path_')):refs.length>0&&refs.every(id=>id.startsWith('city_path_')),`${act}: actual draw must inherit the chapter environment`);
     const travel=g.groundTravel;g.paused=true;g.update(10);check(g.groundTravel===travel,'paused ground does not slide under frozen threats');
   }
   const before=groundTiles(599.9,844,600),after=groundTiles(600.1,844,600);
@@ -493,7 +493,7 @@ console.log('boss-tempo: OK — every screened boss stays open, and no health ba
     g.paused=true;const stopped=g.orbitalTravel;g.frame(.1);check(g.orbitalTravel===stopped,'explicit pause freezes space motion');g.paused=false;g.launchClock=0;
     const calls=[];g.assets.getImage=(category,id)=>({id,width:720,height:1280});g.ctx.drawImage=(...args)=>calls.push(args);
     g.orbitalTravel=100;g.drawStageBackdrop(g.currentStage());const first=JSON.stringify(calls);calls.length=0;g.orbitalTravel=110;g.drawStageBackdrop(g.currentStage());
-    check(first!==JSON.stringify(calls),'space draw coordinates must change with flight travel');check(calls.every(args=>args[0].id==='deep_space_lane'),'Earth cannot appear during opening combat');
+    check(first!==JSON.stringify(calls),'space draw coordinates must change with flight travel');check(calls.every(args=>args[0].id.startsWith('space_path_')),'Earth cannot appear during opening combat');
     g.missionDirector.startAtAct(mission,'regulatory_behemoth');g.startGuardian(guardianPlanFor('regulatory_behemoth'));g.boss.state='fight';g.boss.hp=1;g.bossDamageScale=()=>1;
     g.player.x=w*.2;g.player.y=h*.83;g.damageBoss(10);
     check(!!g.earthEntry,'space boss final hit begins descent');check(g.missionDirector.currentAct.key==='ledger_city','next ground section is banked without ending the level');
@@ -507,7 +507,18 @@ console.log('boss-tempo: OK — every screened boss stays open, and no health ba
     for(let i=0;i<150&&g.earthEntry;i++)g.frame(.05);
     check(!g.earthEntry&&g.mode==='play'&&g.missionDirector.currentAct.key==='ledger_city','descent resumes city gameplay exactly once');
     check(g.player.y===h*.83&&g.player.x===w/2,'fighter returns safely at ground-section entrance');
-    check(g.upgradeOffer.length>0||g.allUpgradesMaxed(),'boss upgrade reward appears after cinematic');
+    check(g.cloudDescent===0&&g.upgradeOffer.length===0,'cloud descent starts before city combat and banked reward');
+    g.frame(.1);const cloudHeld=g.cloudDescent;
+    g.paused=true;g.frame(.5);check(g.cloudDescent===cloudHeld,'pause freezes cloud route');g.paused=false;
+    const cloudPlayer=g.player.x;g.input.onKeyDown({key:'ArrowRight',code:'ArrowRight'});g.frame(.1);
+    check(g.player.x>cloudPlayer,'player can steer during cloud descent');g.input.setActive(false);g.input.setActive(true);
+    for(let i=0;i<810&&g.cloudDescent!==null;i++)g.frame(.05);
+    check(g.cloudDescent===null&&g.cityHasCloudTail&&g.earthEncounterDirector.stageKey==='ledger_city','all ten cloud tiles finish before city encounters start');
+    calls.length=0;g.cloudDescent=40;g.drawSurfacePath();const cloudExit=JSON.stringify(calls);
+    calls.length=0;g.cloudDescent=null;g.drawSurfacePath();
+    check(cloudExit===JSON.stringify(calls),'actual rendered tiles preserve the outgoing cloud tail at city handoff');
+
+    check(g.upgradeOffer.length>0||g.allUpgradesMaxed(),'boss upgrade reward appears after cloud approach');
     for(let i=0;i<20;i++)g.frame(.05);check(g.earthArrivalFade===0,'arrival fade cannot stick under an upgrade screen');
     for(const act of ['clarity_destroyer','gary_fog']){
       g.reset(undefined,{fresh:true});g.missionDirector.startAtAct(mission,act);g.startGuardian(guardianPlanFor(act));g.boss.state='fight';g.boss.hp=1;g.bossDamageScale=()=>1;g.damageBoss(10);
@@ -518,3 +529,24 @@ console.log('boss-tempo: OK — every screened boss stays open, and no health ba
   for(let t=0;t<=EARTH_ENTRY_DURATION;t+=.05){const p=earthEntryPose(t,.2,.83);check([p.x,p.y,p.shipScale,p.shipAlpha,p.planetAlpha,p.fade].every(Number.isFinite),'all animation poses finite');}
   console.log('  Earth entry: scrolling launch/combat, no early planet, section-boss gate, moving descent, disappearing craft, input/pause, banked reward/checkpoint and ground continuation');
 }
+
+// Surface route joins all ten clouds to the city once, then loops city only.
+{
+ const {surfaceTiles,CLOUD_PATH,CITY_PATH}=await load('src/game/content/EarthEnvironment.ts');
+ check(CLOUD_PATH.length===10&&CITY_PATH.length===10,'ten clouds and ten city tiles');
+ for(const [w,h]of [[393,793],[844,390]]){
+  const th=w*1.5;
+  for(let i=0;i<=20;i++){
+   const tile=surfaceTiles(i,h,th,true).find(tile=>tile.id===-i);
+   const expected=i<10?CLOUD_PATH[i].id:CITY_PATH[(i-10)%10].id;
+   check(tile.ref.id===expected,'cloud01→cloud10→city01→city10→city01 order');
+  }
+  for(const pos of [0,9.999,10.001,19.999,20.001]){
+   const tiles=surfaceTiles(pos,h,th,true);
+   check(tiles[0].y<=0&&tiles.at(-1).y+th>=h,'surface route has no empty viewport gap');
+  }
+
+ }
+}
+if(failures.length){console.error('boss-tempo final checks: FAIL\n'+failures.join('\n'));process.exit(1);}
+console.log('boss-tempo final checks: PASS — cloud descent, steering, pause, city loop and handoff');

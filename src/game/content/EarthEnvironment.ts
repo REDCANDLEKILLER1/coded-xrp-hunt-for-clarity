@@ -32,3 +32,39 @@ export const SPACE_PATH:SpriteRef[]=[
 export function spaceTiles(travel:number,height:number,tileHeight:number){
   return groundTiles(travel,height,tileHeight).map(tile=>({...tile,mirror:false,index:((-tile.id%SPACE_PATH.length)+SPACE_PATH.length)%SPACE_PATH.length}));
 }
+
+export const CLOUD_PATH:SpriteRef[]=[
+  {category:'backgrounds',id:'cloud_path_01'},
+  {category:'backgrounds',id:'cloud_path_02'},
+  {category:'backgrounds',id:'cloud_path_03'},
+  {category:'backgrounds',id:'cloud_path_04'},
+  {category:'backgrounds',id:'cloud_path_05'},
+  {category:'backgrounds',id:'cloud_path_06'},
+  {category:'backgrounds',id:'cloud_path_07'},
+  {category:'backgrounds',id:'cloud_path_08'},
+  {category:'backgrounds',id:'cloud_path_09'},
+  {category:'backgrounds',id:'cloud_path_10'},
+];
+
+export const CITY_PATH:SpriteRef[]=[
+  {category:'backgrounds',id:'city_path_01'},
+  {category:'backgrounds',id:'city_path_02'},
+  {category:'backgrounds',id:'city_path_03'},
+  {category:'backgrounds',id:'city_path_04'},
+  {category:'backgrounds',id:'city_path_05'},
+  {category:'backgrounds',id:'city_path_06'},
+  {category:'backgrounds',id:'city_path_07'},
+  {category:'backgrounds',id:'city_path_08'},
+  {category:'backgrounds',id:'city_path_09'},
+  {category:'backgrounds',id:'city_path_10'},
+];
+
+export const CLOUD_DESCENT_DURATION=40;
+/** Tile time is normalized, so phone rotation does not jump to another tile. */
+export function surfaceTiles(position:number,height:number,tileHeight:number,clouds:boolean){
+  return groundTiles(position*tileHeight,height,tileHeight).map(tile=>{
+    const progress=-tile.id;
+    const ref=clouds&&progress<10?CLOUD_PATH[Math.max(0,progress)]:CITY_PATH[((progress-(clouds?10:0))%10+10)%10];
+    return {...tile,mirror:false,ref};
+  });
+}

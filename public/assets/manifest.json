@@ -510,6 +510,206 @@
       "bytes": 20552,
       "sha256": "a5c381353df259ecc51c99c7447cfa9050d031ce5e08c276169cb3e687791aa5",
       "notes": "Original generated corridor tile 10 of 10; ordered downward scrolling loop."
+    },
+    "cloud_path_01": {
+      "src": "/assets/backgrounds/cloud_path_01.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 83236,
+      "sha256": "f92e41b17600c32e0f08f01980972248b82e24f7fd37f098a06dd8a8bbe1d15f",
+      "notes": "Original built-in generated 1024x1536 cloud_path_01; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_02": {
+      "src": "/assets/backgrounds/cloud_path_02.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 117674,
+      "sha256": "928d6134c71b59a3417a5734999a043966df41311a144952c2fcc5ca8293822d",
+      "notes": "Original built-in generated 1024x1536 cloud_path_02; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_03": {
+      "src": "/assets/backgrounds/cloud_path_03.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 93034,
+      "sha256": "4c2fd89b52f2179a45b18ad0ca61973418f0becf6c16e5df2e79aac2df4e1d0e",
+      "notes": "Original built-in generated 1024x1536 cloud_path_03; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_04": {
+      "src": "/assets/backgrounds/cloud_path_04.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 97198,
+      "sha256": "6a0afc97d53aa0a83a01ac9f5aed9aadc639d29e7235e4aac5399d68f0dbd9a3",
+      "notes": "Original built-in generated 1024x1536 cloud_path_04; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_05": {
+      "src": "/assets/backgrounds/cloud_path_05.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 90342,
+      "sha256": "419568f6cbf46448af06ebd9b0cedaefbe94b6127550eed6eb2d016a3eadaa73",
+      "notes": "Original built-in generated 1024x1536 cloud_path_05; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_06": {
+      "src": "/assets/backgrounds/cloud_path_06.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 93746,
+      "sha256": "f24bbff5a285dc39e771482fd170f1b489bbc808a39d9fceb8f6ac9747a4d220",
+      "notes": "Original built-in generated 1024x1536 cloud_path_06; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_07": {
+      "src": "/assets/backgrounds/cloud_path_07.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 133950,
+      "sha256": "75e927cc16c32d28833ef88feb18827006091b45747a6df24127d395f29d835f",
+      "notes": "Original built-in generated 1024x1536 cloud_path_07; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_08": {
+      "src": "/assets/backgrounds/cloud_path_08.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 152426,
+      "sha256": "2d01b4a60a963ead700f018dff29817b07259568e48321388ed18f3a92903262",
+      "notes": "Original built-in generated 1024x1536 cloud_path_08; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_09": {
+      "src": "/assets/backgrounds/cloud_path_09.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 208706,
+      "sha256": "4d5aef113694871f529a49994c8ca9a27202d831945189518de271647670c7de",
+      "notes": "Original built-in generated 1024x1536 cloud_path_09; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "cloud_path_10": {
+      "src": "/assets/backgrounds/cloud_path_10.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 243060,
+      "sha256": "2b45bab2cc36db27a646e00148602ba8bbe0714f39b74a070db56360d7bf67a5",
+      "notes": "Original built-in generated 1024x1536 cloud_path_10; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_01": {
+      "src": "/assets/backgrounds/city_path_01.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 180450,
+      "sha256": "e6632bb51afb4c2b998602c870ab1a98de8b76f44613d50d3567bf418809e9c2",
+      "notes": "Original built-in generated 1024x1536 city_path_01; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_02": {
+      "src": "/assets/backgrounds/city_path_02.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 254544,
+      "sha256": "a92dd52b63c156981327bdba3511e34ec44d7c56d844a832c34b07635685bd04",
+      "notes": "Original built-in generated 1024x1536 city_path_02; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_03": {
+      "src": "/assets/backgrounds/city_path_03.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 223710,
+      "sha256": "c23086ea2bdbf8045c9012e2cbcea1ac479874e5c42ee62260bcd6647d36449d",
+      "notes": "Original built-in generated 1024x1536 city_path_03; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_04": {
+      "src": "/assets/backgrounds/city_path_04.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 219726,
+      "sha256": "458f87f2c027ec8c6a8ec5a10713abb973e7dcab8523059adec47b662328c53a",
+      "notes": "Original built-in generated 1024x1536 city_path_04; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_05": {
+      "src": "/assets/backgrounds/city_path_05.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 157956,
+      "sha256": "d9daa02225ec463ba55edbb0379ff474473d6b73e0ec7b0140e4b56317379b33",
+      "notes": "Original built-in generated 1024x1536 city_path_05; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_06": {
+      "src": "/assets/backgrounds/city_path_06.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 207158,
+      "sha256": "8ce4fdcbfe6570946d42961e05303e674fe90af2c41d688c4f751f33d8ae439c",
+      "notes": "Original built-in generated 1024x1536 city_path_06; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_07": {
+      "src": "/assets/backgrounds/city_path_07.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 191786,
+      "sha256": "cda6be953ec0e59b7af148c5aeac0eec9fa9cf1987d932078b28404a91d8b6ff",
+      "notes": "Original built-in generated 1024x1536 city_path_07; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_08": {
+      "src": "/assets/backgrounds/city_path_08.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 257042,
+      "sha256": "c5e8953316cc0be45b427e8f67d858e8638dfab2f39566668e1fd30d98b09100",
+      "notes": "Original built-in generated 1024x1536 city_path_08; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_09": {
+      "src": "/assets/backgrounds/city_path_09.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 230086,
+      "sha256": "5298478fd736df9047939fbffc682c779c8822297f1ba207683fee3e315c29c1",
+      "notes": "Original built-in generated 1024x1536 city_path_09; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "city_path_10": {
+      "src": "/assets/backgrounds/city_path_10.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 155724,
+      "sha256": "494bca0f90efd26f0f0f0cf19ae470699943d8dd0967041e560c1f7d2c73eff0",
+      "notes": "Original built-in generated 1024x1536 city_path_10; ordered Earth atmospheric descent / city scrolling sequence."
     }
   },
   "interior": {

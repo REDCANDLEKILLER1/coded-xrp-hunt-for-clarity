@@ -14,7 +14,7 @@ import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/Cam
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
-import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles } from '../content/EarthEnvironment';
+import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles, surfaceTiles, CLOUD_DESCENT_DURATION } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
 import {RAPID_CAP,EARTH_WEAPON_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
@@ -801,6 +801,9 @@ export class Game2A {
   private orbitalTravel=0;
   private earthEntry:{elapsed:number;fromX:number;fromY:number}|null=null;
   private earthArrivalFade=0;
+  private cloudDescent:number|null=null;
+  private cityPathPosition=0;
+  private cityHasCloudTail=false;
   private groundRestorationPending=false;
   private restoredGround:Array<{x:number;y:number;life:number}>=[];
   /** Copied observations only: the section test offers no state setters. */
@@ -872,6 +875,26 @@ export class Game2A {
       this.fighterArmory?.block();
       if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
       if(!this.paused){this.updateEarthEntry(dt);this.updateDebris(dt);}
+      this.render();return;
+    }
+    if(this.cloudDescent!==null){
+      this.fighterArmory?.block();
+      if(this.storyCapturedInput){this.input.setActive(true);this.storyCapturedInput=false;}
+      this.clock+=dt;
+      if(this.input.consumePause())this.setPaused(!this.paused);
+      const cloudTap=this.input.consumeTap();
+      this.input.consumeBomb();this.input.consumeDoubleTap();this.input.consumeSpecial();
+      if(cloudTap&&inCircle(this.zone.pause,cloudTap.x,cloudTap.y))this.setPaused(!this.paused);
+      if(!this.paused){
+        this.cloudDescent=Math.min(CLOUD_DESCENT_DURATION,this.cloudDescent+dt);
+        this.movePlayer(dt);this.updateFacing(dt);this.updateDebris(dt);
+        if(this.cloudDescent>=CLOUD_DESCENT_DURATION){
+          this.cloudDescent=null;this.cityPathPosition=0;this.cityHasCloudTail=true;
+          this.earthEncounterDirector.start(this.missionDirector.currentAct?.key??'');
+          this.missionBannerText='CLOUD LAYER CLEARED // LEDGER CITY';this.missionBannerClock=2.8;
+          if(this.pendingUpgrades>0)this.openUpgradeChoice();
+        }
+      }
       this.render();return;
     }
     if(!this.campaignArmory?.active)this.clock += dt;
@@ -958,6 +981,7 @@ export class Game2A {
 
     this.movePlayer(dt);
     this.groundTravel += this.currentStage().scrollSpeed * dt;
+    if(this.missionDirector.activeMission&&['ledger_city','regulatory_outpost'].includes(this.currentStage().key))this.cityPathPosition+=dt/10;
     for(const restored of this.restoredGround){restored.y+=this.currentStage().scrollSpeed*dt;restored.life-=dt;}
     this.restoredGround=this.restoredGround.filter(restored=>restored.life>0&&restored.y<this.h+140);
     this.updateFacing(dt);
@@ -2853,7 +2877,7 @@ export class Game2A {
     }
     if (!illustrated) this.drawStageStructures(stage);
     if(stage.key==='deep_space_lane'&&this.missionDirector.activeMission)this.drawOrbitalStars();
-    this.drawStageProps(stage);
+    if(this.cloudDescent===null)this.drawStageProps(stage);
     if(this.earthEntry)this.drawEarthEntryPlanet();
   }
 
@@ -2889,6 +2913,7 @@ export class Game2A {
   private drawStageBackdrop(stage: StageDef): boolean {
     const earth=!!this.missionDirector.activeMission;
     if(earth&&stage.key==='deep_space_lane'&&this.drawSpacePath())return true;
+    if(earth&&['ledger_city','regulatory_outpost'].includes(stage.key)&&this.drawSurfacePath())return true;
     const ref = earth ? EARTH_BACKDROPS[stage.key] ?? stage.background : this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
     const image = this.assets.getImage(ref.category, ref.id);
     if (!image || image.width <= 0 || image.height <= 0) return false;
@@ -2926,6 +2951,29 @@ export class Game2A {
     this.ctx.fillRect(0, 0, this.w, this.h);
     this.ctx.restore();
     return true;
+  }
+
+  private drawSurfacePath():boolean {
+    const height=this.w*1.5;
+    const descending=this.cloudDescent!==null;
+    const clouds=descending||this.cityHasCloudTail;
+    const position=descending?this.cloudDescent!/CLOUD_DESCENT_DURATION*10:this.cityPathPosition+(clouds?10:0);
+    let drawn=false;
+    this.ctx.save();this.ctx.fillStyle='#071324';this.ctx.fillRect(0,0,this.w,this.h);
+    for(const tile of surfaceTiles(position,this.h,height,clouds)){
+      const image=this.assets.getImage(tile.ref.category,tile.ref.id);if(!image)continue;
+      drawn=true;this.ctx.drawImage(image,0,tile.y,this.w,height);
+      const band=height*.1;
+      for(const bottom of [false,true]){
+        const y=tile.y+(bottom?height-band:0);
+        const shade=this.ctx.createLinearGradient(0,y,0,y+band);
+        shade.addColorStop(0,bottom?'rgba(7,19,36,0)':'#071324');
+        shade.addColorStop(1,bottom?'#071324':'rgba(7,19,36,0)');
+        this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
+      }
+    }
+    this.ctx.fillStyle='rgba(0,4,10,.12)';this.ctx.fillRect(0,0,this.w,this.h);
+    this.ctx.restore();return drawn;
   }
 
   private drawSpacePath():boolean {
@@ -2982,9 +3030,8 @@ export class Game2A {
     if(!pose.complete)return;
     this.earthEntry=null;this.earthArrivalFade=.6;
     this.player.x=this.w/2;this.player.y=this.h*.83;this.playerFacing=-Math.PI/2;
-    this.earthEncounterDirector.start(this.missionDirector.currentAct?.key??'');
-    this.missionBannerText='EARTH ENTRY COMPLETE // LEDGER CITY';this.missionBannerClock=2.8;
-    if(this.pendingUpgrades>0)this.openUpgradeChoice();
+    this.cloudDescent=0;this.cityPathPosition=0;
+    this.missionBannerText='EARTH ENTRY COMPLETE // CLOUD DESCENT';this.missionBannerClock=2.8;
   }
 
   private drawEarthEntryPlanet():void {
@@ -3127,6 +3174,18 @@ export class Game2A {
 
   private play(): void {
     if(this.earthEntry){this.drawEarthEntryFlight();return;}
+    if(this.cloudDescent!==null){
+      this.drawPlayer();this.drawDebris();
+      this.ctx.save();this.ctx.textAlign='center';this.ctx.fillStyle='#b5ffd0';
+      this.ctx.font='800 13px ui-sans-serif,system-ui';
+      this.ctx.fillText('DESCENDING THROUGH CLOUDS',this.w/2,32);
+      this.ctx.fillText('LEDGER CITY APPROACH',this.w/2,52);
+      this.padButton(this.zone.pause,this.paused?'▶':'❚❚','#00ff00');
+      this.ctx.restore();
+      if(this.paused)this.pause();
+      if(this.earthArrivalFade>0){this.ctx.fillStyle=`rgba(0,0,0,${this.earthArrivalFade/.6})`;this.ctx.fillRect(0,0,this.w,this.h);}
+      return;
+    }
     this.drawGroundInfrastructure();
     for (const hazard of this.hazards) this.drawHazard(hazard);
     this.drawPlayer();
@@ -5019,7 +5078,7 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.groundTravel = 0;
-    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;
+    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;this.cloudDescent=null;this.cityPathPosition=0;this.cityHasCloudTail=false;
     this.groundRestorationPending=false;this.restoredGround=[];
     this.fogGateActive = false;
     this.fogCutClock = 0;
