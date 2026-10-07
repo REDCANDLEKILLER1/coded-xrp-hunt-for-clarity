@@ -60,7 +60,7 @@ for (const caller of ['private applyPickup(', 'private drawPickup(']) {
   );
 }
 
-// ---- no field drop touches the gun --------------------------------------
+// ---- arcade crates offer choice; campaign cores evolve the weapon --------------------------------------
 const apply = methodBody(game, 'private applyPickup(') ?? '';
 check(
   !/this\.barrels\s*=/.test(apply),
@@ -68,8 +68,10 @@ check(
 );
 check(
   /case 'weapon_upgrade':[\s\S]*?this\.pendingUpgrades \+= 1/.test(apply),
-  'the upgrade crate must bank a level-up CHOICE, not apply an upgrade itself',
+  'arcade upgrade crates must still bank a level-up choice',
 );
+
+check(/this\.campaignArmory\.upgradeWeapon\(\)/.test(apply), 'campaign weapon cores must evolve the weapon');
 
 // ---- each effect is handled, exactly once, and says so ------------------
 const effects = ['weapon_upgrade', 'bomb', 'repair', 'shield'];
@@ -119,7 +121,7 @@ check(
   'drawPickup does not paint the effect tint',
 );
 check(
-  /strokeText\(def\.tag/.test(draw) && /fillText\(def\.tag/.test(draw),
+  /strokeText\(tag/.test(draw) && /fillText\(tag/.test(draw) && /const tag=.*?'WPN':def\.tag/.test(draw),
   'drawPickup does not stamp the effect tag',
 );
 // The aura must precede the sprite draw and must not be skipped by it: the
@@ -138,4 +140,4 @@ if (failures.length > 0) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log('pickup wiring OK: 4 friendly-green supplies with distinct tags/icons, no field drop touches the gun');
+console.log('pickup wiring OK: 4 friendly-green supplies with distinct tags/icons, arcade choices and dedicated campaign weapon cores');

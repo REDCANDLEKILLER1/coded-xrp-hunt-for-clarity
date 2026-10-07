@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
-const compiled = await build({ stdin: { contents: `export * from './src/game/definitive/CampaignSave.ts'; export { configureCampaignPersistence, loadCampaignProgress, saveCampaignProgress } from './src/game/content/CampaignProgress.ts';`, resolveDir: process.cwd() }, bundle: true, format: 'esm', write: false, logLevel: 'silent' });
-const { CampaignSave, SAVE_PREFIX, newDefinitiveSave, parseDefinitiveSave, reviewSaveSlot, configureCampaignPersistence, loadCampaignProgress, saveCampaignProgress } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
+const compiled = await build({ stdin: { contents: `export * from './src/game/definitive/CampaignSave.ts'; export {startFreshTestRun} from './src/game/definitive/TestRun.ts'; export { configureCampaignPersistence, loadCampaignProgress, saveCampaignProgress } from './src/game/content/CampaignProgress.ts';`, resolveDir: process.cwd() }, bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { startFreshTestRun, CampaignSave, SAVE_PREFIX, newDefinitiveSave, parseDefinitiveSave, reviewSaveSlot, configureCampaignPersistence, loadCampaignProgress, saveCampaignProgress } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
 const data = new Map();
 let failWrites = false;
 const writes = [];
@@ -115,3 +115,24 @@ assert.deepEqual(staleRestart.restart(), { ok: false, reason: 'conflict' }, 'res
 const protectedRestart = new CampaignSave(storage, 'test:protected');
 assert.deepEqual(protectedRestart.restart(), { ok: false, reason: 'protected' });
 console.log('Campaign restart checks passed');
+
+// Public testing boot purges campaign records and never loads them, even when
+// localStorage cannot delete. Sound/settings are independent of game progress.
+const oldRecords=new Map([
+ [`${SAVE_PREFIX}:campaign`,JSON.stringify({...newDefinitiveSave(),fighterUpgrades:{weapon_rank:20,weapon_family:4,rapid_fire:4,weapon_level:20}})],
+ [`${SAVE_PREFIX}:test:landing`,'old section checkpoint'],
+ ['coded-xrp-campaign-progress-v3',legacyRaw],
+ ['coded-xrp-campaign-progress-v2','old'],['coded-xrp-campaign-progress-v1','old'],['music-muted','true']
+]);
+const bootStorage={get length(){return oldRecords.size;},key:i=>[...oldRecords.keys()][i]??null,getItem:k=>oldRecords.get(k)??null,setItem:(k,v)=>oldRecords.set(k,v),removeItem:k=>oldRecords.delete(k)};
+const firstBoot=startFreshTestRun(bootStorage);
+assert.equal(firstBoot.persistence,'session');assert.equal(firstBoot.snapshot.location.mode,'earth');
+assert.deepEqual(firstBoot.snapshot.fighterUpgrades,{weapon_rank:1,weapon_family:0,rapid_fire:0,weapon_level:1});
+assert.deepEqual([...oldRecords.entries()],[['music-muted','true']]);
+firstBoot.update(d=>{d.fighterUpgrades.weapon_level=20;d.fighterUpgrades.rapid_fire=4;d.credits=500;});
+const reopened=startFreshTestRun(bootStorage);assert.equal(reopened.snapshot.fighterUpgrades.weapon_level,1);assert.equal(reopened.snapshot.credits,0);
+assert.equal(oldRecords.size,1,'no new persistent save is written');
+const blockedStorage={get length(){throw Error('blocked');},removeItem(){throw Error('blocked');}};
+assert.equal(startFreshTestRun(blockedStorage).snapshot.fighterUpgrades.rapid_fire,0);
+assert.equal(startFreshTestRun(null).snapshot.fighterUpgrades.weapon_level,1);
+console.log('fresh test opening: legacy purge, settings preserved, session-only retry checkpoints, reload reset and blocked storage passed');

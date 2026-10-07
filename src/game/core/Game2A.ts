@@ -862,7 +862,7 @@ export class Game2A {
 
   private frame(dt: number): void {
     if (isGameMenuOpen()) return;
-    this.clock += dt;
+    if(!this.campaignArmory?.active)this.clock += dt;
     if(this.mode==='play'&&this.campaignArmory&&this.clock>=this.fighterSyncClock&&(!this.fighterReady||this.campaignArmory.state.rank<Math.min(20,this.xpLevel)))this.syncFighterMastery();
     const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused&&!this.campaignArmory?.active?this.missionDirector.currentAct?.key??null:null;
     const restorationSafe=this.groundRestorationPending&&this.drones.length===0&&this.hazards.every(friendlyGround)&&this.hostileShots.length===0;
@@ -871,7 +871,7 @@ export class Game2A {
       if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
       this.render();return;
     }
-    if(this.fighterArmory?.update(this.mode==='play'&&this.fighterReady&&(this.paused||this.launchClock>0||this.upgradeOffer.length>0))){
+    if(this.fighterArmory?.update(this.mode==='play'&&this.fighterReady)){
       if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
       this.render();return;
     }
@@ -2698,8 +2698,7 @@ export class Game2A {
 
     for (const pickup of this.pickups) {
       if (overlap(box(pickup, 0.78), box(this.player, 0.62))) {
-        pickup.life = 0;
-        this.applyPickup(pickup.pickupKey);
+        if(this.applyPickup(pickup.pickupKey)!==false)pickup.life = 0;
       }
     }
     this.pickups = this.pickups.filter((pickup) => pickup.life !== 0);
@@ -3770,9 +3769,10 @@ export class Game2A {
     this.ctx.textBaseline = 'middle';
     this.ctx.lineWidth = 2.5;
     this.ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-    this.ctx.strokeText(def.tag, 0, radius + 8);
+    const tag=def.effect==='weapon_upgrade'&&this.campaignArmory?.state.level!==undefined?'WPN':def.tag;
+    this.ctx.strokeText(tag, 0, radius + 8);
     this.ctx.fillStyle = def.tint;
-    this.ctx.fillText(def.tag, 0, radius + 8);
+    this.ctx.fillText(tag, 0, radius + 8);
     this.ctx.restore();
   }
 
@@ -4524,9 +4524,10 @@ export class Game2A {
 
     if (this.kills % SHIELD_PICKUP_EVERY_KILLS === 0) this.dropPickup(PICKUPS.shield_cell, drone.x, drone.y);
 
-    // The crate hands out a choice now, so it is worth dropping for as long as
-    // ANY track can still grow -- not only while barrels are unmaxed.
-    if (this.kills % UPGRADE_EVERY_KILLS === 0 && !this.allUpgradesMaxed()) {
+    const weaponLevel=this.campaignArmory?.state.level;
+    // Weapon cores keep dropping independently of the general upgrade caps.
+    const coreDue=weaponLevel!==undefined?this.kills%6===0&&weaponLevel<20:this.kills%UPGRADE_EVERY_KILLS===0&&!this.allUpgradesMaxed();
+    if (coreDue) {
       this.dropPickup(PICKUPS.weapon_upgrade, drone.x, drone.y);
     }
 
@@ -4638,7 +4639,7 @@ export class Game2A {
 
   /** Upgrades with nothing left to give are not offered. */
   private upgradeAvailable(kind: UpgradeKind): boolean {
-    if (kind === 'weapon') return !!this.campaignArmory&&!!nextFighterFamily(this.campaignArmory.state);
+    if (kind === 'weapon') return !!this.campaignArmory&&this.campaignArmory.state.level===undefined&&!!nextFighterFamily(this.campaignArmory.state);
     if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
     if (kind === 'bomb') return this.bombPower < BOMB_POWER_CAP;
     if (kind === 'pulse') return this.pulsePower < PULSE_POWER_CAP;
@@ -4793,13 +4794,19 @@ export class Game2A {
    * 2. Every pickup names itself on the banner. When four drops look alike, a
    *    silent effect is indistinguishable from a broken one.
    */
-  private applyPickup(key: string): void {
+  private applyPickup(key: string): boolean {
     const def = this.pickupDef(key);
-    if (!def) return;
+    if (!def) return false;
     sfx.play('pickup');
     let banner = def.label;
     switch (def.effect) {
       case 'weapon_upgrade':
+        if(this.campaignArmory?.state.level!==undefined){
+          if(this.campaignArmory.state.level>=20)banner='WEAPON CORES MAX // 20/20';
+          else if(this.campaignArmory.upgradeWeapon())banner=`WEAPON CORE // ${this.campaignArmory.weapon.label} · ${this.campaignArmory.state.level}/20`;
+          else {this.missionBannerText='WEAPON CORE // RETRY';this.missionBannerClock=2.2;return false;}
+          break;
+        }
         this.pendingUpgrades += 1;
         banner = 'UPGRADE CRATE // CHOOSE';
         break;
@@ -4831,6 +4838,7 @@ export class Game2A {
     this.missionBannerClock = 2.2;
     debugLog.log('combat', 'pickup', { key, effect: def.effect, barrels: this.barrels });
     if (this.pendingUpgrades > 0 && this.upgradeOffer.length === 0) this.openUpgradeChoice();
+    return true;
   }
 
   private spawnDebris(x: number, y: number): void {

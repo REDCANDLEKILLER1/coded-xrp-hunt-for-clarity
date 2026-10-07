@@ -1,5 +1,5 @@
 import type {CampaignSave} from '../definitive/CampaignSave';
-import {FIGHTER_FAMILIES,FAMILY_INFO,ROMAN,RAPID_CAP,retainedWeaponPower,nextFighterFamily,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
+import {FIGHTER_FAMILIES,FAMILY_INFO,ROMAN,RAPID_CAP,retainedWeaponPower,nextFighterFamily,fighterStageForState,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
 
 /** Only the fighter track is written. Hero powers and capital modules are
  * separate save fields and cannot be spent/equipped through this panel. */
@@ -20,7 +20,7 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
     const read=()=>{
       const upgrades=save.snapshot.fighterUpgrades;
       this.initialized=!!upgrades.weapon_rank;
-      this.current={family:FIGHTER_FAMILIES[upgrades.weapon_family??0]??'bb',rank:Math.max(1,Math.min(20,upgrades.weapon_rank??1)),rapid:Math.min(RAPID_CAP,upgrades.rapid_fire??0),power:upgrades.weapon_power??0};
+      this.current={family:FIGHTER_FAMILIES[upgrades.weapon_family??0]??'bb',rank:Math.max(1,Math.min(20,upgrades.weapon_rank??1)),rapid:Math.min(RAPID_CAP,upgrades.rapid_fire??0),power:upgrades.weapon_power??0,...(upgrades.weapon_level?{level:upgrades.weapon_level}:{})};
       this.profile=fighterWeapon(this.current);if(this.opened)this.paint();
     };read();save.subscribe(result=>{if(result.ok)read();});
     this.root.className='fighter-armory';this.root.hidden=true;this.button.type='button';this.button.className='fighter-armory-toggle';this.button.textContent='WEAPONS';
@@ -66,14 +66,14 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
   upgradeWeapon():boolean {
     const next=nextFighterFamily(this.current);if(!next)return false;
     const power=retainedWeaponPower(this.current);
-    return this.save.update(d=>{d.fighterUpgrades.weapon_family=FIGHTER_FAMILIES.indexOf(next);d.fighterUpgrades.weapon_power=power;}).ok;
+    return this.save.update(d=>{d.fighterUpgrades.weapon_family=FIGHTER_FAMILIES.indexOf(next);d.fighterUpgrades.weapon_power=power;if(this.current.level!==undefined)d.fighterUpgrades.weapon_level=this.current.level+1;}).ok;
   }
   upgradeRapid():boolean {
     if(this.current.rapid>=RAPID_CAP)return false;
     return this.save.update(d=>{d.fighterUpgrades.rapid_fire=this.current.rapid+1;}).ok;
   }
   private select(family:FighterFamily):boolean {
-    if(!this.enabled||!this.safe||!fighterStage(family,this.current.rank))return false;
+    if(!this.enabled||!this.safe||!fighterStageForState(this.current,family))return false;
     return this.save.update(d=>{d.fighterUpgrades.weapon_family=FIGHTER_FAMILIES.indexOf(family);}).ok;
   }
   setActive(value:boolean):void {this.enabled=value;if(!value)this.block();}
@@ -86,11 +86,11 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
   private paint():void {
     this.panel.replaceChildren();this.panel.hidden=!this.opened;this.button.hidden=this.opened;
     const heading=document.createElement('strong');heading.textContent='FIGHTER LOADOUT';
-    const intro=document.createElement('p');intro.textContent=`MASTERY ${this.current.rank} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Choose your style. Each family grows through four stages. Max rapid fire adds twin homing rockets; beam weapons become laser pulses.`;
+    const intro=document.createElement('p');intro.textContent=`${this.current.level===undefined?'MASTERY '+this.current.rank:'WEAPON CORE LEVEL '+this.current.level+'/20'} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Collect WPN cores to evolve your weapon. Choose any unlocked family. Each family has four stages. Max rapid fire adds twin homing rockets; beam weapons become laser pulses.`;
     this.panel.append(heading,intro);
     for(const family of FIGHTER_FAMILIES){
-      const info=FAMILY_INFO[family],stage=fighterStage(family,this.current.rank),button=document.createElement('button');button.type='button';button.disabled=!stage;
-      const name=document.createElement('b'),detail=document.createElement('span');name.textContent=stage?`${info.label} ${ROMAN[stage-1]}${family===this.current.family?' · EQUIPPED':''}`:`${info.label} · RANK ${info.unlock}`;detail.textContent=info.description;button.append(name,detail);
+      const info=FAMILY_INFO[family],stage=fighterStageForState(this.current,family),button=document.createElement('button');button.type='button';button.disabled=!stage;
+      const name=document.createElement('b'),detail=document.createElement('span');name.textContent=stage?`${info.label} ${ROMAN[stage-1]}${family===this.current.family?' · EQUIPPED':''}`:`${info.label} · ${this.current.level===undefined?'RANK '+info.unlock:'CORE LEVEL '+(FIGHTER_FAMILIES.indexOf(family)*4+1)}`;detail.textContent=info.description;button.append(name,detail);
       button.addEventListener('click',()=>{if(!this.select(family)){intro.textContent='Loadout could not be saved. Try again.';}});this.panel.appendChild(button);
     }
     const close=document.createElement('button');close.type='button';close.textContent='RETURN';close.addEventListener('click',()=>{this.opened=false;this.panel.hidden=true;this.button.hidden=false;});this.panel.appendChild(close);

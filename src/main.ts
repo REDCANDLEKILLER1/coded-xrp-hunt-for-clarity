@@ -14,7 +14,8 @@ import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
 import { showDebugLogView } from './game/ui/DebugLogView';
-import { CampaignSave, reviewSaveSlot } from './game/definitive/CampaignSave';
+import { reviewSaveSlot } from './game/definitive/CampaignSave';
+import {startFreshTestRun} from './game/definitive/TestRun';
 import {enterWarship,savedChapterScene} from './game/definitive/ChapterTransitions';
 import {campaignNavigation,chapterRecord,type RevisitWorld} from './game/definitive/CampaignNavigation';
 import {
@@ -37,7 +38,7 @@ if (!canvas || !campaignRoot || !gameShell || !returnMap) {
 
 let previewStorage: Storage | null = null;
 try { previewStorage = window.localStorage; } catch { /* Session play remains available. */ }
-const definitiveSave = new CampaignSave(previewStorage, reviewSaveSlot(new URLSearchParams(location.search)));
+const definitiveSave = startFreshTestRun(previewStorage, reviewSaveSlot(new URLSearchParams(location.search)));
 configureCampaignPersistence({
   load: () => definitiveSave.snapshot.earth,
   save: (progress) => { definitiveSave.update((draft) => { draft.earth = progress; }); },
@@ -49,7 +50,7 @@ const paintSaveNotice = (): void => {
   const result = definitiveSave.lastResult;
   previewNotice.textContent = !result.ok && !['duplicate', 'condition'].includes(result.reason)
     ? 'PREVIEW · Save unavailable — progress is not being stored. Reload to retry.'
-    : `DEVELOPMENT PREVIEW · ${definitiveSave.testSlot ? 'SECTION TEST SAVE' : definitiveSave.persistence === 'session' ? 'SESSION SAVE' : 'SEPARATE SAVE'}`;
+    : 'TEST RUN · RELOAD STARTS FRESH';
 };
 definitiveSave.subscribe(paintSaveNotice);
 paintSaveNotice();
@@ -112,8 +113,7 @@ logButton.addEventListener('click', (event) => {
 document.body.appendChild(logButton);
 
 mountGameMenu(() => {
-  const campaign = definitiveSave.testSlot ? new CampaignSave(previewStorage) : definitiveSave;
-  const result = campaign.restart();
+  const result = definitiveSave.restart();
   if (!result.ok) return 'Restart could not save. Your checkpoint is retained. Reload and try again.';
   const destination = new URL(location.href);
   destination.search = '';

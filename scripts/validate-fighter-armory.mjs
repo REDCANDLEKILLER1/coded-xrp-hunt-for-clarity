@@ -23,7 +23,7 @@ const {Game2A}=await load('src/game/core/Game2A.ts');
 const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {FighterArmoryRuntime}=await load('src/game/ui/FighterArmoryRuntime.ts');
 const {FAMILY_INFO,FIGHTER_FAMILIES,fighterWeapon,fighterTwinSeekers,nextFighterFamily,TWIN_SEEKER_INTERVAL,TWIN_SEEKER_MAX_ACTIVE,RAPID_CAP}=await load('src/game/content/FighterWeapons.ts');
-const {ENEMIES,PROJECTILES}=await load('src/game/content/registry.ts');
+const {ENEMIES,PROJECTILES,PICKUPS}=await load('src/game/content/registry.ts');
 const {EARTH_ENEMIES}=await load('src/game/content/EarthThreats.ts');
 const narrowestEnemy=Math.min(...[...Object.values(ENEMIES),...Object.values(EARTH_ENEMIES)].map(def=>def.hitbox.w));
 const {groundDefense}=await load('src/game/content/GroundDefense.ts');
@@ -248,3 +248,42 @@ for(const family of FIGHTER_FAMILIES)for(let stage=1;stage<=4;stage++)for(const 
  const f=fixture();equip(f,'bb',4,RAPID_CAP);f.g.updateBolts(0);commands=[];f.g.drawBolt(f.g.bolts[0]);
  assert.ok(!signatures.includes(JSON.stringify(commands)),'max-rapid laser has its own longer beam silhouette');
 }
+
+// New public-run path: only collected cores evolve guns, independently of XP
+// and rapid fire. The shipping pickup, kill and UI paths are all exercised.
+function coreFixture(){const f=fixture();f.save.update(d=>{d.fighterUpgrades={weapon_rank:1,weapon_family:0,weapon_level:1,rapid_fire:0};});f.g.fighterReady=true;return f;}
+{
+ const f=coreFixture();assert.equal(f.armory.weapon.shots.length,1);assert.equal(f.armory.weapon.laserPulse,false);
+ f.armory.rankUp(20);assert.equal(f.armory.weapon.stage,1,'pilot rank does not grant gun stages');assert.equal(f.g.upgradeAvailable('weapon'),false);
+ let prior=0;
+ for(let level=2;level<=20;level++){
+  assert.equal(f.g.applyPickup('weapon_upgrade'),true);
+  assert.equal(f.armory.state.level,level);assert.equal(f.armory.state.family,FIGHTER_FAMILIES[Math.floor((level-1)/4)]);
+  assert.equal(f.armory.weapon.stage,(level-1)%4+1);assert.equal(f.armory.state.rapid,0);assert.equal(f.g.pendingUpgrades,0);
+  const dps=f.g.centredDps();assert.ok(dps>=prior-1e-8,'core progression preserves earned output');prior=dps;
+  assert.ok(f.g.missionBannerText.includes(`${level}/20`));
+ }
+ assert.equal(f.armory.upgradeWeapon(),false);assert.equal(f.armory.weapon.chain,3);
+}
+{
+ const f=coreFixture();f.g.barrels=4;f.g.shieldMax=99;f.g.bombPower=99;f.g.pulsePower=99;f.armory.upgradeRapid();f.armory.upgradeRapid();f.armory.upgradeRapid();f.armory.upgradeRapid();
+ assert.equal(f.g.allUpgradesMaxed(),true);f.g.kills=5;f.g.registerKill(drone());
+ assert.ok(f.g.pickups.some(p=>p.pickupKey==='weapon_upgrade'),'general caps cannot stop weapon core drops');
+ const core=f.g.pickups.find(p=>p.pickupKey==='weapon_upgrade');core.x=f.g.player.x;core.y=f.g.player.y;
+ f.g.collisions();assert.equal(f.armory.state.level,2);assert.ok(!f.g.pickups.includes(core),'collected core is spent once');
+ f.save.update(d=>{d.fighterUpgrades.weapon_level=20;});f.g.pickups=[];f.g.kills=11;f.g.registerKill(drone());assert.ok(!f.g.pickups.some(p=>p.pickupKey==='weapon_upgrade'));
+}
+{
+ const f=coreFixture();f.g.paused=false;f.g.frame(.01);const root=f.parent.children[0];assert.equal(root.hidden,false,'Weapons visible during active flight');
+ root.children[0].click();const panel=root.children[1];panel.children[3].click();assert.equal(f.armory.state.family,'bb','pulse locked until core 5');
+ let updates=0;const clock=f.g.clock;f.g.update=()=>updates++;f.g.frame(.1);assert.equal(f.g.clock,clock,'loadout cannot advance difficulty pressure');assert.equal(updates,0,'loadout pauses combat');assert.equal(f.g.storyCapturedInput,true);
+ for(let i=0;i<4;i++)f.g.applyPickup('weapon_upgrade');assert.equal(f.armory.state.family,'pulse');
+ panel.children[2].click();assert.equal(f.armory.state.family,'bb');panel.children[3].click();assert.equal(f.armory.state.family,'pulse');
+ panel.children.at(-1).click();f.g.frame(.1);assert.equal(updates,1);assert.equal(f.g.storyCapturedInput,false);
+}
+{
+ const f=coreFixture();f.g.dropPickup(PICKUPS.weapon_upgrade,f.g.player.x,f.g.player.y);const core=f.g.pickups[0];
+ fail=true;f.g.collisions();assert.equal(f.armory.state.level,1);assert.ok(f.g.pickups.includes(core),'failed core write leaves pickup available');
+ fail=false;f.g.collisions();assert.equal(f.armory.state.level,2);assert.equal(f.g.pickups.length,0);
+}
+console.log('weapon cores: all 20 levels, separate rank/rapid tracks, persistent drops after caps, live-flight loadout pause, locked families and failed collection retry passed');
