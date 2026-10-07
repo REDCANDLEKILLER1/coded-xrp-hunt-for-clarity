@@ -15,7 +15,7 @@ import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../conten
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
-import {RAPID_CAP,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
+import {RAPID_CAP,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
@@ -108,7 +108,7 @@ type SeekerActor = Actor & { damage: number; angle: number; age: number };
  * Weapon is deliberately absent: a new gun is what levelling GIVES you, not
  * something you trade a shield for. The cards are the choice you still make.
  */
-type UpgradeKind = 'shield' | 'bomb' | 'pulse' | 'barrel';
+type UpgradeKind = 'shield' | 'bomb' | 'pulse' | 'barrel' | 'weapon';
 type PickupActor = Actor & { pickupKey: string };
 type Particle = { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; hue: number };
 
@@ -1499,21 +1499,23 @@ export class Game2A {
    * them -- a missile that cannot miss is not interesting to watch.
    */
   private updateSeekers(dt: number): void {
-    if (this.xpLevel >= SEEKER_UNLOCK_LEVEL) {
+    const twin=this.fighterReady&&this.campaignArmory?fighterTwinSeekers(this.campaignArmory.state,this.playerDef().fireRate/DEFAULT_SHIP.fireRate):null;
+    if (twin||this.xpLevel >= SEEKER_UNLOCK_LEVEL) {
       this.seekerClock -= dt;
-      if (this.seekerClock <= 0 && this.seekerTargets().length > 0) {
-        this.seekerClock = SEEKER_INTERVAL;
-        this.seekers.push({
-          x: this.player.x + Math.cos(this.playerFacing) * 18,
-          y: this.player.y + Math.sin(this.playerFacing) * 18,
-          w: 10,
-          h: 22,
-          vx: Math.cos(this.playerFacing) * SEEKER_SPEED,
-          vy: Math.sin(this.playerFacing) * SEEKER_SPEED,
-          damage: SEEKER_DAMAGE,
-          angle: this.playerFacing,
-          age: 0,
-        });
+      const count=twin?2:1;
+      if (this.seekerClock <= 0 && this.seekerTargets().length > 0 && (!twin||this.seekers.length+count<=TWIN_SEEKER_MAX_ACTIVE)) {
+        this.seekerClock = twin?.interval??SEEKER_INTERVAL;
+        const heading=this.playerFacing+Math.PI/2;
+        for(const side of twin?[-1,1]:[0]){
+          const lateral=side*20;
+          const angle=this.playerFacing+side*.22;
+          this.seekers.push({
+            x: this.player.x+lateral*Math.cos(heading)+Math.cos(this.playerFacing)*10,
+            y: this.player.y+lateral*Math.sin(heading)+Math.sin(this.playerFacing)*10,
+            w:10,h:22,vx:Math.cos(angle)*SEEKER_SPEED,vy:Math.sin(angle)*SEEKER_SPEED,
+            damage:twin?.damage??SEEKER_DAMAGE,angle,age:0,
+          });
+        }
         sfx.play('shoot');
       }
     }
@@ -3312,7 +3314,9 @@ export class Game2A {
     if(bolt.weapon){
       const ctx=this.ctx,family=bolt.weapon.family,angle=Math.atan2(bolt.vy,bolt.vx);
       ctx.save();ctx.translate(bolt.x,bolt.y);ctx.rotate(angle);ctx.strokeStyle='#00ff00';ctx.fillStyle='#00ff00';ctx.shadowColor='#00ff00';ctx.shadowBlur=8;
-      if(family==='rocket'){
+      if('laserPulse' in bolt.weapon&&bolt.weapon.laserPulse){
+        ctx.strokeStyle='#00ff00';ctx.lineWidth=6;line(ctx,-52,0,13,0);ctx.strokeStyle='#efffef';ctx.lineWidth=2;line(ctx,-48,0,13,0);
+      }else if(family==='rocket'){
         ctx.fillStyle='#14251b';ctx.strokeStyle='#00ff00';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(11,0);ctx.lineTo(1,-4);ctx.lineTo(-8,-4);ctx.lineTo(-6,0);ctx.lineTo(-8,4);ctx.lineTo(1,4);ctx.closePath();ctx.fill();ctx.stroke();ctx.lineWidth=3;line(ctx,-8,0,-24,0);
       }else if(family==='plasma'){
         ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(0,0,12,7,0,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#ddffdd';ctx.beginPath();ctx.ellipse(0,0,7,3,0,0,Math.PI*2);ctx.fill();
@@ -3883,7 +3887,8 @@ export class Game2A {
 
   /** What each upgrade is called, does, and what the player already has. */
   private upgradeInfo(kind: UpgradeKind): { title: string; detail: string; current: string; accent: string } {
-    if(kind==='barrel'&&this.campaignArmory)return{title:'RAPID FIRE',detail:'+12% BASE FIRE FREQUENCY',current:`${this.campaignArmory.state.rapid}/${RAPID_CAP} · DAMAGE RETAINED`,accent:'#00ff00'};
+    if(kind==='weapon'){const next=this.campaignArmory?nextFighterFamily(this.campaignArmory.state):null;return{title:'WEAPON UPGRADE',detail:next?FAMILY_INFO[next].label:'ALL WEAPONS UNLOCKED',current:next?FAMILY_INFO[next].description:'CHOOSE STYLE IN WEAPONS',accent:'#00ff00'};}
+    if(kind==='barrel'&&this.campaignArmory)return{title:this.campaignArmory.state.rapid===RAPID_CAP-1?'MAX FIRE + HOMING':'RAPID FIRE',detail:'+12% BASE FIRE FREQUENCY',current:this.campaignArmory.state.rapid===RAPID_CAP-1?(['bb','pulse'].includes(this.campaignArmory.state.family)?'LASER PULSE + TWIN ROCKETS':'TWIN HOMING ROCKETS'):`${this.campaignArmory.state.rapid}/${RAPID_CAP} · MAX ADDS HOMING`,accent:'#00ff00'};
     switch (kind) {
       case 'barrel':
         return {
@@ -4633,6 +4638,7 @@ export class Game2A {
 
   /** Upgrades with nothing left to give are not offered. */
   private upgradeAvailable(kind: UpgradeKind): boolean {
+    if (kind === 'weapon') return !!this.campaignArmory&&!!nextFighterFamily(this.campaignArmory.state);
     if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
     if (kind === 'bomb') return this.bombPower < BOMB_POWER_CAP;
     if (kind === 'pulse') return this.pulsePower < PULSE_POWER_CAP;
@@ -4651,14 +4657,14 @@ export class Game2A {
    * is always a moment you are shown rather than one that happens off screen.
    */
   private openUpgradeChoice(): void {
-    const all: UpgradeKind[] = ['barrel', 'shield', 'bomb', 'pulse'];
+    const all: UpgradeKind[] = this.campaignArmory?['weapon','barrel','shield','bomb','pulse']:['barrel','shield','bomb','pulse'];
     const open = all.filter((kind) => this.upgradeAvailable(kind));
     if(this.campaignArmory){
       if(open.length===0){
         const reward=ALL_MAXED_SCORE*Math.max(1,this.pendingUpgrades);this.score+=reward;this.pendingUpgrades=0;this.upgradeOffer=[];
         this.missionBannerText=`ALL SYSTEMS MAX // +${reward}`;this.missionBannerClock=2.4;return;
       }
-      this.upgradeOffer=[...open].sort(()=>Math.random()-.5).slice(0,UPGRADE_CHOICES);this.upgradeArmClock=UPGRADE_ARM_SECONDS;sfx.play('levelUp');return;
+      this.upgradeOffer=[...(open.includes('weapon')?['weapon' as UpgradeKind]:[]),...open.filter(kind=>kind!=='weapon').sort(()=>Math.random()-.5)].slice(0,UPGRADE_CHOICES);this.upgradeArmClock=UPGRADE_ARM_SECONDS;sfx.play('levelUp');return;
     }
 
     if (open.length === 0) {
@@ -4686,7 +4692,7 @@ export class Game2A {
 
   /** True when no track has anything left to give. */
   private allUpgradesMaxed(): boolean {
-    return !(['barrel', 'shield', 'bomb', 'pulse'] as UpgradeKind[]).some((kind) => this.upgradeAvailable(kind));
+    return !(['weapon', 'barrel', 'shield', 'bomb', 'pulse'] as UpgradeKind[]).some((kind) => this.upgradeAvailable(kind));
   }
 
   private applyUpgrade(kind: UpgradeKind): void {
@@ -4717,10 +4723,13 @@ export class Game2A {
       return;
     }
     switch (kind) {
+      case 'weapon':
+        if(!this.fighterReady||!this.campaignArmory?.upgradeWeapon()){this.missionBannerText='WEAPON NOT SAVED // TRY AGAIN';this.missionBannerClock=3;return;}
+        this.missionBannerText=`WEAPON // ${this.currentWeapon().label}`;break;
       case 'barrel':
         if(this.campaignArmory){
           if(!this.fighterReady||!this.campaignArmory.upgradeRapid()){this.missionBannerText='UPGRADE NOT SAVED // TRY AGAIN';this.missionBannerClock=3;return;}
-          this.missionBannerText=`RAPID FIRE // ${this.campaignArmory.state.rapid}/${RAPID_CAP}`;break;
+          this.missionBannerText=this.campaignArmory.state.rapid===RAPID_CAP?'MAX FIRE // TWIN HOMING ONLINE':`RAPID FIRE // ${this.campaignArmory.state.rapid}/${RAPID_CAP}`;break;
         }
         this.barrels = Math.min(MAX_BARRELS, this.barrels + 1);
         this.missionBannerText = `GUN // ${this.currentVolley().length} SHOT ${this.currentWeapon().label}`;
@@ -5139,13 +5148,17 @@ export class Game2A {
       if (offset <= reach) damage += weapon.damage;
       else if (weapon.splash && offset <= weapon.splash) damage += weapon.splashDamage ?? 0;
     }
-    return damage / weapon.fireRate;
+    return damage / weapon.fireRate + this.twinSeekerDps();
   }
 
   /** Sustained damage per second this loadout puts out. */
+  private twinSeekerDps():number {
+    return this.fighterReady&&this.campaignArmory?fighterTwinSeekers(this.campaignArmory.state,this.playerDef().fireRate/DEFAULT_SHIP.fireRate)?.dps??0:0;
+  }
+
   private playerDps(): number {
     const weapon = this.currentWeapon();
-    return (this.currentVolley().length * weapon.damage) / weapon.fireRate;
+    return (this.currentVolley().length * weapon.damage) / weapon.fireRate + this.twinSeekerDps();
   }
 
   /**

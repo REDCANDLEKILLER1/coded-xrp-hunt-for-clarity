@@ -1,5 +1,5 @@
 import type {CampaignSave} from '../definitive/CampaignSave';
-import {FIGHTER_FAMILIES,FAMILY_INFO,ROMAN,RAPID_CAP,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
+import {FIGHTER_FAMILIES,FAMILY_INFO,ROMAN,RAPID_CAP,retainedWeaponPower,nextFighterFamily,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
 
 /** Only the fighter track is written. Hero powers and capital modules are
  * separate save fields and cannot be spent/equipped through this panel. */
@@ -20,10 +20,10 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
     const read=()=>{
       const upgrades=save.snapshot.fighterUpgrades;
       this.initialized=!!upgrades.weapon_rank;
-      this.current={family:FIGHTER_FAMILIES[upgrades.weapon_family??0]??'bb',rank:Math.max(1,Math.min(20,upgrades.weapon_rank??1)),rapid:Math.min(RAPID_CAP,upgrades.rapid_fire??0)};
+      this.current={family:FIGHTER_FAMILIES[upgrades.weapon_family??0]??'bb',rank:Math.max(1,Math.min(20,upgrades.weapon_rank??1)),rapid:Math.min(RAPID_CAP,upgrades.rapid_fire??0),power:upgrades.weapon_power??0};
       this.profile=fighterWeapon(this.current);if(this.opened)this.paint();
     };read();save.subscribe(result=>{if(result.ok)read();});
-    this.root.className='fighter-armory';this.root.hidden=true;this.button.type='button';this.button.className='fighter-armory-toggle';this.button.textContent='LOADOUT';
+    this.root.className='fighter-armory';this.root.hidden=true;this.button.type='button';this.button.className='fighter-armory-toggle';this.button.textContent='WEAPONS';
     this.panel.className='fighter-armory-panel';this.panel.hidden=true;this.panel.setAttribute('role','dialog');this.panel.setAttribute('aria-label','Fighter loadout');
     this.button.addEventListener('click',()=>{if(this.enabled&&this.safe){this.opened=true;this.paint();}});
     this.root.append(this.button,this.panel);parent.appendChild(this.root);
@@ -63,6 +63,11 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
     const next=Math.max(this.current.rank,Math.min(20,rank));if(next===this.current.rank)return true;
     return this.save.update(d=>{d.fighterUpgrades.weapon_rank=next;}).ok;
   }
+  upgradeWeapon():boolean {
+    const next=nextFighterFamily(this.current);if(!next)return false;
+    const power=retainedWeaponPower(this.current);
+    return this.save.update(d=>{d.fighterUpgrades.weapon_family=FIGHTER_FAMILIES.indexOf(next);d.fighterUpgrades.weapon_power=power;}).ok;
+  }
   upgradeRapid():boolean {
     if(this.current.rapid>=RAPID_CAP)return false;
     return this.save.update(d=>{d.fighterUpgrades.rapid_fire=this.current.rapid+1;}).ok;
@@ -81,7 +86,7 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
   private paint():void {
     this.panel.replaceChildren();this.panel.hidden=!this.opened;this.button.hidden=this.opened;
     const heading=document.createElement('strong');heading.textContent='FIGHTER LOADOUT';
-    const intro=document.createElement('p');intro.textContent=`MASTERY ${this.current.rank} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Choose your style. Each family grows through four stages.`;
+    const intro=document.createElement('p');intro.textContent=`MASTERY ${this.current.rank} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Choose your style. Each family grows through four stages. Max rapid fire adds twin homing rockets; beam weapons become laser pulses.`;
     this.panel.append(heading,intro);
     for(const family of FIGHTER_FAMILIES){
       const info=FAMILY_INFO[family],stage=fighterStage(family,this.current.rank),button=document.createElement('button');button.type='button';button.disabled=!stage;

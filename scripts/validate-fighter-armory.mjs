@@ -22,7 +22,7 @@ const load=async path=>{const result=await build({entryPoints:[path],bundle:true
 const {Game2A}=await load('src/game/core/Game2A.ts');
 const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
 const {FighterArmoryRuntime}=await load('src/game/ui/FighterArmoryRuntime.ts');
-const {FAMILY_INFO,FIGHTER_FAMILIES,fighterWeapon,RAPID_CAP}=await load('src/game/content/FighterWeapons.ts');
+const {FAMILY_INFO,FIGHTER_FAMILIES,fighterWeapon,fighterTwinSeekers,nextFighterFamily,TWIN_SEEKER_INTERVAL,TWIN_SEEKER_MAX_ACTIVE,RAPID_CAP}=await load('src/game/content/FighterWeapons.ts');
 const {ENEMIES,PROJECTILES}=await load('src/game/content/registry.ts');
 const {EARTH_ENEMIES}=await load('src/game/content/EarthThreats.ts');
 const narrowestEnemy=Math.min(...[...Object.values(ENEMIES),...Object.values(EARTH_ENEMIES)].map(def=>def.hitbox.w));
@@ -170,3 +170,81 @@ for(let baseTier=1;baseTier<=5;baseTier++)for(let rank=1;rank<=13;rank++)for(let
 }
 console.log('fighter-armory: OK — 20 stages, two viewports, centered TTK, actual rapid cadence, damage/speed, bounded impacts, shield/friendly gates, safe selection, migration and separate durable tracks.');
 console.log(JSON.stringify(results));
+
+// New family cards must spend one receipt, retain earned output, and survive reload.
+{
+  const f=fixture();equip(f,'bb',4,2);f.g.pendingUpgrades=1;f.g.openUpgradeChoice();
+  assert.equal(f.g.upgradeOffer[0],'weapon','earned family is visible on the upgrade screen');
+  const before=f.armory.weapon.damage*f.armory.weapon.shots.length/f.armory.weapon.fireRate;
+  const saved=f.save.snapshot;fail=true;f.g.applyUpgrade('weapon');fail=false;
+  assert.deepEqual(f.save.snapshot,saved);assert.equal(f.g.pendingUpgrades,1,'failed weapon save cannot spend the choice');
+  f.g.applyUpgrade('weapon');assert.equal(f.g.pendingUpgrades,0);assert.equal(f.armory.state.family,'pulse');assert.equal(f.armory.state.rapid,2);
+  const after=f.armory.weapon.damage*f.armory.weapon.shots.length/f.armory.weapon.fireRate;
+  assert.ok(after>=before&&after<=before*1.14+1e-8,'weapon promotion preserves earned DPS with at most one 14% power tier');
+  const reloaded=new FighterArmoryRuntime(new Element(),new CampaignSave(storage,f.save.key.split(':').slice(1).join(':')));
+  assert.deepEqual(reloaded.state,f.armory.state,'weapon style, power tier, and rapid rank persist together');
+  assert.equal(nextFighterFamily({family:'bb',rank:3,rapid:0}),null,'mastery gates remain intact');
+  f.armory.rankUp(20);
+  for(const family of ['rocket','plasma','ledger']){
+    const prior=f.armory.weapon.damage*f.armory.weapon.shots.length/f.armory.weapon.fireRate;
+    assert.ok(f.armory.upgradeWeapon());assert.equal(f.armory.state.family,family);
+    assert.ok(f.armory.weapon.damage*f.armory.weapon.shots.length/f.armory.weapon.fireRate>=prior-1e-8,'later weapon is never a direct-fire downgrade');
+  }
+  assert.equal(f.armory.upgradeWeapon(),false,'final family does not loop and farm power tiers');
+}
+// The max-rapid laser is a real projectile profile; its rockets are bounded and seek.
+for(const width of [390,844])for(const heading of [-Math.PI/2,0,Math.PI/2,Math.PI]){
+ globalThis.innerWidth=width;globalThis.innerHeight=width===390?844:390;
+ const f=fixture();equip(f,'bb',4,RAPID_CAP);f.g.player.x=width/2;f.g.player.y=150;f.g.playerFacing=heading;
+ f.g.hazards=[];f.g.boss=null;f.g.warship=null;f.g.drones=[drone(width/2+50,70,100)];
+ assert.equal(f.armory.weapon.laserPulse,true);assert.equal(f.armory.weapon.projectileKey,'clarity_beam');
+ const spec=fighterTwinSeekers(f.armory.state);const primary=f.armory.weapon.damage*f.armory.weapon.shots.length/f.armory.weapon.fireRate;
+ assert.ok(spec.dps<=primary*.2+1e-8);assert.equal(spec.interval,TWIN_SEEKER_INTERVAL);assert.ok(spec.damage<=18);
+ f.g.seekerClock=0;f.g.updateSeekers(0);assert.equal(f.g.seekers.length,2,'both side rockets launch together');
+ assert.ok(Math.abs(Math.hypot(f.g.seekers[0].x-f.g.seekers[1].x,f.g.seekers[0].y-f.g.seekers[1].y)-40)<1e-8,'muzzles rotate with the hull');
+ assert.ok(f.g.seekers.every(s=>s.damage===spec.damage));const initial=f.g.seekers.map(s=>s.angle);f.g.updateSeekers(.1);
+ assert.ok(f.g.seekers.some((s,i)=>s.angle!==initial[i]),'rockets turn toward a target');
+ const count=f.g.seekers.length;f.g.seekerClock=0;while(f.g.seekers.length<TWIN_SEEKER_MAX_ACTIVE)f.g.seekers.push({...f.g.seekers[0]});
+ f.g.updateSeekers(0);assert.equal(f.g.seekers.length,TWIN_SEEKER_MAX_ACTIVE,'active salvo limit prevents projectile spam');
+ f.g.seekers=[];f.g.seekerClock=0;f.g.drones=[];f.g.updateSeekers(0);assert.equal(f.g.seekers.length,0,'no target means no wasteful salvo');
+ assert.equal(fighterTwinSeekers({...f.armory.state,rapid:RAPID_CAP-1}),null);
+ const scaled=f.g.centredDps();const ordinary=f.g.currentVolley().length*f.g.currentWeapon().damage/f.g.currentWeapon().fireRate;
+ assert.ok(Math.abs(scaled-ordinary-spec.dps)<1e-8,'boss firepower measurement includes the full twin salvo budget');
+}
+// Timed launches use the shipped simulation, not just the authored interval.
+globalThis.innerWidth=390;globalThis.innerHeight=844;
+{
+ const f=fixture();equip(f,'bb',4,RAPID_CAP);f.g.player={...f.g.player,x:195,y:710};f.g.drones=[drone(195,650,1000)];f.g.hazards=[];f.g.boss=null;f.g.warship=null;f.g.seekerClock=0;
+ const seen=new WeakSet();const launches=[];
+ for(let tick=0;tick<60*13;tick++){
+   f.g.updateSeekers(1/60);let fresh=0;for(const seeker of f.g.seekers)if(!seen.has(seeker)){seen.add(seeker);fresh++;}
+   if(fresh){assert.equal(fresh,2);launches.push(tick/60);}
+ }
+ assert.equal(launches.length,3);for(let i=1;i<launches.length;i++)assert.ok(launches[i]-launches[i-1]>=6-1e-8);
+}
+console.log('fighter weapon upgrade: retained output, persisted choices, laser profile, paired homing, six-second cadence, salvo cap and boss accounting passed');
+
+for(const family of FIGHTER_FAMILIES)for(let stage=1;stage<=4;stage++)for(const cadenceScale of [.8,1,1.4]){
+ const state={family,rank:FAMILY_INFO[family].unlock+stage-1,rapid:RAPID_CAP};
+ const weapon=fighterWeapon(state),spec=fighterTwinSeekers(state,cadenceScale);
+ assert.ok(spec.dps<=weapon.damage*weapon.shots.length/(weapon.fireRate*cadenceScale)*.2+1e-8,'rocket budget respects each hull firing cadence');
+}
+// Homing collision keeps friendly and relay immunity; one rocket spends one hit.
+{
+ const f=fixture();equip(f,'bb',4,RAPID_CAP);f.g.bolts=[];f.g.drones=[];f.g.boss=null;f.g.warship=null;
+ const relay=hazard('shield_relay',245,400),gun=hazard('basic_turret',195,400),beacon=hazard('clarity_beacon',195,500);
+ f.g.hazards=[relay,gun,beacon];const missile=(y)=>({x:195,y,w:10,h:22,vx:0,vy:0,damage:18,angle:-Math.PI/2,age:0});
+ f.g.seekers=[missile(400),missile(500)];f.g.collisions();
+ assert.equal(gun.hp,100,'homing does not bypass linked relay shields');assert.equal(beacon.hp,100,'homing cannot damage friendlies');
+ const target=drone(195,600,100);f.g.hazards=[];f.g.drones=[target];f.g.seekers=[missile(600)];f.g.collisions();
+ assert.equal(target.hp,82);assert.equal(f.g.seekers.length,0);f.g.collisions();assert.equal(target.hp,82,'spent rocket cannot hit twice');
+}
+// Observe the real draw path so weapon variety is not just a different label.
+{
+ const signatures=[];let commands=[];
+ for(const method of ['moveTo','lineTo','ellipse','stroke','fill'])ctx[method]=(...args)=>commands.push([method,...args]);
+ for(const family of FIGHTER_FAMILIES){const f=fixture();equip(f,family,4);f.g.updateBolts(0);commands=[];f.g.drawBolt(f.g.bolts[0]);signatures.push(JSON.stringify(commands));}
+ assert.equal(new Set(signatures).size,5,'five weapon families have five drawing silhouettes');
+ const f=fixture();equip(f,'bb',4,RAPID_CAP);f.g.updateBolts(0);commands=[];f.g.drawBolt(f.g.bolts[0]);
+ assert.ok(!signatures.includes(JSON.stringify(commands)),'max-rapid laser has its own longer beam silhouette');
+}

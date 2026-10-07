@@ -2,8 +2,8 @@ import type {WeaponDef} from './types';
 
 export const FIGHTER_FAMILIES=['bb','pulse','rocket','plasma','ledger'] as const;
 export type FighterFamily=typeof FIGHTER_FAMILIES[number];
-export interface FighterWeapon extends WeaponDef {family:FighterFamily;stage:number;speed:number;splash:number;chain:number}
-export interface FighterWeaponState {family:FighterFamily;rank:number;rapid:number}
+export interface FighterWeapon extends WeaponDef {family:FighterFamily;stage:number;speed:number;splash:number;chain:number;laserPulse?:boolean}
+export interface FighterWeaponState {family:FighterFamily;rank:number;rapid:number;power?:number}
 export const FAMILY_INFO:Record<FighterFamily,{label:string;unlock:number;description:string}>={
   bb:{label:'LIQUIDITY BEAM',unlock:1,description:'Single, twin, tri and quad forward coverage.'},
   pulse:{label:'PULSE LANCE',unlock:4,description:'Penetrates a line of enemies.'},
@@ -12,6 +12,20 @@ export const FAMILY_INFO:Record<FighterFamily,{label:string;unlock:number;descri
   ledger:{label:'LEDGER ARC',unlock:13,description:'Energy chains to a bounded number of nearby enemies.'},
 };
 export const RAPID_CAP=4;
+/** Compact earned firepower tier fits the existing 0..20 upgrade save format. */
+const POWER_BASE=1/.14,POWER_STEP=1.14;
+export function retainedWeaponPower(state:FighterWeaponState):number {
+  const weapon=fighterWeapon({...state,rapid:0});
+  const dps=weapon.damage*weapon.shots.length/weapon.fireRate;
+  return Math.max(state.power??0,Math.min(20,Math.ceil(Math.log(dps/POWER_BASE)/Math.log(POWER_STEP)-1e-9)));
+}
+/** Next earned family; selecting it never skips its mastery unlock. */
+export function nextFighterFamily(state:FighterWeaponState):FighterFamily|null {
+  const next=FIGHTER_FAMILIES[FIGHTER_FAMILIES.indexOf(state.family)+1];
+  return next&&fighterStage(next,state.rank)>0?next:null;
+}
+export const TWIN_SEEKER_INTERVAL=6;
+export const TWIN_SEEKER_MAX_ACTIVE=4;
 export const ROMAN=['I','II','III','IV'];
 export function fighterStage(family:FighterFamily,rank:number):number {return Math.max(0,Math.min(4,Math.floor(rank)-FAMILY_INFO[family].unlock+1));}
 const lanes=(offsets:number[])=>offsets.map(offsetX=>({offsetX,angle:0}));
@@ -27,7 +41,24 @@ export function fighterWeapon(state:FighterWeaponState):FighterWeapon {
   else if(family==='rocket')weapon={...base,damage:[5,7,10,14][i],fireRate:[.45,.43,.4,.37][i],shots:lanes(i===3?[-3,3]:[0]),speed:520,splash:[44,54,64,76][i]};
   else if(family==='plasma')weapon={...base,damage:[7,10,16,19][i],fireRate:[.52,.49,.46,.42][i],shots:lanes([0]),speed:570,splash:[0,16,22,30][i]};
   else weapon={...base,damage:[5,7,9,12][i],fireRate:[.3,.28,.26,.24][i],shots:lanes([0]),speed:840,chain:[1,2,2,3][i],projectileKey:'clarity_beam'};
-  return{...weapon,fireRate:weapon.fireRate/(1+Math.max(0,Math.min(RAPID_CAP,Math.floor(state.rapid)))*.12)};
+  const floor=state.power?POWER_BASE*Math.pow(POWER_STEP,Math.min(20,state.power)):0;
+  weapon.damage=Math.max(weapon.damage,floor*weapon.fireRate/weapon.shots.length);
+  const rapid=Math.max(0,Math.min(RAPID_CAP,Math.floor(state.rapid)));
+  const laserPulse=rapid===RAPID_CAP&&(family==='bb'||family==='pulse');
+  return{...weapon,fireRate:weapon.fireRate/(1+rapid*.12),laserPulse,
+    ...(laserPulse?{label:`LASER PULSE ${ROMAN[i]}`,projectileKey:'clarity_beam',speed:860}:{}),
+  };
+}
+
+/** Each rocket is worth up to ten baseline rounds, while the PAIR adds at
+ * most 20% sustained primary DPS. No splash or pierce multiplies this budget. */
+export function fighterTwinSeekers(state:FighterWeaponState,cadenceScale=1):{damage:number;interval:number;dps:number}|null {
+  if(state.rapid<RAPID_CAP)return null;
+  const weapon=fighterWeapon(state);
+  const primaryDps=weapon.damage*weapon.shots.length/(weapon.fireRate*Math.max(.1,cadenceScale));
+  const baselineRound=[1,1.15,1.4,1.8][Math.max(0,fighterStage('bb',state.rank)-1)];
+  const damage=Math.min(baselineRound*10,primaryDps*TWIN_SEEKER_INTERVAL*.1);
+  return{damage,interval:TWIN_SEEKER_INTERVAL,dps:damage*2/TWIN_SEEKER_INTERVAL};
 }
 
 export interface FighterArmoryPort {
@@ -42,6 +73,7 @@ export interface FighterArmoryPort {
   begin(rank:number,barrels:number,baseTier:number,legacyDps?:number):boolean;
   rankUp(rank:number):boolean;
   upgradeRapid():boolean;
+  upgradeWeapon():boolean;
   setActive(value:boolean):void;
   block():void;
   update(safe:boolean):boolean;

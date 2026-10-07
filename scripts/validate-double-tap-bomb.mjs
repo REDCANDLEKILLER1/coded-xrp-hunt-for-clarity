@@ -153,11 +153,11 @@ check(
   !/seekerAmmo|seekerStock|seekerCount\s*-=|this\.seekers\w*Left/.test(game),
   'seekers must have no ammo pool -- they are part of the weapon, not a pickup',
 );
-const launch = game.split('if (this.xpLevel >= SEEKER_UNLOCK_LEVEL) {')[1]?.split('\n    }')[0] ?? '';
-check(launch.length > 0, 'the seeker launch gate should key off the unlocked level alone');
+const launch = game.split('if (twin||this.xpLevel >= SEEKER_UNLOCK_LEVEL) {')[1]?.split('\n    }')[0] ?? '';
+check(launch.length > 0, 'seekers must launch from the legacy level gate or the earned max-rapid twin profile');
 check(
   !/bombs|pickup|ammo/i.test(launch),
-  'nothing but the level gate and the reload timer may stand between the player and a rocket',
+  'seekers remain unlimited timed weapons rather than consumable ammo',
 );
 check(/SEEKER \\u221e|SEEKER ∞/.test(game), 'the HUD should mark the seeker as unlimited');
 
