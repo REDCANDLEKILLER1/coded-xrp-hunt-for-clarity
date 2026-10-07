@@ -99,7 +99,7 @@ export interface EnemyDef {
    * which is the only place either is computed, so they cannot drift apart and
    * leave a ship hit by shots that visibly missed it.
    *
-   * A heavy is NOT a boss. No health bar, no phases, no attack script, no
+   * A heavy is NOT a boss. A regular health bar, no phases, no attack script, no
    * capture logic -- a regular hull that happens to be big.
    */
   hull: HullClass;

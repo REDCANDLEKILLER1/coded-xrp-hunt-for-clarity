@@ -2,6 +2,7 @@ import { AssetLoader } from './AssetLoader';
 import { Input } from './Input';
 import { Loop } from './Loop';
 import { SpriteRenderer } from './Sprite';
+import { drawBrightEnemy, drawEnemyWeapon, type EnemyWeaponVisual } from './EnemyVisuals';
 import { debugLog } from './DebugLog';
 import { sfx } from '../audio/Sfx';
 import type { Rect } from './Types';
@@ -32,6 +33,7 @@ type Actor = { x: number; y: number; w: number; h: number; vx: number; vy: numbe
 type EnemyStance = 'entering' | 'holding' | 'diving' | 'fleeing';
 type EnemyActor = Actor & {
   enemyKey: string;
+  maxHp: number;
   age: number;
   anchorX: number;
   phase: number;
@@ -63,6 +65,7 @@ type HostileProjectile = Actor & {
   size?: number;
   interceptible?:boolean;
   groundGroup?:string;
+  weaponVisual?: EnemyWeaponVisual;
 };
 type BossActor = Actor & {
   bossKey: string;
@@ -1192,12 +1195,13 @@ export class Game2A {
         vx: 0,
         vy: def.baseSpeed,
         hp: this.enemyHp(def),
+        maxHp: this.enemyHp(def),
         enemyKey: key,
         age: 0,
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: i === 0 ? -1 : 1,
-        fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
+        fireClock: 0.25 + Math.random() * 0.35,
         stance: 'entering',
         stationX: x,
         stationY: this.pickStationY(),
@@ -1268,12 +1272,13 @@ export class Game2A {
       vx: 0,
       vy: def.baseSpeed + pressure,
       hp: this.enemyHp(def),
+      maxHp: this.enemyHp(def),
       enemyKey: def.key,
       age: 0,
       anchorX: x,
       phase: xRatio * Math.PI * 2,
       direction: xRatio < 0.5 ? 1 : -1,
-      fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+      fireClock: 0.25 + Math.random() * 0.35,
       stance: 'entering',
       stationX: x,
       stationY: this.pickStationY(),
@@ -1625,12 +1630,13 @@ export class Game2A {
           vx: 0,
           vy: this.enemySpeed(def),
           hp: this.enemyHp(def),
+          maxHp: this.enemyHp(def),
           enemyKey,
           age: 0,
           anchorX: x,
           phase: Math.random() * Math.PI * 2,
           direction: Math.random() < 0.5 ? -1 : 1,
-          fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+          fireClock: 0.25 + Math.random() * 0.35,
           stance: 'entering',
           stationX: x,
           stationY: this.pickStationY(),
@@ -1698,7 +1704,8 @@ export class Game2A {
         drone.y -= speed * 0.65 * dt;
       }
 
-      if (drone.stance === 'holding' || drone.stance === 'diving') {
+      if (drone.stance === 'holding' || drone.stance === 'diving'
+        || (drone.stance === 'entering' && drone.y >= def.draw.h / 2)) {
         this.enemyFire(drone, def, dt);
       }
 
@@ -1756,13 +1763,14 @@ export class Game2A {
       return;
     }
     const doctrine = ENEMY_DOCTRINES[def.doctrine ?? 'pressure'];
-    drone.fireClock = def.fireRate * doctrine.interval + Math.random() * ENEMY_FIRE_JITTER;
 
     const dx = this.player.x - drone.x;
     const dy = this.player.y - drone.y;
     const length = Math.max(1, Math.hypot(dx, dy));
     // Only shoot when the player is roughly below: no blind shots upward.
     if (dy / length < ENEMY_FIRE_ARC) return;
+    // A failed aiming check must leave the gun ready for the next valid aim.
+    drone.fireClock = def.fireRate * doctrine.interval + Math.random() * ENEMY_FIRE_JITTER;
 
     const aim = Math.atan2(dy, dx);
     const speed = def.projectileSpeed * doctrine.speed;
@@ -1783,6 +1791,10 @@ export class Game2A {
         damage: 1,
         color: def.accent,
         projectileKey: doctrine.projectileKey,
+        weaponVisual: def.key === 'fast_scout' ? 'laser'
+          : def.doctrine === 'burst' ? 'plasma'
+          : def.doctrine === 'salvo' ? 'missile'
+          : def.doctrine === 'broadside' ? 'shrapnel' : 'pulse',
         size: doctrine.size,
         homing: doctrine.homing,
         track: doctrine.homing ? SALVO_TRACK_SECONDS : undefined,
@@ -1865,12 +1877,13 @@ export class Game2A {
         vx: 0,
         vy: this.enemySpeed(def),
         hp: this.enemyHp(def),
+        maxHp: this.enemyHp(def),
         enemyKey: key,
         age: 0,
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: side as -1 | 1,
-        fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+        fireClock: 0.25 + Math.random() * 0.35,
         stance: 'entering',
         stationX: x,
         stationY: this.pickStationY(),
@@ -2220,12 +2233,13 @@ export class Game2A {
       vx: 0,
       vy: this.enemySpeed(def),
       hp: this.enemyHp(def),
+      maxHp: this.enemyHp(def),
       enemyKey,
       age: 0,
       anchorX: x,
       phase: Math.random() * Math.PI * 2,
       direction: Math.random() < 0.5 ? -1 : 1,
-      fireClock: (def.fireRate ?? 0) * (0.5 + Math.random()),
+      fireClock: 0.25 + Math.random() * 0.35,
       stance: 'entering',
       stationX: x,
       stationY: this.pickStationY(),
@@ -2389,12 +2403,13 @@ export class Game2A {
         vx: 0,
         vy: def.baseSpeed,
         hp: this.enemyHp(def),
+        maxHp: this.enemyHp(def),
         enemyKey: key,
         age: 0,
         anchorX: x,
         phase: Math.random() * Math.PI * 2,
         direction: i < wanted / 2 ? -1 : 1,
-        fireClock: (def.fireRate ?? 1) * (0.4 + Math.random() * 0.6),
+        fireClock: 0.25 + Math.random() * 0.35,
         stance: 'entering',
         stationX: x,
         stationY: this.pickStationY(),
@@ -3230,7 +3245,23 @@ export class Game2A {
   private drawDrone(drone: EnemyActor): void {
     const def = this.enemyDef(drone.enemyKey);
     this.drawRimGlow(drone.x, drone.y, Math.max(def.draw.w, def.draw.h), def.accent);
-    const drawn = this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    const image = this.assets.getImage(def.sprite.category, def.sprite.id);
+    const drawn = image
+      ? drawBrightEnemy(this.ctx, image, drone.x, drone.y, def.draw.w, def.draw.h)
+      : this.drawCentered(def.sprite, drone.x, drone.y, def.draw.w, def.draw.h);
+    // Identification ring only; it adds no shield health or collision area.
+    this.ctx.save();
+    this.ctx.strokeStyle = '#ff3355';
+    this.ctx.globalAlpha = 0.62;
+    this.ctx.lineWidth = 1;
+    this.ctx.beginPath();
+    this.ctx.ellipse(drone.x, drone.y, def.draw.w * 0.62, def.draw.h * 0.62, 0, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.restore();
+    const width = Math.max(22, def.draw.w);
+    bar(this.ctx, clamp(drone.x - width / 2, 2, this.w - width - 2),
+      Math.max(4, drone.y - def.draw.h * 0.62 - 8), width, 4,
+      (drone.hp ?? 0) / Math.max(1, drone.maxHp), '#ff5555');
     if (def.hull === 'heavy') this.drawHeavyHull(drone, def);
     if (!drawn) {
       this.ctx.save();
@@ -3389,6 +3420,11 @@ export class Game2A {
   }
 
   private drawHostileShot(shot: HostileProjectile): void {
+    if (shot.weaponVisual) {
+      drawEnemyWeapon(this.ctx, shot.weaponVisual, shot.x, shot.y,
+        Math.atan2(shot.vy, shot.vx), shot.size ?? 8);
+      return;
+    }
     if(shot.groundGroup&&(shot.size??0)>=19){
       this.ctx.save();this.ctx.strokeStyle='#ff3030';this.ctx.fillStyle=shot.damage>1?'#ffd0c7':'#ff3030';this.ctx.lineWidth=3;this.ctx.shadowColor='#ff3030';this.ctx.shadowBlur=9;
       this.ctx.beginPath();this.ctx.arc(shot.x,shot.y,(shot.size??19)/2,0,Math.PI*2);this.ctx.fill();this.ctx.stroke();this.ctx.restore();return;

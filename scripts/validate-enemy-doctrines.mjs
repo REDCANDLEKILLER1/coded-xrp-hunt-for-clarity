@@ -67,6 +67,7 @@ const volleyOf = (def) => {
   g.enemyFire(drone, def, 0.016);
   return g.hostileShots.map((shot) => ({
     key: shot.projectileKey,
+    visual: shot.weaponVisual,
     size: shot.size,
     homing: shot.homing ?? 0,
     speed: Math.round(Math.hypot(shot.vx, shot.vy)),
@@ -128,6 +129,34 @@ for (const def of armed) {
   const shots = volleyOf(def);
   for (const _ of shots) void _;
   check(g.hostileShots.every((shot) => shot.damage === 1), `${def.key} deals more than 1 damage per round`);
+}
+
+// Readability and delayed-fire regressions run the actual engine in both layouts.
+for (const [width, height] of [[393, 793], [852, 393]]) {
+  globalThis.innerWidth = width; globalThis.innerHeight = height;
+  g.player.x = 196; g.player.y = 700;
+  const visuals = new Set(armed.map(def => volleyOf(def)[0]?.visual));
+  check(visuals.size === 5 && !visuals.has(undefined), 'five armed ship types need five weapon silhouettes');
+  g.drones.length = 0;
+  g.player.x = width / 2; g.player.y = height * 0.85;
+  g.spawnMissionDrone('regulator_drone', 0.5);
+  const drone = g.drones[0];
+  const startingHp = drone.hp;
+  check(drone.maxHp === startingHp, 'enemy bar must start at the actual scaled health');
+  drone.hp -= 0.5;
+  check(drone.maxHp === startingHp, 'damage must not shrink the health-bar denominator');
+  g.hostileShots.length = 0;
+  Object.assign(drone, { x: width / 2, y: 35, fireClock: 0, stance: 'entering', patience: 20 });
+  g.moveDrones(0.016);
+  check(g.hostileShots.length > 0, 'a fully visible entering enemy should shoot before reaching station');
+  g.hostileShots.length = 0;
+  Object.assign(drone, { x: width / 2, y: height * 0.5, fireClock: 0, stance: 'diving' });
+  g.player.y = 0;
+  g.enemyFire(drone, roster.regulator_drone, 0.016);
+  check(g.hostileShots.length === 0 && drone.fireClock <= 0, 'invalid aim must not spend the firing cooldown');
+  g.player.y = height * 0.85;
+  g.enemyFire(drone, roster.regulator_drone, 0.016);
+  check(g.hostileShots.length === 1, 'gun must fire promptly after regaining valid aim');
 }
 
 if (failures.length) {

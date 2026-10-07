@@ -223,7 +223,7 @@ for (const glow of glows) {
   check(glow.state.globalAlpha <= 0.3, `the rim light must not overpower the sprite; alpha ${glow.state.globalAlpha}`);
 }
 
-// ---- 6. enemies: no ring by default, red outline when shielded -----------
+// ---- 6. enemies: thin red identification ring, additional escort shield ---
 game.spawnDrone?.();
 if (game.drones.length === 0) {
   // Fall back to driving the wave loop until something spawns.
@@ -236,7 +236,16 @@ if (drone) {
   rec.reset();
   game.drawDrone(drone);
   const droneRings = circles(rec.ops, 'stroke').filter((c) => near(c.x, drone.x, 2) && near(c.y, drone.y, 2) && c.full);
-  check(droneRings.length === 0, `an unshielded enemy must not wear a ring -- that is the floating circle (${droneRings.length} found)`);
+  check(droneRings.length === 1, 'every enemy must have one identification ring');
+  check(droneRings.every(c => isRed(c.state.strokeStyle) && c.state.lineWidth === 1 && c.state.globalAlpha <= 0.65), 'identification ring must remain thin and subtle');
+  const health = rec.ops.find(o => o.op === 'fillRect' && o.state.fillStyle === '#ff5555');
+  check(health && health.h === 2 && health.w > 0, 'every enemy must show its health bar');
+  const maxHp = drone.maxHp;
+  drone.hp = maxHp / 2;
+  rec.reset();game.drawDrone(drone);
+  const damaged = rec.ops.find(o => o.op === 'fillRect' && o.state.fillStyle === '#ff5555');
+  check(damaged && Math.abs(damaged.w - health.w / 2) < 0.01, 'half health must render half the original bar');
+  drone.hp = maxHp;
 
   // An escort holds the boss's shield up. Those are the ships to shoot, so
   // those are the ships that show one. The boss is a REAL one -- a hand-rolled
@@ -309,6 +318,30 @@ if (drone) {
 // both `arc(<actor>, ..., * 0.58, 0, Math.PI * 2)`.
 const source = readFileSync('src/game/core/Game2A.ts', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 check(!/\* 0\.58, 0, Math\.PI \* 2\)/.test(source), 'the unconditional 0.58x hull ring is back');
+
+// Lit hulls must retain transparency, and lighting must be cached per image.
+const visualBundle = await build({ entryPoints: ['src/game/core/EnemyVisuals.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { drawBrightEnemy, drawEnemyWeapon } = await import(`data:text/javascript;base64,${Buffer.from(visualBundle.outputFiles[0].text).toString('base64')}`);
+const createElement = document.createElement;
+const pixels = { data: new Uint8ClampedArray([40, 80, 120, 127, 0, 0, 0, 0]) };
+let bakes = 0;
+document.createElement = () => ({ width: 0, height: 0, getContext: () => ({
+  drawImage() { bakes++; }, getImageData() { return pixels; }, putImageData() {},
+}) });
+const image = { naturalWidth: 2, naturalHeight: 1 };
+rec.reset();
+drawBrightEnemy(rec.ctx, image, 80, 80, 24, 24);
+drawBrightEnemy(rec.ctx, image, 90, 90, 24, 24);
+document.createElement = createElement;
+check(pixels.data[0] > 40 && pixels.data[1] > 80 && pixels.data[2] > 120, 'lighting must brighten hull RGB');
+check(pixels.data[3] === 127 && pixels.data[7] === 0, 'lighting must preserve translucent and transparent pixels');
+check(bakes === 1, 'lighting must bake once per source image, not once per frame');
+const silhouettes = new Set();
+for (const visual of ['pulse', 'plasma', 'missile', 'shrapnel', 'laser']) {
+  rec.reset();drawEnemyWeapon(rec.ctx, visual, 0, 0, 0, 8);
+  silhouettes.add(JSON.stringify(rec.ops));
+}
+check(silhouettes.size === 5, 'weapon renderers must produce five distinct visible silhouettes');
 
 if (failures.length) {
   console.error('ship-readability: FAIL');
