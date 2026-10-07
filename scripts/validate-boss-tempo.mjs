@@ -52,6 +52,21 @@ const load = async (entry) => {
 const { Game2A } = await load('src/game/core/Game2A.ts');
 const { BOSSES } = await load('src/game/content/registry.ts');
 
+const {spaceTiles,SPACE_PATH}=await load('src/game/content/EarthEnvironment.ts');
+check(SPACE_PATH.length===10,'opening space route has ten separate images');
+for(const [width,height]of [[393,793],[844,390]]){
+  const tileHeight=width*1.5;
+  for(let i=0;i<=10;i++){
+    const tiles=spaceTiles(i*tileHeight,height,tileHeight);
+    check(tiles.find(tile=>tile.id===-i)?.index===i%10,'space route advances 01→10→01');
+  }
+  for(const travel of [0,tileHeight-.01,tileHeight+.01,tileHeight*10-.01,tileHeight*10+.01]){
+    const tiles=spaceTiles(travel,height,tileHeight);
+    check(tiles[0].y<=0&&tiles.at(-1).y+tileHeight>=height,'space route covers viewport across seams');
+    for(let i=1;i<tiles.length;i++)check(Math.abs(tiles[i].y-tiles[i-1].y-tileHeight)<1e-7,'space tiles remain contiguous');
+  }
+}
+
 const launch = new Game2A(stubCanvas());
 launch.deployFromMap('ledger_prime', 'EARTH');
 launch.reset();
@@ -368,7 +383,7 @@ for (const boss of scripted) {
   for(const [act,expected] of [['regulatory_behemoth','deep_space_lane'],['clarity_destroyer','ledger_ground_neon_v2'],['regulatory_warship','ledger_ground_neon_v2']]){
     const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset();g.earthEncounterDirector.clear();g.missionDirector.startAtAct(mission,act);
     const refs=[];g.assets.getImage=(category,id)=>{refs.push(id);return{width:1024,height:683};};
-    g.drawStageBackdrop(g.currentStage());check(refs.length===1&&refs[0]===expected,`${act}: actual draw must inherit the chapter environment`);
+    g.drawStageBackdrop(g.currentStage());check(expected==='deep_space_lane'?refs.length>0&&refs.every(id=>id.startsWith('space_path_')):refs.length===1&&refs[0]===expected,`${act}: actual draw must inherit the chapter environment`);
     const travel=g.groundTravel;g.paused=true;g.update(10);check(g.groundTravel===travel,'paused ground does not slide under frozen threats');
   }
   const before=groundTiles(599.9,844,600),after=groundTiles(600.1,844,600);

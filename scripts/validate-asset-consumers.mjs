@@ -89,7 +89,7 @@ const note = (key, how) => {
 const routesFor = (key) => [...(referenced.get(key) ?? [])];
 
 // ---- 1. the running content registries ----------------------------------
-const modules = ['src/game/content/registry.ts', 'src/game/content/EarthThreats.ts'];
+const modules = ['src/game/content/registry.ts', 'src/game/content/EarthThreats.ts', 'src/game/content/EarthEnvironment.ts'];
 for (const entryPoint of modules) {
   const bundled = await build({ entryPoints: [entryPoint], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
   const mod = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString('base64')}`);

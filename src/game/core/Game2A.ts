@@ -14,7 +14,7 @@ import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/Cam
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
-import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
+import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
 import {RAPID_CAP,EARTH_WEAPON_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
@@ -2861,7 +2861,7 @@ export class Game2A {
     const props = Object.values(ENVIRONMENT_PROPS).filter((prop) => prop.stages.includes(stage.key));
     if (props.length === 0) return;
     const spacing = 168;
-    const travel = this.missionDirector.activeMission ? this.groundTravel : this.clock * stage.scrollSpeed * 0.72;
+    const travel = this.missionDirector.activeMission ? (stage.key==='deep_space_lane'?this.orbitalTravel*.72:this.groundTravel) : this.clock * stage.scrollSpeed * 0.72;
     const base = Math.floor(travel / spacing);
     const offset = travel % spacing;
 
@@ -2874,13 +2874,21 @@ export class Game2A {
       const side = index % 2 === 0 ? -1 : 1;
       const inset = Math.min(26, prop.draw.w * 0.24);
       const x = side < 0 ? inset : this.w - inset;
-      this.drawCentered(prop.sprite, x, y, prop.draw.w, prop.draw.h);
+      if(stage.key==='deep_space_lane'){
+        for(let fragment=0;fragment<5;fragment++){
+          const scale=[.58,.22,.35,.16,.28][fragment];
+          const dx=[0,24,-16,34,8][fragment]*side;
+          const dy=[0,-30,26,46,64][fragment];
+          this.drawCentered(prop.sprite,x+dx,y+dy,prop.draw.w*scale,prop.draw.h*scale);
+        }
+      }else this.drawCentered(prop.sprite, x, y, prop.draw.w, prop.draw.h);
     }
     this.ctx.restore();
   }
 
   private drawStageBackdrop(stage: StageDef): boolean {
     const earth=!!this.missionDirector.activeMission;
+    if(earth&&stage.key==='deep_space_lane'&&this.drawSpacePath())return true;
     const ref = earth ? EARTH_BACKDROPS[stage.key] ?? stage.background : this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
     const image = this.assets.getImage(ref.category, ref.id);
     if (!image || image.width <= 0 || image.height <= 0) return false;
@@ -2918,6 +2926,29 @@ export class Game2A {
     this.ctx.fillRect(0, 0, this.w, this.h);
     this.ctx.restore();
     return true;
+  }
+
+  private drawSpacePath():boolean {
+    const height=this.w*1.5;
+    let drawn=false;
+    this.ctx.save();
+    this.ctx.fillStyle='#000';this.ctx.fillRect(0,0,this.w,this.h);
+    for(const tile of spaceTiles(this.orbitalTravel,this.h,height)){
+      const ref=SPACE_PATH[tile.index];
+      const image=this.assets.getImage(ref.category,ref.id);
+      if(!image)continue;
+      drawn=true;this.ctx.drawImage(image,0,tile.y,this.w,height);
+      // Fade both edges to the same black seam; drifting stars continue across it.
+      const band=height*.12;
+      for(const bottom of [false,true]){
+        const y=tile.y+(bottom?height-band:0);
+        const shade=this.ctx.createLinearGradient(0,y,0,y+band);
+        shade.addColorStop(0,bottom?'rgba(0,0,0,0)':'#000');
+        shade.addColorStop(1,bottom?'#000':'rgba(0,0,0,0)');
+        this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
+      }
+    }
+    this.ctx.restore();return drawn;
   }
 
   /** Three lightweight parallax layers keep a clear flight direction, even

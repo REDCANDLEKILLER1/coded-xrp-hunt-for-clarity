@@ -14,3 +14,21 @@ export function groundTiles(travel:number,height:number,tileHeight:number):{id:n
     const row=i-1,id=row-base;return{id,y:row*tileHeight+offset,mirror:Math.abs(id%2)===1};
   });
 }
+
+export const SPACE_PATH:SpriteRef[]=[
+  {category:'backgrounds',id:'space_path_01'},
+  {category:'backgrounds',id:'space_path_02'},
+  {category:'backgrounds',id:'space_path_03'},
+  {category:'backgrounds',id:'space_path_04'},
+  {category:'backgrounds',id:'space_path_05'},
+  {category:'backgrounds',id:'space_path_06'},
+  {category:'backgrounds',id:'space_path_07'},
+  {category:'backgrounds',id:'space_path_08'},
+  {category:'backgrounds',id:'space_path_09'},
+  {category:'backgrounds',id:'space_path_10'},
+];
+
+/** New tiles enter above; the camera proceeds 01 through 10 then 01. */
+export function spaceTiles(travel:number,height:number,tileHeight:number){
+  return groundTiles(travel,height,tileHeight).map(tile=>({...tile,mirror:false,index:((-tile.id%SPACE_PATH.length)+SPACE_PATH.length)%SPACE_PATH.length}));
+}

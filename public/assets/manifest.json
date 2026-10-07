@@ -410,6 +410,106 @@
       "bytes": 324208,
       "sha256": "3f0f4f922e306ae1e1cbb3863ef2b290fd609b00657b15a0081420465ef2914a",
       "notes": "Original built-in image generation 2026-10-07. Transparent Earth globe for the opening space-section ending only; runtime animates position, scale and alpha. No private reference pixels."
+    },
+    "space_path_01": {
+      "src": "/assets/backgrounds/space_path_01.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 30144,
+      "sha256": "19ce9384fbb22dcbd4c95bb23079d9acd8da91f49c97892e8fd16530f6a13baf",
+      "notes": "Original generated corridor tile 1 of 10; ordered downward scrolling loop."
+    },
+    "space_path_02": {
+      "src": "/assets/backgrounds/space_path_02.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 41584,
+      "sha256": "d3c10564a2c46be3c1351a2acc53d068b904fc0e4fc29e63c34fd11a5efbb9c2",
+      "notes": "Original generated corridor tile 2 of 10; ordered downward scrolling loop."
+    },
+    "space_path_03": {
+      "src": "/assets/backgrounds/space_path_03.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 115556,
+      "sha256": "9c834c59e379b7e7c1dd77a9b4e1a762fae09b69d63739ef0fd519602d97247d",
+      "notes": "Original generated corridor tile 3 of 10; ordered downward scrolling loop."
+    },
+    "space_path_04": {
+      "src": "/assets/backgrounds/space_path_04.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 186928,
+      "sha256": "c9bc8c544d090566465df74997f87bb8ac5a180ccfa5432ed01e2ea2a6dffaa0",
+      "notes": "Original generated corridor tile 4 of 10; ordered downward scrolling loop."
+    },
+    "space_path_05": {
+      "src": "/assets/backgrounds/space_path_05.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 179928,
+      "sha256": "76be77bc9d6df46d8a4b583c7db9e81f72fe60f895ecc57db7aa5eb00a13b99b",
+      "notes": "Original generated corridor tile 5 of 10; ordered downward scrolling loop."
+    },
+    "space_path_06": {
+      "src": "/assets/backgrounds/space_path_06.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 230478,
+      "sha256": "a2d2e1800edf41b883e675ee7fea9e0aed05a9d8b9e21d8948ba32c6d4062852",
+      "notes": "Original generated corridor tile 6 of 10; ordered downward scrolling loop."
+    },
+    "space_path_07": {
+      "src": "/assets/backgrounds/space_path_07.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 160610,
+      "sha256": "5b73429f0dd3281473278da09c98dcbb72671b95fa67584f28bbe1b308ff079c",
+      "notes": "Original generated corridor tile 7 of 10; ordered downward scrolling loop."
+    },
+    "space_path_08": {
+      "src": "/assets/backgrounds/space_path_08.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 155188,
+      "sha256": "410b3fa2c26308963c8b37df481f37c8d9773b0be4996bd1f8fca581218af311",
+      "notes": "Original generated corridor tile 8 of 10; ordered downward scrolling loop."
+    },
+    "space_path_09": {
+      "src": "/assets/backgrounds/space_path_09.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 26490,
+      "sha256": "aba1537606de798b12d21e98329bd894ef24ee5b5c29f3c3065bd6841563ab6f",
+      "notes": "Original generated corridor tile 9 of 10; ordered downward scrolling loop."
+    },
+    "space_path_10": {
+      "src": "/assets/backgrounds/space_path_10.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 20552,
+      "sha256": "a5c381353df259ecc51c99c7447cfa9050d031ce5e08c276169cb3e687791aa5",
+      "notes": "Original generated corridor tile 10 of 10; ordered downward scrolling loop."
     }
   },
   "interior": {
