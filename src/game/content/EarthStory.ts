@@ -2,7 +2,7 @@ import type {DialogueScene} from '../definitive/Dialogue';
 
 export interface FlightStoryPort {
   setActive(value:boolean):void;
-  update(dt:number,act:string|null,restorationSafe?:boolean):boolean;
+  update(dt:number,act:string|null,restorationSafe?:boolean,suppressAutomatic?:boolean):boolean;
   readonly districtRestored?:boolean;
 }
 

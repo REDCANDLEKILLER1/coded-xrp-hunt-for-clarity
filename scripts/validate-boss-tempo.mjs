@@ -548,5 +548,51 @@ console.log('boss-tempo: OK — every screened boss stays open, and no health ba
 
  }
 }
+// Ryan's cloud-descent report: drive the real Comms DOM click handlers,
+// Dialogue reveal/arm timer and Game2A early-return branches together.
+{
+ const {EarthCommsRuntime}=await load('src/game/ui/EarthCommsRuntime.ts');
+ const {EARTH_STORY}=await load('src/game/content/EarthStory.ts');
+ const originalCreate=document.createElement;
+ const element=()=>({hidden:false,disabled:false,textContent:'',dataset:{},children:[],handlers:{},
+  setAttribute(){},append(...nodes){this.children.push(...nodes);},appendChild(node){this.children.push(node);},
+  addEventListener(type,fn){this.handlers[type]=fn;},remove(){}});
+ const click=node=>node.handlers.click({stopPropagation(){}});
+ for(const [width,height]of [[393,793],[844,390]])for(const transit of ['cloud','entry']){
+  innerWidth=width;innerHeight=height;
+  document.createElement=element;
+  const parent=element();
+  const seen=['orbital_approach','fog_belt','regulatory_behemoth'].map(act=>EARTH_STORY[act].id);
+  const snapshot={dialogueSeen:seen,quests:[]};let writes=0;
+  const save={snapshot,subscribe(){},update(){writes++;throw Error('log replay must not write saves');}};
+  const story=new EarthCommsRuntime(parent,save);
+  document.createElement=originalCreate;
+  const g=new Game2A(stubCanvas());g.setFlightStory(story);g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});g.render=()=>{};
+  const {EARTH_LEDGER_PRIME_MISSION}=await load('src/game/content/missions/ledgerPrime.ts');
+  g.missionDirector.startAtAct(EARTH_LEDGER_PRIME_MISSION,'ledger_city');
+  if(transit==='cloud')g.cloudDescent=12;
+  else g.earthEntry={elapsed:1,fromX:g.player.x/g.w,fromY:g.player.y/g.h};
+  const root=parent.children[0],panel=root.children[0],log=root.children[1];
+  g.frame(.05);check(panel.hidden,'transit keeps closed dialogue hidden');
+  // The runtime panel section is nested under the root; hidden at idle.
+  check(!story.panel.active,'transit does not auto-open city briefing');
+  click(log);
+  const before={cloud:g.cloudDescent,entry:g.earthEntry?.elapsed,x:g.player.x,y:g.player.y,travel:g.orbitalTravel};
+  for(let i=0;i<20;i++)g.frame(.05);
+  check(story.panel.active&&panel.children[1].textContent.length>0,'transit Comms text reveals');
+  check(g.cloudDescent===before.cloud&&g.earthEntry?.elapsed===before.entry&&g.player.x===before.x&&g.player.y===before.y&&g.orbitalTravel===before.travel,'Comms holds transit and steering');
+  click(panel.children[3]);g.frame(.2);click(panel.children[3]);
+  check(panel.children[2].textContent==='2 / 8','Continue advances real transit log');
+  g.frame(.2);click(panel.children[4]);check(!story.panel.active&&panel.hidden,'Skip closes real transit log');
+  g.frame(.05);check(transit==='cloud'?g.cloudDescent>before.cloud:g.earthEntry.elapsed>before.entry,'transit resumes after Skip');
+  check(writes===0,'replay writes no receipts or rewards');
+  click(log);g.frame(.2);
+  for(let i=0;i<16;i++){click(panel.children[3]);g.frame(.2);}
+  check(!story.panel.active&&panel.hidden,'Continue alone closes all replay pages');
+  g.suspend();
+ }
+ innerWidth=393;innerHeight=793;
+ console.log('  Transit Comms: real text reveal, Continue/Skip clicks, no early briefing, held/resumed flight in both orientations');
+}
 if(failures.length){console.error('boss-tempo final checks: FAIL\n'+failures.join('\n'));process.exit(1);}
 console.log('boss-tempo final checks: PASS — cloud descent, steering, pause, city loop and handoff');

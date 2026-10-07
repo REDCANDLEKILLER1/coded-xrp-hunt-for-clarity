@@ -28,16 +28,16 @@ export class EarthCommsRuntime implements FlightStoryPort {
     this.enabled=value;this.root.hidden=!value;this.panel.setActive(value);
     if(!value){this.panel.close();this.checkedAct=null;}
   }
-  update(dt:number,act:string|null,restorationSafe=false):boolean {
+  update(dt:number,act:string|null,restorationSafe=false,suppressAutomatic=false):boolean {
     this.root.hidden=!this.enabled||!act;this.panel.setActive(this.enabled&&!!act);
     if(!this.enabled||!act)return false;
     this.panel.update(dt);
-    if(!this.panel.active&&restorationSafe&&!this.districtRestored){
+    if(!suppressAutomatic&&!this.panel.active&&restorationSafe&&!this.districtRestored){
       this.panel.open(CITY_RESTORATION,()=>this.save.update(d=>{
         if(!d.dialogueSeen.includes(CITY_RESTORATION.id))d.dialogueSeen.push(CITY_RESTORATION.id);
         if(!d.quests.includes('earth.district_restored'))d.quests.push('earth.district_restored');
       }).ok);
-    }else if(!this.panel.active&&act!==this.checkedAct){
+    }else if(!suppressAutomatic&&!this.panel.active&&act!==this.checkedAct){
       this.checkedAct=act;
       const scene=earthStoryFor(act,this.seen);
       if(scene)this.panel.open(scene,()=>this.save.update(d=>{if(!d.dialogueSeen.includes(scene.id))d.dialogueSeen.push(scene.id);}).ok);

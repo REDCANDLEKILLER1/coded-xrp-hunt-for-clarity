@@ -870,6 +870,16 @@ export class Game2A {
   private frame(dt: number): void {
     if (isGameMenuOpen()) return;
     this.earthArrivalFade=Math.max(0,this.earthArrivalFade-dt);
+    // Transit still exposes the Comms log. Tick its reveal/input guard before
+    // either cinematic returns, without starting the next act's briefing early.
+    if(this.earthEntry||this.cloudDescent!==null){
+      const transitAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused?this.missionDirector.currentAct?.key??null:null;
+      if(this.flightStory?.update(dt,transitAct,false,true)){
+        this.fighterArmory?.block();
+        if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
+        this.render();return;
+      }
+    }
     if(this.mode==='play'&&!this.paused&&!this.campaignArmory?.active&&this.upgradeOffer.length===0)this.orbitalTravel+=dt*STAGES.deep_space_lane.scrollSpeed;
     if(this.earthEntry){
       this.fighterArmory?.block();

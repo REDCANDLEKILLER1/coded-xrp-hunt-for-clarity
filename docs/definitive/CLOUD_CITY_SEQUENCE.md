@@ -13,3 +13,11 @@ Art prompt set: strict vertical aerial camera, midnight navy/black, restrained #
 Verification: full npm test and npm run build; native Canvas renders of actual Game2A cloud01/cloud06/cloud10/city02 inspected; runtime portrait and landscape simulations confirm pause, steering, cloud completion before city combat, banked reward, clean restart, exact rendered handoff, and route coverage/order. Physical-phone frame-rate/playtesting remains owner verification. Existing bundle-size warning remains.
 
 Recovery: before-cloud-city.bundle was restored into cloud-city-backup-check. Revert this scoped commit to restore the ten-space-tile live baseline. No deployment/security/wallet configuration changed.
+
+## Comms replay correction
+
+Owner report: opening COMMS during cloud descent left STONE on page 1 / 8 with blank text; Continue and Skip did nothing. Both transit branches returned before EarthCommsRuntime.update, so Dialogue.age stayed zero and its .18-second fresh-input guard never armed.
+
+Transit now updates Comms before its simulation branch and holds flight while a replay is active. Automatic act/restoration conversations are suppressed during transit, leaving the city briefing at its intended combat boundary. Replay still grants nothing and writes no save receipts.
+
+The boss-tempo regression drives the real EarthCommsRuntime, CommsPanel click handlers and Dialogue through Game2A.frame in portrait and landscape, during cloud descent and Earth entry. It verifies text reveal, Continue advancing page 2 / 8, Skip dismissal, Continue-only completion, frozen/resumed travel and steering, and no early city briefing or replay save writes. Full npm test and production build are the publication gates. Physical phone interaction remains owner verification. Recovery: the unchanged route/assets are in production baseline 010881a; before-cloud-comms.bundle was restore-tested outside the repository.
