@@ -365,7 +365,7 @@ for (const boss of scripted) {
 {
   const {EARTH_LEDGER_PRIME_MISSION:mission}=await load('src/game/content/missions/ledgerPrime.ts');
   const {groundTiles}=await load('src/game/content/EarthEnvironment.ts');
-  for(const [act,expected] of [['regulatory_behemoth','earth_orbit_neon_v2'],['clarity_destroyer','ledger_ground_neon_v2'],['regulatory_warship','ledger_ground_neon_v2']]){
+  for(const [act,expected] of [['regulatory_behemoth','deep_space_lane'],['clarity_destroyer','ledger_ground_neon_v2'],['regulatory_warship','ledger_ground_neon_v2']]){
     const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset();g.earthEncounterDirector.clear();g.missionDirector.startAtAct(mission,act);
     const refs=[];g.assets.getImage=(category,id)=>{refs.push(id);return{width:1024,height:683};};
     g.drawStageBackdrop(g.currentStage());check(refs.length===1&&refs[0]===expected,`${act}: actual draw must inherit the chapter environment`);
@@ -463,3 +463,43 @@ if (failures.length) {
   process.exit(1);
 }
 console.log('boss-tempo: OK — every screened boss stays open, and no health bar stalls past 10s.');
+
+// Opening space moves throughout flight and launch. Only its section-ending
+// Behemoth triggers Earth entry; the full-level capital capture is unchanged.
+{
+  const {earthEntryPose,EARTH_ENTRY_DURATION}=await load('src/game/content/EarthEntry.ts');
+  const {EARTH_LEDGER_PRIME_MISSION:mission}=await load('src/game/content/missions/ledgerPrime.ts');
+  // Use the actual exported guardian plan rather than re-authoring a boss.
+  const {guardianPlanFor}=await load('src/game/content/EarthBossFlow.ts');
+  for(const [w,h] of [[393,793],[844,390]]){
+    globalThis.innerWidth=w;globalThis.innerHeight=h;
+    const g=new Game2A(stubCanvas());g.deployFromMap('ledger_prime','EARTH');g.reset(undefined,{fresh:true});g.render=()=>{};
+    const before=g.orbitalTravel;g.frame(.1);check(g.orbitalTravel>before,'launch backdrop must scroll');
+    g.paused=true;const stopped=g.orbitalTravel;g.frame(.1);check(g.orbitalTravel===stopped,'explicit pause freezes space motion');g.paused=false;g.launchClock=0;
+    const calls=[];g.assets.getImage=(category,id)=>({id,width:720,height:1280});g.ctx.drawImage=(...args)=>calls.push(args);
+    g.orbitalTravel=100;g.drawStageBackdrop(g.currentStage());const first=JSON.stringify(calls);calls.length=0;g.orbitalTravel=110;g.drawStageBackdrop(g.currentStage());
+    check(first!==JSON.stringify(calls),'space draw coordinates must change with flight travel');check(calls.every(args=>args[0].id==='deep_space_lane'),'Earth cannot appear during opening combat');
+    g.missionDirector.startAtAct(mission,'regulatory_behemoth');g.startGuardian(guardianPlanFor('regulatory_behemoth'));g.boss.state='fight';g.boss.hp=1;g.bossDamageScale=()=>1;
+    g.player.x=w*.2;g.player.y=h*.83;g.damageBoss(10);
+    check(!!g.earthEntry,'space boss final hit begins descent');check(g.missionDirector.currentAct.key==='ledger_city','next ground section is banked without ending the level');
+    check(g.progress.missionCheckpoints.ledger_prime.resumeActKey==='ledger_city','descent checkpoint skips defeated section boss');
+    const state=g.earthEntry;g.damageBoss(10);check(g.earthEntry===state,'final hit cannot duplicate transition');
+    g.input.onKeyDown({key:'ArrowRight',code:'ArrowRight'});g.input.onKeyDown({key:'b',code:'KeyB'});const bombs=g.bombs;g.frame(.1);
+    check(!g.input.enabled&&g.bombs===bombs,'cinematic consumes held controls safely');
+    const mid=earthEntryPose(4,.2,.83),last=earthEntryPose(6,.2,.83);check(last.y<mid.y&&last.shipScale<mid.shipScale&&last.shipAlpha===0,'craft flies forward, shrinks and disappears into Earth');
+    const moving=g.orbitalTravel;g.frame(.1);check(g.orbitalTravel>moving,'stars keep moving during descent');
+    g.paused=true;const held=g.earthEntry.elapsed;g.frame(.5);check(g.earthEntry.elapsed===held,'pause does not skip cinematic');g.paused=false;
+    for(let i=0;i<150&&g.earthEntry;i++)g.frame(.05);
+    check(!g.earthEntry&&g.mode==='play'&&g.missionDirector.currentAct.key==='ledger_city','descent resumes city gameplay exactly once');
+    check(g.player.y===h*.83&&g.player.x===w/2,'fighter returns safely at ground-section entrance');
+    check(g.upgradeOffer.length>0||g.allUpgradesMaxed(),'boss upgrade reward appears after cinematic');
+    for(let i=0;i<20;i++)g.frame(.05);check(g.earthArrivalFade===0,'arrival fade cannot stick under an upgrade screen');
+    for(const act of ['clarity_destroyer','gary_fog']){
+      g.reset(undefined,{fresh:true});g.missionDirector.startAtAct(mission,act);g.startGuardian(guardianPlanFor(act));g.boss.state='fight';g.boss.hp=1;g.bossDamageScale=()=>1;g.damageBoss(10);
+      check(!g.earthEntry,`${act}: later bosses do not replay orbital descent`);
+    }
+    g.reset(undefined,{fresh:true});check(g.orbitalTravel===0&&!g.earthEntry,'restart clears animation and travel');
+  }
+  for(let t=0;t<=EARTH_ENTRY_DURATION;t+=.05){const p=earthEntryPose(t,.2,.83);check([p.x,p.y,p.shipScale,p.shipAlpha,p.planetAlpha,p.fade].every(Number.isFinite),'all animation poses finite');}
+  console.log('  Earth entry: scrolling launch/combat, no early planet, section-boss gate, moving descent, disappearing craft, input/pause, banked reward/checkpoint and ground continuation');
+}

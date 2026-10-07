@@ -13,6 +13,7 @@ import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMi
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
+import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
 import { EARTH_BACKDROPS, groundTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
 import {RAPID_CAP,EARTH_WEAPON_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
@@ -797,6 +798,9 @@ export class Game2A {
   private readonly reviewTelemetry=typeof location!=='undefined'&&new URLSearchParams(location.search).get('review')==='earth';
   private reviewSampleAt=-1;
   private groundTravel=0;
+  private orbitalTravel=0;
+  private earthEntry:{elapsed:number;fromX:number;fromY:number}|null=null;
+  private earthArrivalFade=0;
   private groundRestorationPending=false;
   private restoredGround:Array<{x:number;y:number;life:number}>=[];
   /** Copied observations only: the section test offers no state setters. */
@@ -862,6 +866,14 @@ export class Game2A {
 
   private frame(dt: number): void {
     if (isGameMenuOpen()) return;
+    this.earthArrivalFade=Math.max(0,this.earthArrivalFade-dt);
+    if(this.mode==='play'&&!this.paused&&!this.campaignArmory?.active&&this.upgradeOffer.length===0)this.orbitalTravel+=dt*STAGES.deep_space_lane.scrollSpeed;
+    if(this.earthEntry){
+      this.fighterArmory?.block();
+      if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
+      if(!this.paused){this.updateEarthEntry(dt);this.updateDebris(dt);}
+      this.render();return;
+    }
     if(!this.campaignArmory?.active)this.clock += dt;
     if(this.mode==='play'&&this.campaignArmory&&this.clock>=this.fighterSyncClock&&(!this.fighterReady||this.campaignArmory.state.rank<Math.min(20,this.xpLevel)))this.syncFighterMastery();
     const storyAct=this.mode==='play'&&this.activePlanetKey==='ledger_prime'&&!this.paused&&!this.campaignArmory?.active?this.missionDirector.currentAct?.key??null:null;
@@ -2826,7 +2838,7 @@ export class Game2A {
   }
 
   private background(): void {
-    const stage = this.currentStage();
+    const stage = this.earthEntry?STAGES.deep_space_lane:this.currentStage();
     const sky = this.ctx.createLinearGradient(0, 0, 0, this.h);
     sky.addColorStop(0, stage.sky);
     sky.addColorStop(1, '#02060b');
@@ -2840,7 +2852,9 @@ export class Game2A {
       for (let x = 0; x < this.w; x += 46) line(this.ctx, x, 0, x, this.h);
     }
     if (!illustrated) this.drawStageStructures(stage);
+    if(stage.key==='deep_space_lane'&&this.missionDirector.activeMission)this.drawOrbitalStars();
     this.drawStageProps(stage);
+    if(this.earthEntry)this.drawEarthEntryPlanet();
   }
 
   private drawStageProps(stage: StageDef): void {
@@ -2873,19 +2887,12 @@ export class Game2A {
 
     if(earth){
       this.ctx.save();
-      if(stage.key==='deep_space_lane'){
-        // A single orbital horizon, never a repeated stack of Earths.
-        const scale=Math.max(this.w/image.width,this.h/image.height)*1.035;
-        const width=image.width*scale,height=image.height*scale;
-        const drift=Math.sin(this.groundTravel*.0002)*this.w*.01;
-        this.ctx.drawImage(image,(this.w-width)/2+drift,(this.h-height)/2,width,height);
-      }else{
-        const height=image.height*this.w/image.width;
-        for(const tile of groundTiles(this.groundTravel,this.h,height)){
-          this.ctx.save();this.ctx.translate(0,tile.y+(tile.mirror?height:0));
-          if(tile.mirror)this.ctx.scale(1,-1);
-          this.ctx.drawImage(image,0,0,this.w,height);this.ctx.restore();
-        }
+      const height=image.height*this.w/image.width;
+      const travel=stage.key==='deep_space_lane'?this.orbitalTravel:this.groundTravel;
+      for(const tile of groundTiles(travel,this.h,height)){
+        this.ctx.save();this.ctx.translate(0,tile.y+(tile.mirror?height:0));
+        if(tile.mirror)this.ctx.scale(1,-1);
+        this.ctx.drawImage(image,0,0,this.w,height);this.ctx.restore();
       }
       const shade=this.ctx.createLinearGradient(0,0,0,this.h);
       shade.addColorStop(0,'rgba(0,4,2,.06)');shade.addColorStop(1,'rgba(0,4,2,.2)');
@@ -2911,6 +2918,77 @@ export class Game2A {
     this.ctx.fillRect(0, 0, this.w, this.h);
     this.ctx.restore();
     return true;
+  }
+
+  /** Three lightweight parallax layers keep a clear flight direction, even
+   * during the launch reveal and when an illustration fails to load. */
+  private drawOrbitalStars():void {
+    this.ctx.save();
+    for(let layer=0;layer<3;layer++){
+      this.ctx.fillStyle=layer===2?'#b5ffd0':'#80a5c0';this.ctx.globalAlpha=.24+layer*.18;
+      for(let i=0;i<24;i++){
+        const x=((i*73+layer*131)%997)/997*this.w;
+        const y=(((i*137+layer*71)%991)/991*this.h+this.orbitalTravel*(.22+layer*.38))%(this.h+12)-6;
+        this.ctx.fillRect(x,y,layer===2?1.6:1,layer===2?4:1.5);
+      }
+    }
+    this.ctx.restore();
+  }
+
+  private beginEarthEntry():void {
+    if(this.earthEntry)return;
+    this.earthEntry={elapsed:0,fromX:this.player.x/this.w,fromY:this.player.y/this.h};
+    this.drones=[];this.hazards=[];this.hostileShots=[];this.bolts=[];this.seekers=[];this.pickups=[];
+    this.upgradeOffer=[]; // Boss reward stays banked until flight resumes.
+    this.missionBannerText='SPACE SECTION CLEARED // ENTERING EARTH';this.missionBannerClock=0;
+  }
+
+  private updateEarthEntry(dt:number):void {
+    const entry=this.earthEntry;if(!entry)return;
+    entry.elapsed+=dt;
+    const pose=earthEntryPose(entry.elapsed,entry.fromX,entry.fromY);
+    this.player.x=this.w*pose.x;this.player.y=this.h*pose.y;
+    if(!pose.complete)return;
+    this.earthEntry=null;this.earthArrivalFade=.6;
+    this.player.x=this.w/2;this.player.y=this.h*.83;this.playerFacing=-Math.PI/2;
+    this.earthEncounterDirector.start(this.missionDirector.currentAct?.key??'');
+    this.missionBannerText='EARTH ENTRY COMPLETE // LEDGER CITY';this.missionBannerClock=2.8;
+    if(this.pendingUpgrades>0)this.openUpgradeChoice();
+  }
+
+  private drawEarthEntryPlanet():void {
+    const entry=this.earthEntry;if(!entry)return;
+    const pose=earthEntryPose(entry.elapsed,entry.fromX,entry.fromY);
+    const image=this.assets.getImage(EARTH_ENTRY_BACKGROUND.category,EARTH_ENTRY_BACKGROUND.id);
+    this.ctx.save();this.ctx.globalAlpha=pose.planetAlpha;
+    if(image&&image.width>0&&image.height>0){
+      const size=Math.min(this.w*.72,this.h*.48)*pose.planetZoom;
+      this.ctx.drawImage(image,this.w/2-size/2,this.h*.22-size/2,size,size);
+    }else{
+      const horizon=this.assets.getImage(EARTH_ENTRY_FALLBACK.category,EARTH_ENTRY_FALLBACK.id);
+      if(horizon&&horizon.width>0&&horizon.height>0){
+        const scale=Math.max(this.w/horizon.width,this.h/horizon.height)*pose.planetZoom;
+        const width=horizon.width*scale,height=horizon.height*scale;
+        this.ctx.translate(this.w/2,this.h/2);this.ctx.scale(1,-1);
+        this.ctx.drawImage(horizon,-width/2,-height/2,width,height);
+      }else{
+        this.ctx.fillStyle='#082e22';this.ctx.strokeStyle='#00ff00';this.ctx.lineWidth=5;
+        this.ctx.beginPath();this.ctx.arc(this.w/2,this.h*.22,Math.min(this.w*.3,this.h*.2)*pose.planetZoom,0,Math.PI*2);this.ctx.fill();this.ctx.stroke();
+      }
+    }
+    this.ctx.restore();
+  }
+
+  private drawEarthEntryFlight():void {
+    const entry=this.earthEntry;if(!entry)return;
+    const pose=earthEntryPose(entry.elapsed,entry.fromX,entry.fromY);
+    this.ctx.save();this.ctx.globalAlpha=pose.shipAlpha;
+    this.ctx.translate(this.player.x,this.player.y);this.ctx.scale(pose.shipScale,pose.shipScale);this.ctx.translate(-this.player.x,-this.player.y);
+    this.drawPlayer();this.ctx.restore();this.drawDebris();
+    this.ctx.fillStyle='#00ff00';this.ctx.textAlign='center';this.ctx.font='800 12px ui-sans-serif,system-ui';
+    this.ctx.fillText('SPACE SECTION CLEARED',this.w/2,this.h*.88);
+    this.ctx.fillText('ENTERING EARTH',this.w/2,this.h*.92);
+    this.ctx.fillStyle=`rgba(0,0,0,${pose.fade})`;this.ctx.fillRect(0,0,this.w,this.h);
   }
 
   private drawStageStructures(stage: StageDef): void {
@@ -3017,6 +3095,7 @@ export class Game2A {
   }
 
   private play(): void {
+    if(this.earthEntry){this.drawEarthEntryFlight();return;}
     this.drawGroundInfrastructure();
     for (const hazard of this.hazards) this.drawHazard(hazard);
     this.drawPlayer();
@@ -3042,6 +3121,7 @@ export class Game2A {
     if (!this.bombHintShown && this.bombHintClock > 0) this.drawBombHint();
     if (this.upgradeOffer.length > 0) this.drawUpgradeChoice();
     if (this.paused) this.pause();
+    if(this.earthArrivalFade>0){this.ctx.fillStyle=`rgba(0,0,0,${this.earthArrivalFade/.6})`;this.ctx.fillRect(0,0,this.w,this.h);}
   }
 
   /**
@@ -4429,7 +4509,8 @@ export class Game2A {
       // completeMissionFlightAct; a boss act never reaches that path.
       this.recordCheckpointForCurrentAct();
       // final_assault runs on the fog gate rather than on authored spawns.
-      if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
+      if(missionGuardian.actKey==='regulatory_behemoth'&&entered?.key==='ledger_city')this.beginEarthEntry();
+      else if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
       return;
     }
 
@@ -4907,6 +4988,7 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.groundTravel = 0;
+    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;
     this.groundRestorationPending=false;this.restoredGround=[];
     this.fogGateActive = false;
     this.fogCutClock = 0;

@@ -400,6 +400,16 @@
         "space"
       ],
       "notes": "Original generated 360 degree distant-space backdrop; built-in image generation 2026-09-08. No baked combat objects or private reference pixels."
+    },
+    "earth_entry_globe_v1": {
+      "src": "/assets/backgrounds/earth_entry_globe_v1.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 324208,
+      "sha256": "3f0f4f922e306ae1e1cbb3863ef2b290fd609b00657b15a0081420465ef2914a",
+      "notes": "Original built-in image generation 2026-10-07. Transparent Earth globe for the opening space-section ending only; runtime animates position, scale and alpha. No private reference pixels."
     }
   },
   "interior": {

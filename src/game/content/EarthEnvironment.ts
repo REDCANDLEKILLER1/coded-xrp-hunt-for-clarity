@@ -1,7 +1,7 @@
 import type {SpriteRef} from './types';
 
 export const EARTH_BACKDROPS:Record<string,SpriteRef>={
-  deep_space_lane:{category:'backgrounds',id:'earth_orbit_neon_v2'},
+  deep_space_lane:{category:'backgrounds',id:'deep_space_lane'},
   ledger_city:{category:'backgrounds',id:'ledger_ground_neon_v2'},
   regulatory_outpost:{category:'backgrounds',id:'ledger_ground_neon_v2'},
 };
