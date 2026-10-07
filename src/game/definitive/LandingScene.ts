@@ -45,7 +45,7 @@ export class LandingScene implements ManagedScene {
     this.applyPose();this.paint();
   }
   private readonly pause=():void=>{if(this.active){this.paused=true;this.paint();}};
-  setActive(value:boolean):void{this.active=value;this.ui.hidden=!value;}
+  setActive(value:boolean):void{this.active=value;this.ui.hidden=!value;window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_disabled':'silence'}}));}
   private paint():void{
     this.button.textContent=this.paused?(this.elapsed===0?'BEGIN APPROACH':'RESUME'):'PAUSE';
     this.text.textContent=this.elapsed<10?'The capital ship is disabled. Your fighter approaches its ventral recovery bay.':this.elapsed<17?'Recovery lift engaged. Hold steady—the fighter stays with you.':'Docking clamps secured. XRPMan is ready to disembark.';

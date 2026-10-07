@@ -143,7 +143,7 @@ export class BoardingScene implements ManagedScene {
     if(!host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.threshold.id))this.conversation(BOARDING_DIALOGUE.threshold);
   }
 
-  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; this.clearInput(); }
+  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
   private part(parent:Object3D,pos:[number,number,number],size:[number,number,number],material:MeshStandardMaterial|MeshBasicMaterial=this.metal):Mesh {
     const mesh=new Mesh(this.box,material);mesh.position.set(...pos);mesh.scale.set(...size);mesh.castShadow=material instanceof MeshStandardMaterial;mesh.receiveShadow=mesh.castShadow;parent.add(mesh);return mesh;
   }

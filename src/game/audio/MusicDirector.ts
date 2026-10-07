@@ -71,7 +71,8 @@ export class MusicDirector {
       return;
     }
     // Unmuting replays whatever the game last asked for.
-    const cue = this.currentCue ?? this.pendingCue;
+    const cue = this.pendingCue ?? this.currentCue;
+    this.pendingCue = null;
     this.currentCue = null;
     this.currentTrack = null;
     if (cue) this.play(cue);

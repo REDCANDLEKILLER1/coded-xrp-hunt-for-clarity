@@ -324,7 +324,7 @@ void game.start().then(() => {
     return;
   }
 
-  if (!params.has('onfoot')) {const saved=savedChapterScene(definitiveSave);if(saved!=='earth')void showChapter(saved);else{game.suspend();boarding.setEnabled(false);}return;}
+  if (!params.has('onfoot')) {const saved=savedChapterScene(definitiveSave);if(saved!=='earth')void showChapter(saved);else{game.suspend();boarding.setEnabled(false);music.cue('theme');}return;}
   map.hide();
   game.suspend();
   space.hide();

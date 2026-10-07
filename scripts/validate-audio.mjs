@@ -108,3 +108,42 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(`audio: OK — ${Object.keys(manifest.tracks).length} tracks, ${fired.size} live cues, all mapped.`);
+
+// Execute the director to catch muted-scene intent and real gesture replay bugs.
+const assert = (await import('node:assert/strict')).default;
+const saved = new Map();
+globalThis.localStorage = { getItem: key => saved.get(key) ?? null, setItem: (key,value) => saved.set(key,value) };
+globalThis.window = new EventTarget();
+window.setTimeout = () => 1;
+window.setInterval = () => 1; // Fades are not the behavior under test.
+globalThis.document = new EventTarget();
+globalThis.fetch = async url => ({ ok: true, json: async () => url === '/assets/audio/manifest.json' ? config : assets });
+const played = [];
+globalThis.Audio = class { volume=0; pause() {} play() { played.push(this.src); return Promise.resolve(); } };
+const runtime = await build({ entryPoints: ['src/game/audio/MusicDirector.ts'], bundle: true, format: 'esm', write: false, logLevel: 'silent' });
+const { MusicDirector } = await import(`data:text/javascript;base64,${Buffer.from(runtime.outputFiles[0].text).toString('base64')}`);
+const music = new MusicDirector();
+music.cue('theme');
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(played.length, 0, 'no audio before a gesture');
+document.dispatchEvent(new Event('pointerdown'));
+await Promise.resolve();
+assert.equal(played.at(-1), manifest.tracks.theme.src);
+music.cue('theme');
+assert.equal(played.length, 1, 'same cue does not restart audio');
+music.cue('silence');
+music.setMuted(true);
+music.cue('warship_interior');
+music.setMuted(false);
+await Promise.resolve();
+assert.equal(played.at(-1), manifest.tracks.level_one.src, 'unmute uses the latest scene cue instead of stale silence');
+music.setMuted(true);
+music.cue('warship_home');
+music.setMuted(false);
+assert.equal(played.at(-1), manifest.tracks.from_enemy_to_home.src, 'muted transitions preserve the newest music intent');
+assert.match(main, /game\.suspend\(\);boarding\.setEnabled\(false\);music\.cue\('theme'\)/, 'campaign-map startup restores the theme after suspending combat');
+for (const [file,cue] of [['LandingScene','warship_disabled'],['BoardingScene','warship_interior'],['DistrictConnectorScene','warship_home']]) {
+ const source=readFileSync(`src/game/definitive/${file}.ts`,'utf8');
+ assert.ok(source.includes(`'${cue}'`) && source.includes('coded:music-cue'), `${file} must cue its active music`);
+}
+console.log('audio playback: gesture gate, repeat cue, map startup, boarding cues, and unmute scene intent passed');
