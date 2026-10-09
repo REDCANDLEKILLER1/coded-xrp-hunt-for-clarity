@@ -1,0 +1,29 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> coded-xrp-hunt-for-clarity@0.1.0 build
+> tsc && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 129 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                           0.81 kB │ gzip:   0.45 kB
+dist/assets/MeshRuntime-CEDybPb9.css     12.09 kB │ gzip:   3.23 kB
+dist/assets/index-Br1R9pS-.css           24.33 kB │ gzip:   5.88 kB
+dist/assets/SpaceRoutes-BjHB7Ojo.js       3.16 kB │ gzip:   1.40 kB │ map:     7.08 kB
+dist/assets/MarsExcavation-CiTk3cO3.js    4.28 kB │ gzip:   1.86 kB │ map:     9.43 kB
+dist/assets/MarsRelief-BXgDUPtB.js        4.68 kB │ gzip:   1.99 kB │ map:     9.87 kB
+dist/assets/SpaceProgress-Cu4kX9mh.js     4.86 kB │ gzip:   1.64 kB │ map:    12.89 kB
+dist/assets/FogMoon-CVoMkA20.js           5.09 kB │ gzip:   2.30 kB │ map:    11.26 kB
+dist/assets/BoardingQuest-DJh_ZKO3.js     8.36 kB │ gzip:   2.42 kB │ map:    20.99 kB
+dist/assets/BullionLanding-CWV7oZE8.js   12.94 kB │ gzip:   4.98 kB │ map:    35.71 kB
+dist/assets/MeshRuntime-CuQk2iTW.js     324.47 kB │ gzip:  88.88 kB │ map:   961.40 kB
+dist/assets/index-C0xSJ2aN.js           324.58 kB │ gzip:  95.78 kB │ map: 1,186.94 kB
+dist/assets/PlanetApproach-F6RJj6i0.js  587.65 kB │ gzip: 149.38 kB │ map: 2,909.12 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 2.97s

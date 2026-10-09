@@ -587,6 +587,7 @@ export class Game2A {
   private readonly loop = new Loop((dt) => this.frame(dt));
   private readonly missionDirector = new MissionDirector();
   private readonly earthEncounterDirector = new EarthFlightEncounterDirector();
+  private readonly cloudDescentDirector = new EarthFlightEncounterDirector();
   private readonly warshipDirector = new RegulatoryWarshipDirector();
   private clock = 0;
   private mode: Mode = 'title';
@@ -890,20 +891,34 @@ export class Game2A {
     if(this.cloudDescent!==null){
       this.fighterArmory?.block();
       if(this.storyCapturedInput){this.input.setActive(true);this.storyCapturedInput=false;}
-      this.clock+=dt;
       if(this.input.consumePause())this.setPaused(!this.paused);
       const cloudTap=this.input.consumeTap();
-      this.input.consumeBomb();this.input.consumeDoubleTap();this.input.consumeSpecial();
       if(cloudTap&&inCircle(this.zone.pause,cloudTap.x,cloudTap.y))this.setPaused(!this.paused);
-      if(!this.paused){
+      if(!this.paused&&this.mode==='play'){
+        this.clock+=dt;
+        // Combat is live during the descent: bombs/specials fire, guns
+        // auto-fire via updateBolts, and the descent director paces waves.
+        if(this.input.consumeSpecial())this.useSpecial();
+        if(this.input.consumeBomb())this.useBomb();
+        const cloudDouble=this.input.consumeDoubleTap();
+        if(cloudDouble&&!this.inControls(cloudDouble.x,cloudDouble.y)){this.bombHintShown=true;this.useBomb();}
         this.cloudDescent=Math.min(CLOUD_DESCENT_DURATION,this.cloudDescent+dt);
-        this.movePlayer(dt);this.updateFacing(dt);this.updateDebris(dt);
+        this.movePlayer(dt);this.updateFacing(dt);
+        this.updateDescentEncounters(dt);
+        this.updateBolts(dt);this.updateSeekers(dt);
+        this.moveDrones(dt);
+        this.updateCombatLifecycle(dt);
+        if(this.mode!=='play'){this.cloudDescent=null;this.cloudDescentDirector.clear();this.render();return;}
         if(this.cloudDescent>=CLOUD_DESCENT_DURATION){
           this.cloudDescent=null;this.cityPathPosition=0;this.cityHasCloudTail=true;
+          this.cloudDescentDirector.clear();
           this.earthEncounterDirector.start(this.missionDirector.currentAct?.key??'');
           this.missionBannerText='CLOUD LAYER CLEARED // LEDGER CITY';this.missionBannerClock=2.8;
           if(this.pendingUpgrades>0)this.openUpgradeChoice();
         }
+      }else{
+        // Paused: drain combat inputs so they cannot fire on resume.
+        this.input.consumeBomb();this.input.consumeDoubleTap();this.input.consumeSpecial();
       }
       this.render();return;
     }
@@ -1017,6 +1032,11 @@ export class Game2A {
       }
     }
 
+    this.updateCombatLifecycle(dt);
+  }
+
+  /** Shared combat effects, damage recovery and run completion for flight and descent. */
+  private updateCombatLifecycle(dt:number):void {
     this.updateHostileShots(dt);
     this.updatePickups(dt);
     this.collisions();
@@ -1290,6 +1310,18 @@ export class Game2A {
         color: phase === 'hangar' ? '#ff3355' : '#ff8a3d',
         projectileKey: phase === 'engines' || phase === 'hangar' ? 'enemy_missile' : 'enemy_red_bullet',
       });
+    }
+  }
+
+  /**
+   * Cloud descent encounters: airborne drones only, paced by the director.
+   * Ground hazards/turrets stay city-gated — the descent spawns no hazards.
+   */
+  private updateDescentEncounters(dt: number): void {
+    const activeThreats = this.drones.length;
+    const state = this.cloudDescentDirector.update(dt, activeThreats);
+    for (const spawn of state.spawns) {
+      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
     }
   }
 
@@ -3041,6 +3073,7 @@ export class Game2A {
     this.earthEntry=null;this.earthArrivalFade=.6;
     this.player.x=this.w/2;this.player.y=this.h*.83;this.playerFacing=-Math.PI/2;
     this.cloudDescent=0;this.cityPathPosition=0;
+    this.cloudDescentDirector.start('cloud_descent');
     this.missionBannerText='EARTH ENTRY COMPLETE // CLOUD DESCENT';this.missionBannerClock=2.8;
   }
 
@@ -3185,7 +3218,16 @@ export class Game2A {
   private play(): void {
     if(this.earthEntry){this.drawEarthEntryFlight();return;}
     if(this.cloudDescent!==null){
-      this.drawPlayer();this.drawDebris();
+      for (const drone of this.drones) this.drawDrone(drone);
+      for (const bolt of this.bolts) this.drawBolt(bolt);
+      this.drawWeaponEffects();
+      for (const seeker of this.seekers) this.drawSeeker(seeker);
+      for (const shot of this.hostileShots) this.drawHostileShot(shot);
+      for (const pickup of this.pickups) this.drawPickup(pickup);
+      this.drawPlayer();for(const item of this.rings)this.drawRing(item);this.drawDebris();
+      if (this.ringClock > 0) this.drawPulse();
+      if (this.bombClock > 0) this.drawBombWave();
+      this.hud();
       this.ctx.save();this.ctx.textAlign='center';this.ctx.fillStyle='#b5ffd0';
       this.ctx.font='800 13px ui-sans-serif,system-ui';
       this.ctx.fillText('DESCENDING THROUGH CLOUDS',this.w/2,32);
@@ -4840,6 +4882,8 @@ export class Game2A {
    * is always a moment you are shown rather than one that happens off screen.
    */
   private openUpgradeChoice(): void {
+    // Descent rewards are banked until the city handoff.
+    if(this.cloudDescent!==null)return;
     const all: UpgradeKind[] = this.campaignArmory?['weapon','barrel','shield','bomb','pulse']:['barrel','shield','bomb','pulse'];
     const open = all.filter((kind) => this.upgradeAvailable(kind));
     if(this.campaignArmory){
@@ -5088,7 +5132,7 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.groundTravel = 0;
-    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;this.cloudDescent=null;this.cityPathPosition=0;this.cityHasCloudTail=false;
+    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;this.cloudDescent=null;this.cloudDescentDirector.clear();this.cityPathPosition=0;this.cityHasCloudTail=false;
     this.groundRestorationPending=false;this.restoredGround=[];
     this.fogGateActive = false;
     this.fogCutClock = 0;

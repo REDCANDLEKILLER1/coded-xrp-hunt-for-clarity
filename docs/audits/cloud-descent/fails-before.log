@@ -1,0 +1,6 @@
+FAIL: damage immunity expires
+FAIL: bomb effect expires
+FAIL: special recharges
+FAIL: real frame spawns descent enemies
+FAIL: pause freezes combat and descent
+FAIL: zero HP ends run

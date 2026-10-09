@@ -67,6 +67,24 @@ export const EARTH_FLIGHT_ENCOUNTERS: Record<string, EarthFlightEncounterDef> = 
       { label: 'ORBITAL GATE', restBefore: 1.5, spawns: [enemy('fog_raider', 0.16), enemy('regulator_drone', 0.34), enemy('fast_scout', 0.5), enemy('regulator_drone', 0.66), enemy('fog_raider', 0.84)] },
     ],
   },
+  /**
+   * Cloud descent after the first Regulatory Behemoth. Airborne drones only —
+   * ground turrets stay city-gated. Paced like early-flight waves: a breather
+   * between boss and city, not a second boss. The director advances a group
+   * only when the previous group's threats are cleared, so the 40s descent
+   * window paces itself against player performance.
+   */
+  cloud_descent: {
+    actKey: 'cloud_descent',
+    stageKey: 'ledger_city',
+    groups: [
+      { label: 'CLOUD PATROL', restBefore: 2.0, spawns: [enemy('regulator_drone', 0.3), enemy('regulator_drone', 0.7)] },
+      { label: 'DESCENT INTERCEPT', restBefore: 3.0, spawns: [enemy('fog_raider', 0.25), enemy('fog_raider', 0.75)] },
+      { label: 'WEDGE FORMATION', restBefore: 3.5, spawns: [enemy('regulator_drone', 0.2), enemy('regulator_drone', 0.5), enemy('regulator_drone', 0.8)] },
+      { label: 'STORM RAIDERS', restBefore: 4.0, spawns: [enemy('fog_raider', 0.2), enemy('fast_scout', 0.5), enemy('fog_raider', 0.8)] },
+      { label: 'FINAL SCREEN', restBefore: 4.5, spawns: [enemy('regulator_drone', 0.25), enemy('whale_scout', 0.5), enemy('regulator_drone', 0.75)] },
+    ],
+  },
   ledger_city: {
     actKey: 'ledger_city',
     stageKey: 'ledger_city',
