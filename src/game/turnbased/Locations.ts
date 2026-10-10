@@ -8,7 +8,7 @@
 // No generic rooms.
 
 export interface PropSpec {
-  kind: 'console' | 'pillar' | 'crate' | 'arch' | 'tank';
+  kind: 'console' | 'pillar' | 'crate' | 'arch' | 'tank' | 'sphere';
   /** Arena-plane position. */
   x: number;
   z: number;
@@ -19,6 +19,8 @@ export interface PropSpec {
   color: number;
   /** Glowing trim color, 0 = none. */
   emissive?: number;
+  /** Height offset for sky objects (e.g. Earth). Defaults to h/2 (grounded). */
+  y?: number;
 }
 
 export interface ArenaLocation {
@@ -131,8 +133,41 @@ export const KINGS_LAIR: ArenaLocation = {
   ],
 };
 
+/** Lunar surface exterior: grey regolith under a black sky, Earth hanging
+ * overhead, harsh directional sunlight with deep shadows. The Zamn
+ * showcase fight happens here — open ground, scattered rocks, a lander
+ * leg on the horizon. */
+export const LUNAR_SURFACE: ArenaLocation = {
+  id: 'lunar_surface',
+  name: 'Lunar Surface',
+  background: 0x020308,
+  fogColor: 0x020308,
+  fogDensity: 0.004,
+  floorColor: 0x5a5d64,
+  ambientColor: 0x8a8f9a,
+  ambientIntensity: 0.3,
+  keyLightColor: 0xffffff,
+  keyLightIntensity: 3.2,
+  accentColor: 0x4da3ff,
+  ringColors: ['#ff5a5a', '#ffb84d', '#4da3ff'],
+  props: [
+    // Scattered rocks (crates read as rocks in this palette).
+    { kind: 'crate', x: -12, z: -5, w: 2.2, h: 1.6, d: 2.0, color: 0x4e5158 },
+    { kind: 'crate', x: 12.5, z: 4, w: 1.6, h: 1.2, d: 1.8, color: 0x565a61 },
+    { kind: 'crate', x: -10, z: 8, w: 1.2, h: 0.9, d: 1.1, color: 0x43464d },
+    { kind: 'crate', x: 11, z: -8.5, w: 2.8, h: 2.0, d: 2.4, color: 0x4e5158 },
+    { kind: 'crate', x: 2, z: -12, w: 1.4, h: 1.0, d: 1.3, color: 0x5f636b },
+    { kind: 'crate', x: -4, z: 12.5, w: 1.8, h: 1.3, d: 1.6, color: 0x43464d },
+    // Lander leg on the horizon.
+    { kind: 'pillar', x: -14, z: -11, w: 1.2, h: 9, d: 1.2, color: 0x3a3d44, emissive: 0x4da3ff },
+    // Earth in the black sky.
+    { kind: 'sphere', x: 28, z: -24, w: 10, h: 10, d: 10, y: 36, color: 0x2a6fd6, emissive: 0x9fd0ff },
+  ],
+};
+
 /** All locations. */
-export const LOCATIONS: ArenaLocation[] = [WARSHIP_BRIDGE, LUNAR_BASE, KINGS_LAIR];
+export const LOCATIONS: ArenaLocation[] = [WARSHIP_BRIDGE, LUNAR_BASE, LUNAR_SURFACE, KINGS_LAIR];
+
 
 export function locationById(id: string): ArenaLocation | undefined {
   return LOCATIONS.find((l) => l.id === id);

@@ -25,6 +25,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
+  SphereGeometry,
   Vector3,
   WebGLRenderer,
 } from 'three';
@@ -36,6 +37,7 @@ import {
   distance,
   playerActions,
   rangeBand,
+  selectTarget,
   testEnemyActions,
 } from './Actions.ts';
 import { TurnEngine } from './TurnEngine.ts';
@@ -80,6 +82,8 @@ export class TurnArena {
   onBattleEnd: ((result: 'victory' | 'defeat') => void) | null = null;
   /** Optional callback fired after every executed action. Used for boss phase transitions. */
   onAfterAction: (() => void) | null = null;
+  /** Optional hook fired after every turn (e.g. reinforcement triggers). */
+  onTurnEnd: (() => void) | null = null;
   private battleEndFired = false;
   /** Active XRPman materialization entrance, if any. */
   private entrance: {
@@ -161,6 +165,10 @@ export class TurnArena {
       if (p.kind === 'tank') {
         mesh = new Mesh(new CylinderGeometry(p.w / 2, p.w / 2, p.h, 12), mat);
         mesh.position.y = p.h / 2;
+      } else if (p.kind === 'sphere') {
+        // Sky objects (e.g. Earth): free-floating sphere at the given height.
+        mesh = new Mesh(new SphereGeometry(p.w / 2, 24, 18), mat);
+        mesh.position.y = p.y ?? p.h / 2;
       } else if (p.kind === 'arch') {
         // Arch: two posts + a lintel.
         const grp = new Group();
@@ -410,6 +418,24 @@ export class TurnArena {
     }
   }
 
+  /**
+   * Spawn a reinforcement mid-battle (e.g. the scout leader's call).
+   * Adds the combatant to the engine's initiative and creates its
+   * mesh + HP bar + label.
+   */
+  spawnReinforcement(c: Combatant, color = 0xff5a5a): void {
+    if (!this.engine) return;
+    this.engine.addCombatant(c);
+    this.addFighter(c, color);
+    this.pushLog(this.engine.log.splice(0).join('<br>'));
+    this.refreshUI();
+  }
+
+  /** Public read access to the battle engine (authored-encounter hooks). */
+  getEngine(): TurnEngine | null {
+    return this.engine;
+  }
+
   private addFighter(c: Combatant, color: number): void {
     const g = new Group();
     const bodyMat = new MeshStandardMaterial({ color, roughness: 0.6 });
@@ -576,6 +602,12 @@ export class TurnArena {
     const state = engine.endTurn();
     this.pushLog(engine.log.splice(0).join('<br>'));
     this.refreshUI();
+    // Authored-encounter hook (reinforcements, phase changes, ...).
+    try {
+      this.onTurnEnd?.();
+    } catch (err) {
+      console.warn('[turnbased] onTurnEnd hook failed', err);
+    }
     // Fire the battle-end callback once when the battle concludes.
     if (state.result !== 'ongoing' && !this.battleEndFired) {
       this.battleEndFired = true;
@@ -599,7 +631,8 @@ export class TurnArena {
     if (!engine) return;
     const foe = engine.current();
     if (!foe || foe.team !== 'enemy' || !foe.alive) return;
-    const player = engine.getCombatant('player');
+    // Taunt-aware targeting: a taunting player combatant draws all fire.
+    const player = selectTarget(foe, engine.combatants);
     if (!player || !player.alive) return;
 
     const d = distance(foe, player);
