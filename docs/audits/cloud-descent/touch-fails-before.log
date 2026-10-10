@@ -1,0 +1,4 @@
+FAIL: 393: touch bomb fires during descent
+FAIL: 393: touch special fires during descent
+FAIL: 844: touch bomb fires during descent
+FAIL: 844: touch special fires during descent

@@ -1,0 +1,135 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> coded-xrp-hunt-for-clarity@0.1.0 test
+> node scripts/validate-space-throttle.mjs && node scripts/validate-content.mjs && node scripts/validate-level1-e.mjs && node scripts/validate-level1-f.mjs && node scripts/validate-level1-g.mjs && node scripts/validate-level1-boarding-retry.mjs && node scripts/validate-level1-h2.mjs && node scripts/validate-level1-h2-sideview.mjs && node scripts/validate-level1-i.mjs && node scripts/validate-mobile-landscape.mjs && node scripts/validate-fog-breaker-cue.mjs && node scripts/validate-audio.mjs && node scripts/validate-touch-controls.mjs && node scripts/validate-xp-upgrades.mjs && node scripts/validate-sfx-and-framing.mjs && node scripts/validate-level1-length.mjs && node scripts/validate-interior-rooms.mjs && node scripts/validate-boss-duel.mjs && node scripts/validate-boss-resupply.mjs && node scripts/validate-double-tap-bomb.mjs && node scripts/validate-boss-script.mjs && node scripts/validate-character-anim.mjs && node scripts/validate-difficulty.mjs && node scripts/validate-hull-classes.mjs && node scripts/validate-weapon-ladder.mjs && node scripts/validate-upgrade-choices.mjs && node scripts/validate-pickup-wiring.mjs && node scripts/validate-space-flight.mjs && node scripts/validate-combat-model.mjs && node scripts/validate-cloud-descent.mjs && node scripts/validate-transit-intro.mjs && node scripts/validate-tilt.mjs && node scripts/validate-checkpoints.mjs && node scripts/validate-force-update.mjs && node scripts/validate-map-and-hud.mjs && node scripts/validate-ship-readability.mjs && node scripts/validate-asset-integrity.mjs && node scripts/validate-asset-consumers.mjs && node scripts/validate-enemy-doctrines.mjs && node scripts/validate-progression-scaling.mjs && node scripts/validate-boss-tempo.mjs && node scripts/validate-definitive-save.mjs && node scripts/validate-definitive-scenes.mjs && node scripts/validate-definitive-models.mjs && node scripts/validate-definitive-character.mjs && node scripts/validate-boarding-quest.mjs && node scripts/validate-scene-residency.mjs && node scripts/validate-district-routing.mjs && node scripts/validate-civic-deck.mjs && node scripts/validate-boarding-fit.mjs && node scripts/validate-crew.mjs && node scripts/validate-landing.mjs && node scripts/validate-boarding-architecture.mjs && node scripts/validate-mesh-space.mjs && node scripts/validate-chapter-transition.mjs && node scripts/validate-planet-approach.mjs && node scripts/validate-fighter-armory.mjs && node scripts/validate-mars-relief.mjs && node scripts/validate-mars-excavation.mjs && node scripts/validate-fog-moon.mjs && node scripts/validate-fog-scene.mjs && node scripts/validate-return-travel.mjs && node scripts/validate-freight-convoy.mjs && node scripts/validate-market-siege.mjs && node scripts/validate-bullion-progress.mjs && node scripts/validate-bullion-scene.mjs && node scripts/validate-bullion-support.mjs && node scripts/validate-cast-assets.mjs && node scripts/validate-capital-tactics.mjs
+
+space-throttle: OK — reversible bounded throttle, real wheel/touch controls and one driven focus policy across 8 gameplay scenes.
+Content validation OK — registry is well-formed.
+Earth threat validation OK — Scout and mine stay campaign-specific.
+Campaign progress validation OK — v3 persistence, migration, and mission checkpoints are safe.
+Planet campaign validation OK — preserved worlds, Mars insertion and additive unlock migration.
+Mission validation OK — Earth Level 1 checkpoint resume state is explicit and testable.
+Earth encounter validation OK — threats are taught individually before mixed Defense Grid pressure.
+L1-E progress validation OK — Fog Breaker is permanent and reload-safe.
+L1-E cinematic validation OK — launch 10.4s, Gary reveal 10.6s.
+L1-E Gary Fog validation OK — guardian reward and music-first reveal are locked.
+L1-F warship validation OK — batteries -> Fog Breaker relay -> engines -> hangar -> disabled.
+L1-G boarding validation OK — hangar opens, direct fighter entry is deliberate, and capture is deterministic.
+L1-G boarding retry validation OK — on-foot defeat restores a boardable warship.
+L1-H2 validation passed: accepted side-view movement, Liquidity Blast, boarding handoff, palette, and defeat checkpoint wiring remain present.
+L1-H2 side-view platforming validation passed.
+L1-I validation passed: six authored warship rooms, readable mobile presentation, combat gate, manifest assets, and the core-access handoff are present.
+mobile-landscape: OK — portrait plays, fullscreen is a corner chip, diagnostics are debug-only.
+fog-breaker-cue: OK — fog cuts itself in 2.4s, the button is only a pulse.
+audio: OK — 6 tracks, 8 live cues, all mapped.
+audio playback: gesture gate, repeat cue, map startup, boarding cues, and unmute scene intent passed
+touch-controls: OK — gesture intent is fixed at pointer-down, pad is round and cornered, HUD is a top strip.
+  level pays ~14909 XP • 6/9 guns reachable in level 1 • top gun at 205%
+xp-upgrades: OK — 3 distinct hulls, 9 guns granted by level, barrels from the level-up card, 3 upgrade cards.
+sfx-and-framing: OK — synthesised effects, music leads both entrances, boss framed high with room to roam.
+  orbital_approach     14 groups  ~2.7 min
+  fog_belt             18 groups  ~3.8 min
+  ledger_city          23 groups  ~4.9 min
+  defense_grid         27 groups  ~6.3 min
+  final_assault        20 groups  ~4.9 min
+  regulatory_behemoth  boss      ~0.4 min   (reveal 10.6s + fight 11s)
+  clarity_destroyer    boss      ~0.4 min   (reveal 10.6s + fight 16s)
+  gary_fog             boss      ~0.5 min   (reveal 10.6s + fight 17s)
+  regulatory_warship   boss      ~0.4 min   (reveal 2.0s + fight 21s)
+  first boss at ~6.5 min, 4 boss acts total
+level1-length: OK — modelled at ~24 min of perfect play across 102 authored groups (estimate, not a stopwatch playthrough).
+interior-rooms: OK — 6 rooms, 14 authored enemies, every ledge and exit reachable.
+boss-duel: OK — turning verified across the -PI/+PI seam, fighter turns at 7.5 vs the boss at 2.6.
+boss-resupply: OK — guaranteed shield + hull before all 3 bosses, rocket drawn at 8x25.
+double-tap-bomb: OK — gesture fires a bomb without dropping the stick, seekers stay unlimited.
+  gary_fog: 88 hp at 0.73x average = 120 effective
+boss-script: OK — telegraphed fixed-order attacks, real armour, four distinct enemy routines.
+character-anim: OK — idle/run/jump/fire strips wired to distinct states.
+difficulty: OK — curtain 22% of portrait, ships at 0.78x; boss fight length is measured through the shipped volley in weapon-ladder.
+hull-classes: OK — light 20-23px, medium 27-31px, heavy 46-46px; hitboxes scale with the sprite, heavies cost 4 slots and fly with a wing.
+weapon-ladder: OK — 9 rungs, 5 families, monotone at every barrel count.
+  tier label           family        x0    x1    x2    x3
+  1 BB SHOT         starter     7.1   7.1   7.1   7.1
+  2 TWIN BEAM       starter    15.4  23.1  23.1  23.1
+  3 TRI-BEAM        starter    25.0  25.0  25.0  25.0
+  4 QUAD BEAM       starter    26.7  40.0  40.0  40.0
+  5 PULSE WAVE      pulse      44.4  44.4  44.4  44.4
+  6 ROCKET BARRAGE  rocket     47.4  57.9  57.9  57.9
+  7 PLASMA CANNON   plasma     63.6  63.6  63.6  63.6
+  8 LEDGER STORM    elite      66.7  66.7  66.7  66.7
+  9 HYPER PULSE     elite      73.7  73.7  73.7  73.7
+upgrade-choices: OK — 9 guns symmetric at every barrel count, choices always shown.
+pickup wiring OK: 4 friendly-green supplies with distinct tags/icons, arcade choices and dedicated campaign weapon cores
+space-flight: OK — 360 flight verified (behind, turned, rolled, pitched), radar bearings exact, 10 squadrons + Guardian Protocol, guard averages 0.85x, canopy over the scene.
+combat-model: OK — 5 classes, heavy fighter 8.3x softer from behind, gunboat 4.0x softer from above, 3 engagement slots.
+cloud-descent: PASS — real frames, authored spawn, movement, weapon damage, timers, pause, survivor handoff and death
+transit-intro: OK — 6.4s warp arrival before the first scramble, 3 tilt sensitivities (8/12/18 deg), settings survive any stored junk.
+tilt: OK — gravity-vector steering survives the landscape singularity, calibration will not latch a moving phone, drag fallback intact, Input.ts still tilt-free.
+checkpoints: OK — every act resumable, interior rooms remembered, rank is not a level.
+force-update: OK — new builds detected by bundle hash, 2400ms notice, loop-guarded.
+map-and-hud: OK — map fits with no scrollbar, panel <= 24vw, HUD is a strip.
+ship-readability: OK — hulls wear a rim light, shields are thin moving outlines (green yours, red theirs), nothing is filled over a ship.
+Asset integrity validation OK — 113 runtime images are complete and well-formed.
+asset-consumers: OK — 150 manifest entries, every one consumed, every reference resolved.
+enemy-doctrines: OK — 4 distinct volleys across 5 armed enemies.
+  regulator_drone=pressure(1xenemy_red_bullet)
+  fog_raider=burst(3xenemy_red_bullet)
+  whale_scout=salvo(1xenemy_missile, tracking)
+  rug_fighter=broadside(5xenemy_red_bullet)
+  fast_scout=pressure(1xenemy_red_bullet)
+progression-scaling: OK — the gun moves nothing on the field; the run raises pressure 1.00 -> 2.98.
+  gary_fog                50s  worst stall  7.3s  peak escorts 3  shielded 8%
+  regulatory_behemoth     23s  worst stall  4.9s  peak escorts 3  shielded 16%
+  overload                fired at 6.0s with 3 escorts still alive
+  Warship final hits       bolt / seeker / bomb: safe, saved, one-time boarding; defenders move
+  Earth comms              holds simulation, clears stale inputs, resumes flight and suspends safely
+  Ground strategy          visible distinct attacks, two-gun budget, relay shields/restoration, friendly repairs and missile interception
+boss-tempo: OK — every screened boss stays open, and no health bar stalls past 10s.
+  Earth entry: scrolling launch/combat, no early planet, section-boss gate, moving descent, disappearing craft, input/pause, banked reward/checkpoint and ground continuation
+  Transit Comms: real text reveal, Continue/Skip clicks, no early briefing, held/resumed flight in both orientations
+boss-tempo final checks: PASS — cloud descent, steering, pause, city loop and handoff
+definitive-save: OK — separate campaign/test saves, read-only migration, atomic rewards/purchases, reload deduplication, quota and tab conflicts, protected future saves, actual 2D adapter.
+Campaign restart checks passed
+fresh test opening: legacy purge, settings preserved, session-only retry checkpoints, reload reset and blocked storage passed
+definitive-scenes: OK — one input owner, paused loads, stale load cancellation/disposal, recovery after errors, idempotent exit.
+definitive-scenes: save-failure teardown refusal and subsequent successful retry pass.
+[CODED assets] { total: 87, loaded: 87, missing: 0, error: 0 }
+definitive-models: OK — actual GLB decode, 1726968 bytes, 19250 triangles, three maps, six surfaces, nine nodes, four distinct muzzles, disposal, failed/cancelled load, typed 2D exclusion.
+definitive-character: OK {"bytes":3066484,"triangles":46725,"skinCount":10,"clips":{"AimFire":6.1484,"Dodge":65.5342,"Hit":14.321,"Idle":1.1289,"Interact":15.7972,"KnockdownRecover":141.9128,"Run":73.2885,"Walk":42.1023}}
+boarding-quest: OK — ordered capture, atomic rewards, failed-save retries, Earth act comms/receipts/replay, hostile speakers and preserved progression.
+boarding retry: original fighter exit restored, stale jump/dodge/melee cleared.
+scene-residency: OK — connector handoffs keep heavy districts singly resident, failed and aborted loads keep the player on a live retry surface, stale results are released once, and a departure that fails to release cannot strand the arrival.
+district-routing: OK — 9 real MeshRuntime routes driven, 17 production transition edges checked, districts from src/game/definitive/warship-districts.json: boarding_deck, civic_deck; districts per route: showLanding 0; showBoarding 1 [boarding_deck]; showDistrictConnector 0; showCivic 1 [civic_deck]; showSpace 0; showBullionReach 0; showFogMoon 0; showMars 0; showExcavation 0; handoff and consecutive-route negative controls fire; resident encoded payload accounted for 9 routes, heaviest showMars at 12447940 of 12582912 bytes (encoded payload only, not GPU memory).
+civic-deck: OK — 11 batched surfaces, 9 physical service/district anchors, ownership and location-gated economy commits once, survives reload, respects cargo cap and cannot loop credits.
+civic-vendors/shops: OK - independent skeletons, visible materials, standing animated bounds, shared-resource disposal, real shop button transactions.
+boarding-fit: OK — 648 actual GLB ray samples enclose the compact deck floor and 3.2 m clearance; engines excluded; arrival bay aligned.
+crew: OK — 3253384 bytes, 43654 triangles, distinct blue material, five actual skinned clips, driven leg chains and bounded palm nodes.
+  landing frame 0.462: full-hull NDC 0.774 / 0.164
+  landing frame 2.164: full-hull NDC 0.410 / 0.521
+landing: OK — three selected fighters, actual canopy/exit nodes, 1458 swept hull-clearance samples, atomic docking failure/retry/reload and isolated save.
+boarding-architecture: OK — 2 enrolled district model(s); boarding 43010 triangles / 34 surfaces, 648 floor samples, 7 open doorways, 11275416 live bytes within budget.
+v03 precise bounds: 81.483 x 25.000 x 119.997 metres (X,Y,Z)
+mesh-space: OK — 75 orientations, 1,200 four-muzzle paths, rotated hull sweeps, pointer ownership/cancel, distinct enemy models, 6775908 bytes, atomic patrol/portal rewards and reload.
+chapter-transition: OK — real-entry contract, all three selected fighters, interrupted load/retry, idempotent entry, arrival/boarding/hub reload selection and isolated saves.
+planet-approach: OK — 160 translated radial/glancing sweeps, tunnelling, outward escape, sustained boost, old-pose recovery and above-surface navigation. Swept-entry mutation detected.
+fighter-armory: OK — 20 stages, two viewports, centered TTK, actual rapid cadence, damage/speed, bounded impacts, shield/friendly gates, safe selection, migration and separate durable tracks.
+[{"width":390,"family":"bb","stage":1,"times":[0.367,2.325,8.487]},{"width":390,"family":"bb","stage":2,"times":[0.229,1.037,3.738]},{"width":390,"family":"bb","stage":3,"times":[0.229,0.617,2.046]},{"width":390,"family":"bb","stage":4,"times":[0.229,0.479,1.229]},{"width":390,"family":"pulse","stage":1,"times":[0.213,1.529,5.271]},{"width":390,"family":"pulse","stage":2,"times":[0.213,1.05,3.779]},{"width":390,"family":"pulse","stage":3,"times":[0.213,0.408,1.408]},{"width":390,"family":"pulse","stage":4,"times":[0.213,0.4,0.971]},{"width":390,"family":"rocket","stage":1,"times":[0.317,1.667,5.267]},{"width":390,"family":"rocket","stage":2,"times":[0.317,1.175,3.754]},{"width":390,"family":"rocket","stage":3,"times":[0.317,0.717,2.317]},{"width":390,"family":"rocket","stage":4,"times":[0.317,0.317,1.054]},{"width":390,"family":"plasma","stage":1,"times":[0.288,1.325,4.446]},{"width":390,"family":"plasma","stage":2,"times":[0.288,0.775,2.738]},{"width":390,"family":"plasma","stage":3,"times":[0.288,0.288,1.667]},{"width":390,"family":"plasma","stage":4,"times":[0.288,0.288,1.546]},{"width":390,"family":"ledger","stage":1,"times":[0.192,1.087,3.488]},{"width":390,"family":"ledger","stage":2,"times":[0.192,0.75,2.429]},{"width":390,"family":"ledger","stage":3,"times":[0.192,0.45,1.75]},{"width":390,"family":"ledger","stage":4,"times":[0.192,0.429,1.15]},{"width":844,"family":"bb","stage":1,"times":[0.367,2.325,8.487]},{"width":844,"family":"bb","stage":2,"times":[0.229,1.037,3.738]},{"width":844,"family":"bb","stage":3,"times":[0.229,0.617,2.046]},{"width":844,"family":"bb","stage":4,"times":[0.229,0.479,1.229]},{"width":844,"family":"pulse","stage":1,"times":[0.213,1.529,5.271]},{"width":844,"family":"pulse","stage":2,"times":[0.213,1.05,3.779]},{"width":844,"family":"pulse","stage":3,"times":[0.213,0.408,1.408]},{"width":844,"family":"pulse","stage":4,"times":[0.213,0.4,0.971]},{"width":844,"family":"rocket","stage":1,"times":[0.317,1.667,5.267]},{"width":844,"family":"rocket","stage":2,"times":[0.317,1.175,3.754]},{"width":844,"family":"rocket","stage":3,"times":[0.317,0.717,2.317]},{"width":844,"family":"rocket","stage":4,"times":[0.317,0.317,1.054]},{"width":844,"family":"plasma","stage":1,"times":[0.288,1.325,4.446]},{"width":844,"family":"plasma","stage":2,"times":[0.288,0.775,2.738]},{"width":844,"family":"plasma","stage":3,"times":[0.288,0.288,1.667]},{"width":844,"family":"plasma","stage":4,"times":[0.288,0.288,1.546]},{"width":844,"family":"ledger","stage":1,"times":[0.192,1.087,3.488]},{"width":844,"family":"ledger","stage":2,"times":[0.192,0.75,2.429]},{"width":844,"family":"ledger","stage":3,"times":[0.192,0.45,1.75]},{"width":844,"family":"ledger","stage":4,"times":[0.192,0.429,1.15]}]
+fighter weapon upgrade: retained output, persisted choices, laser profile, paired homing, six-second cadence, salvo cap and boss accounting passed
+weapon points: four spaced Earth milestones, no pickup/kill auto-equip, clear paused unlocks, capped balanced output, stronger future enemies, manual loadout, sparse drops and save retry passed
+mars-relief: OK — 11559908 bytes; real Corn GLB/rig; guarded arrival; atomic three-valve/crew/upgrade saves; actual shooting, shield, repair, touch ownership, modal and failure paths.
+mars-relief: guarded approach, live defender lock, held-input clear and actual hit-damage mutations detected.
+mars-excavation: OK — 7801852 model bytes; actual elevated target hits, shield/exposure/restart, mining tells, route/return/atomic rewards, real repair/dash and modal/failure paths.
+fog-moon: OK — route isolation, migration, range gate, failed saves/reload, guarded relays/rewards, Reveal clock/range, real feed nodes/animation, two hazard types bounded at 2, 9589596 surface model bytes including selected fighter.
+fog-scene: OK — real three-touch ability ownership, modal clock hold, elevated palm/feed hits, non-damaging tells, load failure ownership, death/retry and failed victory transaction.
+return-travel: PASS - earned-orbit guards, honest map actions, old unlock preservation, reward-free revisits, real transition load/construction/storage/stale/cancel recovery, lazy map dependencies.
+return-travel: five deliberately broken travel/commit controls detected.
+Convoy foundation: four lane combinations, 16 real travel legs, physical separation, gate holds, real-height swept hits, bounded repair, checkpoint reconstruction and delivery guards PASS.
+Market Siege foundation PASS: actual elevated rear hits, armor, committed four-barrel attacks, impact timing/deduplication, continuous moving broadside, pause/death, finite 600-second pool and seven caught failure controls.
+Bullion progress foundation PASS: legacy migration, proximity/patrol gates, actual boundary arrival, storage failure/retry, lane reconstruction, local wreck recovery, boss/save/delivery separation, one atomic payoff, both branch discoveries and five caught failure controls.
+bullion-scene: PASS — actual GLB scene, independent pointer handlers, modal clocks, cover/hauler/height contacts, rotating vehicle escape, palm-to-rear boss hit, save failure/retry before delivery, wreck recovery and paid logistics consumer.
+bullion-support: OK — 45 bomber orientations, six fixed shots, scanner timing/cover/pause, failed-save landing and three detected failure controls.
+corn: 5197356 bytes, 72549 triangles, 6 embedded images; animated bounds and sockets OK
+lex: 3971012 bytes, 44559 triangles, 7 embedded images; animated bounds and sockets OK
+boo: 3318968 bytes, 40136 triangles, 3 embedded images; animated bounds and sockets OK
+cast-assets: OK — 90 poses; material UV sets, embedded maps, geometry budgets and verified hashes.
+capital-tactics: OK — 720 m, 10106 triangles, 758040 bytes; actual component rays, reactor lock, three committed lanes, dodge/silence strategies, conserved shield charge, touch ownership and atomic saved defeat.

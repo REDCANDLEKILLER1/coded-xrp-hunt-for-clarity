@@ -512,6 +512,9 @@ console.log('boss-tempo: OK — every screened boss stays open, and no health ba
     g.paused=true;g.frame(.5);check(g.cloudDescent===cloudHeld,'pause freezes cloud route');g.paused=false;
     const cloudPlayer=g.player.x;g.input.onKeyDown({key:'ArrowRight',code:'ArrowRight'});g.frame(.1);
     check(g.player.x>cloudPlayer,'player can steer during cloud descent');g.input.setActive(false);g.input.setActive(true);
+    // This check measures route continuity, not survival while controls are idle.
+    // Descent combat/death is exercised by validate-cloud-descent.
+    g.player.hp=10000;
     for(let i=0;i<810&&g.cloudDescent!==null;i++)g.frame(.05);
     check(g.cloudDescent===null&&g.cityHasCloudTail&&g.earthEncounterDirector.stageKey==='ledger_city','all ten cloud tiles finish before city encounters start');
     calls.length=0;g.cloudDescent=40;g.drawSurfacePath();const cloudExit=JSON.stringify(calls);
