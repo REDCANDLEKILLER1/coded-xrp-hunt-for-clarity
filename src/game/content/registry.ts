@@ -238,7 +238,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
     fireRate: 1.8,
     projectileSpeed: 260,
     accent: '#8a9ab8',
-    doctrine: 'salvo',
+    doctrine: 'burst',
     hull: 'medium',
     modelId: 'space_fog_raider',
   },

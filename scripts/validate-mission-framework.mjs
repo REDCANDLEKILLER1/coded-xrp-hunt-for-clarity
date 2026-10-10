@@ -75,9 +75,10 @@ check(earth?.encounters === undefined, 'Earth def carries no encounters field (u
 const errors = missions.validateMissions();
 check(errors.length === 0, `validateMissions() clean (got: ${errors.join('; ')})`);
 
-// 8. MISSIONS registry has both
-check(MISSIONS.length === 2, `MISSIONS has 2 entries (got ${MISSIONS.length})`);
+// 8. MISSIONS registry has all expected entries (Earth + Moon + test_moon fixture)
+check(MISSIONS.length === 3, `MISSIONS has 3 entries (got ${MISSIONS.length})`);
 check(MISSIONS.some((m) => m.planetKey === 'ledger_prime'), 'MISSIONS includes ledger_prime');
+check(MISSIONS.some((m) => m.planetKey === 'moon'), 'MISSIONS includes moon');
 check(MISSIONS.some((m) => m.planetKey === 'test_moon'), 'MISSIONS includes test_moon');
 
 if (failures.length > 0) {
