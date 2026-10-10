@@ -16,7 +16,7 @@ import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
 import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles, surfaceTiles, CLOUD_DESCENT_DURATION } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
-import {RAPID_CAP,EARTH_WEAPON_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
+import {RAPID_CAP,WEAPON_LEVEL_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterWeapon,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
 import { awardGaryFogVictory, GARY_FOG_GUARDIAN_PLAN, guardianPlanFor, hasFogBreaker } from '../content/EarthBossFlow';
 import type { GuardianEncounterPlan } from '../content/EarthBossFlow';
@@ -54,7 +54,9 @@ type EnemyActor = Actor & {
   /** Launched by a boss to screen it. The boss is immune while any survive. */
   escort: boolean;
 };
-type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1; ground?:GroundDefense };
+type HazardActor = Actor & { hazardKey: string; fireClock: number; side: -1 | 1; ground?:GroundDefense;
+  /** The hp this hazard actually SPAWNED with. The bar divides by this. */
+  hpMax?: number };
 type HostileProjectile = Actor & {
   damage: number;
   color: string;
@@ -230,8 +232,36 @@ const WAVE_CLEAR_BONUS = 150;        // for destroying every enemy on screen
 // with the wave to keep pressure rising without becoming unreadable on a phone.
 const ARENA_MAX_ENEMIES_BASE = 5;
 const ARENA_MAX_ENEMIES_CAP = 10;
+/**
+ * The campaign screen's ceiling, in the same slots the arena uses.
+ *
+ * 12 against a shipped peak of 5. Sized for a 360x644 phone: a light costs 1,
+ * a medium 2, a heavy 4, so the worst readable case is three heavies, and the
+ * common case is six to nine small contacts -- busy, still countable.
+ */
+const CAMPAIGN_SLOT_CAP = 12;
+/** An emplacement holds ground rather than manoeuvres, so it costs one. */
+const CAMPAIGN_HAZARD_SLOTS = 1;
 /** How soon to re-check when nothing that fits can be spawned. */
 const ARENA_FULL_RETRY = 0.35;
+/**
+ * How much tougher a CAMPAIGN emplacement is than its registry base.
+ *
+ * The registry numbers were tuned for the arcade path, where a hazard may fire
+ * from y > 20 on a 0.5-1.2 s clock. The campaign path routes through
+ * GroundDefense, whose telegraph is long by design, and nobody re-tuned the
+ * health: 97% of emplacements were destroyed at y < 76 with a median death
+ * height of 10px. They were content the player never met.
+ *
+ * The flat part is small because the LOADOUT does the rest. A fixed number
+ * cannot work here: player damage spans an order of magnitude across one
+ * level, so any health that lets a starting gun feel like a threat is deleted
+ * instantly by a maxed one, and any health a maxed gun respects is a wall at
+ * level 1. Emplacements scale the way BOSSES already do -- against the gun
+ * actually pointed at them -- which holds time-to-kill roughly constant
+ * across the whole ladder.
+ */
+const EMPLACEMENT_HP_SCALE = 4;
 // Enemies were never able to shoot: EnemyDef had no firing fields and the only
 // hostile fire in the game came from bosses and ground turrets. Armed enemies
 // only fire while holding station or diving, never while entering or fleeing,
@@ -500,6 +530,11 @@ const BOSS_ATTACKS: Record<BossAttackKey, { telegraph: number; active: number; r
   radial: { telegraph: 0.8, active: 0, recover: 0.4, label: 'BURST' },
   charge: { telegraph: 0.9, active: 0.75, recover: 0.5, label: 'CHARGE' },
   sweep_beam: { telegraph: 0.85, active: 1.5, recover: 0.5, label: 'SWEEP' },
+  // Long tell, long recovery: the missiles have to be shot down, and a player
+  // who spends the window on them has earned the punish that follows.
+  seeker_salvo: { telegraph: 1.15, active: 0, recover: 0.75, label: 'SEEKERS' },
+  pincer: { telegraph: 0.95, active: 0, recover: 0.5, label: 'PINCER' },
+  spiral: { telegraph: 1.0, active: 1.8, recover: 0.62, label: 'SPIRAL' },
 };
 
 /**
@@ -521,6 +556,30 @@ const FOG_WALL_GAP = 3;
 const RADIAL_SHOTS = 14;
 const RADIAL_GAP = 3;
 const BOSS_CHARGE_SPEED = 430;
+/** Missiles in a salvo, and the fan they leave the boss on. */
+const SEEKER_COUNT = 4;
+const SEEKER_FAN = 0.5;
+/**
+ * Shots in one converging curtain, and how wide the killing column is.
+ *
+ * The pincer paints the column the player was standing in and then closes on
+ * it from both sides, so the answer is to leave. `PINCER_SPAN` is that column
+ * in pixels; anything much narrower stops reading as a threat at all, and
+ * anything much wider on a 360px screen leaves nowhere to go.
+ */
+const PINCER_SHOTS = 6;
+const PINCER_SPAN = 96;
+/**
+ * Arms in the spiral, how fast the pattern rotates, and the gap between
+ * volleys.
+ *
+ * Four arms at 0.15s, not five at 0.11s. The first pass put a measured peak of
+ * 66 live projectiles on a 360px screen, which is not a harder boss -- it is
+ * an unreadable one, and unreadable was the complaint that started this.
+ */
+const SPIRAL_ARMS = 4;
+const SPIRAL_RATE = 2.35;
+const SPIRAL_INTERVAL = 0.15;
 /** Escorts launched by a screen attack, and how long before they break off. */
 /**
  * The escort screen, as a clock rather than a wall.
@@ -939,6 +998,16 @@ export class Game2A {
       if(!this.storyCapturedInput){this.input.setActive(false);this.storyCapturedInput=true;}
       this.render();return;
     }
+    // Weapon progression: worlds cleared gate new-family unlocks, and each
+    // unlock announces with a banner. Synced every frame so a world cleared
+    // mid-session releases banked points immediately; the setter no-ops when
+    // nothing changed. Unlocks never auto-equip -- the WEAPONS panel is
+    // already open with the choice.
+    this.fighterArmory?.setWorldsCleared(this.progress.clearedPlanets.length);
+    for(const family of this.fighterArmory?.drainUnlocks()??[]){
+      this.missionBannerText=`LEVEL UP — NEW WEAPON UNLOCKED: ${FAMILY_INFO[family].label}`;
+      this.missionBannerClock=3.2;sfx.play('levelUp');
+    }
     if(this.storyCapturedInput){this.input.setActive(true);this.storyCapturedInput=false;}
     this.actions();
     // Ticked here, after actions() has read it and outside update(), which
@@ -1333,7 +1402,7 @@ export class Game2A {
     const beaconLesson=this.earthEncounterDirector.currentGroupLabel?.startsWith('CLARITY BEACON');
     const activeThreats = this.drones.length + this.hazards.filter(h=>!friendlyGround(h)||(beaconLesson&&h.y<this.h*.6)).length;
     if(activeThreats===0&&this.groundRestorationPending&&this.flightStory&&!this.flightStory.districtRestored){this.hostileShots=[];return;}
-    const state = this.earthEncounterDirector.update(dt, activeThreats);
+    const state = this.earthEncounterDirector.update(dt, activeThreats, (spawns) => this.campaignRoomFor(spawns));
     for (const spawn of state.spawns) {
       if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
       else this.spawnMissionHazard(spawn.hazardKey, spawn.x, spawn.side);
@@ -1342,6 +1411,33 @@ export class Game2A {
     this.moveHazards(dt);
 
     if (state.completed && this.drones.length === 0 && this.hazards.every(friendlyGround)) this.completeMissionFlightAct();
+  }
+
+  /**
+   * Whether the campaign screen has room for a whole authored group.
+   *
+   * The arena spawner has had a slot system for a while -- light 1, medium 2,
+   * heavy 4 -- and the campaign path never used it: measured over a complete
+   * Earth run, `arenaEnemyCap`, `arenaLoad` and `updateDrones` were called
+   * ZERO times. The cap curve was inert here, which is why raising it did
+   * nothing for the empty-sky problem.
+   *
+   * Costed in the same slots so a mixed screen is weighed the way the arena
+   * weighs it, and a whole group must fit before any of it is released -- the
+   * same all-or-nothing rule that stops a heavy's wing from clearing the arena
+   * cap by five slots.
+   */
+  private campaignRoomFor(spawns: readonly { kind: string; enemyKey?: string }[]): boolean {
+    const cost = spawns.reduce((total, spawn) => total
+      + (spawn.kind === 'enemy' ? HULL_COMBAT[this.enemyDef(spawn.enemyKey ?? '').hull].slots : CAMPAIGN_HAZARD_SLOTS), 0);
+    return cost <= CAMPAIGN_SLOT_CAP - this.campaignLoad();
+  }
+
+  /** Slots the campaign screen is currently carrying. */
+  private campaignLoad(): number {
+    const air = this.drones.reduce((load, drone) => load + HULL_COMBAT[this.enemyDef(drone.enemyKey).hull].slots, 0);
+    const ground = this.hazards.filter((hazard) => !friendlyGround(hazard)).length * CAMPAIGN_HAZARD_SLOTS;
+    return air + ground;
   }
 
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
@@ -1378,6 +1474,13 @@ export class Game2A {
     const def = this.hazardDef(hazardKey);
     const side: -1 | 1 = requestedSide ?? (xRatio < 0.5 ? -1 : 1);
     const x = clamp(xRatio * this.w, 28, this.w - 28);
+    // The beacon is the one emplacement the player FLIES THROUGH to repair a
+    // district, so it is excluded: `friendlyGround` is the same helper the
+    // renderer and the damage path already use, rather than a second list of
+    // roles that could drift out of step with them.
+    const ground = groundDefense(def.key,`${this.missionDirector.currentAct?.key}:${this.earthEncounterDirector.currentGroupNumber}`,xRatio*.4);
+    const hostile = !friendlyGround({ x: 0, y: 0, w: 0, h: 0, ground });
+    const hazardHp = this.hazardHp(def) * (hostile ? EMPLACEMENT_HP_SCALE * this.loadoutScale() : 1);
     this.hazards.push({
       x,
       y: -def.draw.h,
@@ -1385,11 +1488,12 @@ export class Game2A {
       h: def.hitbox.h,
       vx: 0,
       vy: this.currentStage().scrollSpeed,
-      hp: this.hazardHp(def),
+      hp: hazardHp,
+      hpMax: hazardHp,
       hazardKey: def.key,
       fireClock: def.fires ? 0.95 : 0,
       side,
-      ground:groundDefense(def.key,`${this.missionDirector.currentAct?.key}:${this.earthEncounterDirector.currentGroupNumber}`,xRatio*.4),
+      ground,
     });
   }
 
@@ -2119,11 +2223,24 @@ export class Game2A {
   }
 
   /** Every actual damage path observes linked shields and friendly beacons. */
-  private damageGround(hazard:HazardActor,damage:number):void {
+  /**
+   * `forced` is for scripted destruction -- a relay restoration, an act
+   * teardown -- which must land regardless of where the body currently is.
+   */
+  private damageGround(hazard:HazardActor,damage:number,forced=false):void {
     if((hazard.hp??0)<=0||friendlyGround(hazard)||linkedRelay(hazard,this.hazards))return;
+    // An emplacement that is not yet allowed to AIM is not yet allowed to DIE.
+    //
+    // This asymmetry was the whole "words on them but none of them are
+    // shooting" bug: a gun spawns above the screen and is damageable from
+    // that frame, but `groundVisible` forbids it from even starting its
+    // telegraph until it is properly on screen. Matching the two windows is
+    // the fix that makes the label honest: every gun the player sees a
+    // warning from is a gun that was allowed to fire.
+    if(!forced&&hazard.ground&&!groundVisible(hazard,this.h))return;
     const linked=hazard.ground?.role==='relay'&&this.hazards.some(other=>linkedRelay(other,this.hazards)===hazard);
     hazard.hp=(hazard.hp??1)-damage;if(hazard.hp>0)return;
-    const def=this.hazardDef(hazard.hazardKey);this.score+=def.score;this.special=Math.min(100,this.special+12);this.awardXp(def.score*XP_PER_SCORE);this.campaignArmory?.awardWeaponPoints(1);
+    const def=this.hazardDef(hazard.hazardKey);this.score+=def.score;this.special=Math.min(100,this.special+12);this.awardXp(def.score*XP_PER_SCORE);this.fighterArmory?.awardWeaponPoints(1);
     this.ring(hazard.x,hazard.y);sfx.play('explode',1.2);
     if(hazard.ground?.role==='relay'){
       const group=hazard.ground.group;
@@ -2387,9 +2504,12 @@ export class Game2A {
 
   /** Locks in where the next attack will land, at the moment the tell starts. */
   private aimBossAttack(boss: BossActor, key: BossAttackKey): void {
-    boss.attackAim = key === 'fog_wall'
-      // The gap opens where the player is standing when the wall is called.
-      // Staying put is safe; the punish is for panicking mid-tell.
+    // `fog_wall` opens its gap where the player is standing when it is called,
+    // so staying put is safe and the punish is for panicking mid-tell.
+    // `pincer` marks the same column and CLOSES on it, so the punish is for
+    // standing still. Both are locked at the start of the tell -- an aim that
+    // kept tracking through the wind-up would leave nothing to dodge.
+    boss.attackAim = key === 'fog_wall' || key === 'pincer'
       ? clamp(this.player.x, 40, this.w - 40)
       : this.player.x;
   }
@@ -2425,6 +2545,44 @@ export class Game2A {
       return;
     }
 
+    if (key === 'seeker_salvo') {
+      // Aimed at the player, but they steer, so the fan is not the point --
+      // the point is that they can be shot out of the air. `track` is what
+      // the ground silo's missile uses, and it is deliberately the same
+      // number: one interception skill, taught once, used everywhere.
+      const aimed = Math.atan2(this.player.y - originY, this.player.x - boss.x);
+      const middle = (SEEKER_COUNT - 1) / 2;
+      for (let i = 0; i < SEEKER_COUNT; i += 1) {
+        const angle = aimed + (i - middle) * (SEEKER_FAN / Math.max(1, middle));
+        this.pushBossShot(boss.x, originY, angle, phase.projectileSpeed * 0.62, phase.accent, {
+          w: 14,
+          h: 14,
+          projectileKey: 'enemy_missile',
+          homing: 1.1,
+          track: 1.25,
+          interceptible: true,
+        });
+      }
+      sfx.play('enemyShoot');
+      return;
+    }
+
+    if (key === 'pincer') {
+      // Two curtains that close on the marked column. The wall says stand
+      // still; this says move. Same tell language, opposite answer.
+      for (let i = 0; i < PINCER_SHOTS; i += 1) {
+        const reach = (i + 1) / PINCER_SHOTS;
+        const drop = PINCER_SPAN * 0.5 * reach;
+        for (const side of [-1, 1] as const) {
+          const from = boss.attackAim + side * (PINCER_SPAN * 0.5 + drop);
+          const angle = Math.atan2(this.h - originY, boss.attackAim - from);
+          this.pushBossShot(clamp(from, 8, this.w - 8), originY, angle, phase.projectileSpeed * 0.9, phase.accent);
+        }
+      }
+      sfx.play('enemyShoot');
+      return;
+    }
+
     if (key === 'escort_screen') {
       this.launchEscorts(boss);
       return;
@@ -2444,6 +2602,19 @@ export class Game2A {
       boss.x += clamp(boss.attackAim - boss.x, -1, 1) * BOSS_CHARGE_SPEED * dt;
       boss.y += BOSS_CHARGE_SPEED * 0.62 * dt;
       boss.y = Math.min(boss.y, this.playerLane().bottom - 46);
+      return;
+    }
+
+    if (key === 'spiral') {
+      // A radial's gap is read once and stood in. A spiral's gap MOVES, so the
+      // answer is to keep circling in one direction for the whole window.
+      boss.fireClock -= dt;
+      if (boss.fireClock > 0) return;
+      boss.fireClock = SPIRAL_INTERVAL;
+      for (let arm = 0; arm < SPIRAL_ARMS; arm += 1) {
+        const angle = boss.age * SPIRAL_RATE + (arm / SPIRAL_ARMS) * Math.PI * 2;
+        this.pushBossShot(boss.x, boss.y, angle, phase.projectileSpeed * 0.78, phase.accent);
+      }
       return;
     }
 
@@ -2575,7 +2746,24 @@ export class Game2A {
     sfx.play('deny');
   }
 
-  private pushBossShot(x: number, y: number, angle: number, speed: number, color: string): void {
+  /**
+   * One boss projectile.
+   *
+   * `extra` exists for the seeker salvo. Everything a boss fired used to be an
+   * un-interceptible bullet, so the interception path -- which the ground
+   * silos have used since they shipped -- had never once been reachable from a
+   * boss fight. A homing missile the player can shoot out of the air is a
+   * different question from a bullet they have to dodge, and it is the only
+   * answer in the table whose verb is the gun.
+   */
+  private pushBossShot(
+    x: number,
+    y: number,
+    angle: number,
+    speed: number,
+    color: string,
+    extra: Partial<HostileProjectile> = {},
+  ): void {
     this.hostileShots.push({
       x,
       y,
@@ -2586,6 +2774,7 @@ export class Game2A {
       damage: 1,
       color,
       projectileKey: 'enemy_red_bullet',
+      ...extra,
     });
   }
 
@@ -2758,7 +2947,7 @@ export class Game2A {
           hazard.hp=0;this.player.hp=Math.min(this.playerDef().hp,(this.player.hp??0)+1);this.shield=Math.min(this.shieldMax,this.shield+25);
           this.missionBannerText='CLARITY BEACON // REPAIRED';this.missionBannerClock=2.8;this.ring(hazard.x,hazard.y);continue;
         }
-        if(hazard.ground)this.damageGround(hazard,999);else hazard.hp=0;
+        if(hazard.ground)this.damageGround(hazard,999,true);else hazard.hp=0;
         this.damagePlayer(1, hazard.x, hazard.y);
       }
     }
@@ -3647,7 +3836,10 @@ export class Game2A {
         this.ctx.save();this.ctx.fillStyle='#061018';this.ctx.fillRect(x,y-10,width,16);this.ctx.fillStyle=friendlyGround(hazard)?'#00ff00':'#ff5555';this.ctx.textAlign='center';this.ctx.font='800 10px ui-sans-serif,system-ui';this.ctx.fillText(text,x+width/2,y+2,width-8);this.ctx.restore();
       }
     }
-    if(!friendlyGround(hazard))bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / def.hp, def.accent);
+        // Divided by the hp this hazard SPAWNED with, not the registry base. The
+    // bar used to divide by def.hp, so a scaled emplacement rendered full
+    // for most of its life and then emptied in one volley.
+    if(!friendlyGround(hazard))bar(this.ctx, hazard.x - 20, hazard.y - def.draw.h / 2 - 8, 40, 4, (hazard.hp ?? 0) / (hazard.hpMax ?? def.hp), def.accent);
   }
 
   private drawHostileShot(shot: HostileProjectile): void {
@@ -3743,6 +3935,44 @@ export class Game2A {
       c.beginPath();
       c.arc(boss.x, boss.y, 26 + 54 * charge, 0, Math.PI * 2);
       c.stroke();
+    } else if (key === 'pincer') {
+      // Paint the column that is about to be CLOSED, and the two walls coming
+      // for it. The fog wall paints everything except the safe place; this
+      // paints the unsafe place. Opposite tells for opposite answers.
+      c.globalAlpha = 0.18 + 0.3 * charge;
+      c.fillRect(boss.attackAim - PINCER_SPAN * 0.5, boss.y, PINCER_SPAN, this.h - boss.y);
+      c.globalAlpha = 0.55 + 0.45 * charge;
+      c.lineWidth = 3;
+      for (const side of [-1, 1] as const) {
+        const x = boss.attackAim + side * PINCER_SPAN * (1.1 - 0.6 * charge);
+        c.beginPath();
+        c.moveTo(clamp(x, 4, this.w - 4), boss.y + boss.h * 0.35);
+        c.lineTo(clamp(boss.attackAim + side * PINCER_SPAN * 0.5, 4, this.w - 4), this.h);
+        c.stroke();
+      }
+    } else if (key === 'seeker_salvo') {
+      // Missile silhouettes fanning out of the boss, plus the word that says
+      // what to do about them. SHOOT, not dodge.
+      const aimed = Math.atan2(this.player.y - boss.y, this.player.x - boss.x);
+      const middle = (SEEKER_COUNT - 1) / 2;
+      for (let i = 0; i < SEEKER_COUNT; i += 1) {
+        const angle = aimed + (i - middle) * (SEEKER_FAN / Math.max(1, middle));
+        const reach = 26 + 46 * charge;
+        c.beginPath();
+        c.arc(boss.x + Math.cos(angle) * reach, boss.y + Math.sin(angle) * reach, 4 + 3 * charge, 0, Math.PI * 2);
+        c.fill();
+      }
+    } else if (key === 'spiral') {
+      // The arms, drawn where they will start, winding up as the tell fills.
+      c.lineWidth = 2;
+      for (let arm = 0; arm < SPIRAL_ARMS; arm += 1) {
+        const angle = boss.age * SPIRAL_RATE + (arm / SPIRAL_ARMS) * Math.PI * 2;
+        const reach = 20 + 62 * charge;
+        c.beginPath();
+        c.moveTo(boss.x, boss.y);
+        c.lineTo(boss.x + Math.cos(angle) * reach, boss.y + Math.sin(angle) * reach);
+        c.stroke();
+      }
     } else if (key === 'sweep_beam') {
       const swing = Math.sin(boss.age * 3.1) * 0.7 + Math.PI / 2;
       c.globalAlpha = 0.28 + 0.4 * charge;
@@ -4531,7 +4761,7 @@ export class Game2A {
     // because a button that gates progress is a button people get stuck behind.
     if (hasFogBreaker(this.progress)) {
       this.hostileShots = [];
-      for(const hazard of this.hazards)if(hazard.ground?.role==='jammer'&&groundVisible(hazard,this.h))this.damageGround(hazard,999);
+      for(const hazard of this.hazards)if(hazard.ground?.role==='jammer'&&groundVisible(hazard,this.h))this.damageGround(hazard,999,true);
     }
   }
 
@@ -4561,7 +4791,7 @@ export class Game2A {
     this.drones = [];
     // Break power feeds before their guns; repair beacons survive ordnance.
     for(const hazard of [...this.hazards].sort((a,b)=>Number(b.ground?.role==='relay')-Number(a.ground?.role==='relay'))){
-      if(hazard.ground)this.damageGround(hazard,999);
+      if(hazard.ground)this.damageGround(hazard,999,true);
       else{this.score+=75;this.ring(hazard.x,hazard.y);hazard.hp=0;}
     }
     this.hazards = this.hazards.filter(h=>(h.hp??0)>0);
@@ -4745,7 +4975,7 @@ export class Game2A {
     this.killedThisWave += 1;
     this.special = Math.min(100, this.special + 8 * this.pulsePower);
     this.kills += 1;
-    this.campaignArmory?.awardWeaponPoints(1);
+    this.fighterArmory?.awardWeaponPoints(1);
     this.awardXp(def.score * XP_PER_SCORE);
     this.ring(drone.x, drone.y);
     sfx.play('explode');
@@ -4754,7 +4984,7 @@ export class Game2A {
 
     const weaponLevel=this.campaignArmory?.state.level;
     // Sparse point caches support earned milestones, independent of general caps.
-    const coreDue=weaponLevel!==undefined?this.kills%UPGRADE_EVERY_KILLS===0&&weaponLevel<EARTH_WEAPON_CAP:this.kills%UPGRADE_EVERY_KILLS===0&&!this.allUpgradesMaxed();
+    const coreDue=weaponLevel!==undefined?this.kills%UPGRADE_EVERY_KILLS===0&&weaponLevel<WEAPON_LEVEL_CAP:this.kills%UPGRADE_EVERY_KILLS===0&&!this.allUpgradesMaxed();
     if (coreDue) {
       this.dropPickup(PICKUPS.weapon_upgrade, drone.x, drone.y);
     }
@@ -4867,7 +5097,15 @@ export class Game2A {
 
   /** Upgrades with nothing left to give are not offered. */
   private upgradeAvailable(kind: UpgradeKind): boolean {
-    if (kind === 'weapon') return !!this.campaignArmory&&this.campaignArmory.state.level===undefined&&!!nextFighterFamily(this.campaignArmory.state);
+    if (kind === 'weapon') {
+      const armory=this.campaignArmory;
+      if(!armory||armory.state.level!==undefined)return false;
+      const next=nextFighterFamily(armory.state);
+      if(!next)return false;
+      // The switch must actually change the gun. Offering the next family
+      // when it would fire the identical weapon is the capped-as-new bug.
+      return fighterWeapon(armory.state).key!==fighterWeapon({...armory.state,family:next}).key;
+    }
     if (kind === 'shield') return this.shieldMax < SHIELD_CAP;
     if (kind === 'bomb') return this.bombPower < BOMB_POWER_CAP;
     if (kind === 'pulse') return this.pulsePower < PULSE_POWER_CAP;
@@ -5031,9 +5269,11 @@ export class Game2A {
     let banner = def.label;
     switch (def.effect) {
       case 'weapon_upgrade':
-        if(this.campaignArmory?.state.level!==undefined){
-          if(this.campaignArmory.state.level>=EARTH_WEAPON_CAP)banner='EARTH ARSENAL COMPLETE';
-          else if(this.campaignArmory.awardWeaponPoints(4))banner=`+4 WEAPON POINTS // ${weaponPointsLabel(this.campaignArmory.state)}`;
+        // A pickup awards points; it never switches the equipped weapon.
+        // That choice belongs to the player, in the WEAPONS panel.
+        if(this.fighterArmory?.state.level!==undefined){
+          if(this.fighterArmory.state.level>=WEAPON_LEVEL_CAP)banner='ARSENAL COMPLETE';
+          else if(this.fighterArmory.awardWeaponPoints(4))banner=`+4 WEAPON POINTS // ${weaponPointsLabel(this.fighterArmory.state)}`;
           else {this.missionBannerText='WEAPON POINTS // RETRY';this.missionBannerClock=2.2;return false;}
           break;
         }
@@ -5244,6 +5484,41 @@ export class Game2A {
     this.bombPower = 1;
     this.pulsePower = loadout.pulse;
     this.bombs = Math.min(this.maxBombs(), 2 + loadout.bombs);
+    // Leaving a world used to confiscate the earned gun: applyLoadout reset
+    // xpLevel to 1 while the armory only applies on ledger_prime. The ladder
+    // now starts where the points left off instead of at rung one.
+    this.carryEarnedWeapon();
+  }
+
+  /**
+   * What the arcade ladder owes a pilot who earned their gun with points.
+   *
+   * Walks the real ladder against the armory weapon's measured output and
+   * keeps no second table of its own: the cheapest rung that covers what
+   * they were firing. Capped at the ladder's top -- that is where the ladder
+   * ends, not a tax. A pilot with no campaign progress keeps rung one.
+   */
+  private carryEarnedWeapon():void {
+    const armory=this.fighterArmory;
+    if(!armory||armory.state.level===undefined)return;
+    const weapon=armory.weapon;
+    const earned=weapon.damage*weapon.shots.length/Math.max(0.001,weapon.fireRate);
+    if(!(earned>0))return;
+    let level=1;
+    for(let at=1;at<=20;at+=1){
+      level=at;
+      if(this.ladderDpsAt(at)>=earned)break;
+    }
+    this.xpLevel=level;
+    this.barrels=clamp(Math.floor(armory.state.rapid),0,MAX_BARRELS);
+  }
+
+  /** Sustained output of the arcade rung a given level unlocks, bare of barrels. */
+  private ladderDpsAt(level:number):number {
+    let tier=this.baseWeaponTier;
+    for(const at of WEAPON_TIER_LEVELS) if(level>=at) tier+=1;
+    const weapon=WEAPON_LADDER[clamp(tier,1,WEAPON_LADDER.length)-1]??WEAPON_LADDER[0];
+    return weapon.damage*weapon.shots.length/Math.max(0.001,weapon.fireRate);
   }
 
   private newPlayer(): Actor {
@@ -5353,7 +5628,7 @@ export class Game2A {
     const level=this.campaignArmory?.state.level;
     // Earned run milestones strengthen future spawns. Manual loadout changes
     // cannot lower this curve or heal enemies already on screen.
-    return level===undefined?1:1+Math.max(0,Math.min(EARTH_WEAPON_CAP,level)-1)*.3;
+    return level===undefined?1:1+Math.max(0,Math.min(WEAPON_LEVEL_CAP,level)-1)*.3;
   }
 
   /** A drone's speed climbs with the run's wave and elapsed pressure. */

@@ -71,7 +71,7 @@ check(
   'arcade upgrade crates must still bank a level-up choice',
 );
 
-check(/this\.campaignArmory\.awardWeaponPoints\(4\)/.test(apply), 'campaign caches must award points without auto-equipping');
+check(/this\.fighterArmory\??\.awardWeaponPoints\(4\)/.test(apply), 'campaign caches must award points without auto-equipping');
 
 // ---- each effect is handled, exactly once, and says so ------------------
 const effects = ['weapon_upgrade', 'bomb', 'repair', 'shield'];

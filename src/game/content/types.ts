@@ -290,7 +290,35 @@ export type BossAttackKey =
    * while any escort is alive, so the answer is to clear the screen rather
    * than to keep holding fire on a target that auto-aim was hitting anyway.
    */
-  | 'escort_screen';
+  | 'escort_screen'
+  /**
+   * Homing missiles that can be SHOT DOWN.
+   *
+   * Every other move is answered by moving. This one is answered by firing at
+   * something other than the boss, which is the only move in the table whose
+   * verb is the gun. They track hard enough that outrunning them is not the
+   * answer, and the ground silos already prove the interception path works --
+   * no boss shot had ever set `interceptible` before.
+   */
+  | 'seeker_salvo'
+  /**
+   * Two curtains that converge on the column the player was standing in.
+   *
+   * The exact inverse of `fog_wall`, and authored as one on purpose: the wall
+   * punishes panicking, the pincer punishes standing still. A boss that has
+   * both teaches the player to read WHICH tell is up rather than to adopt one
+   * habit.
+   */
+  | 'pincer'
+  /**
+   * A sustained radial that rotates while it fires.
+   *
+   * A `radial` is one ring with a gap, read once. A spiral is a moving gap:
+   * the safe angle travels, so the answer is to keep circling in one
+   * direction for the whole of the active window rather than to find a spot
+   * and hold it.
+   */
+  | 'spiral';
 
 export interface BossPhaseDef {
   /** Remaining-health ratio at or below which this phase becomes active. */

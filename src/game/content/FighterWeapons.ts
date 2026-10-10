@@ -12,12 +12,39 @@ export const FAMILY_INFO:Record<FighterFamily,{label:string;unlock:number;descri
   ledger:{label:'LEDGER ARC',unlock:13,description:'Energy chains to a bounded number of nearby enemies.'},
 };
 export const RAPID_CAP=4;
-// Earth grants three beam refinements and one new weapon, spread across a run.
-export const EARTH_WEAPON_CAP=5;
-export const EARTH_WEAPON_THRESHOLDS=[0,24,64,120,200] as const;
-export function earthWeaponLevel(points:number):number {return EARTH_WEAPON_THRESHOLDS.filter(at=>points>=at).length;}
+/**
+ * Kill-earned weapon progression: 20 levels, four stages per family, bought
+ * with weapon points. Points come from kills (1) and WPN pickups (+4) on any
+ * world, once the armory is in campaign mode.
+ *
+ * Paced so the first world completes the beam and banks toward the pulse:
+ * Earth yields on the order of 200 points, so bb I-IV land during it and the
+ * pulse waits for the world after. Each later world unlocks roughly one new
+ * family. No single world exhausts the ladder.
+ */
+export const WEAPON_LEVEL_THRESHOLDS=[0,12,30,55, 90,130,175,225, 280,340,405,475, 550,630,715,805, 900,1000,1105,1215] as const;
+export const WEAPON_LEVEL_CAP=20;
+export function weaponLevelForPoints(points:number):number {
+  let level=1;
+  for(let i=0;i<WEAPON_LEVEL_THRESHOLDS.length;i++)if(points>=WEAPON_LEVEL_THRESHOLDS[i])level=i+1;
+  return level;
+}
+/**
+ * Worlds that must be cleared before a family can unlock. Points bank past
+ * the gate, so a farmed first world still pays out -- it just pays out after
+ * the world is actually cleared.
+ */
+export const FAMILY_WORLD_REQUIREMENT:Record<FighterFamily,number>={bb:0,pulse:1,rocket:2,plasma:3,ledger:4};
+/** Highest weapon level reachable with this many worlds cleared. */
+export function maxLevelForWorlds(worldsCleared:number):number {
+  let familyIndex=0;
+  for(let i=0;i<FIGHTER_FAMILIES.length;i++)if(worldsCleared>=FAMILY_WORLD_REQUIREMENT[FIGHTER_FAMILIES[i]])familyIndex=i;
+  return (familyIndex+1)*4;
+}
 export function weaponPointsLabel(state:FighterWeaponState):string {
-  return (state.level??1)>=EARTH_WEAPON_CAP?'EARTH ARSENAL COMPLETE':`${state.points??0}/${EARTH_WEAPON_THRESHOLDS[state.level??1]} WPN POINTS`;
+  const level=state.level??1;
+  if(level>=WEAPON_LEVEL_CAP)return 'ARSENAL COMPLETE';
+  return `WEAPON LEVEL ${level}/${WEAPON_LEVEL_CAP} · ${state.points??0}/${WEAPON_LEVEL_THRESHOLDS[level]} WPN POINTS`;
 }
 /** Compact earned firepower tier fits the existing 0..20 upgrade save format. */
 const POWER_BASE=1/.14,POWER_STEP=1.14;
@@ -93,6 +120,10 @@ export interface FighterArmoryPort {
   upgradeRapid():boolean;
   upgradeWeapon():boolean;
   awardWeaponPoints(amount:number):boolean;
+  /** Worlds cleared, gating new-family unlocks so no world exhausts the ladder. */
+  setWorldsCleared(count:number):void;
+  /** Families unlocked since the last drain, oldest first. Never auto-equips. */
+  drainUnlocks():FighterFamily[];
   setActive(value:boolean):void;
   block():void;
   update(safe:boolean):boolean;
