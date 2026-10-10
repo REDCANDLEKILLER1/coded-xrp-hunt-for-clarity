@@ -29,6 +29,20 @@
         "legacy_space",
         "legacy_onfoot"
       ]
+    },
+    "captured_warship": {
+      "src": "/assets/ships/captured_warship.webp",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 512,
+        "frameHeight": 384,
+        "frames": 3,
+        "fps": 1
+      },
+      "notes": "v03 Blender exterior derivative; rear azimuths 150/180/210; consumed by captured Warship transit reveal; no master imagery.",
+      "scenes": [
+        "legacy_space"
+      ]
     }
   },
   "characters": {
