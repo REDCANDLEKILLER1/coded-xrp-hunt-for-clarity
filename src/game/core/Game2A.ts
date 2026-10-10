@@ -11,7 +11,8 @@ import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, 
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
 import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
-import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
+import { EarthFlightEncounterDirector } from '../content/EarthFlightEncounters';
+import { EncounterOrchestrator, type EncounterHost, encounterDefFor } from './Encounters';
 import { CloudDescent, type DescentHost } from './CloudDescent';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
@@ -587,7 +588,13 @@ export class Game2A {
   private readonly sprites: SpriteRenderer;
   private readonly loop = new Loop((dt) => this.frame(dt));
   private readonly missionDirector = new MissionDirector();
-  private readonly earthEncounterDirector = new EarthFlightEncounterDirector();
+  /** Encounter orchestration (extracted to Encounters.ts; Game2A orchestrates). */
+  private readonly encounters = new EncounterOrchestrator(this.makeEncounterHost());
+  /**
+   * Encounter director, delegated to Encounters (validators call .start()/.clear()
+   * and read stage/group state directly).
+   */
+  private get earthEncounterDirector(): EncounterOrchestrator { return this.encounters; }
   /** Cloud descent phase (extracted to CloudDescent.ts; Game2A orchestrates). */
   private readonly descent = new CloudDescent(this.makeDescentHost());
   private readonly warshipDirector = new RegulatoryWarshipDirector();
@@ -913,10 +920,30 @@ export class Game2A {
       droneCount: () => this.drones.length,
       setCityPathPosition: (v) => { this.cityPathPosition = v; },
       currentActKey: () => this.missionDirector.currentAct?.key ?? '',
-      startCityDirector: (k) => this.earthEncounterDirector.start(k),
+      startCityDirector: (k) => this.earthEncounterDirector.start(this.missionDirector.activeMission, k),
       setMissionBanner: (t, c) => { this.missionBannerText = t; this.missionBannerClock = c; },
       pendingUpgrades: () => this.pendingUpgrades,
       openUpgradeChoice: () => this.openUpgradeChoice(),
+    };
+  }
+
+  private makeEncounterHost(): EncounterHost {
+    return {
+      droneCount: () => this.drones.length,
+      threatHazardCount: (beaconLesson) => this.hazards.filter(
+        (h) => !friendlyGround(h) || (beaconLesson && h.y < this.h * 0.6),
+      ).length,
+      screenHeight: () => this.h,
+      threatsCleared: () => this.drones.length === 0 && this.hazards.every(friendlyGround),
+      groundRestorationBlocking: () => this.groundRestorationPending
+        && this.flightStory != null
+        && !this.flightStory.districtRestored,
+      clearHostileShots: () => { this.hostileShots = []; },
+      spawnEnemy: (k, x) => this.spawnMissionDrone(k, x),
+      spawnHazard: (k, x, s) => this.spawnMissionHazard(k, x, s),
+      moveDrones: (dt) => this.moveDrones(dt),
+      moveHazards: (dt) => this.moveHazards(dt),
+      completeFlightAct: () => this.completeMissionFlightAct(),
     };
   }
 
@@ -1102,7 +1129,7 @@ export class Game2A {
 
     if (this.launchClock === 0) {
       this.player.y = targetY;
-      this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+      this.encounters.start(this.missionDirector.activeMission, this.missionDirector.currentAct?.key ?? '');
       this.missionBannerText = 'DEFEND EARTH // FIRST CONTACT INBOUND';
       this.missionBannerClock = 2.8;
     }
@@ -1139,7 +1166,7 @@ export class Game2A {
       return;
     }
 
-    if (act.mode === 'flight' && earthFlightEncounterFor(act.key)) {
+    if (act.mode === 'flight' && this.encounters.hasEncounter(this.missionDirector.activeMission, act.key)) {
       this.updateAuthoredFlight(dt);
       return;
     }
@@ -1336,18 +1363,7 @@ export class Game2A {
   }
 
   private updateAuthoredFlight(dt: number): void {
-    const beaconLesson=this.earthEncounterDirector.currentGroupLabel?.startsWith('CLARITY BEACON');
-    const activeThreats = this.drones.length + this.hazards.filter(h=>!friendlyGround(h)||(beaconLesson&&h.y<this.h*.6)).length;
-    if(activeThreats===0&&this.groundRestorationPending&&this.flightStory&&!this.flightStory.districtRestored){this.hostileShots=[];return;}
-    const state = this.earthEncounterDirector.update(dt, activeThreats);
-    for (const spawn of state.spawns) {
-      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
-      else this.spawnMissionHazard(spawn.hazardKey, spawn.x, spawn.side);
-    }
-    this.moveDrones(dt);
-    this.moveHazards(dt);
-
-    if (state.completed && this.drones.length === 0 && this.hazards.every(friendlyGround)) this.completeMissionFlightAct();
+    this.encounters.update(dt);
   }
 
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
@@ -1466,7 +1482,7 @@ export class Game2A {
     this.hostileShots = [];
     const entered = this.missionDirector.advance();
     this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
-    this.earthEncounterDirector.start(entered?.key ?? '');
+    this.encounters.start(this.missionDirector.activeMission, entered?.key ?? '');
 
     if (entered?.key === 'regulatory_warship') {
       this.missionBannerText = 'CAPITAL SHIP SIGNAL // REGULATORY WARSHIP';
@@ -4548,7 +4564,7 @@ export class Game2A {
     this.fogCutClock = 0;
     this.hostileShots = [];
     this.ringClock = 0.55;
-    this.earthEncounterDirector.start('final_assault');
+    this.encounters.start(this.missionDirector.activeMission, 'final_assault');
     this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
     this.missionBannerClock = 2.8;
     sfx.play('pulse');
@@ -4662,7 +4678,7 @@ export class Game2A {
       this.recordCheckpointForCurrentAct();
       // final_assault runs on the fog gate rather than on authored spawns.
       if(missionGuardian.actKey==='regulatory_behemoth'&&entered?.key==='ledger_city')this.beginEarthEntry();
-      else if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
+      else if (entered?.key !== 'final_assault') this.encounters.start(this.missionDirector.activeMission, entered?.key ?? '');
       return;
     }
 
@@ -5189,7 +5205,7 @@ export class Game2A {
       this.cueMusic('level1');
 
       if (checkpoint) {
-        this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        this.encounters.start(this.missionDirector.activeMission, this.missionDirector.currentAct?.key ?? '');
         if (this.missionDirector.currentAct?.key === 'boarding') {
           this.warshipDirector.reset();
           for (const system of REGULATORY_WARSHIP.systems) {
@@ -5527,7 +5543,7 @@ export class Game2A {
   private currentStage(): StageDef {
     // The launch reveal precedes encounter spawning; it still belongs in orbit.
     const missionStageKey = this.earthEncounterDirector.stageKey
-      ?? earthFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
+      ?? encounterDefFor(this.missionDirector.activeMission, this.missionDirector.currentAct?.key ?? '')?.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
     // A guardian act has no authored encounter, so it reaches here with no
     // stageKey. Falling on through lands it on the WAVE ladder, which put the

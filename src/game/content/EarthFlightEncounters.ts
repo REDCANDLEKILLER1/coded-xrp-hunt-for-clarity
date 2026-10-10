@@ -305,7 +305,17 @@ export class EarthFlightEncounterDirector {
   private done = false;
 
   start(actKey: string): void {
-    this.encounter = earthFlightEncounterFor(actKey) ?? null;
+    this.startWithDef(earthFlightEncounterFor(actKey));
+  }
+
+  /**
+   * Start from an explicitly resolved encounter def. Phase 0B: the mission
+   * framework resolves per-planet defs before calling in, so the director no
+   * longer assumes the Earth table. `start(actKey)` above is the legacy
+   * Earth-only path and delegates here.
+   */
+  startWithDef(def: EarthFlightEncounterDef | undefined): void {
+    this.encounter = def ?? null;
     this.groupIndex = 0;
     this.wait = this.encounter?.groups[0]?.restBefore ?? 0;
     this.groupSpawned = false;
