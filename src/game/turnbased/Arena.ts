@@ -13,7 +13,9 @@ import {
   CanvasTexture,
   CapsuleGeometry,
   Color,
+  CylinderGeometry,
   DirectionalLight,
+  FogExp2,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -34,6 +36,7 @@ import {
   testEnemyActions,
 } from './Actions.ts';
 import { TurnEngine } from './TurnEngine.ts';
+import { ArenaLocation, WARSHIP_BRIDGE } from './Locations.ts';
 
 /** Enemy AI states. Simple and explicit for the scaffold. */
 type EnemyState = 'idle' | 'aggro' | 'attack' | 'special';
@@ -68,9 +71,12 @@ export class TurnArena {
   private cameraGoal = new Vector3(0, 14, 16);
   private animClock = 0;
   private lunge: { mesh: Group; t: number; from: Vector3; to: Vector3 } | null = null;
+  private location: ArenaLocation;
+  private readonly locationLabel = document.createElement('div');
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, location: ArenaLocation = WARSHIP_BRIDGE) {
     this.container = container;
+    this.location = location;
     this.renderer = new WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2));
     container.appendChild(this.renderer.domElement);
@@ -85,23 +91,27 @@ export class TurnArena {
   // ---- scene setup -------------------------------------------------------
 
   private buildScene(): void {
-    this.scene.background = new Color(0x0a0e1a);
-    this.scene.add(new AmbientLight(0x8fa3c7, 0.9));
-    const sun = new DirectionalLight(0xfff2d9, 2.2);
+    const L = this.location;
+    this.scene.background = new Color(L.background);
+    this.scene.fog = new FogExp2(L.fogColor, L.fogDensity);
+    this.scene.add(new AmbientLight(L.ambientColor, L.ambientIntensity));
+    const sun = new DirectionalLight(L.keyLightColor, L.keyLightIntensity);
     sun.position.set(8, 14, 6);
     this.scene.add(sun);
-    const rim = new DirectionalLight(0x5a7bff, 1.1);
+    const rim = new DirectionalLight(L.accentColor, 0.9);
     rim.position.set(-10, 6, -8);
     this.scene.add(rim);
 
-    // Flat arena floor with painted range rings (melee / short / long).
+    // Floor in the location's palette.
     const floor = new Mesh(
       new PlaneGeometry(ARENA_RADIUS * 2.4, ARENA_RADIUS * 2.4),
-      new MeshStandardMaterial({ color: 0x1a2233, roughness: 0.95 }),
+      new MeshStandardMaterial({ color: L.floorColor, roughness: 0.95 }),
     );
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
 
+    // Painted range rings in the location's accent palette.
+    const [meleeC, shortC, longC] = L.ringColors;
     const ring = (r: number, color: string) => {
       const g = new PlaneGeometry(r * 2, r * 2);
       const tex = new CanvasTexture(ringTexture(r, color));
@@ -118,9 +128,51 @@ export class TurnArena {
       m.position.y = 0.02;
       this.scene.add(m);
     };
-    ring(MELEE_RANGE, '#ff5a5a');
-    ring(9, '#ffb84d');
-    ring(15, '#5ad1ff');
+    ring(MELEE_RANGE, meleeC);
+    ring(9, shortC);
+    ring(15, longC);
+
+    // Location props: consoles, pillars, crates — the room matches the fight.
+    for (const p of L.props) {
+      const mat = new MeshStandardMaterial({
+        color: p.color,
+        roughness: 0.7,
+        metalness: 0.35,
+        emissive: new Color(p.emissive ?? 0x000000),
+        emissiveIntensity: p.emissive ? 0.7 : 0,
+      });
+      let mesh: Mesh;
+      if (p.kind === 'tank') {
+        mesh = new Mesh(new CylinderGeometry(p.w / 2, p.w / 2, p.h, 12), mat);
+        mesh.position.y = p.h / 2;
+      } else if (p.kind === 'arch') {
+        // Arch: two posts + a lintel.
+        const grp = new Group();
+        const postG = new BoxGeometry(1.2, p.h, p.d);
+        const left = new Mesh(postG, mat);
+        left.position.set(-p.w / 2, p.h / 2, 0);
+        const right = new Mesh(postG, mat);
+        right.position.set(p.w / 2, p.h / 2, 0);
+        const lintel = new Mesh(new BoxGeometry(p.w + 1.2, 1.2, p.d), mat);
+        lintel.position.set(0, p.h, 0);
+        grp.add(left, right, lintel);
+        grp.position.set(p.x, 0, p.z);
+        this.scene.add(grp);
+        continue;
+      } else {
+        mesh = new Mesh(new BoxGeometry(p.w, p.h, p.d), mat);
+        mesh.position.y = p.h / 2;
+      }
+      mesh.position.x = p.x;
+      mesh.position.z = p.z;
+      this.scene.add(mesh);
+    }
+
+    // Location nameplate.
+    this.locationLabel.textContent = L.name.toUpperCase();
+    this.locationLabel.style.cssText =
+      'position:absolute;top:12px;left:14px;font-size:11px;letter-spacing:.18em;' +
+      'opacity:.75;pointer-events:none;';
 
     this.camera.position.copy(this.cameraGoal);
     this.camera.lookAt(0, 1, 0);
@@ -154,6 +206,7 @@ export class TurnArena {
       'position:absolute;inset:0;display:none;align-items:center;justify-content:center;' +
       'background:rgba(4,8,18,.72);pointer-events:auto;';
     ui.appendChild(this.endCard);
+    ui.appendChild(this.locationLabel);
   }
 
   private resize(): void {
@@ -166,8 +219,16 @@ export class TurnArena {
 
   // ---- battle setup ------------------------------------------------------
 
-  /** Start the test battle: player vs one dummy enemy. */
-  startBattle(): void {
+  /** Switch the arena to a different location (rebuilds scenery). */
+  setLocation(location: ArenaLocation): void {
+    this.location = location;
+    this.scene.clear();
+    this.buildScene();
+  }
+
+  /** Start a battle, optionally in a specific location. */
+  startBattle(location?: ArenaLocation): void {
+    if (location && location.id !== this.location.id) this.setLocation(location);
     this.clearFighters();
     const player = createCombatant({
       id: 'player',
@@ -194,6 +255,7 @@ export class TurnArena {
       actions: testEnemyActions(),
     });
     this.engine = new TurnEngine([player, enemy]);
+    player.items.set('stem_pack', 1);
     this.addFighter(player, 0x4da3ff);
     this.addFighter(enemy, 0xff5a5a);
     this.enemyState = 'idle';

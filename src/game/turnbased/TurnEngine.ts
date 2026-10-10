@@ -154,22 +154,70 @@ export class TurnEngine {
       target.alive = false;
     }
     putOnCooldown(actor, action);
-    const line = `${actor.name} uses ${action.name} on ${target.name} for ${damage} damage.`;
-    this.log.push(line);
-    if (!target.alive) this.log.push(`${target.name} is defeated!`);
+    const lines: string[] = [];
+    lines.push(`${actor.name} uses ${action.name} on ${target.name} for ${damage} damage.`);
+
+    // Tier-3 Strike bleed.
+    if (action.bleed && target.alive) {
+      target.bleedDamage = action.bleed.damage;
+      target.bleedTurns = action.bleed.turns;
+      lines.push(`${target.name} is bleeding (${action.bleed.damage}/turn).`);
+    }
+
+    // Tier-3 Pulse Blast splash: half damage to other enemies in range.
+    if (action.splash) {
+      for (const other of this.combatants) {
+        if (other === target || other.team !== target.team || !other.alive) continue;
+        if (distance(actor, other) > action.range) continue;
+        const splashDmg = Math.max(1, Math.floor(damage * (action.splash ?? 0)));
+        other.hp = Math.max(0, other.hp - splashDmg);
+        if (other.hp <= 0) other.alive = false;
+        lines.push(`Splash hits ${other.name} for ${splashDmg} damage.`);
+      }
+    }
+
+    // Tier-3 Shield Wall reflect: melee attackers take a fraction back.
+    if (target.reflectPct > 0 && action.range <= 3.5 && actor.alive) {
+      const reflected = Math.max(1, Math.floor(damage * target.reflectPct));
+      actor.hp = Math.max(0, actor.hp - reflected);
+      if (actor.hp <= 0) actor.alive = false;
+      lines.push(`${target.name} reflects ${reflected} damage to ${actor.name}.`);
+    }
+
+    if (!target.alive) lines.push(`${target.name} is defeated!`);
+    for (const l of lines) this.log.push(l);
     const result = this.checkEnd();
     if (result === 'victory') this.log.push('Victory!');
     if (result === 'defeat') this.log.push('Defeat...');
-    return { ok: true, log: [line], damageDealt: damage };
+    return { ok: true, log: [lines[0]], damageDealt: damage };
   }
 
   private applySelfAction(actor: Combatant, action: ActionDef): ActionOutcome {
-    // Shield Wall: +8 defense for 2 turns.
+    // Consumable items (stem pack): check inventory, heal self, costs the turn.
+    if (action.kind === 'item') {
+      const count = actor.items.get(action.id) ?? 0;
+      if (count <= 0) {
+        return { ok: false, reason: `no ${action.name} left`, log: [] };
+      }
+      actor.items.set(action.id, count - 1);
+      const healed = Math.min(action.power, actor.maxHp - actor.hp);
+      actor.hp += healed;
+      const line = `${actor.name} uses ${action.name}, restoring ${healed} HP.`;
+      this.log.push(line);
+      return { ok: true, log: [line], healed };
+    }
+    // Shield Wall: defense buff (+ tier scaling) and optional reflect.
     if (action.id === 'shield_wall') {
-      actor.defenseBuff = 8;
-      actor.defenseBuffTurns = 2;
+      const tier = action.tier ?? 1;
+      actor.defenseBuff = tier >= 2 ? 12 : 8;
+      actor.defenseBuffTurns = tier >= 3 ? 3 : 2;
+      actor.reflectPct = action.reflect ?? 0;
       putOnCooldown(actor, action);
-      const line = `${actor.name} raises Shield Wall (+8 defense, 2 turns).`;
+      const line =
+        `${actor.name} raises ${action.name} ` +
+        `(+${actor.defenseBuff} defense, ${actor.defenseBuffTurns} turns` +
+        (actor.reflectPct > 0 ? ', reflecting melee damage' : '') +
+        `).`;
       this.log.push(line);
       return { ok: true, log: [line] };
     }
@@ -192,10 +240,16 @@ export class TurnEngine {
     return { ok: true, log: [line], healed };
   }
 
-  /** End the current turn: tick cooldowns/buffs, advance to next combatant. */
+  /** End the current turn: tick cooldowns/buffs/bleed, advance to next combatant. */
   endTurn(): TurnState {
     const actor = this.order[this.turnIndex];
-    if (actor) tickCooldowns(actor);
+    if (actor) {
+      const bleed = tickCooldowns(actor);
+      if (bleed > 0) {
+        this.log.push(`${actor.name} bleeds for ${bleed} damage.`);
+        if (!actor.alive) this.log.push(`${actor.name} succumbs to bleeding!`);
+      }
+    }
     this.advanceIndex();
     const result = this.checkEnd();
     const cur = result === 'ongoing' ? this.order[this.turnIndex] : null;
