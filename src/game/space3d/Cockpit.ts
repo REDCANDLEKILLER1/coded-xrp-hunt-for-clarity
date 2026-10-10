@@ -165,6 +165,8 @@ export interface CockpitState {
   /** 0..1; at 1 the guns have slowed themselves down. */
   gunHeat: number;
   gunsFiring: boolean;
+  /** While the departure reveal names the vessel, the attitude readout parks. */
+  captureReveal?: boolean;
   /** 0..1 charge on the missile. */
   missileCharge: number;
   /** 0..1 warp coil heat. At 1 the drive cuts out until it cools. */
@@ -459,7 +461,7 @@ export class Cockpit {
     // is measured off the artwork's alpha hole, the console's is the whole
     // area above the band. Keying it off `art` instead would put it on the
     // panel in one orientation and nowhere in the other.
-    this.drawAttitude(frame, state);
+    if (!state.captureReveal) this.drawAttitude(frame, state);
     this.drawInbound(frame, state);
   }
 
@@ -817,7 +819,7 @@ export class Cockpit {
     } else {
       ctx.fillStyle = state.tiltStatus === 'READY' ? 'rgba(79,216,255,0.85)' : AMBER;
       ctx.font = `${label}px "Courier New", monospace`;
-      ctx.fillText(`TILT ${state.tiltStatus}`, x + w * 0.07, y + h * 0.24);
+      ctx.fillText(state.tiltStatus === 'DRAG' ? 'DRAG TO FLY' : `TILT ${state.tiltStatus}`, x + w * 0.07, y + h * 0.24);
     }
 
     // Throttle: the control the whole rescale exists to make worth having.
