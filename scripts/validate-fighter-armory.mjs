@@ -251,6 +251,8 @@ for(const family of FIGHTER_FAMILIES)for(let stage=1;stage<=4;stage++)for(const 
 
 
 // Earned weapon milestones: kills + sparse point caches, never auto-equipping.
+// Twenty levels, world-gated families: Earth completes the beam, the pulse
+// waits for the first cleared world, and banked points release on the clear.
 function coreFixture(){const f=fixture();f.save.update(d=>{d.fighterUpgrades={weapon_rank:1,weapon_family:0,weapon_level:1,rapid_fire:0};d.fighterWeaponPoints=0;});f.g.fighterReady=true;return f;}
 function closeArmory(f){if(f.armory.active)f.parent.children[0].children[1].children.at(-1).click();}
 {
@@ -258,23 +260,38 @@ function closeArmory(f){if(f.armory.active)f.parent.children[0].children[1].chil
  f.armory.rankUp(20);assert.equal(f.armory.weapon.stage,1);assert.equal(f.g.upgradeAvailable('weapon'),false);
  f.g.applyPickup('weapon_upgrade');assert.equal(f.armory.state.points,4);assert.equal(f.armory.state.level,1);assert.equal(f.armory.state.family,'bb');assert.equal(f.armory.active,false);
  let milestones=0,priorDps=f.g.centredDps();
- for(let points=5;points<=200;points++){
+ for(let points=5;points<=55;points++){
   const before=f.armory.state.level;f.g.registerKill(drone());
   assert.equal(f.armory.state.points,points);assert.equal(f.armory.state.family,'bb','kill cannot replace equipped gun');assert.equal(f.armory.state.rapid,0);
   if(f.armory.state.level>before){
-   milestones++;assert.ok([24,64,120,200].includes(points));assert.equal(f.armory.active,true);
+   milestones++;assert.ok([12,30,55].includes(points),`milestone at unexpected ${points} points`);
+   assert.equal(f.armory.active,true);
    const panel=f.parent.children[0].children[1];assert.ok(panel.children[0].textContent.startsWith('LEVEL UP'));
    let updates=0;const real=f.g.update;f.g.update=()=>updates++;const clock=f.g.clock;f.g.frame(.1);assert.equal(updates,0);assert.equal(f.g.clock,clock);f.g.update=real;
    assert.ok(f.g.centredDps()>=priorDps);priorDps=f.g.centredDps();
-   if(points===200){assert.ok(panel.children[0].textContent.includes('NEW WEAPON'));assert.equal(panel.children[3].disabled,false);assert.equal(panel.children[4].disabled,true);}
    closeArmory(f);
   }
  }
- assert.equal(milestones,4);assert.equal(f.armory.state.level,5);assert.equal(f.armory.weapon.stage,4);assert.equal(f.armory.upgradeWeapon(),false);
- f.g.frame(.01);const root=f.parent.children[0];root.children[0].click();const panel=root.children[1];
- panel.children[3].click();assert.equal(f.armory.state.family,'pulse');const threat=f.g.campaignThreatScale();
- f.g.applyPickup('weapon_upgrade');assert.equal(f.armory.state.family,'pulse','pickup cannot switch selected weapon');assert.equal(f.armory.state.points,200);
- panel.children[2].click();assert.equal(f.armory.state.family,'bb');assert.equal(f.g.campaignThreatScale(),threat,'loadout switching cannot weaken enemies');closeArmory(f);
+ assert.equal(milestones,3);assert.equal(f.armory.state.level,4);assert.equal(f.armory.weapon.stage,4);
+ // Points bank past the Earth gate: 200 points still buys only the beam.
+ for(let points=56;points<=200;points++)f.g.registerKill(drone());
+ assert.equal(f.armory.state.points,200);assert.equal(f.armory.state.level,4,'no world cleared: the pulse stays locked');
+ assert.deepEqual(f.armory.drainUnlocks(),[]);
+ // Clearing the first world releases the banked points into the pulse, with
+ // the announcement -- and the equipped gun does not move on its own.
+ f.armory.setWorldsCleared(1);
+ assert.equal(f.armory.state.level,7,'200 banked points release to pulse III');
+ assert.deepEqual(f.armory.drainUnlocks(),['pulse']);
+ assert.equal(f.armory.state.family,'bb','unlock never auto-equips');
+ const panel=f.parent.children[0].children[1];
+ assert.ok(panel.children[0].textContent.includes('NEW WEAPON'));
+ assert.equal(panel.children[3].disabled,false,'pulse selectable after unlock');
+ assert.equal(panel.children[4].disabled,true,'rocket still gated');
+ assert.equal(f.armory.upgradeWeapon(),false);
+ f.g.frame(.01);const root=f.parent.children[0];root.children[0].click();const panel2=root.children[1];
+ panel2.children[3].click();assert.equal(f.armory.state.family,'pulse');const threat=f.g.campaignThreatScale();
+ f.g.applyPickup('weapon_upgrade');assert.equal(f.armory.state.family,'pulse','pickup cannot switch selected weapon');assert.equal(f.armory.state.points,204);
+ panel2.children[2].click();assert.equal(f.armory.state.family,'bb');assert.equal(f.g.campaignThreatScale(),threat,'loadout switching cannot weaken enemies');closeArmory(f);
 }
 {
  const f=coreFixture();f.g.barrels=4;f.g.shieldMax=99;f.g.bombPower=99;f.g.pulsePower=99;
@@ -283,7 +300,8 @@ function closeArmory(f){if(f.armory.active)f.parent.children[0].children[1].chil
  f.g.kills=23;f.g.registerKill(drone());assert.ok(f.g.pickups.some(p=>p.pickupKey==='weapon_upgrade'),'general caps cannot suppress points');
  const core=f.g.pickups.find(p=>p.pickupKey==='weapon_upgrade');core.x=f.g.player.x;core.y=f.g.player.y;const points=f.armory.state.points;
  f.g.collisions();assert.equal(f.armory.state.points,points+4);assert.ok(!f.g.pickups.includes(core));
- f.armory.awardWeaponPoints(200);closeArmory(f);f.g.pickups=[];f.g.kills=47;f.g.registerKill(drone());assert.ok(!f.g.pickups.some(p=>p.pickupKey==='weapon_upgrade'));
+ // At the absolute cap the point caches stop: nothing left to earn.
+ f.armory.setWorldsCleared(4);f.armory.awardWeaponPoints(1215);closeArmory(f);f.g.pickups=[];f.g.kills=47;f.g.registerKill(drone());assert.ok(!f.g.pickups.some(p=>p.pickupKey==='weapon_upgrade'),'maxed arsenal stops point drops');
 }
 {
  const f=coreFixture();f.g.paused=false;f.g.frame(.01);const root=f.parent.children[0];assert.equal(root.hidden,false);
@@ -302,13 +320,13 @@ function closeArmory(f){if(f.armory.active)f.parent.children[0].children[1].chil
 // Bounded DPS improvements versus stronger future enemy and turret spawns.
 {
  const f=coreFixture();const def=ENEMIES.regulator_drone;const startHp=f.g.enemyHp(def);const startDps=f.g.centredDps();const ratios=[];
- for(const points of [0,24,64,120,200]){
+ for(const points of [0,12,30,55]){
   f.armory.awardWeaponPoints(Math.max(1,points-(f.armory.state.points??0)));closeArmory(f);
   const ratio=f.g.centredDps()/startDps;ratios.push(ratio);assert.ok(ratio<=2.51,'Earth beam output cannot balloon');
-  assert.ok(f.g.enemyHp(def)>=startHp);assert.ok(f.g.campaignThreatScale()<=2.21);
+  assert.ok(f.g.enemyHp(def)>=startHp);assert.ok(f.g.campaignThreatScale()<=1.91);
  }
- assert.ok(f.g.enemyHp(def)>startHp,'later enemies are stronger');assert.equal(f.g.campaignThreatScale(),2.2);
+ assert.ok(f.g.enemyHp(def)>startHp,'later enemies are stronger');assert.equal(f.g.campaignThreatScale(),1.9);
  const turret=HAZARDS.basic_turret;assert.ok(f.g.hazardHp(turret)>turret.hp,'ground defenses follow milestone curve');
  assert.ok(ratios[3]>ratios[0],'upgrades retain a real damage advantage');
 }
-console.log('weapon points: four spaced Earth milestones, no pickup/kill auto-equip, clear paused unlocks, capped balanced output, stronger future enemies, manual loadout, sparse drops and save retry passed');
+console.log('weapon points: three spaced Earth milestones, world-gated unlocks, no pickup/kill auto-equip, clear paused unlocks, capped balanced output, stronger future enemies, manual loadout, sparse drops and save retry passed');

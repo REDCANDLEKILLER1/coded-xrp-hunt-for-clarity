@@ -1,5 +1,5 @@
 import type {CampaignSave} from '../definitive/CampaignSave';
-import {FIGHTER_FAMILIES,FAMILY_INFO,ROMAN,RAPID_CAP,EARTH_WEAPON_CAP,EARTH_WEAPON_THRESHOLDS,earthWeaponLevel,weaponPointsLabel,retainedWeaponPower,nextFighterFamily,fighterStageForState,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
+import {FIGHTER_FAMILIES,FAMILY_INFO,FAMILY_WORLD_REQUIREMENT,ROMAN,RAPID_CAP,WEAPON_LEVEL_CAP,WEAPON_LEVEL_THRESHOLDS,weaponLevelForPoints,maxLevelForWorlds,weaponPointsLabel,retainedWeaponPower,nextFighterFamily,fighterStageForState,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
 
 /** Only the fighter track is written. Hero powers and capital modules are
  * separate save fields and cannot be spent/equipped through this panel. */
@@ -13,6 +13,8 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
   private safe=false;
   private initialized=false;
   private milestone:string|null=null;
+  private worldsCleared=0;
+  private readonly unlockQueue:FighterFamily[]=[];
   private profile=fighterWeapon(this.current);
   get active():boolean{return this.opened;}
   get state():FighterWeaponState{return{...this.current};}
@@ -24,14 +26,29 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
       this.initialized=!!upgrades.weapon_rank;
       this.current={family:FIGHTER_FAMILIES[upgrades.weapon_family??0]??'bb',rank:Math.max(1,Math.min(20,upgrades.weapon_rank??1)),rapid:Math.min(RAPID_CAP,upgrades.rapid_fire??0),power:upgrades.weapon_power??0,...(upgrades.weapon_level?{level:upgrades.weapon_level,points:save.snapshot.fighterWeaponPoints}:{})};
       this.profile=fighterWeapon(this.current);
-      if(this.enabled&&previous.level!==undefined&&this.current.level!>previous.level){
-        this.milestone=this.current.level===5?'NEW WEAPON UNLOCKED · PULSE LANCE I':`BEAM UPGRADED · ${ROMAN[this.current.level!-1]}`;
+      const prevLevel=previous.level??0,nextLevel=this.current.level??0;
+      // Progression detection is independent of `enabled`: points accrue on
+      // any world, so an unlock earned off-Earth must still announce. The
+      // panel stays hidden until the armory is active; the banner drains
+      // through drainUnlocks() regardless.
+      if(prevLevel>0&&nextLevel>prevLevel){
+        const prevFamily=Math.floor((prevLevel-1)/4),nextFamily=Math.floor((nextLevel-1)/4);
+        if(nextFamily>prevFamily){
+          // A new family unlocked. Announced, never auto-equipped: the player
+          // chooses when to switch in this panel.
+          const family=FIGHTER_FAMILIES[nextFamily];
+          this.milestone=`NEW WEAPON UNLOCKED · ${FAMILY_INFO[family].label} I`;
+          if(!this.unlockQueue.includes(family))this.unlockQueue.push(family);
+        }else{
+          const stage=fighterStageForState(this.current,this.current.family);
+          this.milestone=`${FAMILY_INFO[this.current.family].label} UPGRADED · ${ROMAN[Math.max(0,stage-1)]}`;
+        }
         this.opened=true;
       }
-      this.button.textContent=this.current.level===undefined?'WEAPONS':`WEAPONS · ${(this.current.level??1)>=EARTH_WEAPON_CAP?'EARTH MAX':(this.current.points??0)+'/'+EARTH_WEAPON_THRESHOLDS[this.current.level??1]}`;
+      this.button.textContent=this.current.level===undefined?'WEAPONS':`WEAPONS · ${(this.current.level??1)>=WEAPON_LEVEL_CAP?'MAX':(this.current.points??0)+'/'+WEAPON_LEVEL_THRESHOLDS[this.current.level??1]}`;
       if(this.opened)this.paint();
     };read();save.subscribe(result=>{if(result.ok)read();});
-    this.root.className='fighter-armory';this.root.hidden=true;this.button.type='button';this.button.className='fighter-armory-toggle';this.button.textContent=this.current.level===undefined?'WEAPONS':`WEAPONS · ${(this.current.level??1)>=EARTH_WEAPON_CAP?'EARTH MAX':(this.current.points??0)+'/'+EARTH_WEAPON_THRESHOLDS[this.current.level??1]}`;
+    this.root.className='fighter-armory';this.root.hidden=true;this.button.type='button';this.button.className='fighter-armory-toggle';this.button.textContent=this.current.level===undefined?'WEAPONS':`WEAPONS · ${(this.current.level??1)>=WEAPON_LEVEL_CAP?'MAX':(this.current.points??0)+'/'+WEAPON_LEVEL_THRESHOLDS[this.current.level??1]}`;
     this.panel.className='fighter-armory-panel';this.panel.hidden=true;this.panel.setAttribute('role','dialog');this.panel.setAttribute('aria-label','Fighter loadout');
     this.button.addEventListener('click',()=>{if(this.enabled&&this.safe){this.opened=true;this.paint();}});
     this.root.append(this.button,this.panel);parent.appendChild(this.root);
@@ -79,9 +96,12 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
   }
   awardWeaponPoints(amount:number):boolean {
     if(this.current.level===undefined||!Number.isSafeInteger(amount)||amount<=0)return false;
-    if(this.current.level>=EARTH_WEAPON_CAP)return true;
-    const points=Math.min(EARTH_WEAPON_THRESHOLDS[EARTH_WEAPON_CAP-1],(this.current.points??0)+amount);
-    const level=Math.max(this.current.level,earthWeaponLevel(points));
+    // Points accrue on any world once the armory is in campaign mode; the
+    // LEVEL they buy is gated by worlds cleared, so no world exhausts the
+    // ladder. Points bank past the gate and pay out when the world falls.
+    const points=Math.min(WEAPON_LEVEL_THRESHOLDS[WEAPON_LEVEL_CAP-1],(this.current.points??0)+amount);
+    const level=Math.min(weaponLevelForPoints(points),maxLevelForWorlds(this.worldsCleared));
+    if(level<=(this.current.level??1)&&points===(this.current.points??0))return true;
     return this.save.update(d=>{
       d.fighterWeaponPoints=points;
       d.fighterUpgrades.weapon_level=level;
@@ -89,12 +109,28 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
       // no pickup can silently replace the player's selected gun.
     }).ok;
   }
+  setWorldsCleared(count:number):void {
+    const next=Math.max(0,Math.floor(count));
+    if(next===this.worldsCleared)return;
+    this.worldsCleared=next;
+    // A newly cleared world can release banked points into a new family.
+    // Recompute the level from stored points rather than waiting for a kill.
+    if(this.current.level!==undefined){
+      const points=this.current.points??0;
+      const level=Math.min(weaponLevelForPoints(points),maxLevelForWorlds(this.worldsCleared));
+      if(level>this.current.level)this.save.update(d=>{d.fighterUpgrades.weapon_level=level;});
+    }
+  }
+  drainUnlocks():FighterFamily[] {return this.unlockQueue.splice(0,this.unlockQueue.length);}
   upgradeRapid():boolean {
     if(this.current.rapid>=RAPID_CAP)return false;
     return this.save.update(d=>{d.fighterUpgrades.rapid_fire=this.current.rapid+1;}).ok;
   }
   private select(family:FighterFamily):boolean {
     if(!this.enabled||!this.safe||!fighterStageForState(this.current,family))return false;
+    // Belt and braces: the level clamp should already keep gated families at
+    // stage 0, but selection is the one place a lock must never be bypassed.
+    if(this.current.level!==undefined&&this.worldsCleared<FAMILY_WORLD_REQUIREMENT[family])return false;
     return this.save.update(d=>{d.fighterUpgrades.weapon_family=FIGHTER_FAMILIES.indexOf(family);}).ok;
   }
   setActive(value:boolean):void {this.enabled=value;if(!value)this.block();}
@@ -108,11 +144,13 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
   private paint():void {
     this.panel.replaceChildren();this.panel.hidden=!this.opened;this.button.hidden=this.opened;
     const heading=document.createElement('strong');heading.textContent=this.milestone?'LEVEL UP — '+this.milestone:'FIGHTER LOADOUT';
-    const intro=document.createElement('p');intro.textContent=`${this.current.level===undefined?'MASTERY '+this.current.rank:'WEAPON LEVEL '+this.current.level+'/'+EARTH_WEAPON_CAP+' · '+weaponPointsLabel(this.current)} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Kills earn weapon points; WPN pickups add 4 bonus points. Earth offers four milestones. New weapons unlock without replacing your equipped gun. Select an unlocked weapon below. Max rapid fire adds twin homing rockets; beam weapons become laser pulses.`;
+    const intro=document.createElement('p');intro.textContent=`${this.current.level===undefined?'MASTERY '+this.current.rank:'WEAPON LEVEL '+this.current.level+'/'+WEAPON_LEVEL_CAP+' · '+weaponPointsLabel(this.current)} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Kills earn weapon points on any world; WPN pickups add 4 bonus points. Twenty levels across five weapons -- new weapons unlock as worlds fall and never replace your equipped gun. Select an unlocked weapon below. Max rapid fire adds twin homing rockets; beam weapons become laser pulses.`;
     this.panel.append(heading,intro);
     for(const family of FIGHTER_FAMILIES){
       const info=FAMILY_INFO[family],stage=fighterStageForState(this.current,family),button=document.createElement('button');button.type='button';button.disabled=!stage;
-      const name=document.createElement('b'),detail=document.createElement('span');name.textContent=stage?`${info.label} ${ROMAN[stage-1]}${family===this.current.family?' · EQUIPPED':''}`:`${info.label} · ${this.current.level===undefined?'RANK '+info.unlock:(family==='pulse'?'UNLOCK AT 200 WPN POINTS':'LATER WORLDS')}`;detail.textContent=info.description;button.append(name,detail);
+      const gated=this.current.level!==undefined&&this.worldsCleared<FAMILY_WORLD_REQUIREMENT[family];
+      const need=FAMILY_WORLD_REQUIREMENT[family];
+      const name=document.createElement('b'),detail=document.createElement('span');name.textContent=stage?`${info.label} ${ROMAN[stage-1]}${family===this.current.family?' · EQUIPPED':''}`:`${info.label} · ${this.current.level===undefined?'RANK '+info.unlock:(gated?`CLEAR ${need} WORLD${need===1?'':'S'} · ${WEAPON_LEVEL_THRESHOLDS[FIGHTER_FAMILIES.indexOf(family)*4]} PTS`:'LATER WORLDS')}`;detail.textContent=info.description;button.append(name,detail);
       button.addEventListener('click',()=>{if(!this.select(family)){intro.textContent='Loadout could not be saved. Try again.';}});this.panel.appendChild(button);
     }
     const close=document.createElement('button');close.type='button';close.textContent=this.milestone?'CONTINUE':'RETURN';close.addEventListener('click',()=>{this.milestone=null;this.opened=false;this.panel.hidden=true;this.button.hidden=false;});this.panel.appendChild(close);
