@@ -1455,6 +1455,19 @@ export class Game2A {
     const act = this.missionDirector.currentAct;
     if (!mission || !act) return;
 
+    // Moon base breach: the 2D assault is done, hand off to turn-based.
+    // The turn-based base capture takes over; on victory it dispatches
+    // coded:moon-base-captured which advances to moon_secured.
+    if (mission.key === 'moon_lunar_campaign' && act.key === 'base_breach') {
+      this.drones = [];
+      this.hazards = [];
+      this.hostileShots = [];
+      window.dispatchEvent(new CustomEvent('coded:moon-base-breach', {
+        detail: { planetKey: this.activePlanetKey, missionKey: mission.key },
+      }));
+      return;
+    }
+
     const nextAct = mission.acts[this.missionDirector.currentActIndex + 1];
     const checkpoint = nextAct
       ? mission.checkpoints.find((item) => item.resumeActKey === nextAct.key)
@@ -2875,6 +2888,37 @@ export class Game2A {
     this.cueMusic('warship_disabled');
     this.missionBannerText = 'WARSHIP DISABLED // HANGAR BREACH OPEN';
     this.missionBannerClock = 2.8;
+  }
+
+  /**
+   * Called after the turn-based lunar base capture victory.
+   * Advances the Moon mission from base_breach to moon_secured.
+   */
+  completeMoonBaseCapture(): void {
+    const mission = this.missionDirector.activeMission;
+    if (!mission || mission.key !== 'moon_lunar_campaign') return;
+    const entered = this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.missionBannerText = 'LUNAR BASE CAPTURED';
+    this.missionBannerClock = 2.8;
+    this.cueMusic('warship_home');
+    // Record the unlock: Mars is now available on the campaign map.
+    if (this.activePlanetKey && entered?.key === 'moon_secured') {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: 'moon.captured',
+        checkpointLabel: 'BASE CAPTURED',
+        resumeActKey: 'moon_secured',
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier(),
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+        ...this.upgradeSnapshot(),
+      });
+      this.saveProgress();
+    }
   }
 
   private updateRings(dt: number): void {

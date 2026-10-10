@@ -10,6 +10,9 @@ import { DirectBoardingRuntime } from './game/ui/DirectBoardingRuntime';
 import { LandscapeMode } from './game/ui/LandscapeMode';
 import { OnFootGame } from './game/onfoot/OnFootGame';
 import { Space3DGame } from './game/space3d/Space3DGame';
+import { TurnArena } from './game/turnbased/Arena';
+import { startBaseCapture, BOO_ADVISOR_LINES } from './game/turnbased/BaseCapture';
+import { LUNAR_BASE } from './game/turnbased/Locations';
 import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
@@ -251,6 +254,43 @@ window.addEventListener('coded:onfoot-defeat', () => {
   gameShell.hidden = true;
   map.show();
   music.cue('theme');
+});
+
+/**
+ * Moon base breach: the 2D assault is done, hand off to turn-based.
+ * Creates a TurnArena in the game shell, starts the base capture encounter
+ * (commander + 2 guards, Boo advising). On victory, advances to moon_secured.
+ */
+let turnArena: TurnArena | null = null;
+window.addEventListener('coded:moon-base-breach', () => {
+  debugLog.log('mission', 'moon base breach -> turn-based capture');
+  canvas.style.visibility = 'hidden';
+  game.suspend();
+  turnArena = new TurnArena(gameShell, LUNAR_BASE);
+  turnArena.onBattleEnd = (result) => {
+    if (result === 'victory') {
+      window.dispatchEvent(new CustomEvent('coded:moon-base-captured'));
+    } else {
+      // Defeat: tear down the arena, return to the breach checkpoint for retry.
+      debugLog.log('mission', 'moon base capture failed -> retry at breach');
+      turnArena?.dispose();
+      turnArena = null;
+      canvas.style.visibility = 'visible';
+      const checkpoint = missionCheckpointFor(loadCampaignProgress(), 'moon');
+      if (checkpoint) game.deployFromMap('moon', 'MOON // LUNAR CAMPAIGN', checkpoint);
+      else game.deployFromMap('moon', 'MOON // LUNAR CAMPAIGN');
+    }
+  };
+  startBaseCapture(turnArena);
+  music.cue('boss_fight');
+});
+
+window.addEventListener('coded:moon-base-captured', () => {
+  debugLog.log('mission', 'moon base captured -> moon_secured');
+  turnArena?.dispose();
+  turnArena = null;
+  canvas.style.visibility = 'visible';
+  game.completeMoonBaseCapture();
 });
 
 returnMap.addEventListener('click', () => {

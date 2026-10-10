@@ -14,8 +14,9 @@ export interface PlanetDef {
 
 /** Phase U campaign spine. Names are data so later story passes do not require engine rewrites. */
 export const PLANETS: PlanetDef[] = [
-  { key: 'ledger_prime', label: 'EARTH', sector: 'LEDGER PRIME // SECTOR 01', guardian: 'GARY FOG', surfaceBoss: 'LEDGER DEFENSE CORE', briefing: 'Defend Earth, break the invasion blockade, and take the enemy capital ship.', accent: '#00ff00', ring: '#36a3ff', x: 8, y: 72, unlocks: ['mars'] },
-  { key: 'mars', label: 'MARS', sector: 'RELIEF ROUTE', guardian: 'MARGIN WARDEN', surfaceBoss: 'EXTRACTION CIRCUIT', briefing: 'Follow the stolen reserves to Mars. Restore the relief pumps and meet Corn at the surface site.', accent: '#e48e58', ring: '#00ff00', x: 14, y: 54, unlocks: ['fog_moon'] },
+  { key: 'ledger_prime', label: 'EARTH', sector: 'LEDGER PRIME // SECTOR 01', guardian: 'GARY FOG', surfaceBoss: 'LEDGER DEFENSE CORE', briefing: 'Defend Earth, break the invasion blockade, and take the enemy capital ship.', accent: '#00ff00', ring: '#36a3ff', x: 8, y: 72, unlocks: ['moon'] },
+  { key: 'moon', label: 'MOON', sector: 'LUNAR SECTOR', guardian: 'LUNAR BASE COMMANDER', surfaceBoss: 'LUNAR BASE', briefing: 'Assault the lunar base. Capture it and make it yours.', accent: '#b8c4d4', ring: '#8a9ab8', x: 11, y: 63, unlocks: ['mars'] },
+  { key: 'mars', label: 'MARS', sector: 'RELIEF ROUTE', guardian: 'RED CANDLE KING', surfaceBoss: 'EXTRACTION CIRCUIT', briefing: 'Face the Red Candle King on Mars. End Part 1.', accent: '#e48e58', ring: '#00ff00', x: 14, y: 54, unlocks: [] },
   { key: 'fog_moon', label: 'FOG MOON', sector: 'SECTOR 02', guardian: 'REGULATORY BEHEMOTH', surfaceBoss: 'FOG RELAY CITADEL', briefing: 'Cross a sensor-dead moon controlled by cloaked raiders.', accent: '#a86cff', ring: '#36a3ff', x: 23, y: 46, unlocks: ['bullion_reach'] },
   { key: 'bullion_reach', label: 'BULLION REACH', sector: 'SECTOR 03', guardian: 'CLARITY DESTROYER', surfaceBoss: 'MARKET SIEGE ENGINE', briefing: 'Survive bomber lanes around a fractured golden world.', accent: '#ffd24a', ring: '#ff8a3d', x: 37, y: 68, unlocks: ['rugfall', 'sec_outpost'] },
   { key: 'rugfall', label: 'RUGFALL', sector: 'SECTOR 04A', guardian: 'REGULATORY WARSHIP', surfaceBoss: 'RUG PULLER ARRAY', briefing: 'Take the unstable route through collapsing orbital debris.', accent: '#ff5b3d', ring: '#ffd24a', x: 50, y: 35, unlocks: ['whale_haven'] },
@@ -35,8 +36,8 @@ export const CAMPAIGN_ROUTES = PLANETS.flatMap((planet) =>
 
 export function validateCampaignPlanets(): string[] {
   const errors: string[] = [];
-  for(const key of ['ledger_prime','mars','fog_moon','bullion_reach','rugfall','sec_outpost','whale_haven','liquidity_depths','court_nexus','regulatory_crown','clarity_zero'])if(!PLANETS.some(planet=>planet.key===key))errors.push(`campaign: missing preserved destination ${key}`);
-  if(!PLANETS.find(p=>p.key==='ledger_prime')?.unlocks.includes('mars')||!PLANETS.find(p=>p.key==='mars')?.unlocks.includes('fog_moon'))errors.push('campaign: Earth → Mars → Fog Moon route is required');
+  for(const key of ['ledger_prime','moon','mars','fog_moon','bullion_reach','rugfall','sec_outpost','whale_haven','liquidity_depths','court_nexus','regulatory_crown','clarity_zero'])if(!PLANETS.some(planet=>planet.key===key))errors.push(`campaign: missing preserved destination ${key}`);
+  if(!PLANETS.find(p=>p.key==='ledger_prime')?.unlocks.includes('moon')||!PLANETS.find(p=>p.key==='moon')?.unlocks.includes('mars'))errors.push('campaign: Earth → Moon → Mars route is required');
   const keys = new Set<string>();
   for (const planet of PLANETS) {
     if (keys.has(planet.key)) errors.push(`campaign.${planet.key}: duplicate key`);

@@ -73,6 +73,9 @@ export class TurnArena {
   private lunge: { mesh: Group; t: number; from: Vector3; to: Vector3 } | null = null;
   private location: ArenaLocation;
   private readonly locationLabel = document.createElement('div');
+  /** Optional callback fired once when the battle ends. Set by authored encounters. */
+  onBattleEnd: ((result: 'victory' | 'defeat') => void) | null = null;
+  private battleEndFired = false;
 
   constructor(container: HTMLElement, location: ArenaLocation = WARSHIP_BRIDGE) {
     this.container = container;
@@ -254,10 +257,23 @@ export class TurnArena {
       z: 0,
       actions: testEnemyActions(),
     });
-    this.engine = new TurnEngine([player, enemy]);
-    player.items.set('stem_pack', 1);
-    this.addFighter(player, 0x4da3ff);
-    this.addFighter(enemy, 0xff5a5a);
+    this.startBattleWith([player, enemy]);
+  }
+
+  /**
+   * Start a battle with custom combatants (already created via createCombatant).
+   * Used by authored encounters like the lunar base capture.
+   */
+  startBattleWith(combatants: Combatant[], location?: ArenaLocation): void {
+    if (location && location.id !== this.location.id) this.setLocation(location);
+    this.clearFighters();
+    this.battleEndFired = false;
+    this.engine = new TurnEngine(combatants);
+    for (const c of combatants) {
+      const color = c.team === 'player' ? 0x4da3ff : c.id === 'commander' ? 0xff8a3d : 0xff5a5a;
+      this.addFighter(c, color);
+      if (c.team === 'player' && !c.items.has('stem_pack')) c.items.set('stem_pack', 1);
+    }
     this.enemyState = 'idle';
     this.engine.start();
     this.pushLog(this.engine.log.splice(0).join('<br>'));
@@ -426,6 +442,13 @@ export class TurnArena {
     const state = engine.endTurn();
     this.pushLog(engine.log.splice(0).join('<br>'));
     this.refreshUI();
+    // Fire the battle-end callback once when the battle concludes.
+    if (state.result !== 'ongoing' && !this.battleEndFired) {
+      this.battleEndFired = true;
+      this.showEndCard(state.result);
+      this.onBattleEnd?.(state.result);
+      return;
+    }
     // Enemy acts automatically after a short beat.
     if (state.result === 'ongoing' && state.currentId) {
       const cur = engine.getCombatant(state.currentId);

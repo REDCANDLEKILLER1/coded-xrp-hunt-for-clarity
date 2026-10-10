@@ -103,6 +103,15 @@ export interface EnemyDef {
    * capture logic -- a regular hull that happens to be big.
    */
   hull: HullClass;
+  /**
+   * Optional 3D model ID (manifest key) for this enemy. When set, 3D scenes
+   * and the turn-based arena can load the model for richer presentation.
+   * The 2D game always uses `sprite`; this never affects 2D rendering.
+   *
+   * Phase 2 wires `space_fog_raider` (previously orphaned, zero code
+   * references) as the lunar raider's model.
+   */
+  modelId?: string;
 }
 
 /**
