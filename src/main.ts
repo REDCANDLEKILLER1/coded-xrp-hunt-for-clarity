@@ -13,6 +13,13 @@ import { Space3DGame } from './game/space3d/Space3DGame';
 import { TurnArena } from './game/turnbased/Arena';
 import { startBaseCapture, BOO_ADVISOR_LINES } from './game/turnbased/BaseCapture';
 import { LUNAR_BASE } from './game/turnbased/Locations';
+import {
+  startZamnShowcase,
+  completeShowcase,
+  setShowcaseAvailable,
+  isShowcaseAvailable,
+  ZAMN_SHOWCASE_LINES,
+} from './game/turnbased/ZamnShowcase';
 import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
@@ -291,6 +298,55 @@ window.addEventListener('coded:moon-base-captured', () => {
   turnArena = null;
   canvas.style.visibility = 'visible';
   game.completeMoonBaseCapture();
+  // The Zamn showcase unlocks once the lunar base is ours.
+  setShowcaseAvailable(true);
+});
+
+/**
+ * Zamn showcase: optional turn-based side mission on the lunar surface.
+ * Triggered from the lunar base hub (coded:zamn-showcase). Mr Zamn holds
+ * the perimeter against Cryptotron scouts. Optional: Mars stays reachable
+ * without completing this.
+ */
+window.addEventListener('coded:zamn-showcase', () => {
+  if (!isShowcaseAvailable()) {
+    debugLog.log('mission', 'zamn showcase requested before unlock — ignored');
+    return;
+  }
+  debugLog.log('mission', 'zamn showcase -> turn-based lunar surface defense');
+  canvas.style.visibility = 'hidden';
+  game.suspend();
+  turnArena = new TurnArena(gameShell);
+  turnArena.onBattleEnd = (result) => {
+    if (result === 'victory') {
+      window.dispatchEvent(new CustomEvent('coded:zamn-showcase-complete'));
+    } else {
+      // Defeat: tear down, back to the campaign map for retry.
+      debugLog.log('mission', 'zamn showcase failed -> back to map');
+      turnArena?.dispose();
+      turnArena = null;
+      canvas.style.visibility = 'visible';
+      map.show();
+      music.cue('theme');
+    }
+  };
+  const fighters = startZamnShowcase(turnArena);
+  debugLog.log('mission', `zamn showcase started: ${fighters.map((f) => f.id).join(', ')}`);
+  music.cue('boss_fight');
+});
+
+window.addEventListener('coded:zamn-showcase-complete', () => {
+  debugLog.log('mission', 'zamn showcase complete -> rewards');
+  turnArena?.dispose();
+  turnArena = null;
+  canvas.style.visibility = 'visible';
+  const rewards = completeShowcase();
+  debugLog.log(
+    'mission',
+    `zamn showcase rewards: +${rewards.credits} credits, firewall defense unlocked`,
+  );
+  map.show();
+  music.cue('theme');
 });
 
 returnMap.addEventListener('click', () => {

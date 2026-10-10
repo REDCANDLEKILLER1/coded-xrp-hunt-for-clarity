@@ -376,9 +376,10 @@ console.log('progression: rest & save:');
 console.log('locations:');
 // 26. Location defs are structurally valid.
 {
-  check(LOCATIONS.length === 2, 'two prototype locations');
+  check(LOCATIONS.length === 3, 'three prototype locations');
   check(locationById('warship_bridge')?.name === 'Warship Bridge', 'bridge lookup by id');
   check(locationById('lunar_base')?.name === 'Lunar Base Interior', 'lunar base lookup by id');
+  check(locationById('lunar_surface')?.name === 'Lunar Surface', 'lunar surface lookup by id');
   check(locationById('nope') === undefined, 'unknown id returns undefined');
   for (const L of LOCATIONS) {
     check(L.ringColors.length === 3, `${L.id}: 3 ring colors`);

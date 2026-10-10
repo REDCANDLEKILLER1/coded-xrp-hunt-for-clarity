@@ -206,6 +206,30 @@ export class TurnEngine {
       this.log.push(line);
       return { ok: true, log: [line], healed };
     }
+    // Generic self-buff abilities (Energy Shield, Firewall Defense, ...):
+    // apply taunt and/or defense buff from the action definition.
+    if (action.taunt || action.defBuff) {
+      const lines: string[] = [];
+      if (action.taunt) {
+        actor.tauntTurns = action.taunt;
+        lines.push(`enemies must target ${actor.name} for ${action.taunt} turns`);
+      }
+      if (action.defBuff) {
+        actor.defenseBuff = action.defBuff.amount;
+        actor.defenseBuffTurns = action.defBuff.turns;
+        lines.push(`+${action.defBuff.amount} defense for ${action.defBuff.turns} turns`);
+      }
+      // Firewall Defense also cleanses bleed and debuffs.
+      if (action.id === 'firewall_defense') {
+        actor.bleedDamage = 0;
+        actor.bleedTurns = 0;
+        lines.push('cleansed of bleed and debuffs');
+      }
+      putOnCooldown(actor, action);
+      const line = `${actor.name} activates ${action.name} (${lines.join(', ')}).`;
+      this.log.push(line);
+      return { ok: true, log: [line] };
+    }
     // Shield Wall: defense buff (+ tier scaling) and optional reflect.
     if (action.id === 'shield_wall') {
       const tier = action.tier ?? 1;
@@ -263,6 +287,21 @@ export class TurnEngine {
   private advanceIndex(): void {
     if (this.order.length === 0) return;
     this.turnIndex = (this.turnIndex + 1) % this.order.length;
+  }
+
+  /** Add a combatant mid-battle (e.g. called reinforcements).
+   *  Recomputes initiative, keeping the current actor's turn. */
+  addCombatant(c: Combatant): void {
+    const currentId = this.order[this.turnIndex]?.id ?? null;
+    this.combatants.push(c);
+    this.order = initiativeOrder(this.combatants.filter((x) => x.alive));
+    if (currentId) {
+      const idx = this.order.findIndex((x) => x.id === currentId);
+      this.turnIndex = idx >= 0 ? idx : 0;
+    } else {
+      this.turnIndex = 0;
+    }
+    this.log.push(`${c.name} joins the battle!`);
   }
 
   /** victory = all enemies dead; defeat = all players dead. */

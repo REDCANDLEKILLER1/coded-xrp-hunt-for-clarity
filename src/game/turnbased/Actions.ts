@@ -23,6 +23,10 @@ export interface ActionDef {
   splash?: number;
   /** Tier-3 Shield Wall: fraction of melee damage reflected to attacker. */
   reflect?: number;
+  /** Taunt: turns for which enemies must target this combatant (Energy Shield). */
+  taunt?: number;
+  /** Generic defense buff: amount + duration in turns. */
+  defBuff?: { amount: number; turns: number };
 }
 
 export type Team = 'player' | 'enemy';
@@ -57,6 +61,8 @@ export interface Combatant {
   bleedTurns: number;
   /** Fraction of melee damage reflected to the attacker (tier-3 Shield Wall). */
   reflectPct: number;
+  /** Taunt: turns remaining where enemies must target this combatant. */
+  tauntTurns: number;
   /** Consumable inventory: itemId -> count (e.g. stem_pack). */
   items: Map<string, number>;
 }
@@ -94,6 +100,7 @@ export function createCombatant(spec: CombatantSpec): Combatant {
     bleedDamage: 0,
     bleedTurns: 0,
     reflectPct: 0,
+    tauntTurns: 0,
     items: new Map<string, number>(),
   };
 }
@@ -216,6 +223,7 @@ export function tickCooldowns(c: Combatant): number {
     c.defenseBuffTurns -= 1;
     if (c.defenseBuffTurns <= 0) c.defenseBuff = 0;
   }
+  if (c.tauntTurns > 0) c.tauntTurns -= 1;
   let bleed = 0;
   if (c.bleedTurns > 0 && c.alive) {
     bleed = c.bleedDamage;
@@ -246,4 +254,91 @@ export function rangeBand(d: number): RangeBand {
 /** Effective defense including temporary buffs. */
 export function effectiveDefense(c: Combatant): number {
   return c.defense + c.defenseBuff;
+}
+
+/**
+ * Target selection with taunt priority. Enemy attackers must target a
+ * taunting player combatant while its taunt lasts; otherwise the first
+ * alive player. Player attackers take the first alive enemy (Arena may
+ * refine this with UI targeting later).
+ */
+export function selectTarget(
+  attacker: Combatant,
+  combatants: Combatant[],
+): Combatant | null {
+  if (attacker.team === 'enemy') {
+    const taunting = combatants.find(
+      (c) => c.team === 'player' && c.alive && c.tauntTurns > 0,
+    );
+    if (taunting) return taunting;
+    return combatants.find((c) => c.team === 'player' && c.alive) ?? null;
+  }
+  return combatants.find((c) => c.team === 'enemy' && c.alive) ?? null;
+}
+
+/**
+ * Mr Zamn's TruFi mech kit (Phase 2.5 showcase).
+ *
+ *  Pulse Cannons:   basic ranged attack, power 16, range 9.
+ *  Energy Shield:   taunt (enemies must target Zamn, 2 turns) +8 defense 2 turns, 4-turn cooldown.
+ *  Impact Gauntlets: heavy melee, power 28, range 3.5, 3-turn cooldown.
+ *  Firewall Defense: locked until showcase completion. +10 defense 3 turns,
+ *                    cleanses bleed/debuffs. Team-wide in Part 2 (party system).
+ */
+export function zamnActions(includeFirewall = false): ActionDef[] {
+  const kit: ActionDef[] = [
+    {
+      id: 'pulse_cannons',
+      name: 'Pulse Cannons',
+      kind: 'attack',
+      power: 16,
+      range: 9,
+      cooldown: 0,
+      description: 'Twin rail cannons. Reliable ranged fire.',
+    },
+    {
+      id: 'energy_shield',
+      name: 'Energy Shield',
+      kind: 'ability',
+      power: 0,
+      range: 0,
+      cooldown: 4,
+      taunt: 2,
+      defBuff: { amount: 8, turns: 2 },
+      description: 'TruFi shield up: enemies must target Zamn for 2 turns, +8 defense.',
+    },
+    {
+      id: 'impact_gauntlets',
+      name: 'Impact Gauntlets',
+      kind: 'ability',
+      power: 28,
+      range: 3.5,
+      cooldown: 3,
+      description: 'Devastating melee slam. 3-turn cooldown.',
+    },
+    {
+      id: 'stem_pack',
+      name: 'Stem Pack',
+      kind: 'item',
+      power: 40,
+      range: 0,
+      cooldown: 0,
+      description: 'Restore 40 HP. Costs the turn. Limited supply.',
+    },
+  ];
+  if (includeFirewall) {
+    kit.push({
+      id: 'firewall_defense',
+      name: 'Firewall Defense',
+      kind: 'ability',
+      power: 0,
+      range: 0,
+      cooldown: 5,
+      defBuff: { amount: 10, turns: 3 },
+      description:
+        'Guardian protocol: +10 defense for 3 turns, cleanses bleed and debuffs. ' +
+        'Protects the whole team once the party system arrives.',
+    });
+  }
+  return kit;
 }

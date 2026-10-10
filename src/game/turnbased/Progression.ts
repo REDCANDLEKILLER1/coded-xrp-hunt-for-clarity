@@ -160,6 +160,7 @@ export function rest(p: PlayerProgress, c: Combatant): string {
   c.bleedDamage = 0;
   c.bleedTurns = 0;
   c.reflectPct = 0;
+  c.tauntTurns = 0;
   p.stemPacks = MAX_STEM_PACKS;
   return serializeSave(p, c);
 }
