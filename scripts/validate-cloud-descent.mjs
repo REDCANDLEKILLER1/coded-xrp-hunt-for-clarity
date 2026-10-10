@@ -70,4 +70,18 @@ check(JSON.stringify([g.cloudDescent,g.clock,g.drones,g.hostileShots,g.bombClock
 g=descent();g.spawnMissionDrone({enemyKey:'regulator_drone',x:.3});const survivor=g.drones[0];g.cloudDescent=39.99;g.frame(1/60);
 check(g.cloudDescent===null,'city handoff completes');check(g.drones.includes(survivor),'survivor retained');check(g.earthEncounterDirector.stageKey==='ledger_city','city director starts once');check(g.hazards.length===0,'no ground turrets during descent');
 g=descent();g.player.hp=0;g.frame(1/60);check(g.mode==='results','zero HP ends run');
+// Drive real pointer-down/up handlers at HUD button centers in both orientations.
+for(const [width,height] of [[393,793],[844,390]]){
+ innerWidth=width;innerHeight=height;
+ const tap=(g,zone)=>{g.input.onPointerDown({clientX:zone.cx,clientY:zone.cy,preventDefault(){}});g.input.onPointerUp();g.frame(1/60);};
+ for(const kind of ['bomb','special']){
+  let g=descent();g.special=100;const bombs=g.bombs;
+  tap(g,g.zone[kind]);
+  check(kind==='bomb'?g.bombs===bombs-1&&g.bombClock>0:g.special<1&&g.ringClock>0,`${width}: touch ${kind} fires during descent`);
+  g=descent();g.special=100;g.paused=true;const count=g.bombs;
+  tap(g,g.zone[kind]);check(g.bombs===count&&g.special===100,`${width}: paused touch ${kind} cannot fire`);
+  g.paused=false;g.frame(1/60);check(g.bombs===count&&g.special===100,`${width}: paused touch ${kind} is drained on resume`);
+ }
+}
+innerWidth=393;innerHeight=793;
 if(failures.length){for(const f of failures)console.error('FAIL: '+f);process.exit(1);}console.log('cloud-descent: PASS — real frames, authored spawn, movement, weapon damage, timers, pause, survivor handoff and death');

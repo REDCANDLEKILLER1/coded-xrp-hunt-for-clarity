@@ -896,6 +896,10 @@ export class Game2A {
       if(cloudTap&&inCircle(this.zone.pause,cloudTap.x,cloudTap.y))this.setPaused(!this.paused);
       if(!this.paused&&this.mode==='play'){
         this.clock+=dt;
+        if(cloudTap){
+          if(inCircle(this.zone.bomb,cloudTap.x,cloudTap.y))this.useBomb();
+          else if(inCircle(this.zone.special,cloudTap.x,cloudTap.y))this.useSpecial();
+        }
         // Combat is live during the descent: bombs/specials fire, guns
         // auto-fire via updateBolts, and the descent director paces waves.
         if(this.input.consumeSpecial())this.useSpecial();
