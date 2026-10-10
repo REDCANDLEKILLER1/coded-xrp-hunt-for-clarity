@@ -59,6 +59,31 @@ export const CITY_PATH:SpriteRef[]=[
   {category:'backgrounds',id:'city_path_10'},
 ];
 
+export const MARS_PATH:SpriteRef[]=[
+  {category:'backgrounds',id:'mars_path_01'},
+  {category:'backgrounds',id:'mars_path_02'},
+  {category:'backgrounds',id:'mars_path_03'},
+  {category:'backgrounds',id:'mars_path_04'},
+  {category:'backgrounds',id:'mars_path_05'},
+  {category:'backgrounds',id:'mars_path_06'},
+  {category:'backgrounds',id:'mars_path_07'},
+  {category:'backgrounds',id:'mars_path_08'},
+  {category:'backgrounds',id:'mars_path_09'},
+  {category:'backgrounds',id:'mars_path_10'},
+];
+
+export const FOG_PATH:SpriteRef[]=[
+  {category:'backgrounds',id:'fog_path_01'},
+  {category:'backgrounds',id:'fog_path_02'},
+  {category:'backgrounds',id:'fog_path_03'},
+  {category:'backgrounds',id:'fog_path_04'},
+  {category:'backgrounds',id:'fog_path_05'},
+  {category:'backgrounds',id:'fog_path_06'},
+  {category:'backgrounds',id:'fog_path_07'},
+  {category:'backgrounds',id:'fog_path_08'},
+  {category:'backgrounds',id:'fog_path_09'},
+  {category:'backgrounds',id:'fog_path_10'},
+];
 export const CLOUD_DESCENT_DURATION=40;
 /** Tile time is normalized, so phone rotation does not jump to another tile. */
 export function surfaceTiles(position:number,height:number,tileHeight:number,clouds:boolean){
