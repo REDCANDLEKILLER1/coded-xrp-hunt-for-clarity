@@ -5,6 +5,7 @@ import { SpriteRenderer } from '../core/Sprite';
 import { sfx } from '../audio/Sfx';
 import { debugLog } from '../core/DebugLog';
 import { Cockpit, type CockpitButtonId, type CockpitContact, type CockpitLock, type CockpitState } from './Cockpit';
+import { WARSHIP_ASSET, WARSHIP_FRAME_WIDTH, WARSHIP_FRAME_HEIGHT, WARSHIP_FRAMES, WARSHIP_REVEAL_SECONDS, hitsWarship, segmentWithinRange } from './Warship';
 import { TiltSource } from './Tilt';
 import {
   DEFAULT_SETTINGS,
@@ -511,6 +512,8 @@ export class Space3DGame {
 
   private gunHeat = 0;
   private gunClock = 0;
+  /** Last frame dt, for swept collision segments. */
+  private lastStep = 1 / 60;
   private warpHeat = 0;
   /** Latched when the coil maxes: blocks re-engaging until it has cooled. */
   private warpLocked = false;
@@ -978,6 +981,7 @@ export class Space3DGame {
   private tick(dt: number): void {
     if (isGameMenuOpen()) return;
     if (!this.visible) return;
+    this.lastStep = dt;
     this.clock += dt;
     if (this.bannerClock > 0) this.bannerClock = Math.max(0, this.bannerClock - dt);
     // Both of these live HERE rather than in update(), which tick() skips in
@@ -2315,7 +2319,18 @@ export class Space3DGame {
       // it detonate on the way past would make the dispenser a coin flip.
       if (!missile.hostile || missile.life <= 0 || missile.decoy) continue;
       const range = Math.hypot(missile.x - this.camera.x, missile.y - this.camera.y, missile.z - this.camera.z);
-      if (range > SEEKER_ARM_RANGE) continue;
+      if (range > SEEKER_ARM_RANGE) {
+        // Swept stage (additive, envelope-clamped): a fast seeker can cross
+        // the arm boundary between frames. The clamp is load-bearing: the hull
+        // ellipsoid reaches far past the 60-unit rule, so without it even a
+        // stationary seeker inside the hull volume would detonate. Only a
+        // segment that came within arm range this frame may hit, and only if
+        // it crossed the hull: genuine tunneling, nothing more. Anything
+        // inside arm range detonates exactly as before.
+        const from = { x: missile.x-missile.vx*this.lastStep, y: missile.y-missile.vy*this.lastStep, z: missile.z-missile.vz*this.lastStep };
+        if (!segmentWithinRange(this.camera, from, missile, SEEKER_ARM_RANGE)) continue;
+        if (!hitsWarship(this.camera, from, missile, 10)) continue;
+      }
       missile.life = 0;
       this.burst(missile.x, missile.y, missile.z);
       sfx.play('bigExplode');
@@ -2326,7 +2341,15 @@ export class Space3DGame {
     for (const bolt of this.bolts) {
       if (!bolt.hostile || bolt.life <= 0) continue;
       const range = Math.hypot(bolt.x - this.camera.x, bolt.y - this.camera.y, bolt.z - this.camera.z);
-      if (range > 46) continue;
+      if (range > 46) {
+        // Swept stage (additive, envelope-clamped): the hull ellipsoid
+        // catches fast bolts that tunnel past the point check, but only when
+        // the bolt's segment came within 46 units this frame -- the stage can
+        // never extend the rule's reach. Anything within 46 still hits as before.
+        const from = { x: bolt.x-bolt.vx*this.lastStep, y: bolt.y-bolt.vy*this.lastStep, z: bolt.z-bolt.vz*this.lastStep };
+        if (!segmentWithinRange(this.camera, from, bolt, 46)) continue;
+        if (!hitsWarship(this.camera, from, bolt)) continue;
+      }
       bolt.life = 0;
       // Trace back along the bolt's own travel to find which side it came from.
       this.takeHitFrom(bolt.x - bolt.vx, bolt.y - bolt.vy, bolt.z - bolt.vz);
@@ -2335,7 +2358,14 @@ export class Space3DGame {
 
     for (const contact of this.contacts) {
       const range = Math.hypot(contact.x - this.camera.x, contact.y - this.camera.y, contact.z - this.camera.z);
-      if (range > contact.size * 0.5 + 44) continue;
+      if (range > contact.size * 0.5 + 44) {
+        // Swept stage (additive, envelope-clamped): hull ellipsoid with
+        // contact padding, gated on the segment entering the old radius.
+        // Anything inside the old radius still connects as before.
+        const from = { x: contact.x-contact.vx*this.lastStep, y: contact.y-contact.vy*this.lastStep, z: contact.z-contact.vz*this.lastStep };
+        if (!segmentWithinRange(this.camera, from, contact, contact.size * 0.5 + 44)) continue;
+        if (!hitsWarship(this.camera, from, contact, contact.size * 0.5)) continue;
+      }
       contact.hp = 0;
       this.burst(contact.x, contact.y, contact.z);
       this.takeHitFrom(contact.x, contact.y, contact.z);
@@ -2487,7 +2517,10 @@ export class Space3DGame {
     for (const item of sortByDepth(drawables)) item.paint();
 
     if (this.mode === 'arrival') this.drawWarpTunnel(w, h);
-    this.drawReticle();
+    if (this.mode === 'arrival') this.drawCapturedWarship(w, h);
+    // The reticle stays holstered while the departure reveal names the vessel:
+    // the first 3.8 s of arrival are for reading the ship, not aiming it.
+    if (!(this.mode === 'arrival' && this.arrivalClock < WARSHIP_REVEAL_SECONDS)) this.drawReticle();
     this.drawLockCursor();
     if (this.graceClock > 0) this.drawDamageFlash(w, h);
 
@@ -2515,6 +2548,7 @@ export class Space3DGame {
    * told which one it is.
    */
   private tiltReadout(): string {
+    if (!TILT_STEERING) return 'DRAG';
     switch (this.tilt.status) {
       case 'ready': return 'READY';
       case 'calibrating': return 'CALIBRATING';
@@ -2572,6 +2606,9 @@ export class Space3DGame {
       shieldAft: this.shieldAft,
       gunHeat: this.gunHeat,
       gunsFiring: this.gunsHeld,
+      // The attitude readout stays parked while the departure reveal names
+      // the vessel; the heat readout is untouched.
+      captureReveal: this.mode === 'arrival' && this.arrivalClock < WARSHIP_REVEAL_SECONDS,
       missileCharge: this.missileCharge,
       warpHeat: this.warpHeat,
       warpEngaged: this.warpHeld,
@@ -2635,9 +2672,29 @@ export class Space3DGame {
    * computed from an index each frame, so a six-second opening costs no
    * garbage on a phone.
    */
+  /** Presentation only: the existing capture handoff's arrival names its vessel. */
+  private drawCapturedWarship(w: number, h: number): void {
+    const t = this.arrivalClock / WARSHIP_REVEAL_SECONDS;
+    if (t >= 1) return;
+    const image = this.assets.getImage('ships', 'captured_warship');
+    if (!image) return;
+    const { ctx } = this;
+    const aperture = this.cockpit.layout(w, h).aperture;
+    const width = Math.min(aperture.w * .88, aperture.h * 1.45);
+    const height = width * WARSHIP_FRAME_HEIGHT / WARSHIP_FRAME_WIDTH;
+    const x = aperture.x + (aperture.w-width)/2, y = aperture.y+(aperture.h-height)/2;
+    const phase = t * WARSHIP_FRAMES;
+    const frame = Math.min(WARSHIP_FRAMES-1, Math.floor(phase));
+    ctx.save(); ctx.globalAlpha = Math.min(1,t*7,(1-t)*7);
+    ctx.drawImage(image,frame*WARSHIP_FRAME_WIDTH,0,WARSHIP_FRAME_WIDTH,WARSHIP_FRAME_HEIGHT,x,y,width,height);
+    ctx.globalAlpha = Math.min(1,(1-t)*7); ctx.textAlign='center';
+    ctx.font=`600 ${Math.max(12,Math.min(18,w*.035))}px monospace`;
+    ctx.fillStyle='#00ff00';ctx.fillText('REGULATORY WARSHIP · CAPTURED',aperture.x+aperture.w/2,y+height*.92);
+    ctx.restore();
+  }
+
   private drawWarpTunnel(w: number, h: number): void {
-    const t = Math.min(1, this.arrivalClock / ARRIVAL_SECONDS);
-    // Fades out over the deceleration, so the last stretch is clear sky.
+    const t = Math.min(1, this.arrivalClock / ARRIVAL_SECONDS);    // Fades out over the deceleration, so the last stretch is clear sky.
     const strength = Math.max(0, 1 - t / ARRIVAL_DECEL_SHARE);
     if (strength <= 0.001) return;
     const { ctx, camera } = this;
