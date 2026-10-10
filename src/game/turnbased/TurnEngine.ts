@@ -1,0 +1,236 @@
+// TurnEngine.ts — core turn loop for the turn-based combat system.
+// Pure logic: no DOM, no Three.js. Directly testable by
+// scripts/validate-turnbased.mjs.
+//
+// Design notes:
+// - Single-character player for now; the Combatant shape is shared so a
+//   party system can attach later without changing the engine.
+// - Deterministic: initiative ties broken by combatant id.
+// - The engine owns rules (turn order, damage, win/lose). Presentation
+//   (Arena.ts) owns visuals and input.
+
+import {
+  ActionDef,
+  Combatant,
+  canUseAction,
+  distance,
+  effectiveDefense,
+  putOnCooldown,
+  tickCooldowns,
+} from './Actions.ts';
+
+export type BattleResult = 'ongoing' | 'victory' | 'defeat';
+
+export interface ActionOutcome {
+  ok: boolean;
+  reason?: string;
+  /** Human-readable log lines describing what happened. */
+  log: string[];
+  damageDealt?: number;
+  healed?: number;
+}
+
+export interface TurnState {
+  round: number;
+  turnIndex: number;
+  currentId: string | null;
+  result: BattleResult;
+}
+
+/**
+ * Sort combatants into initiative order: speed descending,
+ * id ascending as a deterministic tiebreak.
+ */
+export function initiativeOrder(combatants: Combatant[]): Combatant[] {
+  return [...combatants].sort((a, b) => {
+    if (b.speed !== a.speed) return b.speed - a.speed;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * Damage formula: attacker's attack + action power, minus target's
+ * effective defense. Minimum 1 on a hit. No randomness — deterministic
+ * for validator testing and future replay support.
+ */
+export function computeDamage(
+  attacker: Combatant,
+  action: ActionDef,
+  target: Combatant,
+): number {
+  const raw = attacker.attack + action.power - effectiveDefense(target);
+  return Math.max(1, raw);
+}
+
+export class TurnEngine {
+  readonly combatants: Combatant[];
+  private order: Combatant[] = [];
+  private turnIndex = 0;
+  private round = 1;
+  readonly log: string[] = [];
+
+  constructor(combatants: Combatant[]) {
+    // Defensive copy so the engine owns its state.
+    this.combatants = combatants;
+  }
+
+  /** Begin combat: roll initiative and announce the first turn. */
+  start(): TurnState {
+    this.order = initiativeOrder(this.combatants.filter((c) => c.alive));
+    this.turnIndex = 0;
+    this.round = 1;
+    this.log.length = 0;
+    const first = this.current();
+    this.log.push(`--- Round 1 ---`);
+    if (first) this.log.push(`${first.name} acts first (speed ${first.speed}).`);
+    return this.state();
+  }
+
+  /** The combatant whose turn it is now, or null if battle ended. */
+  current(): Combatant | null {
+    if (this.checkEnd() !== 'ongoing') return null;
+    // Skip dead combatants in the order.
+    let guard = 0;
+    while (guard < this.order.length && !this.order[this.turnIndex].alive) {
+      this.advanceIndex();
+      guard++;
+    }
+    return this.order[this.turnIndex] ?? null;
+  }
+
+  /** Execute an action for the current combatant. */
+  executeAction(actionId: string, targetId: string | null): ActionOutcome {
+    const actor = this.current();
+    const out: ActionOutcome = { ok: false, log: [] };
+    if (!actor) {
+      out.reason = 'no active turn (battle ended)';
+      return out;
+    }
+    const action = actor.actions.find((a) => a.id === actionId);
+    if (!action) {
+      out.reason = `unknown action ${actionId}`;
+      return out;
+    }
+    if (!canUseAction(actor, actionId)) {
+      out.reason = `${action.name} is on cooldown`;
+      return out;
+    }
+
+    if (action.kind === 'move') {
+      out.reason = 'move is handled by Arena positioning, not the engine';
+      return out;
+    }
+
+    // Self-targeted abilities (range 0), e.g. Shield Wall.
+    if (action.range === 0 || targetId === null) {
+      return this.applySelfAction(actor, action);
+    }
+
+    const target = this.combatants.find((c) => c.id === targetId);
+    if (!target || !target.alive) {
+      out.reason = 'invalid or defeated target';
+      return out;
+    }
+    const d = distance(actor, target);
+    if (d > action.range) {
+      out.reason = `${target.name} is out of range (${d.toFixed(1)} > ${action.range})`;
+      return out;
+    }
+
+    if (action.kind === 'item') {
+      return this.applyItem(actor, action, target);
+    }
+    return this.applyAttack(actor, action, target);
+  }
+
+  private applyAttack(
+    actor: Combatant,
+    action: ActionDef,
+    target: Combatant,
+  ): ActionOutcome {
+    const damage = computeDamage(actor, action, target);
+    target.hp = Math.max(0, target.hp - damage);
+    if (target.hp <= 0) {
+      target.alive = false;
+    }
+    putOnCooldown(actor, action);
+    const line = `${actor.name} uses ${action.name} on ${target.name} for ${damage} damage.`;
+    this.log.push(line);
+    if (!target.alive) this.log.push(`${target.name} is defeated!`);
+    const result = this.checkEnd();
+    if (result === 'victory') this.log.push('Victory!');
+    if (result === 'defeat') this.log.push('Defeat...');
+    return { ok: true, log: [line], damageDealt: damage };
+  }
+
+  private applySelfAction(actor: Combatant, action: ActionDef): ActionOutcome {
+    // Shield Wall: +8 defense for 2 turns.
+    if (action.id === 'shield_wall') {
+      actor.defenseBuff = 8;
+      actor.defenseBuffTurns = 2;
+      putOnCooldown(actor, action);
+      const line = `${actor.name} raises Shield Wall (+8 defense, 2 turns).`;
+      this.log.push(line);
+      return { ok: true, log: [line] };
+    }
+    putOnCooldown(actor, action);
+    const line = `${actor.name} uses ${action.name}.`;
+    this.log.push(line);
+    return { ok: true, log: [line] };
+  }
+
+  private applyItem(
+    actor: Combatant,
+    action: ActionDef,
+    target: Combatant,
+  ): ActionOutcome {
+    const healed = Math.min(action.power, target.maxHp - target.hp);
+    target.hp += healed;
+    putOnCooldown(actor, action);
+    const line = `${actor.name} uses ${action.name} on ${target.name}, restoring ${healed} HP.`;
+    this.log.push(line);
+    return { ok: true, log: [line], healed };
+  }
+
+  /** End the current turn: tick cooldowns/buffs, advance to next combatant. */
+  endTurn(): TurnState {
+    const actor = this.order[this.turnIndex];
+    if (actor) tickCooldowns(actor);
+    this.advanceIndex();
+    const result = this.checkEnd();
+    const cur = result === 'ongoing' ? this.order[this.turnIndex] : null;
+    if (cur && this.turnIndex === 0) {
+      this.round += 1;
+      this.log.push(`--- Round ${this.round} ---`);
+    }
+    return this.state();
+  }
+
+  private advanceIndex(): void {
+    if (this.order.length === 0) return;
+    this.turnIndex = (this.turnIndex + 1) % this.order.length;
+  }
+
+  /** victory = all enemies dead; defeat = all players dead. */
+  checkEnd(): BattleResult {
+    const playersAlive = this.combatants.some((c) => c.team === 'player' && c.alive);
+    const enemiesAlive = this.combatants.some((c) => c.team === 'enemy' && c.alive);
+    if (!enemiesAlive) return 'victory';
+    if (!playersAlive) return 'defeat';
+    return 'ongoing';
+  }
+
+  state(): TurnState {
+    const cur = this.checkEnd() === 'ongoing' ? this.order[this.turnIndex] : null;
+    return {
+      round: this.round,
+      turnIndex: this.turnIndex,
+      currentId: cur ? cur.id : null,
+      result: this.checkEnd(),
+    };
+  }
+
+  getCombatant(id: string): Combatant | undefined {
+    return this.combatants.find((c) => c.id === id);
+  }
+}
