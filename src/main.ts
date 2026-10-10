@@ -12,7 +12,8 @@ import { OnFootGame } from './game/onfoot/OnFootGame';
 import { Space3DGame } from './game/space3d/Space3DGame';
 import { TurnArena } from './game/turnbased/Arena';
 import { startBaseCapture, BOO_ADVISOR_LINES } from './game/turnbased/BaseCapture';
-import { LUNAR_BASE } from './game/turnbased/Locations';
+import { startRedCandleKingFight, KING_DIALOGUE, checkKingPhaseTransition } from './game/turnbased/RedCandleKing';
+import { LUNAR_BASE, KINGS_LAIR } from './game/turnbased/Locations';
 import { debugLog } from './game/core/DebugLog';
 import { MusicDirector } from './game/audio/MusicDirector';
 import { sfx } from './game/audio/Sfx';
@@ -292,6 +293,108 @@ window.addEventListener('coded:moon-base-captured', () => {
   canvas.style.visibility = 'visible';
   game.completeMoonBaseCapture();
 });
+
+/**
+ * The King's Gate: the 2D assault is done, hand off to the turn-based
+ * Red Candle King boss fight. On victory, advance to mars_secured and
+ * show the To Be Continued sequence.
+ */
+window.addEventListener('coded:kings-gate-breach', () => {
+  debugLog.log('mission', 'kings gate breach -> Red Candle King fight');
+  canvas.style.visibility = 'hidden';
+  game.suspend();
+  turnArena = new TurnArena(gameShell, KINGS_LAIR);
+  // Phase transitions: swap the King's kit at HP thresholds.
+  turnArena.onAfterAction = () => {
+    const arena = turnArena as unknown as {
+      engine: { combatants: import('./game/turnbased/Actions').Combatant[] } | null;
+      pushLog: (s: string) => void;
+    };
+    const king = arena.engine?.combatants.find((c) => c.id === 'red_candle_king');
+    if (!king) return;
+    const { phase, changed, lines } = checkKingPhaseTransition(king);
+    if (changed) {
+      for (const line of lines) {
+        arena.pushLog(`<span style="color:#ff5a5a">${line}</span>`);
+      }
+      debugLog.log('mission', `Red Candle King -> phase ${phase}`);
+    }
+  };
+  turnArena.onBattleEnd = (result) => {
+    if (result === 'victory') {
+      window.dispatchEvent(new CustomEvent('coded:red-candle-king-defeated'));
+    } else {
+      // Defeat: tear down, return to the gate checkpoint for retry.
+      debugLog.log('mission', 'Red Candle King fight failed -> retry at gate');
+      turnArena?.dispose();
+      turnArena = null;
+      canvas.style.visibility = 'visible';
+      const checkpoint = missionCheckpointFor(loadCampaignProgress(), 'mars');
+      if (checkpoint) game.deployFromMap('mars', 'MARS // RED CANDLE', checkpoint);
+      else game.deployFromMap('mars', 'MARS // RED CANDLE');
+    }
+  };
+  const { player } = startRedCandleKingFight(turnArena);
+  // Intro dialogue.
+  const arena = turnArena as unknown as { pushLog: (s: string) => void };
+  for (const line of KING_DIALOGUE.intro) {
+    arena.pushLog(`<span style="color:#ff8a3d">${line}</span>`);
+  }
+  void player;
+  music.cue('boss_fight');
+});
+
+window.addEventListener('coded:red-candle-king-defeated', () => {
+  debugLog.log('mission', 'Red Candle King defeated -> mars_secured -> To Be Continued');
+  turnArena?.dispose();
+  turnArena = null;
+  canvas.style.visibility = 'visible';
+  game.completeRedCandleKing();
+  showToBeContinued();
+});
+
+/**
+ * Part 1 finale: To Be Continued. Solar system map with blacked-out planets,
+ * teaser text, and reinforcements tease (Stone, Lady K, Optimystic Prime).
+ * Honest placeholder — no fake missions.
+ */
+function showToBeContinued(): void {
+  const overlay = document.createElement('div');
+  overlay.id = 'to-be-continued';
+  overlay.style.cssText =
+    'position:fixed;inset:0;z-index:1000;background:#05070d;color:#e8eefc;' +
+    'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+    'font-family:system-ui,sans-serif;text-align:center;padding:24px;';
+  const planets = ['MERCURY', 'VENUS', 'JUPITER', 'SATURN', 'URANUS', 'NEPTUNE'];
+  const planetRow = planets
+    .map(
+      (p) =>
+        `<div style="padding:12px 18px;border:1px solid #2a3a5f;border-radius:8px;` +
+        `background:#0a0f1c;color:#3a4a6b;letter-spacing:.15em;font-size:13px;">${p}<br>` +
+        `<span style="font-size:10px;color:#232f4a;">UNKNOWN</span></div>`,
+    )
+    .join('');
+  overlay.innerHTML =
+    `<div style="font-size:15px;letter-spacing:.4em;color:#5aff8a;margin-bottom:8px;">PART 1 COMPLETE</div>` +
+    `<h1 style="font-size:42px;letter-spacing:.2em;margin:0 0 12px;">TO BE CONTINUED</h1>` +
+    `<p style="max-width:560px;color:#9aabcc;font-size:16px;line-height:1.6;">` +
+    `The Red Candle King has fallen. Mars is free.<br>But the solar system is vast — and mostly dark.</p>` +
+    `<div style="font-size:13px;letter-spacing:.3em;color:#3a4a6b;margin:18px 0 10px;">WHAT'S OUT THERE?</div>` +
+    `<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:640px;">${planetRow}</div>` +
+    `<p style="max-width:560px;color:#9aabcc;font-size:14px;line-height:1.6;margin-top:22px;">` +
+    `<span style="color:#ffb84d;">REINFORCEMENTS INCOMING:</span> ` +
+    `Stone // Lady K // Optimystic Prime</p>` +
+    `<button id="tbc-return" style="margin-top:24px;padding:12px 36px;font-size:15px;` +
+    `letter-spacing:.15em;background:#14243f;color:#e8eefc;border:1px solid #3a5a8f;` +
+    `border-radius:8px;cursor:pointer;">RETURN TO MAP</button>`;
+  document.body.appendChild(overlay);
+  document.getElementById('tbc-return')?.addEventListener('click', () => {
+    overlay.remove();
+    map.show();
+    music.cue('theme');
+  });
+}
+
 
 returnMap.addEventListener('click', () => {
   if(meshRuntime&&!meshRuntime.hide())return;boarding.setEnabled(false);chapterRecovery.hidden=true;

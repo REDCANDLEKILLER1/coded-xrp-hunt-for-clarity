@@ -39,6 +39,8 @@ export interface ArenaLocation {
   /** Ring colors for the painted range bands (melee/short/long). */
   ringColors: [string, string, string];
   props: PropSpec[];
+  /** Low-angle boss framing: camera drops low and looks up (Red Candle King). */
+  lowAngle?: boolean;
 }
 
 /**
@@ -100,8 +102,37 @@ export const LUNAR_BASE: ArenaLocation = {
   ],
 };
 
-/** All prototype locations. */
-export const LOCATIONS: ArenaLocation[] = [WARSHIP_BRIDGE, LUNAR_BASE];
+/** The Red Candle King's lair: volcanic red, candle-flame pillars, wax-drip dread. */
+export const KINGS_LAIR: ArenaLocation = {
+  id: 'kings_lair',
+  name: "Red Candle King's Lair",
+  background: 0x1a0808,
+  fogColor: 0x2a0d0d,
+  fogDensity: 0.015,
+  floorColor: 0x2e1414,
+  ambientColor: 0xff6a3a,
+  ambientIntensity: 0.7,
+  keyLightColor: 0xffb84d,
+  keyLightIntensity: 2.0,
+  accentColor: 0xff3a2a,
+  ringColors: ['#ff3a2a', '#ff8a3d', '#ffb84d'],
+  // Low-angle framing: the King is ~100ft tall, the player is 6'4".
+  // Camera drops low and looks up — the boss looms.
+  lowAngle: true,
+  props: [
+    { kind: 'pillar', x: -11, z: -7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'pillar', x: 11, z: -7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'pillar', x: -11, z: 7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'pillar', x: 11, z: 7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'arch', x: 0, z: -12.5, w: 10, h: 7, d: 1.6, color: 0x3a1212, emissive: 0xff3a2a },
+    { kind: 'tank', x: -12.5, z: 0, w: 2.4, h: 5, d: 2.4, color: 0x2a0d0d, emissive: 0xffb84d },
+    { kind: 'tank', x: 12.5, z: 0, w: 2.4, h: 5, d: 2.4, color: 0x2a0d0d, emissive: 0xffb84d },
+    { kind: 'console', x: 0, z: 12, w: 5, h: 1.2, d: 1.6, color: 0x1a0808, emissive: 0xff3a2a },
+  ],
+};
+
+/** All locations. */
+export const LOCATIONS: ArenaLocation[] = [WARSHIP_BRIDGE, LUNAR_BASE, KINGS_LAIR];
 
 export function locationById(id: string): ArenaLocation | undefined {
   return LOCATIONS.find((l) => l.id === id);

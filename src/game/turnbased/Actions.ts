@@ -23,6 +23,10 @@ export interface ActionDef {
   splash?: number;
   /** Tier-3 Shield Wall: fraction of melee damage reflected to attacker. */
   reflect?: number;
+  /** Liquidity Drain: credits stolen from target on hit (Red Candle King). */
+  drain?: { credits: number };
+  /** Candle-flame burn: damage-over-time applied on hit (like bleed, stacks separately). */
+  burn?: { damage: number; turns: number };
 }
 
 export type Team = 'player' | 'enemy';
@@ -59,6 +63,13 @@ export interface Combatant {
   reflectPct: number;
   /** Consumable inventory: itemId -> count (e.g. stem_pack). */
   items: Map<string, number>;
+  /** Battle-scoped credits (e.g. for Liquidity Drain). Banked on victory. */
+  credits: number;
+  /** Candle-flame burn: damage per turn + turns remaining (Red Candle King). */
+  burnDamage: number;
+  burnTurns: number;
+  /** Visual scale multiplier for the fighter mesh. */
+  meshScale: number;
 }
 
 export interface CombatantSpec {
@@ -72,6 +83,11 @@ export interface CombatantSpec {
   x: number;
   z: number;
   actions: ActionDef[];
+  /** Starting battle credits (default 0). */
+  credits?: number;
+  /** Visual scale multiplier for the fighter mesh (default 1).
+   *  The Red Candle King (~100ft vs XRPman's 6'4") uses 6. */
+  meshScale?: number;
 }
 
 export function createCombatant(spec: CombatantSpec): Combatant {
@@ -95,6 +111,10 @@ export function createCombatant(spec: CombatantSpec): Combatant {
     bleedTurns: 0,
     reflectPct: 0,
     items: new Map<string, number>(),
+    credits: spec.credits ?? 0,
+    burnDamage: 0,
+    burnTurns: 0,
+    meshScale: spec.meshScale ?? 1,
   };
 }
 
@@ -206,7 +226,7 @@ export function putOnCooldown(c: Combatant, action: ActionDef): void {
 }
 
 /** Advance all cooldowns and buff timers by one turn for a combatant.
- *  Returns bleed damage dealt this tick (0 when no bleed). */
+ *  Returns bleed+burn damage dealt this tick (0 when neither). */
 export function tickCooldowns(c: Combatant): number {
   for (const [id, turns] of c.cooldowns) {
     if (turns <= 1) c.cooldowns.delete(id);
@@ -216,15 +236,22 @@ export function tickCooldowns(c: Combatant): number {
     c.defenseBuffTurns -= 1;
     if (c.defenseBuffTurns <= 0) c.defenseBuff = 0;
   }
-  let bleed = 0;
+  let dot = 0;
   if (c.bleedTurns > 0 && c.alive) {
-    bleed = c.bleedDamage;
-    c.hp = Math.max(0, c.hp - bleed);
-    if (c.hp <= 0) c.alive = false;
+    dot += c.bleedDamage;
     c.bleedTurns -= 1;
     if (c.bleedTurns <= 0) c.bleedDamage = 0;
   }
-  return bleed;
+  if (c.burnTurns > 0 && c.alive) {
+    dot += c.burnDamage;
+    c.burnTurns -= 1;
+    if (c.burnTurns <= 0) c.burnDamage = 0;
+  }
+  if (dot > 0) {
+    c.hp = Math.max(0, c.hp - dot);
+    if (c.hp <= 0) c.alive = false;
+  }
+  return dot;
 }
 
 export function distance(a: ArenaPos, b: ArenaPos): number {

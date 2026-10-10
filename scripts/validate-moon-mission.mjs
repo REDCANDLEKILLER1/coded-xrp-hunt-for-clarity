@@ -72,8 +72,8 @@ ok('earth unlocks moon', earth?.unlocks.includes('moon'));
 ok('moon unlocks mars', moon?.unlocks.includes('mars'));
 ok('moon planet on map', !!moon);
 
-// 6. Mars is an honest placeholder (no mission def)
-ok('mars has no mission def (honest placeholder)', missionForPlanet('mars') === undefined);
+// 6. Mars now has a real mission (Phase 3) — no longer a placeholder
+ok('mars has mission def (Phase 3 complete)', missionForPlanet('mars')?.key === 'mars_red_candle');
 ok('mars still on campaign map', !!mars);
 
 // 7. Base capture encounter builds

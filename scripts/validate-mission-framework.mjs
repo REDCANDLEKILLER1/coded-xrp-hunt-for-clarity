@@ -44,9 +44,10 @@ check(earth !== undefined, 'missionForPlanet(ledger_prime) resolves');
 check(earth === EARTH_LEDGER_PRIME_MISSION, 'ledger_prime resolves to the Earth def');
 check(earth?.acts.length === 12, `Earth still has 12 acts (got ${earth?.acts.length})`);
 
-// 3. Unknown planets still hit the stub path (undefined)
+// 3. Unknown planets still hit the stub path (undefined).
+// Mars now has a real mission (Phase 3) — no longer undefined.
 check(missionForPlanet('nonexistent_planet') === undefined, 'unknown planet returns undefined (stub path preserved)');
-check(missionForPlanet('mars') === undefined, 'mars (no mission yet) returns undefined');
+check(missionForPlanet('mars')?.key === 'mars_red_candle', 'mars resolves to the Mars mission');
 
 // 4. MissionDirector drives the 2-act test mission
 const director = new MissionDirector();
@@ -75,10 +76,11 @@ check(earth?.encounters === undefined, 'Earth def carries no encounters field (u
 const errors = missions.validateMissions();
 check(errors.length === 0, `validateMissions() clean (got: ${errors.join('; ')})`);
 
-// 8. MISSIONS registry has all expected entries (Earth + Moon + test_moon fixture)
-check(MISSIONS.length === 3, `MISSIONS has 3 entries (got ${MISSIONS.length})`);
+// 8. MISSIONS registry has all expected entries (Earth + Moon + Mars + test_moon fixture)
+check(MISSIONS.length === 4, `MISSIONS has 4 entries (got ${MISSIONS.length})`);
 check(MISSIONS.some((m) => m.planetKey === 'ledger_prime'), 'MISSIONS includes ledger_prime');
 check(MISSIONS.some((m) => m.planetKey === 'moon'), 'MISSIONS includes moon');
+check(MISSIONS.some((m) => m.planetKey === 'mars'), 'MISSIONS includes mars');
 check(MISSIONS.some((m) => m.planetKey === 'test_moon'), 'MISSIONS includes test_moon');
 
 if (failures.length > 0) {

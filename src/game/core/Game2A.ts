@@ -1468,6 +1468,19 @@ export class Game2A {
       return;
     }
 
+    // King's Gate breach: the 2D assault is done, hand off to the turn-based
+    // Red Candle King boss fight. On victory it dispatches
+    // coded:red-candle-king-defeated which advances to mars_secured.
+    if (mission.key === 'mars_red_candle' && act.key === 'kings_gate') {
+      this.drones = [];
+      this.hazards = [];
+      this.hostileShots = [];
+      window.dispatchEvent(new CustomEvent('coded:kings-gate-breach', {
+        detail: { planetKey: this.activePlanetKey, missionKey: mission.key },
+      }));
+      return;
+    }
+
     const nextAct = mission.acts[this.missionDirector.currentActIndex + 1];
     const checkpoint = nextAct
       ? mission.checkpoints.find((item) => item.resumeActKey === nextAct.key)
@@ -2910,6 +2923,37 @@ export class Game2A {
         checkpointKey: 'moon.captured',
         checkpointLabel: 'BASE CAPTURED',
         resumeActKey: 'moon_secured',
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier(),
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+        ...this.upgradeSnapshot(),
+      });
+      this.saveProgress();
+    }
+  }
+
+  /**
+   * Called after the turn-based Red Candle King victory.
+   * Advances the Mars mission from kings_gate to mars_secured (Part 1 finale).
+   */
+  completeRedCandleKing(): void {
+    const mission = this.missionDirector.activeMission;
+    if (!mission || mission.key !== 'mars_red_candle') return;
+    const entered = this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.missionBannerText = 'THE RED CANDLE KING HAS FALLEN';
+    this.missionBannerClock = 3.5;
+    this.cueMusic('theme');
+    // Record the completion: Part 1 is done. No further unlocks.
+    if (this.activePlanetKey && entered?.key === 'mars_secured') {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: 'mars.secured',
+        checkpointLabel: 'KING DEFEATED',
+        resumeActKey: 'mars_secured',
         shipKey: this.selectedShipKey,
         weaponTier: this.weaponTier(),
         bombs: this.bombs,

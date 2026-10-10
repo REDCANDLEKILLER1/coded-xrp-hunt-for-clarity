@@ -10,6 +10,7 @@
 import {
   AmbientLight,
   BoxGeometry,
+  BufferGeometry,
   CanvasTexture,
   CapsuleGeometry,
   Color,
@@ -17,6 +18,8 @@ import {
   DirectionalLight,
   FogExp2,
   Group,
+  Line,
+  LineBasicMaterial,
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
@@ -75,7 +78,17 @@ export class TurnArena {
   private readonly locationLabel = document.createElement('div');
   /** Optional callback fired once when the battle ends. Set by authored encounters. */
   onBattleEnd: ((result: 'victory' | 'defeat') => void) | null = null;
+  /** Optional callback fired after every executed action. Used for boss phase transitions. */
+  onAfterAction: (() => void) | null = null;
   private battleEndFired = false;
+  /** Active XRPman materialization entrance, if any. */
+  private entrance: {
+    t: number;
+    bolts: Line[];
+    binaryEl: HTMLDivElement | null;
+    fighterId: string;
+    done: () => void;
+  } | null = null;
 
   constructor(container: HTMLElement, location: ArenaLocation = WARSHIP_BRIDGE) {
     this.container = container;
@@ -270,15 +283,131 @@ export class TurnArena {
     this.battleEndFired = false;
     this.engine = new TurnEngine(combatants);
     for (const c of combatants) {
-      const color = c.team === 'player' ? 0x4da3ff : c.id === 'commander' ? 0xff8a3d : 0xff5a5a;
+      // XRPman materializes in 00FF00 green. Commander orange, others red.
+      const color =
+        c.team === 'player' ? 0x00ff00
+        : c.id === 'commander' ? 0xff8a3d
+        : c.id === 'red_candle_king' ? 0xcc2211
+        : 0xff5a5a;
       this.addFighter(c, color);
       if (c.team === 'player' && !c.items.has('stem_pack')) c.items.set('stem_pack', 1);
     }
     this.enemyState = 'idle';
-    this.engine.start();
-    this.pushLog(this.engine.log.splice(0).join('<br>'));
-    this.refreshUI();
+    // XRPman materialization entrance (green lightning + binary, no jetpack).
+    // Player mesh starts hidden; revealed after the convergence.
+    const playerFighter = [...this.fighters.values()].find((f) => f.combatant.team === 'player');
+    if (playerFighter) {
+      playerFighter.mesh.visible = false;
+      this.playEntranceSequence(playerFighter.combatant.id, () => {
+        this.engine!.start();
+        this.pushLog(this.engine!.log.splice(0).join('<br>'));
+        this.refreshUI();
+      });
+    } else {
+      this.engine.start();
+      this.pushLog(this.engine.log.splice(0).join('<br>'));
+      this.refreshUI();
+    }
     this.loop();
+  }
+
+  /**
+   * XRPman entrance: green lightning strikes from the sky AND the ground
+   * converge on his position, binary code (010101) scrolls, then he
+   * materializes in 00FF00 green. Digital materialization, not flight.
+   */
+  private playEntranceSequence(fighterId: string, done: () => void): void {
+    const f = this.fighters.get(fighterId);
+    if (!f) {
+      done();
+      return;
+    }
+    const px = f.combatant.x;
+    const pz = f.combatant.z;
+    const bolts: Line[] = [];
+    const boltMat = new LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
+
+    // Jagged lightning bolt between two points.
+    const makeBolt = (from: Vector3, to: Vector3): Line => {
+      const pts: Vector3[] = [];
+      const segs = 8;
+      for (let i = 0; i <= segs; i++) {
+        const k = i / segs;
+        const jitter = i === 0 || i === segs ? 0 : 0.9;
+        pts.push(
+          new Vector3(
+            from.x + (to.x - from.x) * k + (Math.random() - 0.5) * jitter,
+            from.y + (to.y - from.y) * k,
+            from.z + (to.z - from.z) * k + (Math.random() - 0.5) * jitter,
+          ),
+        );
+      }
+      const geo = new BufferGeometry().setFromPoints(pts);
+      return new Line(geo, boltMat);
+    };
+
+    // Sky bolts converge downward; ground bolts strike upward.
+    for (let i = 0; i < 4; i++) {
+      const ox = (Math.random() - 0.5) * 6;
+      const oz = (Math.random() - 0.5) * 6;
+      bolts.push(makeBolt(new Vector3(px + ox, 18, pz + oz), new Vector3(px, 2, pz)));
+      bolts.push(makeBolt(new Vector3(px + ox * 0.5, 0.2, pz + oz * 0.5), new Vector3(px, 2, pz)));
+    }
+    for (const b of bolts) this.scene.add(b);
+
+    // Binary code overlay scrolling at the materialization point.
+    const binaryEl = document.createElement('div');
+    const bits = Array.from({ length: 6 }, () =>
+      Array.from({ length: 24 }, () => (Math.random() > 0.5 ? '1' : '0')).join(''),
+    ).join('<br>');
+    binaryEl.innerHTML = bits;
+    binaryEl.style.cssText =
+      'position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);' +
+      'font-family:monospace;font-size:13px;line-height:1.5;color:#00ff00;' +
+      'opacity:0.85;pointer-events:none;text-align:center;' +
+      'text-shadow:0 0 8px #00ff00;';
+    this.ui.appendChild(binaryEl);
+
+    this.entrance = { t: 0, bolts, binaryEl, fighterId, done };
+  }
+
+  /** Advance the entrance sequence. Called from the render loop. */
+  private tickEntrance(): void {
+    const e = this.entrance;
+    if (!e) return;
+    e.t += 0.016;
+    const f = this.fighters.get(e.fighterId);
+
+    // Flicker the lightning.
+    const flicker = Math.random() > 0.35;
+    for (const b of e.bolts) b.visible = flicker;
+    if (e.binaryEl) e.binaryEl.style.opacity = `${0.4 + Math.random() * 0.6}`;
+
+    // At ~0.9s: flash and materialize.
+    if (e.t >= 0.9 && f && !f.mesh.visible) {
+      f.mesh.visible = true;
+      // Green materialization pulse.
+      f.bodyMat.emissive = new Color(0x00ff00);
+      f.bodyMat.emissiveIntensity = 1.2;
+      this.pushLog('<span style="color:#00ff00">XRPman materializes.</span>');
+    }
+    // Fade the emissive pulse.
+    if (f && f.mesh.visible && e.t > 0.9) {
+      f.bodyMat.emissiveIntensity = Math.max(0, 1.2 - (e.t - 0.9) * 1.5);
+    }
+
+    // At ~1.8s: cleanup and hand off.
+    if (e.t >= 1.8) {
+      for (const b of e.bolts) {
+        this.scene.remove(b);
+        b.geometry.dispose();
+      }
+      e.binaryEl?.remove();
+      if (f) f.bodyMat.emissiveIntensity = 0;
+      const done = e.done;
+      this.entrance = null;
+      done();
+    }
   }
 
   private addFighter(c: Combatant, color: number): void {
@@ -290,6 +419,8 @@ export class TurnArena {
     const head = new Mesh(new BoxGeometry(0.9, 0.5, 0.9), bodyMat);
     head.position.y = 2.6;
     g.add(head);
+    // Boss scale: the Red Candle King towers over the player.
+    g.scale.setScalar(c.meshScale);
     g.position.set(c.x, 0, c.z);
     this.scene.add(g);
 
@@ -365,7 +496,9 @@ export class TurnArena {
       const pct = Math.max(0, (c.hp / c.maxHp) * 100);
       f.hpFill.style.width = `${pct}%`;
       f.hpFill.style.background = pct > 50 ? '#5aff8a' : pct > 25 ? '#ffb84d' : '#ff5a5a';
-      const v = new Vector3(c.x, 3.4, c.z).project(this.camera);
+      // Label floats above the fighter's head — scaled for bosses.
+      const labelHeight = 3.4 * c.meshScale;
+      const v = new Vector3(c.x, labelHeight, c.z).project(this.camera);
       const w = this.container.clientWidth || 800;
       const h = this.container.clientHeight || 600;
       const sx = (v.x * 0.5 + 0.5) * w;
@@ -433,6 +566,7 @@ export class TurnArena {
     }
     this.pushLog(outcome.log.join('<br>'));
     if (targetId) this.playLunge(actor.id, targetId);
+    this.onAfterAction?.();
     this.advance();
   }
 
@@ -489,17 +623,25 @@ export class TurnArena {
       this.pushLog(`${foe.name} advances (${rangeBand(distance(foe, player))} range).`);
     }
 
-    // Action selection: special when ready and in range, else basic attack.
-    const special = foe.actions.find((a) => a.id === 'savage_roar');
-    const basic = foe.actions.find((a) => a.id === 'claw');
+    // Action selection: best ready ability in range, else basic attack.
+    // Generalized from hardcoded IDs so boss kits (e.g. Red Candle King) work.
+    const abilities = foe.actions.filter((a) => a.kind === 'ability');
+    const attacks = foe.actions.filter((a) => a.kind === 'attack');
     const nowD = distance(foe, player);
     let chosen: ActionDef | undefined;
-    if (special && canUseAction(foe, special.id) && nowD <= special.range) {
-      chosen = special;
+    // Prefer the highest-power ready ability in range.
+    const readyAbilities = abilities
+      .filter((a) => canUseAction(foe, a.id) && nowD <= a.range)
+      .sort((a, b) => b.power - a.power);
+    if (readyAbilities.length > 0) {
+      chosen = readyAbilities[0];
       this.enemyState = 'special';
-    } else if (basic && nowD <= basic.range) {
-      chosen = basic;
-      this.enemyState = 'attack';
+    } else {
+      const inRangeAttack = attacks.find((a) => nowD <= a.range);
+      if (inRangeAttack) {
+        chosen = inRangeAttack;
+        this.enemyState = 'attack';
+      }
     }
 
     if (chosen) {
@@ -509,6 +651,7 @@ export class TurnArena {
     } else {
       this.pushLog(`${foe.name} repositions, unable to strike.`);
     }
+    this.onAfterAction?.();
     this.advance();
   }
 
@@ -553,11 +696,20 @@ export class TurnArena {
         L.mesh.position.lerpVectors(L.from, L.to, k);
       }
     }
+    // XRPman materialization entrance.
+    this.tickEntrance();
     // Camera slowly orbits the arena center for a cinematic feel.
+    // Low-angle locations (Red Candle King): drop low, look up at the boss.
     const t = this.animClock * 0.08;
-    this.cameraGoal.set(Math.sin(t) * 17, 13, Math.cos(t) * 17);
-    this.camera.position.lerp(this.cameraGoal, 0.03);
-    this.camera.lookAt(0, 1, 0);
+    if (this.location.lowAngle) {
+      this.cameraGoal.set(Math.sin(t) * 20, 4.5, Math.cos(t) * 20);
+      this.camera.position.lerp(this.cameraGoal, 0.03);
+      this.camera.lookAt(0, 9, 0);
+    } else {
+      this.cameraGoal.set(Math.sin(t) * 17, 13, Math.cos(t) * 17);
+      this.camera.position.lerp(this.cameraGoal, 0.03);
+      this.camera.lookAt(0, 1, 0);
+    }
 
     this.refreshUI();
     this.renderer.render(this.scene, this.camera);

@@ -164,6 +164,21 @@ export class TurnEngine {
       lines.push(`${target.name} is bleeding (${action.bleed.damage}/turn).`);
     }
 
+    // Candle-flame burn (Red Candle King Phase 3).
+    if (action.burn && target.alive) {
+      target.burnDamage = action.burn.damage;
+      target.burnTurns = action.burn.turns;
+      lines.push(`${target.name} is burning (${action.burn.damage}/turn).`);
+    }
+
+    // Liquidity Drain (Red Candle King Phase 2): steal credits on hit.
+    if (action.drain && target.alive) {
+      const stolen = Math.min(action.drain.credits, target.credits);
+      target.credits -= stolen;
+      actor.credits += stolen;
+      lines.push(`${actor.name} drains ${stolen} credits from ${target.name}.`);
+    }
+
     // Tier-3 Pulse Blast splash: half damage to other enemies in range.
     if (action.splash) {
       for (const other of this.combatants) {
