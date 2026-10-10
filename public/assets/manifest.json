@@ -29,6 +29,20 @@
         "legacy_space",
         "legacy_onfoot"
       ]
+    },
+    "captured_warship": {
+      "src": "/assets/ships/captured_warship.webp",
+      "type": "spritesheet",
+      "sheet": {
+        "frameWidth": 512,
+        "frameHeight": 384,
+        "frames": 3,
+        "fps": 1
+      },
+      "notes": "v03 Blender exterior derivative; rear azimuths 150/180/210; consumed by captured Warship transit reveal; no master imagery.",
+      "scenes": [
+        "legacy_space"
+      ]
     }
   },
   "characters": {
@@ -710,6 +724,206 @@
       "bytes": 155724,
       "sha256": "494bca0f90efd26f0f0f0cf19ae470699943d8dd0967041e560c1f7d2c73eff0",
       "notes": "Original built-in generated 1024x1536 city_path_10; ordered Earth atmospheric descent / city scrolling sequence."
+    },
+    "mars_path_01": {
+      "src": "/assets/backgrounds/mars_path_01.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 399110,
+      "sha256": "055b00596bd64ba301a8ec79c6d54b81dff7e646c30af3f1bb33816ff1e01ec0",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 1 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_02": {
+      "src": "/assets/backgrounds/mars_path_02.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 384942,
+      "sha256": "be0ca905da322f48ca291b15d31b0d6dd4ed66df3dec96c54c501103c05d761b",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 2 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_03": {
+      "src": "/assets/backgrounds/mars_path_03.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 431044,
+      "sha256": "04145d8ae663d1e7865251ac3320c5e49bff8f2103cf9a9938cef0a54a7a4f3e",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 3 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_04": {
+      "src": "/assets/backgrounds/mars_path_04.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 284912,
+      "sha256": "f74ecacad78c06b34b3a2c9693194f313b2a8fbc7bdcab6513bad28db212c744",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 4 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_05": {
+      "src": "/assets/backgrounds/mars_path_05.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 276884,
+      "sha256": "a2bd6a921f4e543de6fda2ffee13f95348e92ebb4970723b6969cfbd896e94e6",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 5 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_06": {
+      "src": "/assets/backgrounds/mars_path_06.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 398406,
+      "sha256": "0bf808da1575197bdcc4e1e2163fdc577438822ba9091fd6060c984ee136352f",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 6 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_07": {
+      "src": "/assets/backgrounds/mars_path_07.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 538700,
+      "sha256": "27d12e7054e5ac2f148f071e1f7e376364727d177a377d749c6e6d74247f3d68",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 7 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_08": {
+      "src": "/assets/backgrounds/mars_path_08.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 388672,
+      "sha256": "7691fb0d968eb93c55822a428b4ab8d61d397b432e7e28abbd87a5867281a29c",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 8 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_09": {
+      "src": "/assets/backgrounds/mars_path_09.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 419660,
+      "sha256": "f928e0cae4fcf9bc235d99d875ae9e7c1b0e010369c2323f5de611d9cf728644",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 9 of 10; ordered downward scrolling sequence."
+    },
+    "mars_path_10": {
+      "src": "/assets/backgrounds/mars_path_10.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 492996,
+      "sha256": "9e63c320133228d2205cf19d1fdd1c7cb5c6fcb303f5f0c4e2eba9b10a6a81a8",
+      "notes": "Generated 2026-10-10. Mars progressive descent tile 10 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_01": {
+      "src": "/assets/backgrounds/fog_path_01.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 210340,
+      "sha256": "e89aeb262bf7319bd4d198da0e62fc4b2e86f5bd6f6bcaa61a44fdabacc50a4c",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 1 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_02": {
+      "src": "/assets/backgrounds/fog_path_02.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 281848,
+      "sha256": "9d6d89d43b93915828673961782e68ba423ad2e9141926f79c73d29fdb8d40ce",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 2 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_03": {
+      "src": "/assets/backgrounds/fog_path_03.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 298142,
+      "sha256": "cd00ef0ddf7d17e32c60f650525b2894ab7238037de955069bc15495c6cbeee8",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 3 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_04": {
+      "src": "/assets/backgrounds/fog_path_04.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 331272,
+      "sha256": "07d11ac293a350ad1d1d2a4c28372a83ae8c985ddc29bc4211ff059a3be1cc88",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 4 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_05": {
+      "src": "/assets/backgrounds/fog_path_05.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 398868,
+      "sha256": "742275b144a10b04ec935d3d331a60fac9591e2d612b79d665e8f360dbe2eebc",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 5 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_06": {
+      "src": "/assets/backgrounds/fog_path_06.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 453404,
+      "sha256": "bbe93062ce34f9d5af2649f38f57b9578cf95bb938083762ce9909853580e26f",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 6 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_07": {
+      "src": "/assets/backgrounds/fog_path_07.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 291058,
+      "sha256": "9c86c1e298f98d917ea62ff63003851d6f73ae86e3e40197b3e27dd06b2682d3",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 7 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_08": {
+      "src": "/assets/backgrounds/fog_path_08.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 467052,
+      "sha256": "c7dbcb1a90177806b04a30aec9ddc42e76a760c8335d975153b3571a5902349a",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 8 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_09": {
+      "src": "/assets/backgrounds/fog_path_09.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 372944,
+      "sha256": "46a6f544857f02e5944ef9453f22782e99cdfd385b902bc3a30520046b10a7c1",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 9 of 10; ordered downward scrolling sequence."
+    },
+    "fog_path_10": {
+      "src": "/assets/backgrounds/fog_path_10.webp",
+      "type": "image",
+      "scenes": [
+        "flight"
+      ],
+      "bytes": 352394,
+      "sha256": "caf994a3a8d973308fdf75b91fa2f095d0fb41d446b0017a423704f50eb433b8",
+      "notes": "Generated 2026-10-10. Fog Moon progressive descent tile 10 of 10; ordered downward scrolling sequence."
     }
   },
   "interior": {
