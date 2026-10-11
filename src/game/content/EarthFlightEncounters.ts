@@ -296,16 +296,28 @@ export function validateEarthFlightEncounters(): string[] {
 /**
  * Pure authored-group sequencer. It never owns actors; the game reports the
  * number of authored air/ground threats still active before the next group.
+ *
+ * Generic over the encounter table: Earth and Mars both run on it, each with
+ * their own lookup. The table shape is structural — any def with actKey,
+ * stageKey and groups qualifies.
  */
-export class EarthFlightEncounterDirector {
-  private encounter: EarthFlightEncounterDef | null = null;
+export interface AuthoredFlightEncounterDef {
+  actKey: string;
+  stageKey: string;
+  groups: EncounterGroupDef[];
+}
+
+export class AuthoredEncounterDirector {
+  private encounter: AuthoredFlightEncounterDef | null = null;
   private groupIndex = 0;
   private wait = 0;
   private groupSpawned = false;
   private done = false;
 
+  constructor(private readonly lookup: (actKey: string) => AuthoredFlightEncounterDef | null | undefined) {}
+
   start(actKey: string): void {
-    this.encounter = earthFlightEncounterFor(actKey) ?? null;
+    this.encounter = this.lookup(actKey) ?? null;
     this.groupIndex = 0;
     this.wait = this.encounter?.groups[0]?.restBefore ?? 0;
     this.groupSpawned = false;
@@ -346,4 +358,10 @@ export class EarthFlightEncounterDirector {
   get totalGroups(): number { return this.encounter?.groups.length ?? 0; }
   get currentGroupLabel(): string | undefined { return this.encounter?.groups[this.groupIndex]?.label; }
   get stageKey(): string | undefined { return this.encounter?.stageKey; }
+}
+
+export class EarthFlightEncounterDirector extends AuthoredEncounterDirector {
+  constructor() {
+    super((actKey) => earthFlightEncounterFor(actKey) ?? null);
+  }
 }

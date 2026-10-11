@@ -11,7 +11,9 @@ import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, 
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
 import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
-import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
+import { EarthFlightEncounterDirector, AuthoredEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
+import { marsFlightEncounterFor } from '../content/MarsEncounters';
+import { MARS_ENEMIES, MARS_GROUND_UNITS } from '../content/MarsThreats';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
 import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles, surfaceTiles, CLOUD_DESCENT_DURATION, FOG_PATH, MARS_PATH, fogTiles, marsTiles } from '../content/EarthEnvironment';
@@ -598,6 +600,7 @@ export class Game2A {
   private readonly loop = new Loop((dt) => this.frame(dt));
   private readonly missionDirector = new MissionDirector();
   private readonly earthEncounterDirector = new EarthFlightEncounterDirector();
+  private readonly marsEncounterDirector = new AuthoredEncounterDirector((actKey) => marsFlightEncounterFor(actKey) ?? null);
   private readonly cloudDescentDirector = new EarthFlightEncounterDirector();
   private readonly warshipDirector = new RegulatoryWarshipDirector();
   private clock = 0;
@@ -754,6 +757,7 @@ export class Game2A {
     if (!mission) {
       this.missionDirector.clear();
       this.earthEncounterDirector.clear();
+      this.marsEncounterDirector.clear();
       this.selectedShipKey = DEFAULT_SHIP.key;
       this.reset();
       return;
@@ -774,6 +778,7 @@ export class Game2A {
 
     this.missionDirector.start(mission);
     this.earthEncounterDirector.clear();
+    this.marsEncounterDirector.clear();
     this.activePlanetLabel = mission.label;
     this.selectedShipKey = DEFAULT_SHIP.key;
       this.reset();
@@ -787,6 +792,7 @@ export class Game2A {
     this.activePlanetLabel = null;
     this.missionDirector.clear();
     this.earthEncounterDirector.clear();
+    this.marsEncounterDirector.clear();
     this.launchClock = 0;
     this.fogGateActive = false;
     this.fogCutClock = 0;
@@ -1153,10 +1159,14 @@ export class Game2A {
       return;
     }
 
-    // Fog/Mars descent levels: the LEVEL is the descent. Acts advance on the
-    // background tile roll, not on authored encounter completion.
+    // Fog/Mars descent levels: the LEVEL is the descent. Mars runs authored
+    // encounters; Fog Moon keeps the ambient trickle until its pack lands.
     if (act.mode === 'flight' && this.isDescentMission(this.missionDirector.activeMission)) {
-      this.updateDescentFlight(dt);
+      if (this.missionDirector.activeMission?.key === 'mars_descent' && marsFlightEncounterFor(act.key)) {
+        this.updateMarsFlight(dt);
+      } else {
+        this.updateDescentFlight(dt);
+      }
       return;
     }
 
@@ -1412,6 +1422,29 @@ export class Game2A {
     if (endTile !== undefined && travel >= endTile * tileHeight) this.completeMissionFlightAct();
   }
 
+  /**
+   * Mars descent with authored encounters. Same shape as Earth's authored
+   * flight, driven by the Mars encounter director — but the act still ends
+   * on the background tile roll, because the LEVEL is the descent. Whatever
+   * is still alive at the boundary is cleared by completeMissionFlightAct.
+   */
+  private updateMarsFlight(dt: number): void {
+    const activeThreats = this.drones.length;
+    const state = this.marsEncounterDirector.update(dt, activeThreats);
+    for (const spawn of state.spawns) {
+      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
+    }
+    this.moveDrones(dt);
+    this.moveHazards(dt);
+
+    const mission = this.missionDirector.activeMission;
+    const tileHeight = this.w * 1.5;
+    const endTile = DESCENT_ACT_END_TILES[this.missionDirector.currentActIndex];
+    if (mission && endTile !== undefined && this.marsDescentTravel >= endTile * tileHeight) {
+      this.completeMissionFlightAct();
+    }
+  }
+
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
     const def = this.enemyDef(enemyKey);
     const x = clamp(xRatio * this.w, 30, this.w - 30);
@@ -1529,9 +1562,12 @@ export class Game2A {
     const entered = this.missionDirector.advance();
     this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
     if (this.isDescentMission(mission)) {
-      // Descent levels run no encounter director and record no checkpoints.
+      // Descent levels run no Earth encounters and record no checkpoints.
+      // Mars starts its authored table on the entered act; Fog Moon keeps
+      // the ambient trickle until its enemy pack lands.
       this.earthEncounterDirector.clear();
-      this.descentAmbientClock = 1.5;
+      if (mission.key === 'mars_descent') this.marsEncounterDirector.start(entered?.key ?? '');
+      else { this.marsEncounterDirector.clear(); this.descentAmbientClock = 1.5; }
     } else {
       this.earthEncounterDirector.start(entered?.key ?? '');
     }
@@ -4389,6 +4425,9 @@ export class Game2A {
     else if (this.earthEncounterDirector.active) {
       const groupLabel = this.earthEncounterDirector.currentGroupLabel ?? 'INBOUND';
       objective = `FORMATION ${this.earthEncounterDirector.currentGroupNumber}/${this.earthEncounterDirector.totalGroups} • ${groupLabel}`;
+    } else if (this.marsEncounterDirector.active) {
+      const groupLabel = this.marsEncounterDirector.currentGroupLabel ?? 'INBOUND';
+      objective = `FORMATION ${this.marsEncounterDirector.currentGroupNumber}/${this.marsEncounterDirector.totalGroups} • ${groupLabel}`;
     } else if (missionAct?.mode === 'boss') objective = 'GUARDIAN SIGNAL DETECTED';
     else if (missionAct?.key === 'final_assault' && this.fogGateActive) objective = 'FOG BREAKER CUTTING THE ROUTE';
     if (objective) {
@@ -5319,7 +5358,7 @@ export class Game2A {
       this.cueMusic('level1');
 
       if (checkpoint) {
-        if (this.isDescentMission(mission)) this.earthEncounterDirector.clear();
+        if (this.isDescentMission(mission)) { this.earthEncounterDirector.clear(); this.marsEncounterDirector.clear(); }
         else this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
         if (this.missionDirector.currentAct?.key === 'boarding') {
           this.warshipDirector.reset();
@@ -5349,7 +5388,12 @@ export class Game2A {
       } else if (this.isDescentMission(mission)) {
         // Descent levels skip Earth's launch cinematic: the level IS the descent.
         this.earthEncounterDirector.clear();
-        this.descentAmbientClock = 2.0;
+        this.marsEncounterDirector.clear();
+        if (mission.key === 'mars_descent') {
+          this.marsEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        } else {
+          this.descentAmbientClock = 2.0;
+        }
         this.player.y = this.h - 112;
         this.missionBannerText = `${mission.label} // FIRST CONTACT INBOUND`;
         this.missionBannerClock = 2.8;
@@ -5405,7 +5449,7 @@ export class Game2A {
   }
 
   private enemyDef(key: string): EnemyDef {
-    return EARTH_ENEMIES[key] ?? ENEMIES[key] ?? DEFAULT_ENEMY;
+    return MARS_ENEMIES[key] ?? MARS_GROUND_UNITS[key] ?? EARTH_ENEMIES[key] ?? ENEMIES[key] ?? DEFAULT_ENEMY;
   }
 
   private hazardDef(key: string): HazardDef {
@@ -5679,6 +5723,9 @@ export class Game2A {
     const missionStageKey = this.earthEncounterDirector.stageKey
       ?? earthFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
+    const marsStageKey = this.marsEncounterDirector.stageKey
+      ?? marsFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
+    if (this.missionDirector.activeMission && marsStageKey && STAGES[marsStageKey]) return STAGES[marsStageKey];
     // Descent levels own their stage outright: no encounter table, no ladder.
     // The mission key matches the stage key by construction.
     const descentMission = this.missionDirector.activeMission;
