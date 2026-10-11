@@ -1,7 +1,10 @@
 import { EARTH_LEDGER_PRIME_MISSION } from './ledgerPrime';
+import { MOON_MISSION } from './moon';
+import { MARS_MISSION } from './mars';
+import { TEST_MOON_MISSION } from './testMoon';
 import type { MissionDef } from './types';
 
-export const MISSIONS: MissionDef[] = [EARTH_LEDGER_PRIME_MISSION];
+export const MISSIONS: MissionDef[] = [EARTH_LEDGER_PRIME_MISSION, MOON_MISSION, MARS_MISSION, TEST_MOON_MISSION];
 
 export const MISSION_BY_PLANET = Object.fromEntries(
   MISSIONS.map((mission) => [mission.planetKey, mission]),
@@ -48,4 +51,7 @@ export function validateMissions(): string[] {
 }
 
 export { EARTH_LEDGER_PRIME_MISSION } from './ledgerPrime';
+export { MOON_MISSION } from './moon';
+export { MARS_MISSION } from './mars';
+export { TEST_MOON_MISSION } from './testMoon';
 export type { MissionActDef, MissionActMode, MissionCheckpointDef, MissionDef } from './types';

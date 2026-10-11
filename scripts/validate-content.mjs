@@ -123,7 +123,7 @@ if (progress.missionCheckpointFor(withoutCheckpoint, 'ledger_prime')) {
 const cleared = progress.recordPlanetCleared(withCheckpoint, 'ledger_prime', 3);
 if (
   !cleared.clearedPlanets.includes('ledger_prime')
-  || !cleared.discoveredPlanets.includes('mars')
+  || !cleared.discoveredPlanets.includes('moon')
   || cleared.upgradePoints !== 3
   || progress.missionCheckpointFor(cleared, 'ledger_prime')
 ) {
@@ -225,7 +225,9 @@ for (const checkpoint of earthMission.checkpoints) {
 // prefix. This is the semantic reference, so it stays true as unrelated
 // identifiers come and go.
 {
-  const declared = new Set(earthMission.checkpoints.map((checkpoint) => checkpoint.key));
+  const declared = new Set(
+    missions.MISSIONS.flatMap((m) => m.checkpoints.map((checkpoint) => checkpoint.key)),
+  );
   const roots = ['src'];
   const files = [];
   const walk = (dir) => {

@@ -1,0 +1,371 @@
+// Actions.ts — action definitions, combatant state, and cooldown tracking
+// for the turn-based combat system. Pure logic: no DOM, no Three.js,
+// so this module is directly testable by scripts/validate-turnbased.mjs.
+
+export type ActionKind = 'attack' | 'ability' | 'item' | 'move';
+
+export interface ActionDef {
+  id: string;
+  name: string;
+  kind: ActionKind;
+  /** Base damage for attack/ability, heal amount for item, 0 for move. */
+  power: number;
+  /** Max range in arena units. 0 = self-targeted. */
+  range: number;
+  /** Turns before reuse. 0 = usable every turn. */
+  cooldown: number;
+  description: string;
+  /** Upgrade tier (1..3). Absent = 1. */
+  tier?: number;
+  /** Tier-3 Strike: bleed applied on hit. */
+  bleed?: { damage: number; turns: number };
+  /** Tier-3 Pulse Blast: fraction of damage splashed to other enemies in range. */
+  splash?: number;
+  /** Tier-3 Shield Wall: fraction of melee damage reflected to attacker. */
+  reflect?: number;
+  /** Liquidity Drain: credits stolen from target on hit (Red Candle King). */
+  drain?: { credits: number };
+  /** Candle-flame burn: damage-over-time applied on hit (like bleed, stacks separately). */
+  burn?: { damage: number; turns: number };
+  /** Taunt: turns for which enemies must target this combatant (Energy Shield). */
+  taunt?: number;
+  /** Generic defense buff: amount + duration in turns. */
+  defBuff?: { amount: number; turns: number };
+}
+
+export type Team = 'player' | 'enemy';
+
+/** Minimal 2D position on the arena plane. */
+export interface ArenaPos {
+  x: number;
+  z: number;
+}
+
+export interface Combatant {
+  id: string;
+  name: string;
+  team: Team;
+  hp: number;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  /** Initiative: higher acts first. Ties broken by id for determinism. */
+  speed: number;
+  x: number;
+  z: number;
+  actions: ActionDef[];
+  /** actionId -> turns remaining before reuse. Absent/0 = ready. */
+  cooldowns: Map<string, number>;
+  alive: boolean;
+  /** Temporary defense bonus (e.g. Shield Wall). */
+  defenseBuff: number;
+  defenseBuffTurns: number;
+  /** Bleed: damage per turn + turns remaining (tier-3 Strike). */
+  bleedDamage: number;
+  bleedTurns: number;
+  /** Fraction of melee damage reflected to the attacker (tier-3 Shield Wall). */
+  reflectPct: number;
+  /** Taunt: turns remaining where enemies must target this combatant. */
+  tauntTurns: number;
+  /** Consumable inventory: itemId -> count (e.g. stem_pack). */
+  items: Map<string, number>;
+  /** Battle-scoped credits (e.g. for Liquidity Drain). Banked on victory. */
+  credits: number;
+  /** Candle-flame burn: damage per turn + turns remaining (Red Candle King). */
+  burnDamage: number;
+  burnTurns: number;
+  /** Visual scale multiplier for the fighter mesh. */
+  meshScale: number;
+}
+
+export interface CombatantSpec {
+  id: string;
+  name: string;
+  team: Team;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  x: number;
+  z: number;
+  actions: ActionDef[];
+  /** Starting battle credits (default 0). */
+  credits?: number;
+  /** Visual scale multiplier for the fighter mesh (default 1).
+   *  The Red Candle King (~100ft vs XRPman's 6'4") uses 6. */
+  meshScale?: number;
+}
+
+export function createCombatant(spec: CombatantSpec): Combatant {
+  return {
+    id: spec.id,
+    name: spec.name,
+    team: spec.team,
+    hp: spec.maxHp,
+    maxHp: spec.maxHp,
+    attack: spec.attack,
+    defense: spec.defense,
+    speed: spec.speed,
+    x: spec.x,
+    z: spec.z,
+    actions: spec.actions.map((a) => ({ ...a })),
+    cooldowns: new Map<string, number>(),
+    alive: true,
+    defenseBuff: 0,
+    defenseBuffTurns: 0,
+    bleedDamage: 0,
+    bleedTurns: 0,
+    reflectPct: 0,
+    tauntTurns: 0,
+    items: new Map<string, number>(),
+    credits: spec.credits ?? 0,
+    burnDamage: 0,
+    burnTurns: 0,
+    meshScale: spec.meshScale ?? 1,
+  };
+}
+
+/** Tiered player kit. Tiers come from PlayerProgress.abilityTiers.
+ *
+ *  Strike:      T1 power 12 / T2 power 18 / T3 power 18 + bleed (4/turn, 2 turns)
+ *  Pulse Blast: T1 power 22 cd 3 / T2 power 30 cd 3 / T3 power 30 + 50% splash
+ *  Shield Wall: T1 +8 def 2 turns cd 4 / T2 +12 def 2 turns cd 3 /
+ *               T3 +12 def 3 turns cd 3 + 50% melee reflect
+ *  Stem Pack:   consumable item, heals 40, costs the turn. Not tiered.
+ */
+export function playerActions(tiers?: Record<string, number>): ActionDef[] {
+  const t = (id: string): number => tiers?.[id] ?? 1;
+  const strikeTier = t('strike');
+  const pulseTier = t('pulse_blast');
+  const shieldTier = t('shield_wall');
+  return [
+    {
+      id: 'strike',
+      name: strikeTier >= 3 ? 'Strike III' : strikeTier === 2 ? 'Strike II' : 'Strike',
+      kind: 'attack',
+      power: strikeTier >= 2 ? 18 : 12,
+      range: 3.5,
+      cooldown: 0,
+      tier: strikeTier,
+      description:
+        strikeTier >= 3
+          ? 'Empowered melee attack. Applies bleed (4/turn, 2 turns).'
+          : 'Basic melee attack.',
+      ...(strikeTier >= 3 ? { bleed: { damage: 4, turns: 2 } } : {}),
+    },
+    {
+      id: 'pulse_blast',
+      name: pulseTier >= 3 ? 'Pulse Blast III' : pulseTier === 2 ? 'Pulse Blast II' : 'Pulse Blast',
+      kind: 'ability',
+      power: pulseTier >= 2 ? 30 : 22,
+      range: 9,
+      cooldown: 3,
+      tier: pulseTier,
+      description:
+        pulseTier >= 3
+          ? 'Ranged energy blast. Splashes 50% to nearby enemies. 3-turn cooldown.'
+          : 'Ranged energy blast. 3-turn cooldown.',
+      ...(pulseTier >= 3 ? { splash: 0.5 } : {}),
+    },
+    {
+      id: 'shield_wall',
+      name: shieldTier >= 3 ? 'Shield Wall III' : shieldTier === 2 ? 'Shield Wall II' : 'Shield Wall',
+      kind: 'ability',
+      power: 0,
+      range: 0,
+      cooldown: shieldTier >= 2 ? 3 : 4,
+      tier: shieldTier,
+      description:
+        shieldTier >= 3
+          ? '+12 defense for 3 turns, reflects 50% of melee damage.'
+          : shieldTier === 2
+            ? '+12 defense for 2 turns. 3-turn cooldown.'
+            : '+8 defense for 2 turns. 4-turn cooldown.',
+      ...(shieldTier >= 3 ? { reflect: 0.5 } : {}),
+    },
+    {
+      id: 'stem_pack',
+      name: 'Stem Pack',
+      kind: 'item',
+      power: 40,
+      range: 0,
+      cooldown: 0,
+      description: 'Restore 40 HP. Costs the turn. Limited supply.',
+    },
+  ];
+}
+
+/** Test enemy kit: basic attack + 1 special on cooldown. */
+export function testEnemyActions(): ActionDef[] {
+  return [
+    {
+      id: 'claw',
+      name: 'Claw Swipe',
+      kind: 'attack',
+      power: 10,
+      range: 3.5,
+      cooldown: 0,
+      description: 'Basic melee attack.',
+    },
+    {
+      id: 'savage_roar',
+      name: 'Savage Roar',
+      kind: 'ability',
+      power: 18,
+      range: 7,
+      cooldown: 4,
+      description: 'Damaging shockwave. 4-turn cooldown.',
+    },
+  ];
+}
+
+/** True when the action exists on the combatant and its cooldown is ready. */
+export function canUseAction(c: Combatant, actionId: string): boolean {
+  const def = c.actions.find((a) => a.id === actionId);
+  if (!def) return false;
+  if (!c.alive) return false;
+  return (c.cooldowns.get(actionId) ?? 0) <= 0;
+}
+
+/** Put an action on cooldown after use. No-op for cooldown-0 actions. */
+export function putOnCooldown(c: Combatant, action: ActionDef): void {
+  if (action.cooldown > 0) c.cooldowns.set(action.id, action.cooldown);
+}
+
+/** Advance all cooldowns and buff timers by one turn for a combatant.
+ *  Returns bleed+burn damage dealt this tick (0 when neither). */
+export function tickCooldowns(c: Combatant): number {
+  for (const [id, turns] of c.cooldowns) {
+    if (turns <= 1) c.cooldowns.delete(id);
+    else c.cooldowns.set(id, turns - 1);
+  }
+  if (c.defenseBuffTurns > 0) {
+    c.defenseBuffTurns -= 1;
+    if (c.defenseBuffTurns <= 0) c.defenseBuff = 0;
+  }
+  if (c.tauntTurns > 0) c.tauntTurns -= 1;
+  let dot = 0;
+  if (c.bleedTurns > 0 && c.alive) {
+    dot += c.bleedDamage;
+    c.bleedTurns -= 1;
+    if (c.bleedTurns <= 0) c.bleedDamage = 0;
+  }
+  if (c.burnTurns > 0 && c.alive) {
+    dot += c.burnDamage;
+    c.burnTurns -= 1;
+    if (c.burnTurns <= 0) c.burnDamage = 0;
+  }
+  if (dot > 0) {
+    c.hp = Math.max(0, c.hp - dot);
+    if (c.hp <= 0) c.alive = false;
+  }
+  return dot;
+}
+
+export function distance(a: ArenaPos, b: ArenaPos): number {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
+}
+
+/** Range bands for free-position combat (no grid). */
+export type RangeBand = 'melee' | 'short' | 'long' | 'out';
+
+export function rangeBand(d: number): RangeBand {
+  if (d <= 3.5) return 'melee';
+  if (d <= 9) return 'short';
+  if (d <= 15) return 'long';
+  return 'out';
+}
+
+/** Effective defense including temporary buffs. */
+export function effectiveDefense(c: Combatant): number {
+  return c.defense + c.defenseBuff;
+}
+
+/**
+ * Target selection with taunt priority. Enemy attackers must target a
+ * taunting player combatant while its taunt lasts; otherwise the first
+ * alive player. Player attackers take the first alive enemy (Arena may
+ * refine this with UI targeting later).
+ */
+export function selectTarget(
+  attacker: Combatant,
+  combatants: Combatant[],
+): Combatant | null {
+  if (attacker.team === 'enemy') {
+    const taunting = combatants.find(
+      (c) => c.team === 'player' && c.alive && c.tauntTurns > 0,
+    );
+    if (taunting) return taunting;
+    return combatants.find((c) => c.team === 'player' && c.alive) ?? null;
+  }
+  return combatants.find((c) => c.team === 'enemy' && c.alive) ?? null;
+}
+
+/**
+ * Mr Zamn's TruFi mech kit (Phase 2.5 showcase).
+ *
+ *  Pulse Cannons:   basic ranged attack, power 16, range 9.
+ *  Energy Shield:   taunt (enemies must target Zamn, 2 turns) +8 defense 2 turns, 4-turn cooldown.
+ *  Impact Gauntlets: heavy melee, power 28, range 3.5, 3-turn cooldown.
+ *  Firewall Defense: locked until showcase completion. +10 defense 3 turns,
+ *                    cleanses bleed/debuffs. Team-wide in Part 2 (party system).
+ */
+export function zamnActions(includeFirewall = false): ActionDef[] {
+  const kit: ActionDef[] = [
+    {
+      id: 'pulse_cannons',
+      name: 'Pulse Cannons',
+      kind: 'attack',
+      power: 16,
+      range: 9,
+      cooldown: 0,
+      description: 'Twin rail cannons. Reliable ranged fire.',
+    },
+    {
+      id: 'energy_shield',
+      name: 'Energy Shield',
+      kind: 'ability',
+      power: 0,
+      range: 0,
+      cooldown: 4,
+      taunt: 2,
+      defBuff: { amount: 8, turns: 2 },
+      description: 'TruFi shield up: enemies must target Zamn for 2 turns, +8 defense.',
+    },
+    {
+      id: 'impact_gauntlets',
+      name: 'Impact Gauntlets',
+      kind: 'ability',
+      power: 28,
+      range: 3.5,
+      cooldown: 3,
+      description: 'Devastating melee slam. 3-turn cooldown.',
+    },
+    {
+      id: 'stem_pack',
+      name: 'Stem Pack',
+      kind: 'item',
+      power: 40,
+      range: 0,
+      cooldown: 0,
+      description: 'Restore 40 HP. Costs the turn. Limited supply.',
+    },
+  ];
+  if (includeFirewall) {
+    kit.push({
+      id: 'firewall_defense',
+      name: 'Firewall Defense',
+      kind: 'ability',
+      power: 0,
+      range: 0,
+      cooldown: 5,
+      defBuff: { amount: 10, turns: 3 },
+      description:
+        'Guardian protocol: +10 defense for 3 turns, cleanses bleed and debuffs. ' +
+        'Protects the whole team once the party system arrives.',
+    });
+  }
+  return kit;
+}

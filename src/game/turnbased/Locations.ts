@@ -1,0 +1,174 @@
+// Locations.ts — contextual arena definitions for the turn-based system.
+//
+// Pure data: no DOM, no Three.js. Arena.ts renders these; the validator
+// checks structural invariants (props stay clear of the combat circle).
+//
+// Design rule (per owner): the room must match the fight. A bridge fight
+// looks like a bridge; a lunar base fight looks like a lunar base.
+// No generic rooms.
+
+export interface PropSpec {
+  kind: 'console' | 'pillar' | 'crate' | 'arch' | 'tank' | 'sphere';
+  /** Arena-plane position. */
+  x: number;
+  z: number;
+  /** Dimensions. */
+  w: number;
+  h: number;
+  d: number;
+  color: number;
+  /** Glowing trim color, 0 = none. */
+  emissive?: number;
+  /** Height offset for sky objects (e.g. Earth). Defaults to h/2 (grounded). */
+  y?: number;
+}
+
+export interface ArenaLocation {
+  id: string;
+  name: string;
+  /** Scene background. */
+  background: number;
+  /** Fog color + density for depth mood. */
+  fogColor: number;
+  fogDensity: number;
+  floorColor: number;
+  ambientColor: number;
+  ambientIntensity: number;
+  keyLightColor: number;
+  keyLightIntensity: number;
+  /** Accent color for props / UI trim. */
+  accentColor: number;
+  /** Ring colors for the painted range bands (melee/short/long). */
+  ringColors: [string, string, string];
+  props: PropSpec[];
+  /** Low-angle boss framing: camera drops low and looks up (Red Candle King). */
+  lowAngle?: boolean;
+}
+
+/**
+ * Minimum distance from arena center for any prop. Keeps the combat
+ * circle (radius ~7) clear so movement and range bands stay readable.
+ */
+export const PROP_CLEAR_RADIUS = 9.5;
+
+/** Warship bridge: dark metallic, blue command accents, dim + focused light. */
+export const WARSHIP_BRIDGE: ArenaLocation = {
+  id: 'warship_bridge',
+  name: 'Warship Bridge',
+  background: 0x070c16,
+  fogColor: 0x070c16,
+  fogDensity: 0.012,
+  floorColor: 0x141b2a,
+  ambientColor: 0x4a5f8a,
+  ambientIntensity: 0.55,
+  keyLightColor: 0xbcd2ff,
+  keyLightIntensity: 1.6,
+  accentColor: 0x2a7fff,
+  ringColors: ['#ff5a5a', '#ffb84d', '#5ad1ff'],
+  props: [
+    { kind: 'console', x: -11, z: -6, w: 3.2, h: 1.4, d: 1.2, color: 0x1c2740, emissive: 0x2a7fff },
+    { kind: 'console', x: 11, z: -6, w: 3.2, h: 1.4, d: 1.2, color: 0x1c2740, emissive: 0x2a7fff },
+    { kind: 'console', x: -11, z: 6, w: 3.2, h: 1.4, d: 1.2, color: 0x1c2740, emissive: 0x2a7fff },
+    { kind: 'console', x: 11, z: 6, w: 3.2, h: 1.4, d: 1.2, color: 0x1c2740, emissive: 0x2a7fff },
+    { kind: 'pillar', x: 0, z: -12, w: 1.6, h: 7, d: 1.6, color: 0x232f4a, emissive: 0x2a7fff },
+    { kind: 'arch', x: 0, z: 12.5, w: 8, h: 5.5, d: 1.2, color: 0x1a2338 },
+    { kind: 'tank', x: -12.5, z: 0, w: 2, h: 3.4, d: 2, color: 0x101827, emissive: 0x1a5fd0 },
+    { kind: 'tank', x: 12.5, z: 0, w: 2, h: 3.4, d: 2, color: 0x101827, emissive: 0x1a5fd0 },
+  ],
+};
+
+/** Lunar base interior: grey industrial, harsh white light, sterile. */
+export const LUNAR_BASE: ArenaLocation = {
+  id: 'lunar_base',
+  name: 'Lunar Base Interior',
+  background: 0x111318,
+  fogColor: 0x111318,
+  fogDensity: 0.008,
+  floorColor: 0x3a3d44,
+  ambientColor: 0xd8dce4,
+  ambientIntensity: 0.85,
+  keyLightColor: 0xffffff,
+  keyLightIntensity: 2.4,
+  accentColor: 0xffb84d,
+  ringColors: ['#ff5a5a', '#ff8a3d', '#7dffce'],
+  props: [
+    { kind: 'crate', x: -11, z: -7, w: 2.4, h: 2.4, d: 2.4, color: 0x4a4e57 },
+    { kind: 'crate', x: -11, z: -4, w: 1.8, h: 1.8, d: 1.8, color: 0x555a64 },
+    { kind: 'crate', x: 11, z: 7, w: 2.4, h: 2.4, d: 2.4, color: 0x4a4e57 },
+    { kind: 'crate', x: 11, z: 4, w: 1.8, h: 1.8, d: 1.8, color: 0x555a64 },
+    { kind: 'pillar', x: -12, z: 2, w: 1.4, h: 8, d: 1.4, color: 0x62666f },
+    { kind: 'pillar', x: 12, z: -2, w: 1.4, h: 8, d: 1.4, color: 0x62666f },
+    { kind: 'pillar', x: 0, z: -12.5, w: 1.4, h: 8, d: 1.4, color: 0x62666f },
+    { kind: 'console', x: 0, z: 12, w: 4, h: 1.6, d: 1.4, color: 0x3f434c, emissive: 0xffb84d },
+    { kind: 'tank', x: -12, z: -11, w: 2.2, h: 4, d: 2.2, color: 0x2e3138, emissive: 0x9fe8ff },
+  ],
+};
+
+/** The Red Candle King's lair: volcanic red, candle-flame pillars, wax-drip dread. */
+export const KINGS_LAIR: ArenaLocation = {
+  id: 'kings_lair',
+  name: "Red Candle King's Lair",
+  background: 0x1a0808,
+  fogColor: 0x2a0d0d,
+  fogDensity: 0.015,
+  floorColor: 0x2e1414,
+  ambientColor: 0xff6a3a,
+  ambientIntensity: 0.7,
+  keyLightColor: 0xffb84d,
+  keyLightIntensity: 2.0,
+  accentColor: 0xff3a2a,
+  ringColors: ['#ff3a2a', '#ff8a3d', '#ffb84d'],
+  // Low-angle framing: the King is ~100ft tall, the player is 6'4".
+  // Camera drops low and looks up — the boss looms.
+  lowAngle: true,
+  props: [
+    { kind: 'pillar', x: -11, z: -7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'pillar', x: 11, z: -7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'pillar', x: -11, z: 7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'pillar', x: 11, z: 7, w: 2.2, h: 9, d: 2.2, color: 0x4a1a1a, emissive: 0xff6a3a },
+    { kind: 'arch', x: 0, z: -12.5, w: 10, h: 7, d: 1.6, color: 0x3a1212, emissive: 0xff3a2a },
+    { kind: 'tank', x: -12.5, z: 0, w: 2.4, h: 5, d: 2.4, color: 0x2a0d0d, emissive: 0xffb84d },
+    { kind: 'tank', x: 12.5, z: 0, w: 2.4, h: 5, d: 2.4, color: 0x2a0d0d, emissive: 0xffb84d },
+    { kind: 'console', x: 0, z: 12, w: 5, h: 1.2, d: 1.6, color: 0x1a0808, emissive: 0xff3a2a },
+  ],
+};
+
+/** Lunar surface exterior: grey regolith under a black sky, Earth hanging
+ * overhead, harsh directional sunlight with deep shadows. The Zamn
+ * showcase fight happens here — open ground, scattered rocks, a lander
+ * leg on the horizon. */
+export const LUNAR_SURFACE: ArenaLocation = {
+  id: 'lunar_surface',
+  name: 'Lunar Surface',
+  background: 0x020308,
+  fogColor: 0x020308,
+  fogDensity: 0.004,
+  floorColor: 0x5a5d64,
+  ambientColor: 0x8a8f9a,
+  ambientIntensity: 0.3,
+  keyLightColor: 0xffffff,
+  keyLightIntensity: 3.2,
+  accentColor: 0x4da3ff,
+  ringColors: ['#ff5a5a', '#ffb84d', '#4da3ff'],
+  props: [
+    // Scattered rocks (crates read as rocks in this palette).
+    { kind: 'crate', x: -12, z: -5, w: 2.2, h: 1.6, d: 2.0, color: 0x4e5158 },
+    { kind: 'crate', x: 12.5, z: 4, w: 1.6, h: 1.2, d: 1.8, color: 0x565a61 },
+    { kind: 'crate', x: -10, z: 8, w: 1.2, h: 0.9, d: 1.1, color: 0x43464d },
+    { kind: 'crate', x: 11, z: -8.5, w: 2.8, h: 2.0, d: 2.4, color: 0x4e5158 },
+    { kind: 'crate', x: 2, z: -12, w: 1.4, h: 1.0, d: 1.3, color: 0x5f636b },
+    { kind: 'crate', x: -4, z: 12.5, w: 1.8, h: 1.3, d: 1.6, color: 0x43464d },
+    // Lander leg on the horizon.
+    { kind: 'pillar', x: -14, z: -11, w: 1.2, h: 9, d: 1.2, color: 0x3a3d44, emissive: 0x4da3ff },
+    // Earth in the black sky.
+    { kind: 'sphere', x: 28, z: -24, w: 10, h: 10, d: 10, y: 36, color: 0x2a6fd6, emissive: 0x9fd0ff },
+  ],
+};
+
+/** All locations. */
+export const LOCATIONS: ArenaLocation[] = [WARSHIP_BRIDGE, LUNAR_BASE, LUNAR_SURFACE, KINGS_LAIR];
+
+
+export function locationById(id: string): ArenaLocation | undefined {
+  return LOCATIONS.find((l) => l.id === id);
+}

@@ -11,7 +11,9 @@ import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, 
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
 import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
-import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
+import { EarthFlightEncounterDirector } from '../content/EarthFlightEncounters';
+import { EncounterOrchestrator, type EncounterHost, encounterDefFor } from './Encounters';
+import { CloudDescent, type DescentHost } from './CloudDescent';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
 import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles, surfaceTiles, CLOUD_DESCENT_DURATION } from '../content/EarthEnvironment';
@@ -586,8 +588,15 @@ export class Game2A {
   private readonly sprites: SpriteRenderer;
   private readonly loop = new Loop((dt) => this.frame(dt));
   private readonly missionDirector = new MissionDirector();
-  private readonly earthEncounterDirector = new EarthFlightEncounterDirector();
-  private readonly cloudDescentDirector = new EarthFlightEncounterDirector();
+  /** Encounter orchestration (extracted to Encounters.ts; Game2A orchestrates). */
+  private readonly encounters = new EncounterOrchestrator(this.makeEncounterHost());
+  /**
+   * Encounter director, delegated to Encounters (validators call .start()/.clear()
+   * and read stage/group state directly).
+   */
+  private get earthEncounterDirector(): EncounterOrchestrator { return this.encounters; }
+  /** Cloud descent phase (extracted to CloudDescent.ts; Game2A orchestrates). */
+  private readonly descent = new CloudDescent(this.makeDescentHost());
   private readonly warshipDirector = new RegulatoryWarshipDirector();
   private clock = 0;
   private mode: Mode = 'title';
@@ -802,9 +811,15 @@ export class Game2A {
   private orbitalTravel=0;
   private earthEntry:{elapsed:number;fromX:number;fromY:number}|null=null;
   private earthArrivalFade=0;
-  private cloudDescent:number|null=null;
+  /** Descent clock, delegated to CloudDescent (validators read/write this). */
+  private get cloudDescent(): number|null { return this.descent.elapsed; }
+  private set cloudDescent(v: number|null) { this.descent.elapsed = v; }
+  /** Descent encounter director, delegated to CloudDescent (validators call .start()). */
+  private get cloudDescentDirector(): EarthFlightEncounterDirector { return this.descent.director; }
   private cityPathPosition=0;
-  private cityHasCloudTail=false;
+  /** Cloud backdrop tail, delegated to CloudDescent (validators read this). */
+  private get cityHasCloudTail(): boolean { return this.descent.hasCloudTail; }
+  private set cityHasCloudTail(v: boolean) { this.descent.hasCloudTail = v; }
   private groundRestorationPending=false;
   private restoredGround:Array<{x:number;y:number;life:number}>=[];
   /** Copied observations only: the section test offers no state setters. */
@@ -868,6 +883,70 @@ export class Game2A {
     };
   }
 
+  /**
+   * DescentHost implementation: the descent phase drives Game2A's shared
+   * combat/input/state systems through these closures. No visibility changes
+   * were needed -- the closures capture `this` inside Game2A.
+   */
+  private makeDescentHost(): DescentHost {
+    return {
+      consumePause: () => this.input.consumePause(),
+      consumeTap: () => this.input.consumeTap(),
+      consumeBomb: () => this.input.consumeBomb(),
+      consumeSpecial: () => this.input.consumeSpecial(),
+      consumeDoubleTap: () => this.input.consumeDoubleTap(),
+      setInputActive: (v) => this.input.setActive(v),
+      storyCapturedInput: () => this.storyCapturedInput,
+      setStoryCapturedInput: (v) => { this.storyCapturedInput = v; },
+      pauseZone: () => this.zone.pause,
+      bombZone: () => this.zone.bomb,
+      specialZone: () => this.zone.special,
+      inControls: (x, y) => this.inControls(x, y),
+      markBombHint: () => { this.bombHintShown = true; },
+      useBomb: () => this.useBomb(),
+      useSpecial: () => this.useSpecial(),
+      movePlayer: (dt) => this.movePlayer(dt),
+      updateFacing: (dt) => this.updateFacing(dt),
+      updateBolts: (dt) => this.updateBolts(dt),
+      updateSeekers: (dt) => this.updateSeekers(dt),
+      moveDrones: (dt) => this.moveDrones(dt),
+      updateCombatLifecycle: (dt) => this.updateCombatLifecycle(dt),
+      spawnMissionDrone: (k, x) => this.spawnMissionDrone(k, x),
+      blockFighterArmory: () => this.fighterArmory?.block(),
+      isPlaying: () => this.mode === 'play',
+      isPaused: () => this.paused,
+      setPaused: (v) => this.setPaused(v),
+      addClock: (dt) => { this.clock += dt; },
+      droneCount: () => this.drones.length,
+      setCityPathPosition: (v) => { this.cityPathPosition = v; },
+      currentActKey: () => this.missionDirector.currentAct?.key ?? '',
+      startCityDirector: (k) => this.earthEncounterDirector.start(this.missionDirector.activeMission, k),
+      setMissionBanner: (t, c) => { this.missionBannerText = t; this.missionBannerClock = c; },
+      pendingUpgrades: () => this.pendingUpgrades,
+      openUpgradeChoice: () => this.openUpgradeChoice(),
+    };
+  }
+
+  private makeEncounterHost(): EncounterHost {
+    return {
+      droneCount: () => this.drones.length,
+      threatHazardCount: (beaconLesson) => this.hazards.filter(
+        (h) => !friendlyGround(h) || (beaconLesson && h.y < this.h * 0.6),
+      ).length,
+      screenHeight: () => this.h,
+      threatsCleared: () => this.drones.length === 0 && this.hazards.every(friendlyGround),
+      groundRestorationBlocking: () => this.groundRestorationPending
+        && this.flightStory != null
+        && !this.flightStory.districtRestored,
+      clearHostileShots: () => { this.hostileShots = []; },
+      spawnEnemy: (k, x) => this.spawnMissionDrone(k, x),
+      spawnHazard: (k, x, s) => this.spawnMissionHazard(k, x, s),
+      moveDrones: (dt) => this.moveDrones(dt),
+      moveHazards: (dt) => this.moveHazards(dt),
+      completeFlightAct: () => this.completeMissionFlightAct(),
+    };
+  }
+
   private frame(dt: number): void {
     if (isGameMenuOpen()) return;
     this.earthArrivalFade=Math.max(0,this.earthArrivalFade-dt);
@@ -888,42 +967,8 @@ export class Game2A {
       if(!this.paused){this.updateEarthEntry(dt);this.updateDebris(dt);}
       this.render();return;
     }
-    if(this.cloudDescent!==null){
-      this.fighterArmory?.block();
-      if(this.storyCapturedInput){this.input.setActive(true);this.storyCapturedInput=false;}
-      if(this.input.consumePause())this.setPaused(!this.paused);
-      const cloudTap=this.input.consumeTap();
-      if(cloudTap&&inCircle(this.zone.pause,cloudTap.x,cloudTap.y))this.setPaused(!this.paused);
-      if(!this.paused&&this.mode==='play'){
-        this.clock+=dt;
-        if(cloudTap){
-          if(inCircle(this.zone.bomb,cloudTap.x,cloudTap.y))this.useBomb();
-          else if(inCircle(this.zone.special,cloudTap.x,cloudTap.y))this.useSpecial();
-        }
-        // Combat is live during the descent: bombs/specials fire, guns
-        // auto-fire via updateBolts, and the descent director paces waves.
-        if(this.input.consumeSpecial())this.useSpecial();
-        if(this.input.consumeBomb())this.useBomb();
-        const cloudDouble=this.input.consumeDoubleTap();
-        if(cloudDouble&&!this.inControls(cloudDouble.x,cloudDouble.y)){this.bombHintShown=true;this.useBomb();}
-        this.cloudDescent=Math.min(CLOUD_DESCENT_DURATION,this.cloudDescent+dt);
-        this.movePlayer(dt);this.updateFacing(dt);
-        this.updateDescentEncounters(dt);
-        this.updateBolts(dt);this.updateSeekers(dt);
-        this.moveDrones(dt);
-        this.updateCombatLifecycle(dt);
-        if(this.mode!=='play'){this.cloudDescent=null;this.cloudDescentDirector.clear();this.render();return;}
-        if(this.cloudDescent>=CLOUD_DESCENT_DURATION){
-          this.cloudDescent=null;this.cityPathPosition=0;this.cityHasCloudTail=true;
-          this.cloudDescentDirector.clear();
-          this.earthEncounterDirector.start(this.missionDirector.currentAct?.key??'');
-          this.missionBannerText='CLOUD LAYER CLEARED // LEDGER CITY';this.missionBannerClock=2.8;
-          if(this.pendingUpgrades>0)this.openUpgradeChoice();
-        }
-      }else{
-        // Paused: drain combat inputs so they cannot fire on resume.
-        this.input.consumeBomb();this.input.consumeDoubleTap();this.input.consumeSpecial();
-      }
+    if(this.descent.active){
+      this.descent.update(dt);
       this.render();return;
     }
     if(!this.campaignArmory?.active)this.clock += dt;
@@ -1084,7 +1129,7 @@ export class Game2A {
 
     if (this.launchClock === 0) {
       this.player.y = targetY;
-      this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+      this.encounters.start(this.missionDirector.activeMission, this.missionDirector.currentAct?.key ?? '');
       this.missionBannerText = 'DEFEND EARTH // FIRST CONTACT INBOUND';
       this.missionBannerClock = 2.8;
     }
@@ -1121,7 +1166,7 @@ export class Game2A {
       return;
     }
 
-    if (act.mode === 'flight' && earthFlightEncounterFor(act.key)) {
+    if (act.mode === 'flight' && this.encounters.hasEncounter(this.missionDirector.activeMission, act.key)) {
       this.updateAuthoredFlight(dt);
       return;
     }
@@ -1317,31 +1362,8 @@ export class Game2A {
     }
   }
 
-  /**
-   * Cloud descent encounters: airborne drones only, paced by the director.
-   * Ground hazards/turrets stay city-gated — the descent spawns no hazards.
-   */
-  private updateDescentEncounters(dt: number): void {
-    const activeThreats = this.drones.length;
-    const state = this.cloudDescentDirector.update(dt, activeThreats);
-    for (const spawn of state.spawns) {
-      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
-    }
-  }
-
   private updateAuthoredFlight(dt: number): void {
-    const beaconLesson=this.earthEncounterDirector.currentGroupLabel?.startsWith('CLARITY BEACON');
-    const activeThreats = this.drones.length + this.hazards.filter(h=>!friendlyGround(h)||(beaconLesson&&h.y<this.h*.6)).length;
-    if(activeThreats===0&&this.groundRestorationPending&&this.flightStory&&!this.flightStory.districtRestored){this.hostileShots=[];return;}
-    const state = this.earthEncounterDirector.update(dt, activeThreats);
-    for (const spawn of state.spawns) {
-      if (spawn.kind === 'enemy') this.spawnMissionDrone(spawn.enemyKey, spawn.x);
-      else this.spawnMissionHazard(spawn.hazardKey, spawn.x, spawn.side);
-    }
-    this.moveDrones(dt);
-    this.moveHazards(dt);
-
-    if (state.completed && this.drones.length === 0 && this.hazards.every(friendlyGround)) this.completeMissionFlightAct();
+    this.encounters.update(dt);
   }
 
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
@@ -1433,6 +1455,32 @@ export class Game2A {
     const act = this.missionDirector.currentAct;
     if (!mission || !act) return;
 
+    // Moon base breach: the 2D assault is done, hand off to turn-based.
+    // The turn-based base capture takes over; on victory it dispatches
+    // coded:moon-base-captured which advances to moon_secured.
+    if (mission.key === 'moon_lunar_campaign' && act.key === 'base_breach') {
+      this.drones = [];
+      this.hazards = [];
+      this.hostileShots = [];
+      window.dispatchEvent(new CustomEvent('coded:moon-base-breach', {
+        detail: { planetKey: this.activePlanetKey, missionKey: mission.key },
+      }));
+      return;
+    }
+
+    // King's Gate breach: the 2D assault is done, hand off to the turn-based
+    // Red Candle King boss fight. On victory it dispatches
+    // coded:red-candle-king-defeated which advances to mars_secured.
+    if (mission.key === 'mars_red_candle' && act.key === 'kings_gate') {
+      this.drones = [];
+      this.hazards = [];
+      this.hostileShots = [];
+      window.dispatchEvent(new CustomEvent('coded:kings-gate-breach', {
+        detail: { planetKey: this.activePlanetKey, missionKey: mission.key },
+      }));
+      return;
+    }
+
     const nextAct = mission.acts[this.missionDirector.currentActIndex + 1];
     const checkpoint = nextAct
       ? mission.checkpoints.find((item) => item.resumeActKey === nextAct.key)
@@ -1460,7 +1508,7 @@ export class Game2A {
     this.hostileShots = [];
     const entered = this.missionDirector.advance();
     this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
-    this.earthEncounterDirector.start(entered?.key ?? '');
+    this.encounters.start(this.missionDirector.activeMission, entered?.key ?? '');
 
     if (entered?.key === 'regulatory_warship') {
       this.missionBannerText = 'CAPITAL SHIP SIGNAL // REGULATORY WARSHIP';
@@ -2855,6 +2903,68 @@ export class Game2A {
     this.missionBannerClock = 2.8;
   }
 
+  /**
+   * Called after the turn-based lunar base capture victory.
+   * Advances the Moon mission from base_breach to moon_secured.
+   */
+  completeMoonBaseCapture(): void {
+    const mission = this.missionDirector.activeMission;
+    if (!mission || mission.key !== 'moon_lunar_campaign') return;
+    const entered = this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.missionBannerText = 'LUNAR BASE CAPTURED';
+    this.missionBannerClock = 2.8;
+    this.cueMusic('warship_home');
+    // Record the unlock: Mars is now available on the campaign map.
+    if (this.activePlanetKey && entered?.key === 'moon_secured') {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: 'moon.captured',
+        checkpointLabel: 'BASE CAPTURED',
+        resumeActKey: 'moon_secured',
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier(),
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+        ...this.upgradeSnapshot(),
+      });
+      this.saveProgress();
+    }
+  }
+
+  /**
+   * Called after the turn-based Red Candle King victory.
+   * Advances the Mars mission from kings_gate to mars_secured (Part 1 finale).
+   */
+  completeRedCandleKing(): void {
+    const mission = this.missionDirector.activeMission;
+    if (!mission || mission.key !== 'mars_red_candle') return;
+    const entered = this.missionDirector.advance();
+    this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
+    this.missionBannerText = 'THE RED CANDLE KING HAS FALLEN';
+    this.missionBannerClock = 3.5;
+    this.cueMusic('theme');
+    // Record the completion: Part 1 is done. No further unlocks.
+    if (this.activePlanetKey && entered?.key === 'mars_secured') {
+      this.progress = recordMissionCheckpoint(this.progress, {
+        planetKey: this.activePlanetKey,
+        missionKey: mission.key,
+        checkpointKey: 'mars.secured',
+        checkpointLabel: 'KING DEFEATED',
+        resumeActKey: 'mars_secured',
+        shipKey: this.selectedShipKey,
+        weaponTier: this.weaponTier(),
+        bombs: this.bombs,
+        score: this.score,
+        savedAt: Date.now(),
+        ...this.upgradeSnapshot(),
+      });
+      this.saveProgress();
+    }
+  }
+
   private updateRings(dt: number): void {
     for (const item of this.rings) item.life = (item.life ?? 0) - dt;
     this.rings = this.rings.filter((item) => (item.life ?? 0) > 0);
@@ -3076,8 +3186,8 @@ export class Game2A {
     if(!pose.complete)return;
     this.earthEntry=null;this.earthArrivalFade=.6;
     this.player.x=this.w/2;this.player.y=this.h*.83;this.playerFacing=-Math.PI/2;
-    this.cloudDescent=0;this.cityPathPosition=0;
-    this.cloudDescentDirector.start('cloud_descent');
+    this.cityPathPosition=0;
+    this.descent.start();
     this.missionBannerText='EARTH ENTRY COMPLETE // CLOUD DESCENT';this.missionBannerClock=2.8;
   }
 
@@ -4542,7 +4652,7 @@ export class Game2A {
     this.fogCutClock = 0;
     this.hostileShots = [];
     this.ringClock = 0.55;
-    this.earthEncounterDirector.start('final_assault');
+    this.encounters.start(this.missionDirector.activeMission, 'final_assault');
     this.missionBannerText = 'FOG BREAKER // ROUTE EXPOSED';
     this.missionBannerClock = 2.8;
     sfx.play('pulse');
@@ -4656,7 +4766,7 @@ export class Game2A {
       this.recordCheckpointForCurrentAct();
       // final_assault runs on the fog gate rather than on authored spawns.
       if(missionGuardian.actKey==='regulatory_behemoth'&&entered?.key==='ledger_city')this.beginEarthEntry();
-      else if (entered?.key !== 'final_assault') this.earthEncounterDirector.start(entered?.key ?? '');
+      else if (entered?.key !== 'final_assault') this.encounters.start(this.missionDirector.activeMission, entered?.key ?? '');
       return;
     }
 
@@ -5136,7 +5246,7 @@ export class Game2A {
     this.launchClock = 0;
     this.launchTotal = 0;
     this.groundTravel = 0;
-    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;this.cloudDescent=null;this.cloudDescentDirector.clear();this.cityPathPosition=0;this.cityHasCloudTail=false;
+    this.orbitalTravel=0;this.earthEntry=null;this.earthArrivalFade=0;this.descent.reset();this.cityPathPosition=0;
     this.groundRestorationPending=false;this.restoredGround=[];
     this.fogGateActive = false;
     this.fogCutClock = 0;
@@ -5183,7 +5293,7 @@ export class Game2A {
       this.cueMusic('level1');
 
       if (checkpoint) {
-        this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        this.encounters.start(this.missionDirector.activeMission, this.missionDirector.currentAct?.key ?? '');
         if (this.missionDirector.currentAct?.key === 'boarding') {
           this.warshipDirector.reset();
           for (const system of REGULATORY_WARSHIP.systems) {
@@ -5521,7 +5631,7 @@ export class Game2A {
   private currentStage(): StageDef {
     // The launch reveal precedes encounter spawning; it still belongs in orbit.
     const missionStageKey = this.earthEncounterDirector.stageKey
-      ?? earthFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
+      ?? encounterDefFor(this.missionDirector.activeMission, this.missionDirector.currentAct?.key ?? '')?.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
     // A guardian act has no authored encounter, so it reaches here with no
     // stageKey. Falling on through lands it on the WAVE ladder, which put the
