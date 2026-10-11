@@ -7,7 +7,7 @@ import { drawBrightEnemy, drawEnemyWeapon, type EnemyWeaponVisual } from './Enem
 import { debugLog } from './DebugLog';
 import { sfx } from '../audio/Sfx';
 import type { Rect } from './Types';
-import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, selectHazardKey } from '../content/registry';
+import { BOSSES, ENEMIES, ENVIRONMENT_PROPS, FX, HAZARDS, PICKUPS, PROJECTILES, SHIPS, SPECIALS, STAGES, WEAPONS, DESCENT_STAGE_KEYS, selectHazardKey } from '../content/registry';
 import { bossPhaseIndex, nextBossKey, orderedBossKeys } from '../content/BossDirector';
 import { loadCampaignProgress, missionCheckpointFor, recordCampaignRun, recordMissionCheckpoint, saveCampaignProgress } from '../content/CampaignProgress';
 import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/CampaignProgress';
@@ -26,7 +26,7 @@ import type { WarshipSystemState } from '../content/RegulatoryWarship';
 import { MissionDirector } from '../content/MissionDirector';
 import { boardingTargetForWarship } from '../content/DirectBoarding';
 import { missionForPlanet } from '../content/missions';
-import type { MissionCheckpointDef } from '../content/missions/types';
+import type { MissionCheckpointDef, MissionDef } from '../content/missions/types';
 import { availableEnemyKeys, selectEnemyKey, spawnInterval } from '../content/WaveDirector';
 import type { BossAttackKey, BossDef, BossPhaseDef, EnemyDef, EnemyDoctrine, HullClass, LadderWeaponDef, HazardDef, PickupDef, ProjectileDef, SpriteRef, StageDef, WeaponDef, WeaponShotDef } from '../content/types';
 
@@ -576,7 +576,18 @@ const CLARITY_PULSE = SPECIALS.clarity_pulse;
 const WEAPON_LADDER = Object.values(WEAPONS).sort((a, b) => a.tier - b.tier);
 /** The smallest thing you can be aiming at, which is what "on target" means. */
 const NARROWEST_ENEMY = Math.min(...[...Object.values(ENEMIES), ...Object.values(EARTH_ENEMIES)].map((def) => def.hitbox.w));
-const STAGE_LADDER = Object.values(STAGES).sort((a, b) => a.minWave - b.minWave);
+/** Wave-ladder stages. Descent playtest stages are mission-owned backgrounds,
+ * never ladder fallbacks, so they are filtered out at every wave. */
+export const STAGE_LADDER = Object.values(STAGES)
+  .filter((stage) => !DESCENT_STAGE_KEYS.includes(stage.key))
+  .sort((a, b) => a.minWave - b.minWave);
+
+/**
+ * Descent levels advance acts when the background rolls past a tile boundary.
+ * Both descent missions run four flight acts over the ten-tile roll, then hold
+ * tile 10 for the touchdown free-flight act.
+ */
+const DESCENT_ACT_END_TILES = [3, 5, 8, 10];
 const BOSS_LADDER = orderedBossKeys(BOSSES);
 
 export class Game2A {
@@ -808,6 +819,9 @@ export class Game2A {
   /** One-way descent progress for the Moon/Mars test stages; reset on entry. */
   private fogDescentTravel=0;
   private marsDescentTravel=0;
+  /** Ambient placeholder combat pacing for descent levels (until the new
+   * enemy packages land). */
+  private descentAmbientClock=0;
   private prevStageKey='';
   private groundRestorationPending=false;
   private restoredGround:Array<{x:number;y:number;life:number}>=[];
@@ -1139,6 +1153,13 @@ export class Game2A {
       return;
     }
 
+    // Fog/Mars descent levels: the LEVEL is the descent. Acts advance on the
+    // background tile roll, not on authored encounter completion.
+    if (act.mode === 'flight' && this.isDescentMission(this.missionDirector.activeMission)) {
+      this.updateDescentFlight(dt);
+      return;
+    }
+
     if (act.key === 'regulatory_warship') {
       if (!this.warship) this.startRegulatoryWarship();
       this.updateRegulatoryWarship(dt);
@@ -1357,6 +1378,40 @@ export class Game2A {
     if (state.completed && this.drones.length === 0 && this.hazards.every(friendlyGround)) this.completeMissionFlightAct();
   }
 
+  /**
+   * Fog/Mars descent flight. The LEVEL is the descent: the act advances when
+   * the background rolls past its tile boundary, and the touchdown act holds
+   * tile 10's self-tiling loop for open surface combat.
+   *
+   * Combat is a light ambient trickle on purpose — Michael is assembling new
+   * enemy packages, and the authored encounter sets land with them. This is
+   * only enough live fire to playtest combat readability over the backgrounds.
+   */
+  private updateDescentFlight(dt: number): void {
+    const mission = this.missionDirector.activeMission;
+    const act = this.missionDirector.currentAct;
+    if (!mission || !act) return;
+
+    const tileHeight = this.w * 1.5;
+    const travel = mission.key === 'mars_descent' ? this.marsDescentTravel : this.fogDescentTravel;
+
+    this.descentAmbientClock -= dt;
+    if (this.descentAmbientClock <= 0 && this.drones.length < 4) {
+      this.descentAmbientClock = 3.5;
+      const enemyKey = mission.key === 'mars_descent' ? 'regulator_drone' : 'fog_raider';
+      this.spawnMissionDrone(enemyKey, 0.2 + Math.random() * 0.6);
+      if (Math.random() < 0.5) this.spawnMissionDrone(enemyKey, 0.2 + Math.random() * 0.6);
+    }
+
+    this.moveDrones(dt);
+    this.moveHazards(dt);
+
+    const endTile = DESCENT_ACT_END_TILES[this.missionDirector.currentActIndex];
+    // Compare against raw travel: the final boundary is the far end of tile 10,
+    // which a 0–9 tile index can never express.
+    if (endTile !== undefined && travel >= endTile * tileHeight) this.completeMissionFlightAct();
+  }
+
   private spawnMissionDrone(enemyKey: string, xRatio: number): void {
     const def = this.enemyDef(enemyKey);
     const x = clamp(xRatio * this.w, 30, this.w - 30);
@@ -1473,7 +1528,13 @@ export class Game2A {
     this.hostileShots = [];
     const entered = this.missionDirector.advance();
     this.wave = Math.max(1, this.missionDirector.currentActIndex + 1);
-    this.earthEncounterDirector.start(entered?.key ?? '');
+    if (this.isDescentMission(mission)) {
+      // Descent levels run no encounter director and record no checkpoints.
+      this.earthEncounterDirector.clear();
+      this.descentAmbientClock = 1.5;
+    } else {
+      this.earthEncounterDirector.start(entered?.key ?? '');
+    }
 
     if (entered?.key === 'regulatory_warship') {
       this.missionBannerText = 'CAPITAL SHIP SIGNAL // REGULATORY WARSHIP';
@@ -3061,48 +3122,63 @@ export class Game2A {
     this.ctx.restore();return drawn;
   }
 
-  /** Fog Moon one-way descent 01→10, then hold on 10 (self-tiling). */
-  private drawFogPath():boolean {
-    const height=this.w*1.5;
-    let drawn=false;
-    this.ctx.save();this.ctx.fillStyle='#04070d';this.ctx.fillRect(0,0,this.w,this.h);
-    for(const tile of fogTiles(this.fogDescentTravel,this.h,height)){
-      const ref=FOG_PATH[tile.index];
-      const image=this.assets.getImage(ref.category,ref.id);if(!image)continue;
-      drawn=true;this.ctx.drawImage(image,0,tile.y,this.w,height);
-      // Fade both edges to the same seam so chained tiles roll together.
-      const band=height*.12;
-      for(const bottom of [false,true]){
-        const y=tile.y+(bottom?height-band:0);
-        const shade=this.ctx.createLinearGradient(0,y,0,y+band);
-        shade.addColorStop(0,bottom?'rgba(4,7,13,0)':'#04070d');
-        shade.addColorStop(1,bottom?'#04070d':'rgba(4,7,13,0)');
-        this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
-      }
+  /**
+   * One-way chained descent renderer (Fog Moon / Mars), full-bleed.
+   *
+   * Tiles are drawn with no edge fades. Every join then gets a TRUE
+   * crossfade: the upper tile's bottom strip is re-drawn over the lower
+   * tile's top strip through a vertical alpha gradient. The old approach
+   * faded each edge to a solid seam color, which stacked into a visible
+   * dark bar (24% of a tile) at every join on textured art.
+   */
+  private drawDescentPath(path: Array<{ category: string; id: string }>, tiles: Array<{ y: number; index: number }>, sky: string): boolean {
+    const height = this.w * 1.5;
+    let drawn = false;
+    this.ctx.save();
+    this.ctx.fillStyle = sky;
+    this.ctx.fillRect(0, 0, this.w, this.h);
+    for (const tile of tiles) {
+      const ref = path[tile.index];
+      const image = this.assets.getImage(ref.category, ref.id);
+      if (!image) continue;
+      drawn = true;
+      this.ctx.drawImage(image, 0, tile.y, this.w, height);
     }
-    this.ctx.restore();return drawn;
+    // Blend every boundary, including tile 10 rolling into itself.
+    const band = height * 0.08;
+    for (let i = 0; i + 1 < tiles.length; i += 1) {
+      const upper = tiles[i];
+      const ref = path[upper.index];
+      const image = this.assets.getImage(ref.category, ref.id);
+      if (!image) continue;
+      const boundaryY = upper.y + height;
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.rect(0, boundaryY, this.w, band);
+      this.ctx.clip();
+      this.ctx.drawImage(image, 0, upper.y, this.w, height);
+      this.ctx.globalCompositeOperation = 'destination-in';
+      const shade = this.ctx.createLinearGradient(0, boundaryY, 0, boundaryY + band);
+      shade.addColorStop(0, 'rgba(0,0,0,1)');
+      shade.addColorStop(1, 'rgba(0,0,0,0)');
+      this.ctx.fillStyle = shade;
+      this.ctx.fillRect(0, boundaryY, this.w, band);
+      this.ctx.restore();
+    }
+    this.ctx.restore();
+    return drawn;
+  }
+
+  /** Fog Moon one-way descent 01→10, then hold on 10 (self-tiling). */
+  private drawFogPath(): boolean {
+    const height = this.w * 1.5;
+    return this.drawDescentPath(FOG_PATH, fogTiles(this.fogDescentTravel, this.h, height), '#04070d');
   }
 
   /** Mars one-way descent 01→10, then hold on 10 (self-tiling). */
-  private drawMarsPath():boolean {
-    const height=this.w*1.5;
-    let drawn=false;
-    this.ctx.save();this.ctx.fillStyle='#0d0503';this.ctx.fillRect(0,0,this.w,this.h);
-    for(const tile of marsTiles(this.marsDescentTravel,this.h,height)){
-      const ref=MARS_PATH[tile.index];
-      const image=this.assets.getImage(ref.category,ref.id);if(!image)continue;
-      drawn=true;this.ctx.drawImage(image,0,tile.y,this.w,height);
-      // Fade both edges to the same seam so chained tiles roll together.
-      const band=height*.12;
-      for(const bottom of [false,true]){
-        const y=tile.y+(bottom?height-band:0);
-        const shade=this.ctx.createLinearGradient(0,y,0,y+band);
-        shade.addColorStop(0,bottom?'rgba(13,5,3,0)':'#0d0503');
-        shade.addColorStop(1,bottom?'#0d0503':'rgba(13,5,3,0)');
-        this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
-      }
-    }
-    this.ctx.restore();return drawn;
+  private drawMarsPath(): boolean {
+    const height = this.w * 1.5;
+    return this.drawDescentPath(MARS_PATH, marsTiles(this.marsDescentTravel, this.h, height), '#0d0503');
   }
 
   /** Three lightweight parallax layers keep a clear flight direction, even
@@ -5243,7 +5319,8 @@ export class Game2A {
       this.cueMusic('level1');
 
       if (checkpoint) {
-        this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
+        if (this.isDescentMission(mission)) this.earthEncounterDirector.clear();
+        else this.earthEncounterDirector.start(this.missionDirector.currentAct?.key ?? '');
         if (this.missionDirector.currentAct?.key === 'boarding') {
           this.warshipDirector.reset();
           for (const system of REGULATORY_WARSHIP.systems) {
@@ -5269,6 +5346,13 @@ export class Game2A {
         }
         this.missionBannerText = this.missionDirector.currentAct?.label ?? mission.label;
         this.missionBannerClock = 2.2;
+      } else if (this.isDescentMission(mission)) {
+        // Descent levels skip Earth's launch cinematic: the level IS the descent.
+        this.earthEncounterDirector.clear();
+        this.descentAmbientClock = 2.0;
+        this.player.y = this.h - 112;
+        this.missionBannerText = `${mission.label} // FIRST CONTACT INBOUND`;
+        this.missionBannerClock = 2.8;
       } else {
         this.earthEncounterDirector.clear();
         this.launchTotal = revealTotalDuration(EARTH_LAUNCH_REVEAL);
@@ -5578,9 +5662,15 @@ export class Game2A {
     return def ?? null;
   }
 
+  /** True for the standalone Fog Moon / Mars descent levels (PR #136). */
+  private isDescentMission(mission: MissionDef | null | undefined): boolean {
+    return !!mission && DESCENT_STAGE_KEYS.includes(mission.key);
+  }
+
   private currentStage(): StageDef {
-    // Test route: ?stage=fog_moon_descent or ?stage=mars_descent flies the
-    // Moon/Mars background sequences directly, outside the mission campaign.
+    // Test route: ?stage=fog_moon_descent or ?stage=mars_descent. main.ts
+    // deploys the matching descent mission; this override keeps the
+    // background pinned even if the mission lookup ever failed.
     try{
       const debugStage=new URLSearchParams(location.search).get('stage');
       if(debugStage&&STAGES[debugStage])return STAGES[debugStage];
@@ -5589,6 +5679,12 @@ export class Game2A {
     const missionStageKey = this.earthEncounterDirector.stageKey
       ?? earthFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
     if (this.missionDirector.activeMission && missionStageKey && STAGES[missionStageKey]) return STAGES[missionStageKey];
+    // Descent levels own their stage outright: no encounter table, no ladder.
+    // The mission key matches the stage key by construction.
+    const descentMission = this.missionDirector.activeMission;
+    if (this.isDescentMission(descentMission) && descentMission && STAGES[descentMission.key]) {
+      return STAGES[descentMission.key];
+    }
     // A guardian act has no authored encounter, so it reaches here with no
     // stageKey. Falling on through lands it on the WAVE ladder, which put the
     // Behemoth and the Destroyer in `data_canyon` -- a location Level 1 never

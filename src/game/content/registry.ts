@@ -508,6 +508,13 @@ export const STAGES: Record<string, StageDef> = {
   },
 };
 
+/**
+ * Descent playtest stages (PR #136). These are mission-owned backgrounds,
+ * never wave-ladder fallbacks: the wave ladder in Game2A filters them out,
+ * so free flight can never land on them at any wave.
+ */
+export const DESCENT_STAGE_KEYS = ['fog_moon_descent', 'mars_descent'];
+
 export const HAZARDS: Record<string, HazardDef> = scaleCombatants({
   basic_turret: {
     key: 'basic_turret',
