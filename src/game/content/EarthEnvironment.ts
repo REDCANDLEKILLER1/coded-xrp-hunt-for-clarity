@@ -93,3 +93,13 @@ export function surfaceTiles(position:number,height:number,tileHeight:number,clo
     return {...tile,mirror:false,ref};
   });
 }
+
+/** One-way descent 01→10, then hold on 10 (self-tiling) for surface combat. */
+export function fogTiles(travel:number,height:number,tileHeight:number){
+  return groundTiles(travel,height,tileHeight).map(tile=>({...tile,mirror:false,index:Math.min(Math.max(-tile.id,0),FOG_PATH.length-1)}));
+}
+
+/** One-way descent 01→10, then hold on 10 (self-tiling) for surface combat. */
+export function marsTiles(travel:number,height:number,tileHeight:number){
+  return groundTiles(travel,height,tileHeight).map(tile=>({...tile,mirror:false,index:Math.min(Math.max(-tile.id,0),MARS_PATH.length-1)}));
+}

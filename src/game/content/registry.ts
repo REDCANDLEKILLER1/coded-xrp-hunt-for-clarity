@@ -486,6 +486,26 @@ export const STAGES: Record<string, StageDef> = {
     structure: '#0b0b24',
     scrollSpeed: 86,
   },
+  fog_moon_descent: {
+    key: 'fog_moon_descent',
+    label: 'FOG MOON DESCENT',
+    background: { category: 'backgrounds', id: 'fog_path_01' },
+    minWave: 99,
+    sky: '#04070d',
+    accent: '#00ff00',
+    structure: '#0a1420',
+    scrollSpeed: 52,
+  },
+  mars_descent: {
+    key: 'mars_descent',
+    label: 'MARS DESCENT',
+    background: { category: 'backgrounds', id: 'mars_path_01' },
+    minWave: 99,
+    sky: '#0d0503',
+    accent: '#ff6b3d',
+    structure: '#2a1208',
+    scrollSpeed: 52,
+  },
 };
 
 export const HAZARDS: Record<string, HazardDef> = scaleCombatants({

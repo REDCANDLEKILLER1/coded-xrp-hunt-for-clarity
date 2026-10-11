@@ -14,7 +14,7 @@ import type { CampaignProgress, MissionCheckpointSnapshot } from '../content/Cam
 import { EarthFlightEncounterDirector, earthFlightEncounterFor } from '../content/EarthFlightEncounters';
 import { EARTH_ENEMIES, EARTH_HAZARDS } from '../content/EarthThreats';
 import {EARTH_ENTRY_BACKGROUND,EARTH_ENTRY_FALLBACK,earthEntryPose} from '../content/EarthEntry';
-import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles, surfaceTiles, CLOUD_DESCENT_DURATION } from '../content/EarthEnvironment';
+import { EARTH_BACKDROPS, groundTiles, SPACE_PATH, spaceTiles, surfaceTiles, CLOUD_DESCENT_DURATION, FOG_PATH, MARS_PATH, fogTiles, marsTiles } from '../content/EarthEnvironment';
 import type {FlightStoryPort} from '../content/EarthStory';
 import {RAPID_CAP,EARTH_WEAPON_CAP,weaponPointsLabel,FAMILY_INFO,nextFighterFamily,fighterTwinSeekers,TWIN_SEEKER_MAX_ACTIVE,type FighterArmoryPort,type FighterWeapon} from '../content/FighterWeapons';
 import {groundDefense,tickGround,groundVisible,groundAttacking,groundBeam,groundMuzzle,beamHits,linkedRelay,friendlyGround,GROUND_LABEL,GROUND_ART,type GroundDefense} from '../content/GroundDefense';
@@ -805,6 +805,10 @@ export class Game2A {
   private cloudDescent:number|null=null;
   private cityPathPosition=0;
   private cityHasCloudTail=false;
+  /** One-way descent progress for the Moon/Mars test stages; reset on entry. */
+  private fogDescentTravel=0;
+  private marsDescentTravel=0;
+  private prevStageKey='';
   private groundRestorationPending=false;
   private restoredGround:Array<{x:number;y:number;life:number}>=[];
   /** Copied observations only: the section test offers no state setters. */
@@ -1011,6 +1015,15 @@ export class Game2A {
     this.movePlayer(dt);
     this.groundTravel += this.currentStage().scrollSpeed * dt;
     if(this.missionDirector.activeMission&&['ledger_city','regulatory_outpost'].includes(this.currentStage().key))this.cityPathPosition+=dt/10;
+    // Moon/Mars descent test stages: one-way travel, reset on entry.
+    const stageKey=this.currentStage().key;
+    if(stageKey!==this.prevStageKey){
+      this.prevStageKey=stageKey;
+      if(stageKey==='fog_moon_descent')this.fogDescentTravel=0;
+      if(stageKey==='mars_descent')this.marsDescentTravel=0;
+    }
+    if(stageKey==='fog_moon_descent')this.fogDescentTravel+=this.currentStage().scrollSpeed*dt;
+    if(stageKey==='mars_descent')this.marsDescentTravel+=this.currentStage().scrollSpeed*dt;
     for(const restored of this.restoredGround){restored.y+=this.currentStage().scrollSpeed*dt;restored.life-=dt;}
     this.restoredGround=this.restoredGround.filter(restored=>restored.life>0&&restored.y<this.h+140);
     this.updateFacing(dt);
@@ -2960,6 +2973,9 @@ export class Game2A {
     const earth=!!this.missionDirector.activeMission;
     if(earth&&stage.key==='deep_space_lane'&&this.drawSpacePath())return true;
     if(earth&&['ledger_city','regulatory_outpost'].includes(stage.key)&&this.drawSurfacePath())return true;
+    // Moon/Mars descent test stages render with or without an active mission.
+    if(stage.key==='fog_moon_descent'&&this.drawFogPath())return true;
+    if(stage.key==='mars_descent'&&this.drawMarsPath())return true;
     const ref = earth ? EARTH_BACKDROPS[stage.key] ?? stage.background : this.boss || this.warship ? { category: 'backgrounds', id: 'boss_arena' } : stage.background;
     const image = this.assets.getImage(ref.category, ref.id);
     if (!image || image.width <= 0 || image.height <= 0) return false;
@@ -3039,6 +3055,50 @@ export class Game2A {
         const shade=this.ctx.createLinearGradient(0,y,0,y+band);
         shade.addColorStop(0,bottom?'rgba(0,0,0,0)':'#000');
         shade.addColorStop(1,bottom?'#000':'rgba(0,0,0,0)');
+        this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
+      }
+    }
+    this.ctx.restore();return drawn;
+  }
+
+  /** Fog Moon one-way descent 01→10, then hold on 10 (self-tiling). */
+  private drawFogPath():boolean {
+    const height=this.w*1.5;
+    let drawn=false;
+    this.ctx.save();this.ctx.fillStyle='#04070d';this.ctx.fillRect(0,0,this.w,this.h);
+    for(const tile of fogTiles(this.fogDescentTravel,this.h,height)){
+      const ref=FOG_PATH[tile.index];
+      const image=this.assets.getImage(ref.category,ref.id);if(!image)continue;
+      drawn=true;this.ctx.drawImage(image,0,tile.y,this.w,height);
+      // Fade both edges to the same seam so chained tiles roll together.
+      const band=height*.12;
+      for(const bottom of [false,true]){
+        const y=tile.y+(bottom?height-band:0);
+        const shade=this.ctx.createLinearGradient(0,y,0,y+band);
+        shade.addColorStop(0,bottom?'rgba(4,7,13,0)':'#04070d');
+        shade.addColorStop(1,bottom?'#04070d':'rgba(4,7,13,0)');
+        this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
+      }
+    }
+    this.ctx.restore();return drawn;
+  }
+
+  /** Mars one-way descent 01→10, then hold on 10 (self-tiling). */
+  private drawMarsPath():boolean {
+    const height=this.w*1.5;
+    let drawn=false;
+    this.ctx.save();this.ctx.fillStyle='#0d0503';this.ctx.fillRect(0,0,this.w,this.h);
+    for(const tile of marsTiles(this.marsDescentTravel,this.h,height)){
+      const ref=MARS_PATH[tile.index];
+      const image=this.assets.getImage(ref.category,ref.id);if(!image)continue;
+      drawn=true;this.ctx.drawImage(image,0,tile.y,this.w,height);
+      // Fade both edges to the same seam so chained tiles roll together.
+      const band=height*.12;
+      for(const bottom of [false,true]){
+        const y=tile.y+(bottom?height-band:0);
+        const shade=this.ctx.createLinearGradient(0,y,0,y+band);
+        shade.addColorStop(0,bottom?'rgba(13,5,3,0)':'#0d0503');
+        shade.addColorStop(1,bottom?'#0d0503':'rgba(13,5,3,0)');
         this.ctx.fillStyle=shade;this.ctx.fillRect(0,y,this.w,band);
       }
     }
@@ -5519,6 +5579,12 @@ export class Game2A {
   }
 
   private currentStage(): StageDef {
+    // Test route: ?stage=fog_moon_descent or ?stage=mars_descent flies the
+    // Moon/Mars background sequences directly, outside the mission campaign.
+    try{
+      const debugStage=new URLSearchParams(location.search).get('stage');
+      if(debugStage&&STAGES[debugStage])return STAGES[debugStage];
+    }catch{/* non-browser context */}
     // The launch reveal precedes encounter spawning; it still belongs in orbit.
     const missionStageKey = this.earthEncounterDirector.stageKey
       ?? earthFlightEncounterFor(this.missionDirector.currentAct?.key ?? '')?.stageKey;
