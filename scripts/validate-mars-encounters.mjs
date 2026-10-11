@@ -75,6 +75,7 @@ check(!/\.glb/i.test(src), 'no GLB references anywhere in the Mars slice');
 
 // --- Encounter tables: exact act coverage, Mars stage, Mars-only spawns ---
 const marsActs = ['mars_orbital_drop', 'mars_dust_storm', 'mars_canyon_run', 'mars_surface_run'];
+const { Game2A } = await load('src/game/core/Game2A.ts');
 check(JSON.stringify(Object.keys(MARS_FLIGHT_ENCOUNTERS).sort()) === JSON.stringify([...marsActs].sort()),
   'encounter tables cover exactly the four Mars flight acts');
 for (const act of marsActs) {
@@ -83,8 +84,73 @@ for (const act of marsActs) {
 check(marsFlightEncounterFor('mars_touchdown') === undefined, 'touchdown act has no encounter table (free flight)');
 check(marsFlightEncounterFor('orbital_approach') === undefined, 'no Earth act resolves a Mars encounter');
 
+// --- Deterministic: every group of every Mars table fires and spawns wired Mars enemies ---
+{
+  globalThis.location.search = '?stage=mars_descent';
+  const g = new Game2A(stubCanvas());
+  g.deployFromMap('mars', 'MARS — DESCENT');
+  g.render = () => {};
+  const seen = new Set();
+  for (const act of marsActs) {
+    g.marsEncounterDirector.start(act);
+    let done = false, guard = 0;
+    while (!done && guard++ < 500) {
+      const { spawns, completed } = g.marsEncounterDirector.update(0.5, 0);
+      for (const s of spawns) {
+        if (s.kind === 'enemy') { seen.add(s.enemyKey); g.spawnMissionDrone(s.enemyKey, s.x); }
+      }
+      done = completed;
+    }
+    check(done, `${act}: all authored groups fire`);
+  }
+  for (const key of Object.keys(MARS_ENEMIES)) {
+    check(seen.has(key), `${key} actually spawns from the authored tables`);
+  }
+  for (const d of g.drones) {
+    check(d.enemyKey in MARS_ENEMIES, `spawned drone ${d.enemyKey} resolved to a Mars def`);
+    check((d.hp ?? 0) > 0, `spawned drone ${d.enemyKey} has positive hp`);
+  }
+  globalThis.location.search = '';
+}
+
+// --- Weapon damage: the player's own gunfire hurts and kills every Mars airborne type ---
+{
+  globalThis.location.search = '?stage=mars_descent';
+  const g = new Game2A(stubCanvas());
+  g.deployFromMap('mars', 'MARS — DESCENT');
+  g.render = () => {};
+  g.player.hp = 99999;
+  const weapon = g.currentWeapon();
+  check((weapon.damage ?? 0) > 0, 'player weapon has positive damage');
+  const scoreBefore = g.score;
+  for (const key of Object.keys(MARS_ENEMIES)) {
+    g.drones.length = 0;
+    g.bolts.length = 0;
+    g.spawnMissionDrone(key, 0.5);
+    const drone = g.drones[g.drones.length - 1];
+    check(!!drone && (drone.hp ?? 0) > 0, `${key}: spawned with positive hp`);
+    // Hold it in the player's lane of fire; the game fires the player's real
+    // weapon on its own, so any kill is the engine's own combat loop.
+    let guard = 0;
+    while ((drone.hp ?? 0) > 0 && guard++ < 900) {
+      drone.x = g.player.x;
+      if (drone.y < 80) drone.y = 80;
+      if (drone.y > g.player.y - 60) drone.y = g.player.y - 260;
+      g.frame(1 / 60);
+      if ((g.player.hp ?? 0) < 99999) g.player.hp = 99999;
+    }
+    check((drone.hp ?? 0) <= 0, `${key}: killed by the player's own gunfire`);
+  }
+  check(g.score > scoreBefore, 'Mars kills registered score');
+  globalThis.location.search = '';
+}
+
+// NOTE: the Red Candle King handoff is intentionally NOT proven here. The King
+// fight lives on muse/part1-integration (turn-based); this branch's contract
+// ends at mars_touchdown with the mission completing cleanly. The handoff gets
+// proven when the branches integrate, not by this slice.
+
 // --- Behavioral: Mars mission flies authored encounters ---
-const { Game2A } = await load('src/game/core/Game2A.ts');
 const { EARTH_LEDGER_PRIME_MISSION } = await load('src/game/content/missions/ledgerPrime.ts');
 const earthActKeys = new Set(EARTH_LEDGER_PRIME_MISSION.acts.map((a) => a.key));
 {
@@ -145,4 +211,4 @@ const earthActKeys = new Set(EARTH_LEDGER_PRIME_MISSION.acts.map((a) => a.key));
 }
 
 if (failures.length) { for (const f of failures) console.error('FAIL: ' + f); process.exit(1); }
-console.log('mars-encounters: PASS — Mars threat defs, provisional sprites, authored encounters, mission wiring, Fog Moon untouched');
+console.log('mars-encounters: PASS — Mars threat defs, provisional sprites, authored encounters (all three types spawn), player-gun kill proof, mission wiring, Fog Moon untouched');
