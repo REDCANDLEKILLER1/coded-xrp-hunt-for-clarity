@@ -309,6 +309,22 @@ void game.start().then(() => {
     return;
   }
 
+  // Dedicated playtest route for the Fog Moon / Mars descent levels. Each
+  // deploys its own mission — its own acts, its own background roll, no
+  // Earth encounters, bosses, transitions, or story.
+  const descentStage = params.get('stage');
+  if (descentStage === 'fog_moon_descent' || descentStage === 'mars_descent') {
+    map.hide();
+    onFoot.hide();
+    gameShell.hidden = false;
+    canvas.style.visibility = 'visible';
+    game.deployFromMap(
+      descentStage === 'fog_moon_descent' ? 'fog_moon' : 'mars',
+      descentStage === 'fog_moon_descent' ? 'FOG MOON — DESCENT' : 'MARS — DESCENT',
+    );
+    return;
+  }
+
   // Dedicated playtest route for the space flight segment, the same shape as
   // ?onfoot. It is deliberately NOT wired into the mission flow yet: the
   // segment announces coded:space-complete / coded:space-defeat, and hooking
