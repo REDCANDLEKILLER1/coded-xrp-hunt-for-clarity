@@ -116,7 +116,7 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
     this.panel.append(heading,intro);
     const grid=document.createElement('div');grid.className='fighter-armory-grid';
     const newFamily=this.milestone?FIGHTER_FAMILIES.find(family=>this.milestone!.includes(FAMILY_INFO[family].label)):undefined;
-    const artSlots:{img:HTMLImageElement;family:FighterFamily}[]=[];
+    const artSlots:{img:HTMLImageElement;family:FighterFamily;probe:FighterWeaponState}[]=[];
     for(const family of FIGHTER_FAMILIES){
       const info=FAMILY_INFO[family],stage=fighterStageForState(this.current,family);
       const card=document.createElement('button');card.type='button';card.disabled=!stage;card.className='fighter-armory-card';
@@ -141,8 +141,10 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
         const stats=document.createElement('span');stats.className='stats';
         stats.textContent=`${dps.toFixed(1)} DPS${tags.length?' · '+tags.join(' · '):''}`;
         card.appendChild(stats);
-        artSlots.push({img,family});
       }
+      // Locked cards still show their art as a teaser; the probe state forces
+      // the family's own stage-1 profile past the locked-family fallback.
+      artSlots.push({img,family,probe:{...this.current,family,level:undefined,rank:Math.max(this.current.rank,FAMILY_INFO[family].unlock)}});
       card.addEventListener('click',()=>{if(!this.select(family)){intro.textContent='Loadout could not be saved. Try again.';}});
       grid.appendChild(card);
     }
@@ -155,7 +157,7 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
         if(paintId!==this.paintSeq||!this.opened)return;
         const projectiles=manifest['projectiles']??{};
         for(const slot of artSlots){
-          const weapon=fighterWeapon({...this.current,family:slot.family});
+          const weapon=fighterWeapon(slot.probe);
           const spriteId=PROJECTILES[weapon.projectileKey]?.sprite.id;
           const entry=spriteId?projectiles[spriteId]:undefined;
           const src=typeof entry==='string'?entry:entry?.src;
