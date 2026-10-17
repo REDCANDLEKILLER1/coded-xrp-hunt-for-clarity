@@ -10,7 +10,7 @@ export const EARTH_ENEMIES: Record<string, EnemyDef> = scaleCombatants({
   fast_scout: {
     key: 'fast_scout',
     label: 'FAST SCOUT',
-    sprite: { category: 'enemies', id: 'fast_scout' },
+    sprite: { category: 'enemies', id: 'fast_scout_v2' },
     // Re-authored down into the light band. At 30x40 this scouted bigger than
     // both mediums (31px tall against their 25px), so the size classes said
     // one thing and the content said another -- and size is the only signal
@@ -51,7 +51,7 @@ export const EARTH_HAZARDS: Record<string, HazardDef> = scaleCombatants({
   armored_space_mine: {
     key: 'armored_space_mine',
     label: 'ARMORED SPACE MINE',
-    sprite: { category: 'hazards', id: 'armored_space_mine' },
+    sprite: { category: 'hazards', id: 'armored_space_mine_v2' },
     draw: { w: 46, h: 40 },
     hitbox: { w: 36, h: 32 },
     hp: 3,
@@ -72,13 +72,13 @@ export function validateEarthThreats(): string[] {
   const scout = EARTH_ENEMIES.fast_scout;
   const mine = EARTH_HAZARDS.armored_space_mine;
 
-  if (!scout || scout.sprite.category !== 'enemies' || scout.sprite.id !== 'fast_scout') {
+  if (!scout || scout.sprite.category !== 'enemies' || scout.sprite.id !== 'fast_scout_v2') {
     errors.push('earthThreat.fast_scout: manifest sprite mapping is invalid');
   }
   if (!scout || scout.hp < 1 || scout.baseSpeed <= 0 || scout.spawnWeight !== 0) {
     errors.push('earthThreat.fast_scout: campaign-only stats are invalid');
   }
-  if (!mine || mine.sprite.category !== 'hazards' || mine.sprite.id !== 'armored_space_mine') {
+  if (!mine || mine.sprite.category !== 'hazards' || mine.sprite.id !== 'armored_space_mine_v2') {
     errors.push('earthThreat.armored_space_mine: manifest sprite mapping is invalid');
   }
   if (!mine || mine.hp < 1 || mine.fires || mine.placement !== 'lane' || mine.spawnWeight !== 0) {

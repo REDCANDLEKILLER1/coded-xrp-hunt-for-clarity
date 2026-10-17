@@ -118,7 +118,7 @@ export const LEDGER_TRANSIT: SpaceLeg = {
     { enemyKey: 'fog_raider', count: 6, pattern: 'joust', hp: 3, speed: 100, standoff: 840, fireInterval: 1.9, delay: 18, entryRange: 6400, score: 70 },
   ],
   boss: {
-    spriteKey: 'cyber_battleship',
+    spriteKey: 'cyber_battleship_v2',
     label: 'GUARDIAN PROTOCOL',
     /**
      * Health, sized against the guns rather than guessed.
