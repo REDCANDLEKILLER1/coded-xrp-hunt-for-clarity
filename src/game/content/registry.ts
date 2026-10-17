@@ -111,7 +111,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
   regulator_drone: {
     key: 'regulator_drone',
     label: 'REGULATOR',
-    sprite: { category: 'enemies', id: 'regulator_drone' },
+    sprite: { category: 'enemies', id: 'regulator_drone_v2' },
     draw: { w: 26, h: 26 },
     hitbox: { w: 20, h: 19 },
     hp: 1,
@@ -189,7 +189,7 @@ export const ENEMIES: Record<string, EnemyDef> = scaleCombatants({
 export const PROJECTILES: Record<string, ProjectileDef> = {
   bb_shot: {
     key: 'bb_shot',
-    sprite: { category: 'projectiles', id: 'bb_shot' },
+    sprite: { category: 'projectiles', id: 'bb_shot_v2' },
     draw: { w: 7, h: 22 },
     hitbox: { w: 5, h: 14 },
     speed: 720,
@@ -402,7 +402,7 @@ export const PICKUPS: Record<string, PickupDef> = {
   shield_cell: {
     key: 'shield_cell',
     label: 'SHIELD CELL',
-    sprite: { category: 'pickups', id: 'shield_cell' },
+    sprite: { category: 'pickups', id: 'shield_cell_v2' },
     draw: { w: 22, h: 22 },
     hitbox: { w: 17, h: 17 },
     driftSpeed: 88,
@@ -519,7 +519,7 @@ export const HAZARDS: Record<string, HazardDef> = scaleCombatants({
   basic_turret: {
     key: 'basic_turret',
     label: 'BASIC TURRET',
-    sprite: { category: 'hazards', id: 'basic_turret' },
+    sprite: { category: 'hazards', id: 'basic_turret_v2' },
     draw: { w: 32, h: 32 },
     hitbox: { w: 26, h: 26 },
     hp: 3,

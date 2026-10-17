@@ -153,6 +153,26 @@
         "legacy_space",
         "legacy_onfoot"
       ]
+    },
+    "regulator_drone_v2": {
+      "src": "/assets/enemies/regulator_drone_v2.webp",
+      "type": "image",
+      "notes": "Quick Share sprite drop 2026-10-17: full-res key from enemy_regulator_drone.png (edge flood-fill, 256px). Old regulator_drone art preserved for Mars provisional sprites.",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
+    },
+    "fast_scout_v2": {
+      "src": "/assets/enemies/fast_scout_v2.webp",
+      "type": "image",
+      "notes": "Quick Share sprite drop 2026-10-17: full-res key from enemy_fast_scout.png (edge flood-fill, 256px). Old fast_scout art preserved for Mars provisional sprites.",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "bosses": {
@@ -206,10 +226,10 @@
         "legacy_onfoot"
       ]
     },
-    "cyber_battleship": {
-      "src": "/assets/bosses/cyber_battleship.webp",
+    "cyber_battleship_v2": {
+      "src": "/assets/bosses/cyber_battleship_v2.webp",
       "type": "image",
-      "notes": "Guardian Protocol, the transit-leg boss. Keyed from the approved 1254x1254 RGB render: background flooded from the borders so the dark armour panels stay solid, with a 7px luminance feather on the neon falloff. Squared, trimmed and resampled to 640.",
+      "notes": "Quick Share sprite drop 2026-10-17: full-res key from boss_cyber_battleship.png (edge flood-fill, 256px). Old cyber_battleship.webp preserved on disk (unregistered).",
       "scenes": [
         "flight",
         "legacy_space",
@@ -219,16 +239,6 @@
   },
   "weapons": {},
   "projectiles": {
-    "bb_shot": {
-      "src": "/assets/projectiles/bb_shot.webp",
-      "type": "image",
-      "notes": "Phase Q optimized v16 canon master: projectile_player_bb",
-      "scenes": [
-        "flight",
-        "legacy_space",
-        "legacy_onfoot"
-      ]
-    },
     "enemy_red_bullet": {
       "src": "/assets/projectiles/enemy_red_bullet.webp",
       "type": "image",
@@ -263,6 +273,16 @@
       "src": "/assets/projectiles/seeker_missile.png",
       "type": "image",
       "notes": "From futuristic_rocket_with_neon_glow.png: keyed off its black background, trimmed and scaled to 15x43",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
+    },
+    "bb_shot_v2": {
+      "src": "/assets/projectiles/bb_shot_v2.webp",
+      "type": "image",
+      "notes": "Quick Share sprite drop 2026-10-17: key from archive_projectile_player_bb.png (edge flood-fill, 256px). Old bb_shot.webp preserved on disk (unregistered).",
       "scenes": [
         "flight",
         "legacy_space",
@@ -999,16 +1019,6 @@
     }
   },
   "hazards": {
-    "basic_turret": {
-      "src": "/assets/hazards/basic_turret.webp",
-      "type": "image",
-      "notes": "Phase R optimized original-build master: ground_basic_turret",
-      "scenes": [
-        "flight",
-        "legacy_space",
-        "legacy_onfoot"
-      ]
-    },
     "cannon_turret": {
       "src": "/assets/hazards/cannon_turret.webp",
       "type": "image",
@@ -1053,16 +1063,6 @@
       "src": "/assets/hazards/plasma_turret.webp",
       "type": "image",
       "notes": "Phase R optimized original-build master: ground_plasma_turret",
-      "scenes": [
-        "flight",
-        "legacy_space",
-        "legacy_onfoot"
-      ]
-    },
-    "armored_space_mine": {
-      "src": "/assets/hazards/armored_space_mine.webp",
-      "type": "image",
-      "notes": "L1-D1 optimized transparent runtime crop from supplied enemy_armored_space_mine master",
       "scenes": [
         "flight",
         "legacy_space",
@@ -1148,6 +1148,26 @@
       "bytes": 18202,
       "sha256": "8ff88e590b2834f26e9ca3c5086dd702e2c971170fed8ef7b7c2ee57136bb6a9",
       "notes": "Original built-in image generation; alpha preserved in optimized derivative; private master and prompt retained"
+    },
+    "basic_turret_v2": {
+      "src": "/assets/hazards/basic_turret_v2.webp",
+      "type": "image",
+      "notes": "Quick Share sprite drop 2026-10-17: key from ground_defense_turret.png (edge flood-fill, 256px). Old basic_turret.webp preserved on disk (unregistered).",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
+    },
+    "armored_space_mine_v2": {
+      "src": "/assets/hazards/armored_space_mine_v2.webp",
+      "type": "image",
+      "notes": "Quick Share sprite drop 2026-10-17: full-res key from enemy_armored_space_mine.png (edge flood-fill, 256px). Old armored_space_mine.webp preserved on disk (unregistered).",
+      "scenes": [
+        "flight",
+        "legacy_space",
+        "legacy_onfoot"
+      ]
     }
   },
   "environment": {
@@ -1253,10 +1273,10 @@
         "legacy_onfoot"
       ]
     },
-    "shield_cell": {
-      "src": "/assets/pickups/shield_cell.png",
+    "shield_cell_v2": {
+      "src": "/assets/pickups/shield_cell_v2.webp",
       "type": "image",
-      "notes": "From the Images_for_coded pack: pickup_shield, caption cropped off and boxed to 44x44",
+      "notes": "Quick Share sprite drop 2026-10-17: key from pickup_shield.png (edge flood-fill, 256px). Old shield_cell.png preserved on disk (unregistered).",
       "scenes": [
         "flight",
         "legacy_space",
