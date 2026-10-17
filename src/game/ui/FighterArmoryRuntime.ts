@@ -1,5 +1,7 @@
 import type {CampaignSave} from '../definitive/CampaignSave';
 import {FIGHTER_FAMILIES,FAMILY_INFO,ROMAN,RAPID_CAP,EARTH_WEAPON_CAP,EARTH_WEAPON_THRESHOLDS,earthWeaponLevel,weaponPointsLabel,retainedWeaponPower,nextFighterFamily,fighterStageForState,fighterStage,fighterWeapon,type FighterFamily,type FighterWeaponState,type FighterArmoryPort} from '../content/FighterWeapons';
+import {PROJECTILES} from '../content/registry';
+import {loadAssetCatalog} from '../core/AssetCatalog';
 
 /** Only the fighter track is written. Hero powers and capital modules are
  * separate save fields and cannot be spent/equipped through this panel. */
@@ -105,16 +107,61 @@ export class FighterArmoryRuntime implements FighterArmoryPort {
     if(!this.enabled||!safe)this.opened=false;
     this.panel.hidden=!this.opened;this.button.hidden=this.opened;return this.opened;
   }
+  private paintSeq=0;
   private paint():void {
     this.panel.replaceChildren();this.panel.hidden=!this.opened;this.button.hidden=this.opened;
+    const paintId=++this.paintSeq;
     const heading=document.createElement('strong');heading.textContent=this.milestone?'LEVEL UP — '+this.milestone:'FIGHTER LOADOUT';
-    const intro=document.createElement('p');intro.textContent=`${this.current.level===undefined?'MASTERY '+this.current.rank:'WEAPON LEVEL '+this.current.level+'/'+EARTH_WEAPON_CAP+' · '+weaponPointsLabel(this.current)} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Kills earn weapon points; WPN pickups add 4 bonus points. Earth offers four milestones. New weapons unlock without replacing your equipped gun. Select an unlocked weapon below. Max rapid fire adds twin homing rockets; beam weapons become laser pulses.`;
+    const intro=document.createElement('p');intro.textContent=`${this.current.level===undefined?'MASTERY '+this.current.rank:'WEAPON LEVEL '+this.current.level+'/'+EARTH_WEAPON_CAP+' · '+weaponPointsLabel(this.current)} · RAPID FIRE ${this.current.rapid}/${RAPID_CAP}. Kills earn weapon points; WPN pickups add 4 bonus points. New weapons unlock without replacing your equipped gun — tap a card to equip it.`;
     this.panel.append(heading,intro);
+    const grid=document.createElement('div');grid.className='fighter-armory-grid';
+    const newFamily=this.milestone?FIGHTER_FAMILIES.find(family=>this.milestone!.includes(FAMILY_INFO[family].label)):undefined;
+    const artSlots:{img:HTMLImageElement;family:FighterFamily}[]=[];
     for(const family of FIGHTER_FAMILIES){
-      const info=FAMILY_INFO[family],stage=fighterStageForState(this.current,family),button=document.createElement('button');button.type='button';button.disabled=!stage;
-      const name=document.createElement('b'),detail=document.createElement('span');name.textContent=stage?`${info.label} ${ROMAN[stage-1]}${family===this.current.family?' · EQUIPPED':''}`:`${info.label} · ${this.current.level===undefined?'RANK '+info.unlock:(family==='pulse'?'UNLOCK AT 200 WPN POINTS':'LATER WORLDS')}`;detail.textContent=info.description;button.append(name,detail);
-      button.addEventListener('click',()=>{if(!this.select(family)){intro.textContent='Loadout could not be saved. Try again.';}});this.panel.appendChild(button);
+      const info=FAMILY_INFO[family],stage=fighterStageForState(this.current,family);
+      const card=document.createElement('button');card.type='button';card.disabled=!stage;card.className='fighter-armory-card';
+      const art=document.createElement('div');art.className='art';
+      const img=document.createElement('img');img.alt=`${info.label} projectile`;img.decoding='async';img.draggable=false;
+      art.appendChild(img);card.appendChild(art);
+      const name=document.createElement('b');name.className='name';name.textContent=stage?`${info.label} ${ROMAN[stage-1]}`:info.label;card.appendChild(name);
+      if(stage&&family===this.current.family){const badge=document.createElement('i');badge.className='badge equipped';badge.textContent='EQUIPPED';card.appendChild(badge);}
+      if(stage&&family===newFamily){const badge=document.createElement('i');badge.className='badge fresh';badge.textContent='NEW';card.appendChild(badge);}
+      const detail=document.createElement('span');detail.className='detail';
+      detail.textContent=stage?info.description:(this.current.level===undefined?`Unlocks at rank ${info.unlock}`:(family==='pulse'?'Unlock at 200 WPN points':'Unlocks on later worlds'));
+      card.appendChild(detail);
+      if(stage){
+        const weapon=fighterWeapon({...this.current,family});
+        const tags:string[]=[];
+        if(weapon.shots.length>1)tags.push(`${weapon.shots.length}-WAY`);
+        if(weapon.pierce)tags.push(`PIERCE ${weapon.pierce}`);
+        if(weapon.splash)tags.push(`SPLASH ${weapon.splash}`);
+        if(weapon.chain)tags.push(`CHAIN ${weapon.chain}`);
+        if(weapon.laserPulse)tags.push('LASER PULSE');
+        const dps=weapon.damage*weapon.shots.length/weapon.fireRate;
+        const stats=document.createElement('span');stats.className='stats';
+        stats.textContent=`${dps.toFixed(1)} DPS${tags.length?' · '+tags.join(' · '):''}`;
+        card.appendChild(stats);
+        artSlots.push({img,family});
+      }
+      card.addEventListener('click',()=>{if(!this.select(family)){intro.textContent='Loadout could not be saved. Try again.';}});
+      grid.appendChild(card);
     }
+    this.panel.appendChild(grid);
     const close=document.createElement('button');close.type='button';close.textContent=this.milestone?'CONTINUE':'RETURN';close.addEventListener('click',()=>{this.milestone=null;this.opened=false;this.panel.hidden=true;this.button.hidden=false;});this.panel.appendChild(close);
+    // Fill each card's art from the runtime asset catalog. The stats and text
+    // carry the card if the manifest or an image is unavailable.
+    if(artSlots.length){
+      void loadAssetCatalog().then(manifest=>{
+        if(paintId!==this.paintSeq||!this.opened)return;
+        const projectiles=manifest['projectiles']??{};
+        for(const slot of artSlots){
+          const weapon=fighterWeapon({...this.current,family:slot.family});
+          const spriteId=PROJECTILES[weapon.projectileKey]?.sprite.id;
+          const entry=spriteId?projectiles[spriteId]:undefined;
+          const src=typeof entry==='string'?entry:entry?.src;
+          if(src)slot.img.src=src;
+        }
+      }).catch(()=>{/* art stays empty; the card still reads correctly */});
+    }
   }
 }

@@ -18,6 +18,7 @@ globalThis.innerWidth=390;globalThis.innerHeight=844;globalThis.devicePixelRatio
 globalThis.document={addEventListener(){},removeEventListener(){},querySelector:()=>null,createElement:()=>new Element(),body:new Element()};
 globalThis.window={addEventListener(){},removeEventListener(){},dispatchEvent:()=>true,setTimeout,clearTimeout,localStorage:storage,devicePixelRatio:1,innerWidth:390,innerHeight:844};
 globalThis.location={search:'',pathname:'/'};
+globalThis.fetch=async()=>({ok:true,json:async()=>({projectiles:{bb_shot_v2:{src:'/assets/projectiles/bb_shot_v2.webp'},clarity_beam:{src:'/assets/projectiles/clarity_beam.webp'}}})});
 const load=async path=>{const result=await build({entryPoints:[path],bundle:true,write:false,format:'esm',logLevel:'silent'});return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);};
 const {Game2A}=await load('src/game/core/Game2A.ts');
 const {CampaignSave}=await load('src/game/definitive/CampaignSave.ts');
@@ -125,17 +126,48 @@ for(const family of ['rocket','plasma','ledger']){
 {
   const f=fixture();f.save.update(d=>{d.heroUpgrades={ledger_shield:1};d.capitalUpgrades={shield_module:1};});
   const before=f.save.snapshot;f.armory.update(true);const root=f.parent.children[0];root.children[0].click();assert.ok(f.armory.active);
-  const panel=root.children[1];panel.children[3].click();assert.equal(f.armory.state.family,'bb','locked pulse button cannot equip');
-  f.armory.rankUp(13);panel.children[6].click();assert.equal(f.armory.state.family,'ledger');assert.ok(f.armory.active);
-  fail=true;const saved=f.save.snapshot;panel.children[4].click();assert.deepEqual(f.save.snapshot,saved,'failed equip atomic');assert.equal(f.armory.state.family,'ledger');fail=false;
-  panel.children[4].click();assert.equal(f.armory.state.family,'rocket');f.armory.update(false);assert.equal(f.armory.active,false);
-  const state=f.save.snapshot;panel.children[5].click();assert.deepEqual(f.save.snapshot,state,'unsafe stale DOM cannot equip');
+  const panel=root.children[1];const cards=()=>panel.children[2].children;
+  assert.equal(cards().length,5,'five weapon cards in the showcase grid');
+  cards()[1].click();assert.equal(f.armory.state.family,'bb','locked pulse card cannot equip');
+  f.armory.rankUp(13);cards()[4].click();assert.equal(f.armory.state.family,'ledger');assert.ok(f.armory.active);
+  fail=true;const saved=f.save.snapshot;cards()[2].click();assert.deepEqual(f.save.snapshot,saved,'failed equip atomic');assert.equal(f.armory.state.family,'ledger');fail=false;
+  cards()[2].click();assert.equal(f.armory.state.family,'rocket');f.armory.update(false);assert.equal(f.armory.active,false);
+  const state=f.save.snapshot;cards()[3].click();assert.deepEqual(f.save.snapshot,state,'unsafe stale DOM cannot equip');
   assert.deepEqual(state.heroUpgrades,before.heroUpgrades);assert.deepEqual(state.capitalUpgrades,before.capitalUpgrades);
   const reloaded=new FighterArmoryRuntime(new Element(),new CampaignSave(storage,f.save.key.split(':').slice(1).join(':')));assert.equal(reloaded.state.family,'rocket');assert.equal(reloaded.state.rank,13);
   for(let i=0;i<4;i++)assert.ok(f.armory.upgradeRapid());const capped=f.save.snapshot;assert.equal(f.armory.upgradeRapid(),false);assert.deepEqual(f.save.snapshot,capped);
   // A failed rank receipt retains the equipped gun, then the real frame loop retries.
   f.g.xpLevel=14;fail=true;f.g.syncFighterMastery();assert.equal(f.g.currentWeapon().family,'rocket');assert.equal(f.armory.state.rank,13);fail=false;
   f.g.paused=true;f.g.frame(2.1);assert.equal(f.armory.state.rank,14);
+}
+// The loadout is a visual showcase: five cards, each with projectile art, a
+// name, a description, live DPS stats and an equipped badge — not just words.
+{
+  const f=fixture();f.armory.update(true);const root=f.parent.children[0];root.children[0].click();assert.ok(f.armory.active);
+  const panel=root.children[1];const grid=panel.children[2];assert.equal(grid.children.length,5);
+  for(const card of grid.children){
+    assert.equal(card.className,'fighter-armory-card');
+    const art=card.children.find(c=>c.className==='art');assert.ok(art,'card carries art');
+    const name=card.children.find(c=>c.className==='name');assert.ok(name&&name.textContent.length>0,'card carries a name');
+    const detail=card.children.find(c=>c.className==='detail');assert.ok(detail&&detail.textContent.length>0,'card carries a description');
+  }
+  await new Promise(resolve=>setTimeout(resolve,0));
+  const bbCard=grid.children[0];
+  const bbImg=bbCard.children.find(c=>c.className==='art').children[0];
+  assert.ok(bbImg.src.includes('bb_shot_v2'),'bb card shows the real bb shot art');
+  const stats=bbCard.children.find(c=>c.className==='stats');
+  assert.ok(stats&&stats.textContent.includes('DPS'),'card shows live DPS stats');
+  const badge=bbCard.children.find(c=>(c.className??'').split(' ').includes('badge'));
+  assert.ok(badge&&badge.textContent==='EQUIPPED','equipped gun is badged');
+  assert.equal(grid.children[1].disabled,true,'pulse card stays locked at rank 1');
+  f.armory.rankUp(4);
+  await new Promise(resolve=>setTimeout(resolve,0));
+  const pulseCard=panel.children[2].children[1];
+  const pulseImg=pulseCard.children.find(c=>c.className==='art').children[0];
+  assert.ok(pulseImg.src.includes('clarity_beam'),'pulse card shows the beam art');
+  const pulseStats=pulseCard.children.find(c=>c.className==='stats');
+  assert.ok(pulseStats&&pulseStats.textContent.includes('PIERCE'),'pulse card advertises pierce');
+  closeArmory(f);assert.equal(f.armory.active,false);
 }
 {
   const f=fixture();f.g.pendingUpgrades=1;f.g.upgradeOffer=['barrel'];const before=f.save.snapshot;
@@ -266,15 +298,15 @@ function closeArmory(f){if(f.armory.active)f.parent.children[0].children[1].chil
    const panel=f.parent.children[0].children[1];assert.ok(panel.children[0].textContent.startsWith('LEVEL UP'));
    let updates=0;const real=f.g.update;f.g.update=()=>updates++;const clock=f.g.clock;f.g.frame(.1);assert.equal(updates,0);assert.equal(f.g.clock,clock);f.g.update=real;
    assert.ok(f.g.centredDps()>=priorDps);priorDps=f.g.centredDps();
-   if(points===200){assert.ok(panel.children[0].textContent.includes('NEW WEAPON'));assert.equal(panel.children[3].disabled,false);assert.equal(panel.children[4].disabled,true);}
+   if(points===200){assert.ok(panel.children[0].textContent.includes('NEW WEAPON'));assert.equal(panel.children[2].children[1].disabled,false);assert.equal(panel.children[2].children[2].disabled,true);}
    closeArmory(f);
   }
  }
  assert.equal(milestones,4);assert.equal(f.armory.state.level,5);assert.equal(f.armory.weapon.stage,4);assert.equal(f.armory.upgradeWeapon(),false);
  f.g.frame(.01);const root=f.parent.children[0];root.children[0].click();const panel=root.children[1];
- panel.children[3].click();assert.equal(f.armory.state.family,'pulse');const threat=f.g.campaignThreatScale();
+ panel.children[2].children[1].click();assert.equal(f.armory.state.family,'pulse');const threat=f.g.campaignThreatScale();
  f.g.applyPickup('weapon_upgrade');assert.equal(f.armory.state.family,'pulse','pickup cannot switch selected weapon');assert.equal(f.armory.state.points,200);
- panel.children[2].click();assert.equal(f.armory.state.family,'bb');assert.equal(f.g.campaignThreatScale(),threat,'loadout switching cannot weaken enemies');closeArmory(f);
+ panel.children[2].children[0].click();assert.equal(f.armory.state.family,'bb');assert.equal(f.g.campaignThreatScale(),threat,'loadout switching cannot weaken enemies');closeArmory(f);
 }
 {
  const f=coreFixture();f.g.barrels=4;f.g.shieldMax=99;f.g.bombPower=99;f.g.pulsePower=99;
@@ -287,7 +319,7 @@ function closeArmory(f){if(f.armory.active)f.parent.children[0].children[1].chil
 }
 {
  const f=coreFixture();f.g.paused=false;f.g.frame(.01);const root=f.parent.children[0];assert.equal(root.hidden,false);
- root.children[0].click();const panel=root.children[1];panel.children[3].click();assert.equal(f.armory.state.family,'bb','pulse remains locked before 200 points');
+ root.children[0].click();const panel=root.children[1];panel.children[2].children[1].click();assert.equal(f.armory.state.family,'bb','pulse remains locked before 200 points');
  let updates=0;const clock=f.g.clock;f.g.update=()=>updates++;f.g.frame(.1);assert.equal(f.g.clock,clock);assert.equal(updates,0);assert.equal(f.g.storyCapturedInput,true);
  closeArmory(f);f.g.frame(.1);assert.equal(updates,1);assert.equal(f.g.storyCapturedInput,false);
  f.armory.awardWeaponPoints(24);f.armory.block();f.armory.update(true);assert.equal(f.armory.active,true,'story interruption cannot discard pending level-up');closeArmory(f);

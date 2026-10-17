@@ -782,6 +782,17 @@ canvas {
 .fighter-armory-panel button span { display:block; color:#c0d1c3; font-weight:400; margin-top:5px; }
 .fighter-armory-panel button:disabled { opacity:.45; }
 .fighter-armory-panel button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+.fighter-armory-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+.fighter-armory-panel .fighter-armory-card { display:flex; flex-direction:column; align-items:center; text-align:center; margin-top:0; padding:12px 10px; gap:6px; min-height:0; }
+.fighter-armory-panel .fighter-armory-card .art { height:76px; display:flex; align-items:center; justify-content:center; }
+.fighter-armory-panel .fighter-armory-card .art img { max-height:76px; max-width:130px; filter:drop-shadow(0 0 8px rgba(0,255,0,.45)); }
+.fighter-armory-panel .fighter-armory-card .name { color:#00ff00; font-size:12px; letter-spacing:.06em; }
+.fighter-armory-panel .fighter-armory-card .detail { font-size:11px; margin-top:0; }
+.fighter-armory-panel .fighter-armory-card .stats { font-size:10px; color:#8fd694; letter-spacing:.04em; margin-top:0; }
+.fighter-armory-panel .fighter-armory-card .badge { font:700 9px system-ui; font-style:normal; letter-spacing:.12em; padding:3px 8px; border-radius:20px; }
+.fighter-armory-panel .fighter-armory-card .badge.equipped { background:#00ff00; color:#04140a; }
+.fighter-armory-panel .fighter-armory-card .badge.fresh { border:1px solid #ffd23f; color:#ffd23f; }
+.fighter-armory-panel .fighter-armory-card:disabled .art img { opacity:.3; filter:grayscale(1); }
 @media (orientation:landscape) { .earth-comms .boarding-dialogue { bottom:40px; max-width:620px; } .earth-comms-log { top:92px; } }
 .boarding-dialogue p { min-height: 40px; margin: 10px 0; font-size: 15px; font-weight: 450; }
 .boarding-dialogue { padding: 12px 16px; bottom: 38px; }
