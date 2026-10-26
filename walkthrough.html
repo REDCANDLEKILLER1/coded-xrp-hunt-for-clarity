@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#1a0d08" />
+    <title>CODED: XRP — Cathedral Walkthrough (Preview)</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #140a06; }
+      #view { display: block; width: 100%; height: 100%; touch-action: none; }
+      #overlay {
+        position: fixed; inset: 0; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 12px;
+        background: rgba(10, 5, 3, 0.82); color: #f5e9dc;
+        font-family: system-ui, -apple-system, sans-serif; text-align: center; padding: 24px;
+      }
+      #overlay h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; }
+      #overlay p { margin: 0; max-width: 520px; line-height: 1.5; font-size: 15px; opacity: 0.9; }
+      #overlay .note { font-size: 13px; opacity: 0.65; }
+      #enter {
+        margin-top: 8px; padding: 12px 28px; font-size: 16px; cursor: pointer;
+        color: #140a06; background: #ffb347; border: none; border-radius: 8px; font-weight: 700;
+      }
+      #enter:disabled { opacity: 0.5; cursor: default; }
+      #bar-wrap { width: min(420px, 80vw); height: 10px; background: #3a241a; border-radius: 6px; overflow: hidden; }
+      #bar { height: 100%; width: 0%; background: #ffb347; transition: width 0.2s; }
+      #joy-base, #joy-knob {
+        position: fixed; border-radius: 50%; pointer-events: none; display: none; z-index: 5;
+      }
+      #joy-base { width: 120px; height: 120px; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(255, 255, 255, 0.06); }
+      #joy-knob { width: 52px; height: 52px; background: rgba(255, 179, 71, 0.75); }
+      #err { color: #ff7a6b; max-width: 520px; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="overlay">
+      <h1>Cathedral Walkthrough — Preview</h1>
+      <p id="status">Loading the cathedral, the King, and the Sentinel…</p>
+      <div id="bar-wrap"><div id="bar"></div></div>
+      <p id="howto" class="note">Desktop: WASD to move, mouse to look, Shift to run. Mobile: left side joystick to move, right side drag to look.</p>
+      <button id="enter" type="button" disabled>Enter the cathedral</button>
+      <p class="note">Standalone preview — not part of the main game yet. No collision in v1; you can walk through geometry.</p>
+      <p id="err"></p>
+    </div>
+    <div id="joy-base"></div>
+    <div id="joy-knob"></div>
+    <script type="module" src="/src/walkthrough.ts"></script>
+  </body>
+</html>
