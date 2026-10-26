@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 /**
  * Cathedral walkthrough — standalone preview page (NOT wired into the main
- * game). Three.js scene: Blender cathedral v1 + Meshy King + Meshy Sentinel,
+ * game). Three.js scene: Blender cathedral v2 (2.5x hall) + Meshy King + Meshy Sentinel,
  * staged on a flat Mars ground plane. Desktop: WASD + pointer-lock mouse
  * look. Mobile: left-half virtual joystick + right-half drag look.
  *
@@ -17,15 +17,21 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // Staging constants — measured from the Meshy GLBs (2026-10-26).
 // GLB node matrices are identity, so accessor min/max are the world boxes.
 // King raw: height 1.729649, minY -0.872008 (origin at vertical center).
-//   scale = 30.48 / 1.729649 = 17.622072 -> exactly 30.48 m tall on the 4 m
-//   dais (top 34.48 m, 19.52 m of headroom under the 54 m vault).
+//   scale = 30.48 / 1.729649 = 17.622072 -> exactly 30.48 m tall on the 10 m
+//   dais (top 40.48 m, 94.52 m of headroom under the 135 m vault).
+//   v2 hall is the v1 design scaled 2.5x about the origin: arena 200 m
+//   across, wall radius 137.5 m, dais 65x32.5 m. Nearest pillar is 21.56 m
+//   from the King center; King arms reach 16.77 m; pillar shafts are 2.5 m
+//   radius, so clearance is 2.29 m (a fully-scaled 4.0 m shaft would leave
+//   only 0.79 m, so shafts were slimmed to meet the 2 m margin bar).
 //   foot offset = 0.872008 * 17.622072 = 15.366589.
 //   Facing: Blender renders show the face on the -Y side; Blender -Y maps
 //   to glTF +Z, so the King front is glTF +Z. To face world -Z (altar ->
 //   arena) it needs rotation PI.
 // Sentinel raw: height 1.901977, minY -0.952655 (origin at vertical center).
-//   scale = 1.9 / 1.901977 = 0.998961 -> 1.90 m tall (already ~man-sized).
-//   foot offset = 0.952655 * 0.998961 = 0.951665.
+//   scale = 1.9304 / 1.901977 = 1.014944 -> exactly 1.9304 m (6 ft 4 in;
+//   v1 staged 1.90 m, corrected in v2).
+//   foot offset = 0.952655 * 1.014944 = 0.966891.
 //   Facing: Blender renders show the BACK on the +Y side (back of head,
 //   back armor, no chest emblem), so the front is Blender -Y = glTF +Z.
 //   To face world +Z (arena -> altar) it needs rotation 0.
@@ -33,8 +39,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const KING_SCALE = 17.622072;
 const KING_FOOT_OFFSET = 15.366589;
 const KING_ROT_Y = Math.PI;
-const SENTINEL_SCALE = 0.998961;
-const SENTINEL_FOOT_OFFSET = 0.951665;
+const SENTINEL_SCALE = 1.014944;
+const SENTINEL_FOOT_OFFSET = 0.966891;
 const SENTINEL_ROT_Y = 0.0;
 
 // ---------------------------------------------------------------------------
@@ -62,28 +68,28 @@ renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xc27a4a); // Mars butterscotch sky
-scene.fog = new THREE.Fog(0xc27a4a, 120, 480);
+scene.fog = new THREE.Fog(0xc27a4a, 300, 1200);
 
 const camera = new THREE.PerspectiveCamera(
   70,
   window.innerWidth / window.innerHeight,
   0.1,
-  1200,
+  3000,
 );
 camera.rotation.order = 'YXZ';
 
 scene.add(new THREE.AmbientLight(0xffe0c0, 0.65));
 const sun = new THREE.DirectionalLight(0xffd9a0, 1.8);
-sun.position.set(60, 120, -40);
+sun.position.set(150, 300, -100);
 scene.add(sun);
-const altarGlow = new THREE.PointLight(0xff4400, 800, 120, 1.8);
-altarGlow.position.set(0, 14, 40);
+const altarGlow = new THREE.PointLight(0xff4400, 4200, 300, 1.8);
+altarGlow.position.set(0, 35, 100);
 scene.add(altarGlow);
-const arenaGlow = new THREE.PointLight(0xffa040, 500, 100, 1.8);
-arenaGlow.position.set(0, 20, 0);
+const arenaGlow = new THREE.PointLight(0xffa040, 2600, 250, 1.8);
+arenaGlow.position.set(0, 50, 0);
 scene.add(arenaGlow);
 
-// Mars ground plane (v1: flat disc; sculpted terrain is a later layer).
+// Mars ground plane (flat disc; sculpted terrain is a later layer).
 const mars = new THREE.Mesh(
   new THREE.CircleGeometry(500, 64),
   new THREE.MeshStandardMaterial({ color: 0x9c4a26, roughness: 1, metalness: 0 }),
@@ -93,43 +99,43 @@ mars.position.y = -0.05;
 scene.add(mars);
 
 // ---------------------------------------------------------------------------
-// Ground height (Three.js coords; altar +Z, entrance -Z).
-// Dais top 4.0; steps 1.33 / 2.67; arena floor 0.75; ring walkway 0.455;
-// arms + diagonal chambers 0.60; hall base 0.20; Mars plane 0.
+// Ground height (Three.js coords; altar +Z, entrance -Z). v2 hall (2.5x):
+// Dais top 10.0; steps 3.33 / 6.67; arena floor 1.875; ring walkway 1.1375;
+// arms + diagonal chambers 1.50; hall base 0.50; Mars plane 0.
 // ---------------------------------------------------------------------------
 function groundHeight(x: number, z: number): number {
   const ax = Math.abs(x);
-  if (ax <= 13 && z >= 37.5 && z <= 50.5) return 4.0;
-  if (ax <= 9 && z >= 37.2 && z < 39.6) return 2.67;
-  if (ax <= 9 && z >= 34.8 && z < 37.2) return 1.33;
+  if (ax <= 32.5 && z >= 93.75 && z <= 126.25) return 10.0;
+  if (ax <= 22.5 && z >= 93 && z < 93.75) return 6.667;
+  if (ax <= 22.5 && z >= 87 && z < 93) return 3.333;
   const r2 = x * x + z * z;
-  if (r2 <= 40 * 40) return 0.75;
-  // Diagonal side chambers: 12x12 pads centered at radius 49.
+  if (r2 <= 100 * 100) return 1.875;
+  // Diagonal side chambers: 30x30 pads centered at radius 122.5.
   for (let k = 0; k < 4; k++) {
     const t = Math.PI / 4 + (k * Math.PI) / 2;
     const dx = Math.cos(t);
     const dz = Math.sin(t);
     const along = x * dx + z * dz;
     const perp = -x * dz + z * dx;
-    if (Math.abs(along - 49) <= 6 && Math.abs(perp) <= 6) return 0.6;
+    if (Math.abs(along - 122.5) <= 15 && Math.abs(perp) <= 15) return 1.5;
   }
-  // Cardinal arms: 9 m wide strips from radius 39 to 56.
+  // Cardinal arms: 22.5 m wide strips from radius 97.5 to 140.
   if (
-    (ax <= 4.5 && Math.abs(z) >= 39 && Math.abs(z) <= 56) ||
-    (Math.abs(z) <= 4.5 && ax >= 39 && ax <= 56)
+    (ax <= 11.25 && Math.abs(z) >= 97.5 && Math.abs(z) <= 140) ||
+    (Math.abs(z) <= 11.25 && ax >= 97.5 && ax <= 140)
   ) {
-    return 0.6;
+    return 1.5;
   }
-  if (r2 <= 48 * 48) return 0.455;
-  if (r2 <= 56 * 56) return 0.2;
+  if (r2 <= 120 * 120) return 1.1375;
+  if (r2 <= 140 * 140) return 0.5;
   return 0;
 }
 
 // ---------------------------------------------------------------------------
 // Player state
 // ---------------------------------------------------------------------------
-const player = new THREE.Vector3(0, 0, -25); // arena, near the entrance
-let eyeY = groundHeight(0, -25) + 1.7;
+const player = new THREE.Vector3(0, 0, -62.5); // arena, near the entrance
+let eyeY = groundHeight(0, -62.5) + 1.7;
 let yaw = Math.PI; // forward +Z (toward the altar)
 let pitch = 0;
 let started = false;
@@ -327,7 +333,7 @@ loadModel('walkthrough/cathedral.glb').then(
 loadModel('walkthrough/king.glb').then(
   (obj) => {
     // King on the dais at the altar (Three.js +Z), facing the arena (-Z).
-    placeFigure(obj, KING_SCALE, KING_FOOT_OFFSET, KING_ROT_Y, 0, 4.0, 43, 'King');
+    placeFigure(obj, KING_SCALE, KING_FOOT_OFFSET, KING_ROT_Y, 0, 10.0, 110, 'King');
     markLoaded('King');
   },
   (err) => failLoad('king.glb', err),
@@ -335,7 +341,7 @@ loadModel('walkthrough/king.glb').then(
 loadModel('walkthrough/sentinel.glb').then(
   (obj) => {
     // Sentinel in the arena near the entrance (-Z), facing the altar (+Z).
-    placeFigure(obj, SENTINEL_SCALE, SENTINEL_FOOT_OFFSET, SENTINEL_ROT_Y, 0, 0.75, -30, 'Sentinel');
+    placeFigure(obj, SENTINEL_SCALE, SENTINEL_FOOT_OFFSET, SENTINEL_ROT_Y, 0, 1.875, -75, 'Sentinel');
     markLoaded('Sentinel');
   },
   (err) => failLoad('sentinel.glb', err),
@@ -365,11 +371,11 @@ function animate(): void {
   const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 14 : 6;
   player.addScaledVector(move, speed * dt);
 
-  // Stay near the action (Mars plane is 500 m; keep the walk to 200 m).
+  // Stay near the action (Mars plane is 500 m; keep the walk to 500 m).
   const rr = Math.hypot(player.x, player.z);
-  if (rr > 200) {
-    player.x *= 200 / rr;
-    player.z *= 200 / rr;
+  if (rr > 500) {
+    player.x *= 500 / rr;
+    player.z *= 500 / rr;
   }
 
   const targetEye = groundHeight(player.x, player.z) + 1.7;
