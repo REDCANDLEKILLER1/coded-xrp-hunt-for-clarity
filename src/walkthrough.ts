@@ -10,7 +10,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
  * Coordinate note: the cathedral was built in Blender (Z-up) and exported to
  * glTF (Y-up), so Blender (x, y, z) maps to Three.js (x, z, -y). The altar
  * sits at Three.js +Z, the entrance arm at -Z. The player spawns in the
- * arena near the entrance, facing the altar (+Z).
+ * southern entrance arm, facing the altar (+Z).
  */
 
 // ---------------------------------------------------------------------------
@@ -61,33 +61,63 @@ const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 // Renderer / scene / lights (page-owned; the cathedral GLB exports no lights)
 // ---------------------------------------------------------------------------
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.0;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xc27a4a); // Mars butterscotch sky
-scene.fog = new THREE.Fog(0xc27a4a, 300, 1200);
+scene.background = new THREE.Color(0x140d13);
+scene.fog = new THREE.Fog(0x140d13, 65, 240);
 
 const camera = new THREE.PerspectiveCamera(
-  70,
+  isTouch ? 68 : 62,
   window.innerWidth / window.innerHeight,
   0.1,
-  3000,
+  600,
 );
 camera.rotation.order = 'YXZ';
 
-scene.add(new THREE.AmbientLight(0xffe0c0, 0.65));
-const sun = new THREE.DirectionalLight(0xffd9a0, 1.8);
-sun.position.set(150, 300, -100);
-scene.add(sun);
-const altarGlow = new THREE.PointLight(0xff4400, 4200, 300, 1.8);
-altarGlow.position.set(0, 35, 100);
-scene.add(altarGlow);
-const arenaGlow = new THREE.PointLight(0xffa040, 2600, 250, 1.8);
-arenaGlow.position.set(0, 50, 0);
-scene.add(arenaGlow);
+scene.add(new THREE.AmbientLight(0x8996b4, 0.18));
+const moonlight = new THREE.DirectionalLight(0x8294c6, 0.55);
+moonlight.position.set(80, 145, -60);
+scene.add(moonlight);
+const throneSpot = new THREE.SpotLight(0xffbd79, 2200, 125, 0.38, 0.65, 2);
+throneSpot.position.set(12, 62, 70);
+throneSpot.target.position.set(0, 24, 110);
+scene.add(throneSpot, throneSpot.target);
+const kingRim = new THREE.PointLight(0x738dff, 900, 75, 2);
+kingRim.position.set(-18, 48, 121);
+scene.add(kingRim);
+const arenaFill = new THREE.PointLight(0xff9247, 900, 110, 2);
+arenaFill.position.set(0, 32, 0);
+scene.add(arenaFill);
+
+// Six grouped, shadow-free candle lights for the large hall. Each represents
+// several nearby candles, not a point light per flame. Position against the
+// v2 hall's entrance (-Z), arena rim (r=100), and altar (+Z).
+const candleSites: Array<[number, number, number]> = [
+  [-8, 4.5, -117], [8, 4.5, -117],
+  [-70, 5, -70], [70, 5, -70],
+  [-18, 13, 91], [18, 13, 91],
+];
+const candleGroups = candleSites.map(([x, y, z], index) => {
+  const light = new THREE.PointLight(0xffa45c, 105, 24, 2);
+  light.position.set(x, y, z);
+  light.castShadow = false;
+  scene.add(light);
+  return { light, base: light.intensity, phase: index * 2.39996323,
+    slowHz: 0.4 + index * 0.083, fastHz: 1.5 + index * 0.31 };
+});
+function updateCandleFlicker(t: number): void {
+  for (const c of candleGroups) {
+    const slow = Math.sin(2 * Math.PI * c.slowHz * t + c.phase);
+    const fast = Math.sin(2 * Math.PI * c.fastHz * t + c.phase * 1.73);
+    c.light.intensity = c.base * (1 + 0.055 * slow + 0.035 * fast);
+  }
+}
+// Flame mesh animation requires confirmed named GLB flame nodes. No guesses
+// or changes to imported geometry in this code-only polish pass.
 
 // Mars ground plane (flat disc; sculpted terrain is a later layer).
 const mars = new THREE.Mesh(
@@ -134,8 +164,8 @@ function groundHeight(x: number, z: number): number {
 // ---------------------------------------------------------------------------
 // Player state
 // ---------------------------------------------------------------------------
-const player = new THREE.Vector3(0, 0, -62.5); // arena, near the entrance
-let eyeY = groundHeight(0, -62.5) + 1.7;
+const player = new THREE.Vector3(0, 0, -128); // southern entrance arm
+let eyeY = groundHeight(0, -128) + 1.7;
 let yaw = Math.PI; // forward +Z (toward the altar)
 let pitch = 0;
 let started = false;
@@ -384,6 +414,7 @@ function animate(): void {
   camera.rotation.y = yaw;
   camera.rotation.x = pitch;
 
+  updateCandleFlicker(clock.elapsedTime);
   renderer.render(scene, camera);
 }
 animate();
