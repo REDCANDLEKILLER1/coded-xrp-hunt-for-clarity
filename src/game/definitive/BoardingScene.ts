@@ -8,6 +8,7 @@ import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
 import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingMeleePower, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, resolveSupportedDamage, sapperRangeMove, selectBoardingTarget, technicianSupportTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
+import {scaleBoardingCameraByPinch,scaleBoardingCameraByWheel} from './BoardingCameraZoom';
 import {bindFocusPolicy} from './FocusPolicy';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
@@ -55,6 +56,9 @@ export class BoardingScene implements ManagedScene {
   private readonly move = new Vector3();
   private stickPointer: number | null = null;
   private stickOrigin = new Vector2();
+  private readonly cameraTouches = new Map<number,Vector2>();
+  private pinchSpacing: number | null = null;
+  private cameraZoom = 1;
   private firingPointer: number | null = null;
   private active = false;
   private paused = false;
@@ -143,7 +147,7 @@ export class BoardingScene implements ManagedScene {
     if(!host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.threshold.id))this.conversation(BOARDING_DIALOGUE.threshold);
   }
 
-  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
+  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; this.host.renderer.domElement.style.touchAction=value?'none':''; this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
   private part(parent:Object3D,pos:[number,number,number],size:[number,number,number],material:MeshStandardMaterial|MeshBasicMaterial=this.metal):Mesh {
     const mesh=new Mesh(this.box,material);mesh.position.set(...pos);mesh.scale.set(...size);mesh.castShadow=material instanceof MeshStandardMaterial;mesh.receiveShadow=mesh.castShadow;parent.add(mesh);return mesh;
   }
@@ -303,19 +307,49 @@ export class BoardingScene implements ManagedScene {
   }
   private bindInput():void {
     const canvas=this.host.renderer.domElement,options={signal:this.lifetime.signal};
+    const pinchDistance=():number=>{
+      const pair=[...this.cameraTouches.values()];
+      return pair.length>=2?pair[0].distanceTo(pair[1]):0;
+    };
     canvas.addEventListener('pointerdown',event=>{
       if(!this.canAct())return;
       if(event.pointerType==='mouse'){this.firingPointer=event.pointerId;this.mouseAim(event);}
-      else if(this.stickPointer===null){this.stickPointer=event.pointerId;this.stickOrigin.set(event.clientX,event.clientY);this.stick.set(0,0);}
+      else {
+        this.cameraTouches.set(event.pointerId,new Vector2(event.clientX,event.clientY));
+        if(this.cameraTouches.size>=2){
+          // A second finger changes the gesture from movement to camera zoom.
+          this.pinchSpacing=pinchDistance();this.stickPointer=null;this.stick.set(0,0);
+        }else if(this.stickPointer===null){
+          this.stickPointer=event.pointerId;this.stickOrigin.set(event.clientX,event.clientY);this.stick.set(0,0);
+        }
+      }
       canvas.setPointerCapture(event.pointerId);event.preventDefault();
     },options);
     canvas.addEventListener('pointermove',event=>{
       if(!this.active)return;
       if(event.pointerType==='mouse')this.mouseAim(event);
+      if(this.cameraTouches.has(event.pointerId)){
+        this.cameraTouches.get(event.pointerId)!.set(event.clientX,event.clientY);
+        if(this.cameraTouches.size>=2){
+          const nextDistance=pinchDistance();
+          if(this.pinchSpacing!==null)this.cameraZoom=scaleBoardingCameraByPinch(this.cameraZoom,this.pinchSpacing,nextDistance);
+          this.pinchSpacing=nextDistance;event.preventDefault();return;
+        }
+      }
       if(event.pointerId===this.stickPointer)this.stick.set((event.clientX-this.stickOrigin.x)/48,(event.clientY-this.stickOrigin.y)/48).clampLength(0,1);
     },options);
-    const release=(event:PointerEvent)=>{if(event.pointerId===this.stickPointer){this.stickPointer=null;this.stick.set(0,0);}if(event.pointerId===this.firingPointer)this.firingPointer=null;};
+    const release=(event:PointerEvent)=>{
+      this.cameraTouches.delete(event.pointerId);
+      if(this.cameraTouches.size<2)this.pinchSpacing=null;
+      if(event.pointerId===this.stickPointer){this.stickPointer=null;this.stick.set(0,0);}
+      if(event.pointerId===this.firingPointer)this.firingPointer=null;
+    };
     canvas.addEventListener('pointerup',release,options);canvas.addEventListener('pointercancel',release,options);canvas.addEventListener('lostpointercapture',release,options);
+    canvas.addEventListener('wheel',event=>{
+      if(!this.active)return;
+      this.cameraZoom=scaleBoardingCameraByWheel(this.cameraZoom,event.deltaY);
+      event.preventDefault();
+    },{signal:this.lifetime.signal,passive:false});
     window.addEventListener('keydown',event=>{
       if(!this.active)return;
       if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code))event.preventDefault();
@@ -332,7 +366,8 @@ export class BoardingScene implements ManagedScene {
     this.ray.ray.intersectPlane(this.ground,this.aim);
   }
   private clearInput():void {
-    for(const id of [this.stickPointer,this.firingPointer])if(id!==null)for(const element of [this.host.renderer.domElement,...this.ui.querySelectorAll('button')])if(element.hasPointerCapture(id))element.releasePointerCapture(id);
+    for(const id of new Set([...this.cameraTouches.keys(),this.stickPointer,this.firingPointer]))if(id!==null)for(const element of [this.host.renderer.domElement,...this.ui.querySelectorAll('button')])if(element.hasPointerCapture(id))element.releasePointerCapture(id);
+    this.cameraTouches.clear();this.pinchSpacing=null;
     this.keys.clear();this.stick.set(0,0);this.stickPointer=null;this.firingPointer=null;
   }
   private canAct():boolean{return this.active&&!this.paused&&!this.dead&&this.captureClock<=0&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop');}
@@ -593,7 +628,7 @@ export class BoardingScene implements ManagedScene {
     const focus=this.hero.position.clone().add(new Vector3(0,.7,0));
     if(this.room==='core')focus.lerp(new Vector3(deckRoom('core').x,.7,deckRoom('core').z),.4);
     const offset=new Vector3(9,14,-12).multiplyScalar(this.room==='core'&&this.camera.aspect<1?1.15:1);
-    const cameraTarget=focus.clone().add(offset);this.camera.position.lerp(cameraTarget,1-Math.exp(-dt*7));this.camera.lookAt(focus);
+    const cameraTarget=focus.clone().add(offset.multiplyScalar(this.cameraZoom));this.camera.position.lerp(cameraTarget,1-Math.exp(-dt*7));this.camera.lookAt(focus);
     this.statsClock+=dt;if(this.statsClock>.1){this.paintHUD();this.statsClock=0;}
   }
   private updateEnemies(dt:number):void {
