@@ -215,6 +215,28 @@ export class MeshRuntime {
     }
   }
 
+  /** Isolated door-guard tactics experiment. Never touches the campaign save. */
+  async showArrivalTactics():Promise<void>{
+    this.root.dataset.review='tactics';this.root.hidden=false;this.hud.hidden=false;
+    this.status.textContent='Entering Arrival Bay tactical test…';
+    this.controls.replaceChildren();this.resize();this.startLoop();
+    const loaded=await this.controller.change(async signal=>{
+      const hero=await loadModel('xrpman',signal);
+      try{
+        const {ArrivalTacticsScene}=await import('./ArrivalTacticsScene');
+        if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
+        return new ArrivalTacticsScene({renderer:this.renderer,environment:this.environment.texture,root:this.root,hero});
+      }catch(error){disposeObject(hero.scene);throw error;}
+    });
+    if(loaded)this.hud.hidden=true;
+    else if(this.controller.lastError){
+      this.hud.dataset.recovery='true';
+      this.status.textContent='Tactical room could not load. The normal game is unaffected.';
+      const button=document.createElement('button');button.textContent='RETRY TACTICAL TEST';
+      button.addEventListener('click',()=>void this.showArrivalTactics());this.controls.replaceChildren(button);
+    }
+  }
+
   async showLanding(save: CampaignSave): Promise<void> {
     if(save.snapshot.location.mode==='space'&&save.snapshot.transit)return this.showSpace(save);
     if(save.snapshot.warshipOwned&&save.snapshot.location.checkpoint.startsWith('civic.'))return this.showCivic(save);
