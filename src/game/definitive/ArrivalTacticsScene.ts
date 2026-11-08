@@ -89,7 +89,7 @@ export class ArrivalTacticsScene implements ManagedScene {
     const danger=new MeshBasicMaterial({color:0xff382a,toneMapped:false});
     const green=new MeshBasicMaterial({color:0x00ff00,toneMapped:false});
     const box=new BoxGeometry(1,1,1);
-    const block=(x:number,y:number,z:number,w:number,h:number,d:number,material=metal)=>{
+    const block=(x:number,y:number,z:number,w:number,h:number,d:number,material:MeshStandardMaterial|MeshBasicMaterial=metal)=>{
       const mesh=new Mesh(box,material);mesh.position.set(x,y,z);mesh.scale.set(w,h,d);mesh.receiveShadow=true;this.scene.add(mesh);return mesh;
     };
     const floor=new Mesh(new PlaneGeometry(28,30),new MeshStandardMaterial({color:0x182735,metalness:.62,roughness:.68}));
@@ -126,7 +126,7 @@ export class ArrivalTacticsScene implements ManagedScene {
     const black=new MeshStandardMaterial({color:0x0f161e,metalness:.4,roughness:.64});
     const red=new MeshBasicMaterial({color:0xff392b,toneMapped:false});
     const box=new BoxGeometry(1,1,1);
-    const part=(x:number,y:number,z:number,w:number,h:number,d:number,material=armor)=>{
+    const part=(x:number,y:number,z:number,w:number,h:number,d:number,material:MeshStandardMaterial|MeshBasicMaterial=armor)=>{
       const mesh=new Mesh(box,material);mesh.position.set(x,y,z);mesh.scale.set(w,h,d);this.guard.add(mesh);
     };
     part(0,1.13,0,.75,.8,.48);
