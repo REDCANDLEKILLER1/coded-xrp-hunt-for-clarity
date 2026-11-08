@@ -270,7 +270,7 @@ watchForUpdates(import.meta.url);
 void game.start().then(() => {
   const params = new URLSearchParams(location.search);
 
-  if (['model', 'character', 'crew', 'boarding', 'civic', 'landing', 'space', 'mars', 'excavation', 'fog', 'bullion'].includes(params.get('review') ?? '') || params.has('model')) {
+  if (['model', 'character', 'crew', 'boarding', 'tactics', 'civic', 'landing', 'space', 'mars', 'excavation', 'fog', 'bullion'].includes(params.get('review') ?? '') || params.has('model')) {
     map.hide(); game.suspend(); boarding.setEnabled(false); onFoot.hide(); space.hide();
     gameShell.hidden = false; canvas.style.visibility = 'hidden';
     void import('./game/definitive/MeshRuntime').then(async ({ MeshRuntime }) => {
@@ -286,6 +286,7 @@ void game.start().then(() => {
       else if(params.get('review')==='fog'){const {prepareFogReview}=await import('./game/definitive/FogMoon');if(!prepareFogReview(definitiveSave).ok)throw new Error('The isolated Fog Moon section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else await meshRuntime.showFogMoon(definitiveSave);}
       else if (params.get('review') === 'mars') {const {prepareMarsReliefReview}=await import('./game/definitive/MarsRelief');const ready=prepareMarsReliefReview(definitiveSave);if(!ready.ok)throw new Error('The isolated Mars section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else if(savedChapterScene(definitiveSave)==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
       else if (params.get('review') === 'excavation') {const {prepareExcavationReview}=await import('./game/definitive/MarsExcavation');const ready=prepareExcavationReview(definitiveSave);if(!ready.ok)throw new Error('The isolated extraction section save is unavailable');if(definitiveSave.snapshot.location.mode==='space')await meshRuntime.showSpace(definitiveSave);else if(savedChapterScene(definitiveSave)==='fog')await meshRuntime.showFogMoon(definitiveSave);else await meshRuntime.showMars(definitiveSave);}
+      else if (params.get('review') === 'tactics') await meshRuntime.showArrivalTactics();
       else if (params.get('review') === 'boarding') {
         const requested=params.get('room');
         if(requested==='rescue'||requested==='engineering'||requested==='command'){const {prepareBoardingRoomReview}=await import('./game/definitive/BoardingQuest');const ready=prepareBoardingRoomReview(definitiveSave,requested);if(!ready.ok)throw new Error('The isolated boarding room save is unavailable');}
