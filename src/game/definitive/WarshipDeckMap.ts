@@ -11,6 +11,7 @@ interface MapHost {
   quest:BoardingQuest;
   position:()=>Position;
   current:()=>BoardingRoom;
+  walkthrough?:boolean;
 }
 
 const BOUNDS=deckMapBounds(DECK);
@@ -83,11 +84,12 @@ export class WarshipDeckMap {
 
   private visible(id:BoardingRoom):boolean{
     const s=this.host.quest.save.snapshot;
-    return s.warshipOwned||id===this.host.current()||s.visitedRooms.includes('boarding.'+id);
+    return !!this.host.walkthrough||s.warshipOwned||id===this.host.current()||s.visitedRooms.includes('boarding.'+id);
   }
   private status(id:BoardingRoom):'current'|'unseen'|'locked'|'clear'|'discovered'{
     if(id===this.host.current())return 'current';
     if(!this.visible(id))return 'unseen';
+    if(this.host.walkthrough)return 'discovered';
     if(this.host.quest.lockReason(id))return 'locked';
     if(this.host.quest.isClear(id))return 'clear';
     return 'discovered';
@@ -196,6 +198,7 @@ export class WarshipDeckMap {
     const text=document.createElement('p');
     if(!known)text.textContent='Sector coordinates are uncharted. Explore connected corridors to reveal this area.';
     else if(target===this.host.current())text.textContent='CURRENT LOCATION · '+quest.objective;
+    else if(this.host.walkthrough)text.textContent='WALKTHROUGH · Enemies and combat disabled. Visit this room through the ship doors to plan future encounters.';
     else if(status==='locked')text.textContent='ACCESS LOCKED · '+(quest.lockReason(target)??'Continue the boarding operation.');
     else if(status==='clear')text.textContent='SECURED · Previously cleared. This map does not teleport XRPMan.';
     else text.textContent='DISCOVERED · Travel through the physical doors to reach this sector.';
@@ -221,7 +224,7 @@ export class WarshipDeckMap {
     for(const door of DECK_DOORS){
       const from=pt(DECK.find(r=>r.id===door.a)!.x,DECK.find(r=>r.id===door.a)!.z);
       const to=pt(DECK.find(r=>r.id===door.b)!.x,DECK.find(r=>r.id===door.b)!.z);
-      const locked=!!this.host.quest.lockReason(door.b);
+      const locked=!this.host.walkthrough&&!!this.host.quest.lockReason(door.b);
       const found=this.visible(door.a)&&this.visible(door.b);
       ctx.strokeStyle=locked?'#b74149':found?'#25a879':'#294255';
       ctx.lineWidth=found?6:4;ctx.setLineDash(found?[]:[7,6]);
@@ -251,7 +254,7 @@ export class WarshipDeckMap {
     // Only the current door positions are drawn; no paths are unlocked by the map.
     for(const door of DECK_DOORS){
       const p=pt(door.x,door.z);
-      ctx.fillStyle=this.host.quest.lockReason(door.b)?'#ff4b53':COLORS.door;
+      ctx.fillStyle=!this.host.walkthrough&&this.host.quest.lockReason(door.b)?'#ff4b53':COLORS.door;
       ctx.fillRect(p.x-3,p.y-3,6,6);
     }
     const position=this.host.position(),player=pt(position.x,position.z);

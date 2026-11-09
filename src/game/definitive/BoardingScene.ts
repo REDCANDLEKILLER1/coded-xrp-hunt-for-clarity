@@ -13,7 +13,7 @@ import {WarshipDeckMap} from './WarshipDeckMap';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void; walkthrough?:boolean }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
@@ -30,6 +30,15 @@ export class BoardingScene implements ManagedScene {
   private readonly dialoguePage = document.createElement('span');
   private readonly map = document.createElement('canvas');
   private readonly deckMap:WarshipDeckMap;
+  private readonly walkthrough:boolean;
+  private readonly walkthroughVisited=new Set<BoardingRoom>();
+  private walkthroughTarget:Vector3|null=null;
+  private walkthroughPointer:number|null=null;
+  private walkthroughCameraPointer:number|null=null;
+  private readonly walkthroughTouches=new Map<number,Vector2>();
+  private walkthroughPinch:number|null=null;
+  private walkthroughYaw=0;
+  private walkthroughZoom=1;
   private readonly dialog = new Dialogue();
   private readonly lifetime = new AbortController();
   private readonly hero: Group;
@@ -101,7 +110,8 @@ export class BoardingScene implements ManagedScene {
   private readonly exitField = new Mesh(this.box,this.red);
 
   constructor(private readonly host: SceneHost) {
-    this.paused=host.quest.save.testSlot;
+    this.walkthrough=!!host.walkthrough;
+    this.paused=host.quest.save.testSlot&&!this.walkthrough;
     this.hero = host.hero.scene; this.mixer = new AnimationMixer(this.hero);
     this.crew=host.crew.scene;this.crewMixer=new AnimationMixer(this.crew);
     this.playCrew('Idle');
@@ -109,7 +119,8 @@ export class BoardingScene implements ManagedScene {
     this.scene.add(this.crew);
     this.crew.traverse(object=>{if(object instanceof Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])if(material.name==='TruFi blue')material.toneMapped=false;});
     this.room = host.entryRoom ?? host.quest.checkpoint;
-    this.deckMap=new WarshipDeckMap({root:host.root,quest:host.quest,position:()=>({x:this.hero.position.x,z:this.hero.position.z}),current:()=>this.room});
+    this.walkthroughVisited.add(this.room);
+    this.deckMap=new WarshipDeckMap({root:host.root,quest:host.quest,position:()=>({x:this.hero.position.x,z:this.hero.position.z}),current:()=>this.room,walkthrough:this.walkthrough});
     const start=deckRoom(this.room);
     this.hero.position.set(start.x,0,start.z-(this.room==='hangar'?5:this.room==='bridge'?start.depth*.5-.55:start.depth*.3));
     const fighter=host.fighter.scene;
@@ -136,17 +147,19 @@ export class BoardingScene implements ManagedScene {
       if(!(obj instanceof Mesh))return;
       for(const material of Array.isArray(obj.material)?obj.material:[obj.material]) if(material.name.startsWith('Liquidity'))material.toneMapped=false;
     });
-    this.buildDeck(); this.buildUI(); this.bindInput(); this.spawnRoom(this.room);
+    this.buildDeck(); this.buildUI(); this.bindInput();
+    if(!this.walkthrough)this.spawnRoom(this.room);
+    else{this.crew.visible=false;this.crewMarker.visible=false;for(const panel of this.doorPanels)panel.mesh.visible=false;}
     this.scene.traverse(object=>{if(object instanceof Mesh&&!(object.material instanceof MeshBasicMaterial)){object.castShadow=true;object.receiveShadow=true;}});
     // Flat plates and trim receive contact shadows; only the pressure walls need
     // to cast them. This avoids redrawing the entire deck into the shadow map.
     host.deck.scene.traverse(object=>{if(object instanceof Mesh)object.castShadow=object.material instanceof MeshStandardMaterial&&object.material.name==='Deck carbon ceramic';});
     this.camera.position.copy(this.hero.position).add(new Vector3(10,15,-14));this.camera.lookAt(this.hero.position);
     this.play('Idle');
-    if(!host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.threshold.id))this.conversation(BOARDING_DIALOGUE.threshold);
+    if(!this.walkthrough&&!host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.threshold.id))this.conversation(BOARDING_DIALOGUE.threshold);
   }
 
-  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; if(!value)this.deckMap.close(); this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
+  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; if(!value){this.deckMap.close();this.clearWalkthroughInput();} this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
   private part(parent:Object3D,pos:[number,number,number],size:[number,number,number],material:MeshStandardMaterial|MeshBasicMaterial=this.metal):Mesh {
     const mesh=new Mesh(this.box,material);mesh.position.set(...pos);mesh.scale.set(...size);mesh.castShadow=material instanceof MeshStandardMaterial;mesh.receiveShadow=mesh.castShadow;parent.add(mesh);return mesh;
   }
@@ -289,6 +302,17 @@ export class BoardingScene implements ManagedScene {
     this.status.append(this.health,this.hint);this.map.width=130;this.map.height=170;this.map.className='boarding-map';this.map.setAttribute('role','button');this.map.setAttribute('tabindex','0');this.map.setAttribute('aria-label','Open full Regulatory Warship deck map');
     this.map.addEventListener('click',()=>{if(this.active&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop')&&this.captureClock<=0){this.clearInput();this.deckMap.open();}},{signal:this.lifetime.signal});
     this.map.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.map.click();}},{signal:this.lifetime.signal});
+    if(this.walkthrough){
+      const top=document.createElement('div');top.className='boarding-top';
+      const mapButton=document.createElement('button');mapButton.type='button';mapButton.textContent='DECK MAP';
+      mapButton.addEventListener('click',()=>{if(!this.active)return;this.clearWalkthroughInput();this.deckMap.open();},{signal:this.lifetime.signal});
+      const reset=document.createElement('button');reset.type='button';reset.textContent='RESET VIEW';
+      reset.addEventListener('click',()=>{this.walkthroughYaw=0;this.walkthroughZoom=1;},{signal:this.lifetime.signal});
+      top.append(mapButton,reset);
+      this.ui.classList.add('boarding-walkthrough-ui');
+      this.ui.append(this.status,this.map,top);this.host.root.appendChild(this.ui);
+      return;
+    }
     const controls=document.createElement('div');controls.className='boarding-actions';
     const button=(label:string,action:()=>void,parent:HTMLElement=controls)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',e=>{e.stopPropagation();if(this.active)action();},{signal:this.lifetime.signal});parent.appendChild(b);return b;};
     const fire=button('BLAST',()=>{});fire.className='boarding-fire';
@@ -308,6 +332,7 @@ export class BoardingScene implements ManagedScene {
     this.ui.append(this.status,this.map,controls,top,move,this.dialoguePanel);this.host.root.appendChild(this.ui);
   }
   private bindInput():void {
+    if(this.walkthrough){this.bindWalkthroughInput();return;}
     const canvas=this.host.renderer.domElement,options={signal:this.lifetime.signal};
     canvas.addEventListener('pointerdown',event=>{
       if(!this.canAct())return;
@@ -332,6 +357,119 @@ export class BoardingScene implements ManagedScene {
     },options);
     window.addEventListener('keyup',event=>this.keys.delete(event.code),options);
     bindFocusPolicy(this.lifetime.signal,()=>this.clearInput(),()=>{this.clearInput();if(this.active)this.paused=true;});
+  }
+  /** Preview-only: touch the floor and lead XRPMan with a finger. No virtual stick or combat. */
+  private bindWalkthroughInput():void {
+    const canvas=this.host.renderer.domElement,signal=this.lifetime.signal;
+    const pick=(e:PointerEvent)=>{
+      const bounds=canvas.getBoundingClientRect();
+      if(bounds.width<1||bounds.height<1)return;
+      const screen=new Vector2((e.clientX-bounds.left)/bounds.width*2-1,-(e.clientY-bounds.top)/bounds.height*2+1);
+      this.ray.setFromCamera(screen,this.camera);
+      const hit=this.ray.ray.intersectPlane(this.ground,new Vector3());
+      if(hit)this.walkthroughTarget=hit.clone().setY(0);
+    };
+    canvas.addEventListener('contextmenu',e=>e.preventDefault(),{signal});
+    canvas.addEventListener('pointerdown',e=>{
+      if(!this.active||this.deckMap.isOpen)return;
+      if(e.button===2){this.walkthroughCameraPointer=e.pointerId;canvas.setPointerCapture(e.pointerId);e.preventDefault();return;}
+      if(e.button!==0&&e.pointerType==='mouse')return;
+      this.walkthroughTouches.set(e.pointerId,new Vector2(e.clientX,e.clientY));
+      if(this.walkthroughTouches.size===1){this.walkthroughPointer=e.pointerId;pick(e);}
+      else{this.walkthroughTarget=null;this.walkthroughPointer=null;this.walkthroughPinch=this.walkthroughFingerDistance();}
+      canvas.setPointerCapture(e.pointerId);e.preventDefault();
+    },{signal});
+    canvas.addEventListener('pointermove',e=>{
+      if(!this.active||this.deckMap.isOpen)return;
+      if(this.walkthroughCameraPointer===e.pointerId){this.walkthroughYaw-=e.movementX*.008;e.preventDefault();return;}
+      const previous=this.walkthroughTouches.get(e.pointerId);
+      if(!previous)return;
+      this.walkthroughTouches.set(e.pointerId,new Vector2(e.clientX,e.clientY));
+      const fingers=[...this.walkthroughTouches.values()];
+      if(fingers.length===2){
+        const distance=this.walkthroughFingerDistance();
+        if(distance&&this.walkthroughPinch&&this.walkthroughPinch>6){
+          this.walkthroughZoom=Math.max(.55,Math.min(2.15,this.walkthroughZoom*this.walkthroughPinch/distance));
+        }
+        this.walkthroughPinch=distance;
+        this.walkthroughYaw-=(e.clientX-previous.x)*.006;
+      }else if(this.walkthroughPointer===e.pointerId)pick(e);
+      e.preventDefault();
+    },{signal});
+    const stop=(e:PointerEvent)=>{
+      if(this.walkthroughCameraPointer===e.pointerId)this.walkthroughCameraPointer=null;
+      this.walkthroughTouches.delete(e.pointerId);
+      if(this.walkthroughPointer===e.pointerId)this.walkthroughPointer=null;
+      if(this.walkthroughTouches.size<2)this.walkthroughPinch=null;
+      // A pinch must end before the next movement gesture can start.
+      if(this.walkthroughTouches.size!==1||this.walkthroughPointer===null)this.walkthroughTarget=null;
+    };
+    for(const type of ['pointerup','pointercancel','lostpointercapture'] as const)canvas.addEventListener(type,stop,{signal});
+    canvas.addEventListener('wheel',e=>{if(!this.active||this.deckMap.isOpen)return;
+      this.walkthroughZoom=Math.max(.55,Math.min(2.15,this.walkthroughZoom*Math.exp(e.deltaY*.0015)));e.preventDefault();
+    },{signal,passive:false});
+    window.addEventListener('keydown',e=>{
+      if(!this.active||this.deckMap.isOpen)return;
+      if(e.code==='KeyM'&&!e.repeat){this.clearWalkthroughInput();this.deckMap.open();e.preventDefault();return;}
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
+      this.keys.add(e.code);
+    },{signal});
+    window.addEventListener('keyup',e=>this.keys.delete(e.code),{signal});
+    const clear=()=>this.clearWalkthroughInput();
+    window.addEventListener('blur',clear,{signal});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)clear();},{signal});
+  }
+  private walkthroughFingerDistance():number|null{
+    const pair=[...this.walkthroughTouches.values()];
+    return pair.length===2?pair[0].distanceTo(pair[1]):null;
+  }
+  private clearWalkthroughInput():void{
+    this.walkthroughTarget=null;this.walkthroughPointer=null;this.walkthroughCameraPointer=null;
+    this.walkthroughTouches.clear();this.walkthroughPinch=null;this.keys.clear();
+  }
+  /** The walkthrough never spawns, targets, damages, or clears combat objectives. */
+  private updateWalkthrough(dt:number):void{
+    if(this.deckMap.isOpen){this.paintWalkthroughHUD();this.deckMap.render();return;}
+    const x=Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft'));
+    const z=Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown'));
+    const keyboard=new Vector3(x,0,z).clampLength(0,1);
+    const toward=this.walkthroughTarget?this.walkthroughTarget.clone().sub(this.hero.position).setY(0):keyboard;
+    const walking=toward.lengthSq()>.04;
+    const direction=walking?toward.normalize():new Vector3();
+    if(walking){
+      const distance=Math.min(dt*2.8,this.walkthroughTarget?this.hero.position.distanceTo(this.walkthroughTarget):Infinity);
+      for(const axis of ['x','z'] as const){
+        const next=this.hero.position.clone();next[axis]+=direction[axis]*distance;
+        const room=roomAt(next.x,next.z);
+        if(!room||!insideWallMargin(room,next.x,next.z)||!canCross(this.room,room.id,next.x,next.z))continue;
+        if(boardingObstacleBlocksMove(this.obstacles,this.hero.position,next))continue;
+        this.hero.position.copy(next);
+        if(room.id!==this.room){this.room=room.id;this.walkthroughVisited.add(room.id);}
+      }
+      const angle=Math.atan2(direction.x,direction.z);
+      this.hero.rotation.y+=Math.atan2(Math.sin(angle-this.hero.rotation.y),Math.cos(angle-this.hero.rotation.y))*Math.min(1,dt*10);
+    }
+    this.play(walking?'Walk':'Idle');this.mixer.update(dt);
+    this.heroShield.visible=false;this.crew.visible=false;this.crewMarker.visible=false;
+    const focus=this.hero.position.clone().add(new Vector3(0,1.05,0));
+    const radius=8.3*this.walkthroughZoom;
+    const offset=new Vector3(Math.sin(this.walkthroughYaw)*radius,5.4*this.walkthroughZoom,-Math.cos(this.walkthroughYaw)*radius);
+    this.camera.position.lerp(focus.clone().add(offset),1-Math.exp(-dt*8));
+    this.camera.lookAt(focus);
+    this.statsClock+=dt;if(this.statsClock>.08){this.paintWalkthroughHUD();this.statsClock=0;}
+  }
+  private paintWalkthroughHUD():void{
+    this.health.textContent=deckRoom(this.room).title+'   ·   FREE ROAM / NO COMBAT';
+    this.hint.textContent='TOUCH + DRAG FLOOR TO WALK  ·  TWO FINGERS TO ZOOM / ROTATE  ·  MAP TO INSPECT';
+    for(const {mesh} of this.doorPanels)mesh.visible=false;
+    for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
+    const ctx=this.map.getContext('2d');if(!ctx)return;
+    ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
+    for(const room of DECK){
+      ctx.fillStyle=room.id===this.room?'#00b828':this.walkthroughVisited.has(room.id)?'#20594d':'#263849';
+      ctx.fillRect(65+(room.x-room.width/2)*2.2,159-(room.z+room.depth/2+37)*1.8,room.width*2.2-1,room.depth*1.8-1);
+    }
+    ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(65+this.hero.position.x*2.2,159-(this.hero.position.z+37)*1.8,3,0,Math.PI*2);ctx.fill();
   }
   private mouseAim(event:PointerEvent):void {
     const bounds=this.host.renderer.domElement.getBoundingClientRect();
@@ -538,7 +676,9 @@ export class BoardingScene implements ManagedScene {
     }
     if(this.crewActionClock<=0)this.playCrew(crewGait);this.crewMarker.position.copy(this.crew.position).y=2.4;
   }  update(dt:number):void {
-    if(!this.active)return;this.dialog.update(dt);
+    if(!this.active)return;
+    if(this.walkthrough){this.updateWalkthrough(dt);return;}
+    this.dialog.update(dt);
     this.refreshFactionLighting();
     this.dialoguePanel.hidden=!this.dialog.active;this.dialogueSpeaker.textContent=this.dialog.speaker;
     this.dialoguePanel.dataset.allegiance=this.dialog.allegiance;
@@ -667,6 +807,7 @@ export class BoardingScene implements ManagedScene {
     }
   }
   private paintHUD():void {
+    if(this.walkthrough){this.paintWalkthroughHUD();return;}
     if(this.pauseButton)this.pauseButton.textContent=this.paused?'RESUME':'PAUSE';
     if(this.host.quest.save.testSlot){
       this.ui.dataset.room=this.room;this.ui.dataset.x=this.hero.position.x.toFixed(3);this.ui.dataset.z=this.hero.position.z.toFixed(3);
@@ -694,7 +835,7 @@ export class BoardingScene implements ManagedScene {
     this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?49:43;this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);
   }
   dispose():void {
-    this.active=false;this.clearInput();this.deckMap.dispose();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
+    this.active=false;this.clearInput();this.clearWalkthroughInput();this.deckMap.dispose();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
     // Include pooled/dead objects so shared GPU resources are released exactly once.
     for(const enemy of this.enemies)this.scene.add(enemy.mesh,enemy.tell);
     this.scene.add(new Mesh(this.boltGeometry,this.red),new Mesh(this.box,this.barrierMaterial),new Mesh(this.supportBarrierGeometry,this.barrierMaterial));
