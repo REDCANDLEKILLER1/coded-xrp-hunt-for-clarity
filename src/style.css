@@ -857,3 +857,48 @@ canvas {
 }
 .game-menu button:focus-visible, .game-menu-toggle:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 .debug-log-open .game-menu-toggle { display: none; }
+
+
+/* CODED deck-map overlay: source-of-truth geometry, read-only progression, mobile gestures. */
+.boarding-map { pointer-events:auto;cursor:pointer;touch-action:manipulation; }
+.boarding-map:focus-visible {outline:2px solid #00ff00;outline-offset:3px;}
+.boarding-deck-overlay { position:absolute;inset:0;z-index:50;box-sizing:border-box;padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;overflow:hidden;color:#e4f5ef;background:linear-gradient(160deg,#05101afa,#061a18fa);font:600 12px/1.45 system-ui,sans-serif;pointer-events:auto;text-shadow:none; }
+.boarding-deck-overlay[hidden] {display:none!important;}
+.boarding-deck-overlay button {pointer-events:auto;cursor:pointer;touch-action:manipulation;background:#0a231e;color:#e9fff2;border:1px solid #2c8b71;border-radius:6px;min-height:44px;padding:8px 12px;font:700 12px/1.2 system-ui,sans-serif;}
+.boarding-deck-overlay button:focus-visible {outline:2px solid #00ff00;outline-offset:2px;}
+.boarding-deck-header {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;border-bottom:1px solid #22554d;padding-bottom:9px;}
+.boarding-deck-header span {display:block;color:#6bbca6;font-size:10px;letter-spacing:.13em;}
+.boarding-deck-header strong {display:block;color:#00ff00;font-size:clamp(13px,3.4vw,20px);letter-spacing:.05em;}
+.boarding-deck-close {border-color:#00ff00!important;white-space:nowrap;}
+.boarding-deck-layout {display:grid;grid-template-columns:minmax(0,1fr) minmax(205px,270px);gap:12px;min-height:0;flex:1;}
+.boarding-deck-visual {position:relative;min-width:0;min-height:180px;overflow:hidden;border:1px solid #376961;background:#07111b;}
+.boarding-deck-canvas {display:block;width:100%;height:100%;touch-action:none;}
+.boarding-deck-visual>p {position:absolute;bottom:5px;left:9px;right:100px;pointer-events:none;margin:0;padding:5px;color:#a3cfc0;background:#05101bc9;font-size:9px;letter-spacing:.03em;}
+.boarding-deck-zoom {position:absolute;bottom:8px;right:8px;display:flex;gap:4px;}
+.boarding-deck-zoom button {min-width:42px;min-height:42px;padding:4px 6px;background:#09281ff0;color:#00ff00;}
+.boarding-deck-sidebar {display:flex;flex-direction:column;min-height:0;gap:8px;background:#071822;border:1px solid #285a52;padding:10px;box-sizing:border-box;}
+.boarding-deck-sidebar>strong {color:#00ff00;letter-spacing:.08em;}
+.boarding-deck-room-list {display:flex;flex-direction:column;gap:5px;min-height:0;flex:1;overflow:auto;overscroll-behavior:contain;}
+.boarding-deck-room-option {flex-shrink:0;text-align:left!important;font-size:10px!important;min-height:40px!important;padding:6px 8px!important;}
+.boarding-deck-room-option[aria-pressed="true"] {border-color:#00ff00!important;background:#164d35!important;}
+.boarding-deck-room-info {border-top:1px solid #22574b;padding-top:8px;}
+.boarding-deck-room-info strong {color:#00ff00;font-size:11px;}
+.boarding-deck-room-info p {color:#c6d9d1;line-height:1.45;font-size:11px;margin:5px 0;}
+.boarding-deck-legend {color:#79aea0;font-size:9px;line-height:1.5;margin:0;}
+@media(max-width:720px) and (orientation:portrait) {
+  .boarding-deck-overlay {padding: max(8px,env(safe-area-inset-top)) 8px max(8px,env(safe-area-inset-bottom));gap:6px;}
+  .boarding-deck-layout {grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(210px,1.2fr) minmax(185px,.9fr);gap:6px;}
+  .boarding-deck-sidebar {padding:7px;gap:5px;}
+  .boarding-deck-room-list {display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;gap:4px;}
+  .boarding-deck-room-option {font-size:9px!important;min-height:36px!important;}
+  .boarding-deck-room-info p {font-size:10px;}
+  .boarding-deck-visual>p {font-size:8px;}
+}
+@media(max-height:490px) and (orientation:landscape) {
+  .boarding-deck-overlay {padding:5px;gap:4px;}
+  .boarding-deck-header {padding-bottom:4px;}
+  .boarding-deck-header strong {font-size:12px;}
+  .boarding-deck-layout {grid-template-columns:minmax(0,1fr) minmax(190px,240px);gap:5px;}
+  .boarding-deck-sidebar {padding:5px;gap:4px;}
+  .boarding-deck-room-option {min-height:33px!important;}
+}

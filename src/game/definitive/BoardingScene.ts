@@ -9,6 +9,7 @@ import type { ManagedScene } from './SceneController';
 import { boardingObstacleBlocksMove, boardingEnemyDamage, boardingEnemyHealth, boardingEnemyVolley, boardingInteraction, boardingMeleePower, boardingPressure, boardingWeapon, canCrossExitField, companionGait, companionPlan, coreExposure, resolveSupportedDamage, sapperRangeMove, selectBoardingTarget, technicianSupportTarget, type BoardingEnemyKind } from './BoardingCombat';
 import { PARKED_HEIGHT } from './LandingPlan';
 import {bindFocusPolicy} from './FocusPolicy';
+import {WarshipDeckMap} from './WarshipDeckMap';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
@@ -28,6 +29,7 @@ export class BoardingScene implements ManagedScene {
   private readonly dialogueText = document.createElement('p');
   private readonly dialoguePage = document.createElement('span');
   private readonly map = document.createElement('canvas');
+  private readonly deckMap:WarshipDeckMap;
   private readonly dialog = new Dialogue();
   private readonly lifetime = new AbortController();
   private readonly hero: Group;
@@ -107,6 +109,7 @@ export class BoardingScene implements ManagedScene {
     this.scene.add(this.crew);
     this.crew.traverse(object=>{if(object instanceof Mesh)for(const material of Array.isArray(object.material)?object.material:[object.material])if(material.name==='TruFi blue')material.toneMapped=false;});
     this.room = host.entryRoom ?? host.quest.checkpoint;
+    this.deckMap=new WarshipDeckMap({root:host.root,quest:host.quest,position:()=>({x:this.hero.position.x,z:this.hero.position.z}),current:()=>this.room});
     const start=deckRoom(this.room);
     this.hero.position.set(start.x,0,start.z-(this.room==='hangar'?5:this.room==='bridge'?start.depth*.5-.55:start.depth*.3));
     const fighter=host.fighter.scene;
@@ -143,7 +146,7 @@ export class BoardingScene implements ManagedScene {
     if(!host.quest.save.snapshot.dialogueSeen.includes(BOARDING_DIALOGUE.threshold.id))this.conversation(BOARDING_DIALOGUE.threshold);
   }
 
-  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
+  setActive(value:boolean):void { this.active=value; this.ui.hidden=!value; if(!value)this.deckMap.close(); this.clearInput(); window.dispatchEvent(new CustomEvent('coded:music-cue',{detail:{cue:value?'warship_interior':'silence'}})); }
   private part(parent:Object3D,pos:[number,number,number],size:[number,number,number],material:MeshStandardMaterial|MeshBasicMaterial=this.metal):Mesh {
     const mesh=new Mesh(this.box,material);mesh.position.set(...pos);mesh.scale.set(...size);mesh.castShadow=material instanceof MeshStandardMaterial;mesh.receiveShadow=mesh.castShadow;parent.add(mesh);return mesh;
   }
@@ -283,7 +286,9 @@ export class BoardingScene implements ManagedScene {
   }
   private buildUI():void {
     this.ui.className='boarding-ui';this.status.className='boarding-status';this.health.className='boarding-health';this.hint.className='boarding-hint';
-    this.status.append(this.health,this.hint);this.map.width=130;this.map.height=170;this.map.className='boarding-map';this.map.setAttribute('aria-label','Warship deck map');
+    this.status.append(this.health,this.hint);this.map.width=130;this.map.height=170;this.map.className='boarding-map';this.map.setAttribute('role','button');this.map.setAttribute('tabindex','0');this.map.setAttribute('aria-label','Open full Regulatory Warship deck map');
+    this.map.addEventListener('click',()=>{if(this.active&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop')&&this.captureClock<=0){this.clearInput();this.deckMap.open();}},{signal:this.lifetime.signal});
+    this.map.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.map.click();}},{signal:this.lifetime.signal});
     const controls=document.createElement('div');controls.className='boarding-actions';
     const button=(label:string,action:()=>void,parent:HTMLElement=controls)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',e=>{e.stopPropagation();if(this.active)action();},{signal:this.lifetime.signal});parent.appendChild(b);return b;};
     const fire=button('BLAST',()=>{});fire.className='boarding-fire';
@@ -294,6 +299,7 @@ export class BoardingScene implements ManagedScene {
     const top=document.createElement('div');top.className='boarding-top';
     const pause=button('PAUSE',()=>{if(this.ui.querySelector('.boarding-shop'))return;this.paused=!this.paused;pause.textContent=this.paused?'RESUME':'PAUSE';this.clearInput();},top);
     this.pauseButton=pause;
+    button('MAP',()=>{if(this.dialog.active||this.ui.querySelector('.boarding-shop')||this.captureClock>0)return;this.clearInput();this.deckMap.open();},top);
     button('LOG',()=>{const seen=this.host.quest.save.snapshot.dialogueSeen;const lines=(Object.values(BOARDING_DIALOGUE) as readonly DialogueScene[]).filter(d=>seen.includes(d.id)).flatMap(d=>d.lines);if(lines.length)this.conversation({id:'review.dialogue_log',lines},undefined,false);else this.say('No completed conversations yet.');},top);
     const move=document.createElement('div');move.className='boarding-stick';move.textContent='DRAG TO MOVE';move.setAttribute('aria-hidden','true');
     this.dialoguePanel.className='boarding-dialogue';this.dialoguePanel.setAttribute('role','dialog');this.dialoguePanel.setAttribute('aria-label','Conversation');
@@ -320,6 +326,7 @@ export class BoardingScene implements ManagedScene {
       if(!this.active)return;
       if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.code))event.preventDefault();
       if(this.dialog.active){if(!event.repeat&&['Enter','Space'].includes(event.code))this.dialog.press();return;}
+      if(event.code==='KeyM'&&!event.repeat&&!this.ui.querySelector('.boarding-shop')&&this.captureClock<=0){this.clearInput();this.deckMap.open();return;}
       this.keys.add(event.code);
       if(!event.repeat){if(event.code==='KeyE')this.interact();if(event.code==='KeyF')this.punch();if(event.code==='KeyJ')this.jump();if(event.code==='ShiftLeft')this.dodge();if(event.code==='KeyQ'&&this.host.quest.save.snapshot.heroUpgrades.ledger_shield)this.shieldOn=!this.shieldOn;}
     },options);
@@ -335,7 +342,7 @@ export class BoardingScene implements ManagedScene {
     for(const id of [this.stickPointer,this.firingPointer])if(id!==null)for(const element of [this.host.renderer.domElement,...this.ui.querySelectorAll('button')])if(element.hasPointerCapture(id))element.releasePointerCapture(id);
     this.keys.clear();this.stick.set(0,0);this.stickPointer=null;this.firingPointer=null;
   }
-  private canAct():boolean{return this.active&&!this.paused&&!this.dead&&this.captureClock<=0&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop');}
+  private canAct():boolean{return this.active&&!this.deckMap.isOpen&&!this.paused&&!this.dead&&this.captureClock<=0&&!this.dialog.active&&!this.ui.querySelector('.boarding-shop');}
   private say(text:string):void{this.message=text;this.messageClock=4;}
   private conversation(scene:DialogueScene,step?:BoardingStep,record=true):void {
     this.clearInput();this.play('Idle');
@@ -556,7 +563,7 @@ export class BoardingScene implements ManagedScene {
       return;
     }
     if(this.dead){this.mixer.update(dt);return;}
-    if(this.paused||this.dialog.active||this.ui.querySelector('.boarding-shop')){this.paintHUD();return;}
+    if(this.deckMap.isOpen||this.paused||this.dialog.active||this.ui.querySelector('.boarding-shop')){this.paintHUD();return;}
     this.clock+=dt;this.fireClock-=dt;this.dodgeClock=Math.max(0,this.dodgeClock-dt);
     this.verticalVelocity-=15*dt;this.hero.position.y=Math.max(0,this.hero.position.y+this.verticalVelocity*dt);if(this.hero.position.y===0)this.verticalVelocity=0;this.meleeClock=Math.max(0,this.meleeClock-dt);this.dodgeCooldown=Math.max(0,this.dodgeCooldown-dt);this.invulnerability=Math.max(0,this.invulnerability-dt);this.messageClock-=dt;
     this.updateCrew(dt);this.crewMixer.update(dt);
@@ -673,6 +680,7 @@ export class BoardingScene implements ManagedScene {
     const q=this.host.quest,weapon=boardingWeapon(q.save.snapshot.heroUpgrades.boarding_weapon),core=this.enemies.find(e=>e.kind==='core'&&e.hp>0),elite=this.enemies.find(e=>e.room===this.room&&['warden','captain'].includes(e.kind)&&e.hp>0);
     this.health.textContent=deckRoom(this.room).title+'   VITALS '+Math.ceil(this.life)+'   '+weapon.label+(q.save.snapshot.heroUpgrades.ledger_shield?'   SHIELD '+Math.ceil(this.shield)+(this.shieldOn?' · ACTIVE':''):'')+(this.paused?'   PAUSED':'')+(this.captureClock>0?'   CAPTURE':'')+(this.room==='core'&&core?'   CORE '+Math.ceil(core.hp)+' · '+(this.coreExposed()?'EXPOSED':'SHIELDED'):elite?'   '+(elite.kind==='captain'?'BRIDGE CAPTAIN':'WARDEN')+' '+Math.ceil(elite.hp)+'/'+elite.maxHp:'');
     this.hint.textContent=this.messageClock>0?this.message:q.objective;
+    if(this.deckMap.isOpen)this.deckMap.render();
     for(const {door,mesh} of this.doorPanels)mesh.visible=!!q.lockReason(door.b);
     for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
@@ -686,7 +694,7 @@ export class BoardingScene implements ManagedScene {
     this.camera.aspect=this.host.root.clientWidth/Math.max(1,this.host.root.clientHeight);this.camera.fov=this.camera.aspect<1?49:43;this.camera.updateProjectionMatrix();this.host.renderer.render(this.scene,this.camera);
   }
   dispose():void {
-    this.active=false;this.clearInput();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
+    this.active=false;this.clearInput();this.deckMap.dispose();this.lifetime.abort();this.mixer.stopAllAction();this.mixer.uncacheRoot(this.hero);this.crewMixer.stopAllAction();this.crewMixer.uncacheRoot(this.crew);this.dialog.closeWithoutEffects();this.ui.remove();
     // Include pooled/dead objects so shared GPU resources are released exactly once.
     for(const enemy of this.enemies)this.scene.add(enemy.mesh,enemy.tell);
     this.scene.add(new Mesh(this.boltGeometry,this.red),new Mesh(this.box,this.barrierMaterial),new Mesh(this.supportBarrierGeometry,this.barrierMaterial));
