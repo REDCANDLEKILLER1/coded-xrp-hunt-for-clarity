@@ -902,3 +902,17 @@ canvas {
   .boarding-deck-sidebar {padding:5px;gap:4px;}
   .boarding-deck-room-option {min-height:33px!important;}
 }
+
+
+/* Isolated Warship inspection route: character-led touch steering, no combat chrome. */
+.mesh-runtime[data-review="walkthrough"] > canvas {touch-action:none;cursor:crosshair;}
+.mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-status {top:max(60px,env(safe-area-inset-top));max-width:calc(100% - 140px);background:#07171d99;border-left:2px solid #00ff00;padding:8px;}
+.mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-hint {max-width:330px;color:#b7d9d0;font-size:11px;line-height:1.4;}
+.mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-top {right:12px;top:max(10px,env(safe-area-inset-top));gap:5px;}
+.mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-top button {font-size:11px;min-height:44px;padding:7px 9px;}
+.mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-map {right:12px;top:100px;}
+@media(max-width:700px) and (orientation:portrait){
+  .mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-status {max-width:calc(100% - 110px);font-size:10px;top:65px;left:8px;}
+  .mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-hint {font-size:9px;line-height:1.35;}
+  .mesh-runtime[data-review="walkthrough"] .boarding-walkthrough-ui .boarding-map {right:10px;top:160px;width:70px;height:92px;}
+}
