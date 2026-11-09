@@ -233,8 +233,9 @@ export class MeshRuntime {
     }
   }
 
-  async showBoarding(save: CampaignSave): Promise<void> {
-    this.root.dataset.review = 'boarding'; this.root.hidden = false; this.hud.hidden = false;
+  async showBoarding(save: CampaignSave, walkthrough=false): Promise<void> {
+    if(walkthrough&&!save.testSlot)throw new Error('Warship walkthrough requires an isolated test save');
+    this.root.dataset.review = walkthrough?'walkthrough':'boarding'; this.root.hidden = false; this.hud.hidden = false;
     this.status.textContent = 'Entering the Warship…'; this.controls.replaceChildren(); this.resize(); this.startLoop();
     const quest = new BoardingQuest(save);
     const loaded = await this.controller.change(async signal => {
@@ -243,10 +244,10 @@ export class MeshRuntime {
       const [hero,crew,fighter,deck] = await loadModels(['xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
       let scene:BoardingScene|undefined;
       try {
-        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
+        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, walkthrough, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         if(save.snapshot.revision!==before.revision)throw new Error('The saved route changed while the bridge was loading');
-        if(!quest.begin(before.fighterShipKey).ok)throw new Error('The boarding checkpoint could not be saved');
+        if(!walkthrough&&!quest.begin(before.fighterShipKey).ok)throw new Error('The boarding checkpoint could not be saved');
         return scene;
       }
       catch (error) { if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(fighter.scene);disposeObject(deck.scene);}throw error; }
@@ -255,7 +256,7 @@ export class MeshRuntime {
     else if (this.controller.lastError) {
       this.hud.dataset.recovery="true";
       this.status.textContent = `Boarding could not load: Your checkpoint is retained. Try again.`;
-      const retry=document.createElement('button');retry.textContent='Retry boarding';retry.addEventListener('click',()=>void this.showBoarding(save));this.controls.replaceChildren(retry);
+      const retry=document.createElement('button');retry.textContent='Retry boarding';retry.addEventListener('click',()=>void this.showBoarding(save,walkthrough));this.controls.replaceChildren(retry);
     }
   }
 
