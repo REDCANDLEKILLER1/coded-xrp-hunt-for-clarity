@@ -57,8 +57,10 @@ try{
   const idle=gltf.animations.find(a=>a.name==='Idle');
   assert.ok(run.duration>.5&&run.duration<2,'real running animation cycle');
   assert.ok(idle.duration>.8&&idle.duration<1.2,'valid standing pose duration');
-  const hips=gltf.scene.getObjectByName('mixamorig:Hips');
-  assert.ok(hips,'Mixamo hips must resolve');
+  // GLTFLoader sanitizes ':' in glTF node names; match the actual Bone suffix.
+  let hips;
+  gltf.scene.traverse(node=>{if(node.isBone&&/(?:mixamorig)?Hips$/.test(node.name))hips=node;});
+  assert.ok(hips,'Mixamo hips bone must resolve after GLTFLoader name sanitization');
   mixer.clipAction(run).play();
   mixer.update(.2);
   const first=hips.position.clone();
