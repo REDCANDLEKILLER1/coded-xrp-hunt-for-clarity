@@ -241,7 +241,7 @@ export class MeshRuntime {
     const loaded = await this.controller.change(async signal => {
       const before=save.snapshot;
       const entryRoom=before.location.mode==='boarding'||before.location.mode==='hub'?quest.checkpoint:before.warshipOwned?'bridge':'hangar';
-      const [hero,crew,fighter,deck] = await loadModels(['xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
+      const [hero,crew,fighter,deck] = await loadModels([walkthrough ? 'xrpman_sentinel_nov08' : 'xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
       let scene:BoardingScene|undefined;
       try {
         scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, walkthrough, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
