@@ -16,3 +16,6 @@ dist/
 *.aseprite
 large-raw-assets/
 raw-archives/
+
+# Generated from integrity-checked build-assets segments; never check in redundant runtime copy.
+public/assets/models/xrpman_sentinel_nov08.glb

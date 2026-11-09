@@ -113,6 +113,10 @@ export class BoardingScene implements ManagedScene {
     this.walkthrough=!!host.walkthrough;
     this.paused=host.quest.save.testSlot&&!this.walkthrough;
     this.hero = host.hero.scene; this.mixer = new AnimationMixer(this.hero);
+    if(this.walkthrough){
+      // The corrected Meshy Sentinel has a 1.70m native silhouette. Keep CODED's 1.93m actor framing.
+      this.hero.scale.setScalar(1.9304/1.70);
+    }
     this.crew=host.crew.scene;this.crewMixer=new AnimationMixer(this.crew);
     this.playCrew('Idle');
     this.crewMarker=new Mesh(new CylinderGeometry(0,.13,.26,4),this.green);this.scene.add(this.crewMarker);
@@ -437,7 +441,7 @@ export class BoardingScene implements ManagedScene {
     const walking=toward.lengthSq()>.04;
     const direction=walking?toward.normalize():new Vector3();
     if(walking){
-      const distance=Math.min(dt*2.8,this.walkthroughTarget?this.hero.position.distanceTo(this.walkthroughTarget):Infinity);
+      const distance=Math.min(dt*4.2,this.walkthroughTarget?this.hero.position.distanceTo(this.walkthroughTarget):Infinity);
       for(const axis of ['x','z'] as const){
         const next=this.hero.position.clone();next[axis]+=direction[axis]*distance;
         const room=roomAt(next.x,next.z);
@@ -449,7 +453,8 @@ export class BoardingScene implements ManagedScene {
       const angle=Math.atan2(direction.x,direction.z);
       this.hero.rotation.y+=Math.atan2(Math.sin(angle-this.hero.rotation.y),Math.cos(angle-this.hero.rotation.y))*Math.min(1,dt*10);
     }
-    this.play(walking?'Walk':'Idle');this.mixer.update(dt);
+    // Actual November 8 Mixamo Running clip while moving; stable posed Idle after releasing touch.
+    this.play(walking?'Running':'Idle');this.mixer.update(dt);
     this.heroShield.visible=false;this.crew.visible=false;this.crewMarker.visible=false;
     const focus=this.hero.position.clone().add(new Vector3(0,1.05,0));
     const radius=8.3*this.walkthroughZoom;
@@ -460,7 +465,7 @@ export class BoardingScene implements ManagedScene {
   }
   private paintWalkthroughHUD():void{
     this.health.textContent=deckRoom(this.room).title+'   ·   FREE ROAM / NO COMBAT';
-    this.hint.textContent='TOUCH + DRAG FLOOR TO WALK  ·  TWO FINGERS TO ZOOM / ROTATE  ·  MAP TO INSPECT';
+    this.hint.textContent='HOLD + DRAG TO RUN  ·  TWO FINGERS TO ZOOM / ROTATE  ·  MAP TO INSPECT';
     for(const {mesh} of this.doorPanels)mesh.visible=false;
     for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;
