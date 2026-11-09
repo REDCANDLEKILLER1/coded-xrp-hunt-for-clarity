@@ -1412,6 +1412,16 @@
       "bytes": 192004,
       "sha256": "a11b7ce6fbd20c589584926b974f610753d78b71c04da326099cd4e459b934db",
       "notes": "Original civilian vendor geometry derived from Claude f3baab9 proof rig, reusing owned XRPMan skeletal hierarchy and animation. Two independent runtime skeletons share one asset. No external textures."
+    },
+    "xrpman_sentinel_nov08": {
+      "src": "/assets/models/xrpman_sentinel_nov08.glb",
+      "type": "model",
+      "scenes": [
+        "boarding"
+      ],
+      "bytes": 3920284,
+      "sha256": "de9143986d77a5b9671c748f4ee16d59f5e1d33d0b95da0f372a95118ef06944",
+      "notes": "Corrected Nov 8 Meshy Neon Sentinel, 66 joints, 1K embedded textures, Running/Walking plus sampled stationary Idle; generated from verified segmented optimized source only for isolated Warship walkthrough. Original source kept private; original models.xrpman remains rollback."
     }
   },
   "audio": {
