@@ -22,6 +22,20 @@
   ```
 - That derivative measured **2,214,300 bytes**, SHA-256 **12623993d001c35dc2ec327da00932041d838a7aab0e1fb0f0dc9d9ff313cb65**. The temporary sandbox stopped before this binary was imported into GitHub. It **is not a shipped asset or a game integration**. Regenerate and validate byte integrity before writing a manifest entry.
 
+## Locked spaceship modeling rule — dorsal and ventral surfaces
+
+**Every spaceship has a real TOP (dorsal) and a real BOTTOM (ventral).** This rule applies to the Clarity Interceptor, every player/enemy fighter, and all future CODED spacecraft. A top-down illustration is not a complete 3D design.
+
+- **Two independently designed reference views:** a top orthographic image and a bottom orthographic image of the **same ship**, at matching scale and orientation. Preserve matching wings, nose, engines and overall silhouette, but give the underside its **own** structure, not a flipped or mirrored top.
+- **Top-side geometry:** cockpit/canopy, dorsal armor, energy conduits, spine, panels and other top-mounted equipment.
+- **Underside geometry:** ventral hull plates, belly/keel contours, access panels, vents, landing gear and supports, weapons or hardpoints as appropriate. Underside structures must be designed deliberately and agree with the top on attachment locations.
+- **Physical 3D volume:** actual thickness, coherent sidewalls, closed/watertight-looking forms, correctly outward-facing normals, and no visible holes or single paper-thin mesh surfaces.
+- **Textures and UVs:** individually authored top and bottom texture placement (or real continuous material mapping). Do **not** duplicate a top render onto the underside.
+- **Review gate:** top, bottom, left/right side and three-quarter screenshots plus in-game view from below before asset approval. Camera rotation may reveal the belly; visible defects are release blockers.
+- **Meshy workflow:** generate and approve a paired **top and bottom turnaround** first, then reconstruct a unified model using both views or fix its ventral geometry in a 3D editor. A single top-only Meshy generation is **provisional**, not a final spacecraft.
+
+**Clarity Interceptor current state:** initial image-to-3D job `01a1c156-cee6-76eb-b446-c96e4a328394` used a top reference only. It is **not approved** as a final two-sided fighter. Add an independently designed bottom reference, inspect and repair the 3D model, then optimize and integrate.
+
 ## Required isolated hangar integration (not yet implemented)
 
 1. Retrieve the Meshy succeeded task's GLB, reproduce and hash the 2.21 MB optimized derivative. Preserve the Meshy master separately from the runtime output.
