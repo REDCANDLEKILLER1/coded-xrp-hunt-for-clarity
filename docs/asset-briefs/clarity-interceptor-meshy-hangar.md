@@ -9,6 +9,18 @@
 - Distinct from `player_clarity_interceptor_alt_source.png` (crescent-wing variant); do not silently replace canon silhouette with that.
 - 3D derivatives already in the game include `models.fighter_player`, including `Pilot_Exit` and `Canopy_Hinge` sockets used for pilot transition. These cannot be discarded when substituting an external Meshy render.
 
+## LOCKED: all CODED spacecraft require two real sides
+
+**Project-wide rule (XRPMan, 2026-11-09):** Every spaceship has a **top/dorsal** and a **bottom/ventral** exterior. They are physically different designs, **not** the same texture mirrored onto both faces. This applies to every player fighter, enemy fighter, drone, capital ship and later Mars craft.
+
+- Prepare **separate top and bottom reference views** for every new Meshy 3D ship. A third side/profile view is preferred to constrain actual hull thickness.
+- Keep **identical outline, scale, wing and engine positions, nose direction, hardpoints and continuity markers** in both references. The topside may carry cockpit/canopy, dorsal armor and markings; underside must show its own belly plating, thrusters, venting, landing gear, recessed access hatches, support structure and other functional lower-surface details.
+- Both references should use **matching orthographic top-down/bottom-up projections**; no perspective mismatch that would cause Meshy to invent two unrelated hulls.
+- **Review both views and a physical side silhouette before importing a 3D model.** A one-view image-to-3D result does not prove a correct underside. Do not use it as final merely because the image looks good.
+- Maintain runtime-only optimized GLBs in the manifest and keep raw reference sheets and masters **outside** the deploy repository.
+
+This rule applies to **future designs**, and specifically makes the first single-image Clarity Interceptor Meshy generation a **provisional test**, not an accepted final two-sided ship model.
+
 ## Meshy production job — created
 
 - Meshy task: `01a1c156-cee6-76eb-b446-c96e4a328394`, `image-to-3d`, SUCCEEDED. The generated asset can be inspected and downloaded in the user's connected Meshy 3D studio.
