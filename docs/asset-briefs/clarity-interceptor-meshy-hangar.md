@@ -1,3 +1,11 @@
+# HISTORICAL / SUPERSEDED BRIEF — DO NOT BUILD THIS FIGHTER
+
+> **LATEST OVERRIDE — 2026-11-09, XRPMan explicit selection:** **#2 XRPL STRIKER** is the chosen permanent CODED starter fighter. Gameplay asset key: `xrpl_striker`; canonical original sprite `public/assets/ships/xrpl_striker.webp`; its registry `SHIPS.xrpl_striker.accent` is **#00FF00**. This **supersedes every earlier decision naming the Clarity Interceptor / `player` as the future single ship** in this document, draft PR #148, and prior assistant plans. The existing 2D player/selection/3D landing code has **NOT** been changed yet; source registry currently has three ship records, and the opening currently defaults to `player`. Do not claim Striker is already live. Retain old keys/files for save compatibility and rollback. **Next scoped implementation:** build a matched TOP and physically distinct BOTTOM/side reference for the *original* XRPL Striker, then a proper 3D hull and optimized GLB with existing landing/pilot sockets, integrate only in isolated hangar preview, test and get phone approval before altering the single-ship opening. The earlier one-view Clarity Interceptor Meshy job `01a1c156-cee6-76eb-b446-c96e4a328394` is historical experimental output and NOT the approved ship. Every spacecraft has separate dorsal/ventral construction.
+
+The rest of this file is preserved solely as earlier Clarity Interceptor model provenance, not current design direction. Re-scope PR #148 or open a separate XRPL Striker PR; do not merge this obsolete Clarity asset brief as an approved integration.
+
+---
+
 # CODED — Clarity Interceptor canonical starter + Meshy hangar asset
 
 **Decision approved 2026-11-09:** only the **Clarity Interceptor** is presented as XRPMan's starting ship. The gameplay key remains `player`. No three-ship selection screen in the public opening. Alternate `xrpl_striker` and `ledger_warden` records/files remain for save compatibility, review rollback and potential future separately approved use; do not delete their references in this slice.
