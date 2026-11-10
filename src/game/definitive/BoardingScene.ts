@@ -433,8 +433,7 @@ export class BoardingScene implements ManagedScene {
     },{signal});
     window.addEventListener('keyup',e=>this.keys.delete(e.code),{signal});
     const clear=()=>this.clearWalkthroughInput();
-    window.addEventListener('blur',clear,{signal});
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)clear();},{signal});
+    bindFocusPolicy(signal,clear,clear);
   }
   private walkthroughFingerDistance():number|null{
     const pair=[...this.walkthroughTouches.values()];
