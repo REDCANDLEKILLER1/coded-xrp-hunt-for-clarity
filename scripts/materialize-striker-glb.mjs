@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {dirname} from 'node:path';
+
+const source='build-assets/xrpl_striker_landed_optimized.glb';
+const dest='public/assets/models/xrpl_striker_landed_optimized.glb';
+const segmentBytes=[307200,307200,307200,277000];
+const expectedSize=1198600;
+const expectedSha='2f87a54b827c7041f2a0d72b78ab1163959583f0de09458200c031f7971b20ef';
+const fragments=segmentBytes.map((length,index)=>{
+  const bytes=readFileSync(source+'.part'+index);
+  assert.equal(bytes.length,length,'Striker segment '+index+' size mismatch');
+  return bytes;
+});
+const model=Buffer.concat(fragments);
+assert.equal(model.byteLength,expectedSize,'Striker total size mismatch');
+const sha=createHash('sha256').update(model).digest('hex');
+assert.equal(sha,expectedSha,'Striker optimized GLB SHA-256 mismatch');
+assert.equal(model.toString('ascii',0,4),'glTF');
+assert.equal(model.readUInt32LE(4),2);
+assert.equal(model.readUInt32LE(8),expectedSize);
+const json=JSON.parse(model.subarray(20,20+model.readUInt32LE(12)).toString('utf8'));
+assert.equal(json.buffers.length,1);
+assert.equal(json.images.length,3);
+assert.ok(json.images.every(img=>Number.isInteger(img.bufferView)&&!img.uri),'all model textures must be embedded');
+assert.ok(json.buffers.every(buf=>!buf.uri),'all model buffers must be embedded');
+mkdirSync(dirname(dest),{recursive:true});
+writeFileSync(dest,model);
+console.log('materialize-striker: '+expectedSize+' bytes, sha256 '+sha+' (runtime GLB assembled from four verified source segments)');
