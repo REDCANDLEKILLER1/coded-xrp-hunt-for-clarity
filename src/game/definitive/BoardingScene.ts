@@ -1,4 +1,4 @@
-import { AmbientLight, AnimationMixer, BoxGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, Plane, PlaneGeometry, PointLight, Raycaster, Scene, SphereGeometry, SRGBColorSpace, Texture, TextureLoader, Vector2, Vector3, WebGLRenderer } from 'three';
+import { AmbientLight, AnimationMixer, Box3, BoxGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, Plane, PlaneGeometry, PointLight, Raycaster, Scene, SphereGeometry, SRGBColorSpace, Texture, TextureLoader, Vector2, Vector3, WebGLRenderer } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
@@ -13,7 +13,7 @@ import {WarshipDeckMap} from './WarshipDeckMap';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void; walkthrough?:boolean }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; striker?:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void; walkthrough?:boolean }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
@@ -131,6 +131,19 @@ export class BoardingScene implements ManagedScene {
     fighter.position.set(DECK_LAYOUT.landing.center[0],PARKED_HEIGHT,DECK_LAYOUT.landing.center[1]);
     const canopy=fighter.getObjectByName('Canopy_Hinge');if(canopy)canopy.rotation.x=-1.15;
     fighter.updateMatrixWorld(true);this.scene.add(fighter);
+    if(this.walkthrough&&host.striker){
+      // Isolated review: retain the old fighter hierarchy for Pilot_Exit and
+      // Canopy_Hinge. Hide only its geometry, then attach the real Meshy ship.
+      // Campaign boarding and the docking cinematic keep their original model.
+      fighter.traverse(node=>{if(node instanceof Mesh)node.visible=false;});
+      const visual=host.striker.scene;
+      visual.name='XRPL_Striker_Landed_Optimized';
+      visual.scale.setScalar(4.5); // 1.90 m Meshy long-axis span -> ~8.56 m landed craft
+      visual.rotation.y=-Math.PI/2; // Meshy nose -X -> deck nose -Z
+      const sourceFoot=new Box3().setFromObject(visual).min.y;
+      visual.position.set(0,-PARKED_HEIGHT-sourceFoot+.015,0);
+      fighter.add(visual);
+    }
     if(this.room==='hangar'){
       const exit=fighter.getObjectByName('Pilot_Exit');if(exit)exit.getWorldPosition(this.hero.position);
       this.hero.position.y=0;
