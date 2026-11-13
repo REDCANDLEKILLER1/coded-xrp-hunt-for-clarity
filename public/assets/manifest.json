@@ -1429,9 +1429,9 @@
       "scenes": [
         "boarding"
       ],
-      "bytes": 1198600,
-      "sha256": "2f87a54b827c7041f2a0d72b78ab1163959583f0de09458200c031f7971b20ef",
-      "notes": "Verified original Meshy XRPL Striker Landed mobile LOD: 22,738 triangles, 20,051 vertices, embedded WebP PBR maps, 1.20 MB. Generated from four SHA-verified source fragments for isolated Warship walkthrough; old fighter retained as hidden socket/rollback carrier; original 56.85 MB source kept private."
+      "bytes": 4004112,
+      "sha256": "8e7342d021d14fece961d23b92c199c61045998cee0bab51b98f731bc15c6e4e",
+      "notes": "Approved Meshy XRPL Striker original, careful high-fidelity 258,404-triangle / 156,084-vertex optimized render, 2K WebP embedded PBR textures, Meshopt transport compression ~4.0 MB. Only isolated no-combat Warship walkthrough; old fighter remains socket carrier/rollback. Private unoptimized master stays outside deploy repo. User phone visual acceptance required."
     }
   },
   "audio": {
