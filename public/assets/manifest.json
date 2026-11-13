@@ -1422,6 +1422,16 @@
       "bytes": 3920284,
       "sha256": "de9143986d77a5b9671c748f4ee16d59f5e1d33d0b95da0f372a95118ef06944",
       "notes": "Corrected Nov 8 Meshy Neon Sentinel, 66 joints, 1K embedded textures, Running/Walking plus sampled stationary Idle; generated from verified segmented optimized source only for isolated Warship walkthrough. Original source kept private; original models.xrpman remains rollback."
+    },
+    "xrpl_striker_landed_optimized": {
+      "src": "/assets/models/xrpl_striker_landed_optimized.glb",
+      "type": "model",
+      "scenes": [
+        "boarding"
+      ],
+      "bytes": 4004112,
+      "sha256": "8e7342d021d14fece961d23b92c199c61045998cee0bab51b98f731bc15c6e4e",
+      "notes": "Approved Meshy XRPL Striker original, careful high-fidelity 258,404-triangle / 156,084-vertex optimized render, 2K WebP embedded PBR textures, Meshopt transport compression ~4.0 MB. Only isolated no-combat Warship walkthrough; old fighter remains socket carrier/rollback. Private unoptimized master stays outside deploy repo. User phone visual acceptance required."
     }
   },
   "audio": {
