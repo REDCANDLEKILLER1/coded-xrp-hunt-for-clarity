@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {dirname} from 'node:path';
+
+const source='build-assets/xrpl_striker_landed_optimized.glb';
+const dest='public/assets/models/xrpl_striker_landed_optimized.glb';
+const segmentBytes=[307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,261780];
+const expectedSize=8248980;
+const expectedSha='d305c217eddfe314c17c84f4de65634f0573b6c4329924a1b088cb8c31763aff';
+const fragments=segmentBytes.map((length,index)=>{
+  const chunk=readFileSync(source+'.part'+index);
+  assert.equal(chunk.length,length,'Striker high-fidelity source segment '+index+' size mismatch');
+  return chunk;
+});
+const model=Buffer.concat(fragments);
+assert.equal(model.byteLength,expectedSize);
+const actualSha=createHash('sha256').update(model).digest('hex');
+assert.equal(actualSha,expectedSha,'Striker geometry or texture payload checksum mismatch');
+assert.equal(model.toString('ascii',0,4),'glTF');
+assert.equal(model.readUInt32LE(4),2);
+assert.equal(model.readUInt32LE(8),expectedSize);
+const json=JSON.parse(model.subarray(20,20+model.readUInt32LE(12)).toString('utf8'));
+assert.equal(json.buffers.length,2,'meshopt payload and fallback descriptor');
+assert.equal(json.buffers[1].extensions?.EXT_meshopt_compression?.fallback,true,'fallback must not be an external URI');
+assert.equal(json.images.length,3);
+assert.ok(json.images.every(image=>Number.isInteger(image.bufferView)&&!image.uri),'all PBR maps must remain embedded');
+assert.ok(json.buffers.every(buffer=>!buffer.uri),'no external buffer dependency');
+assert.ok(json.extensionsRequired.includes('EXT_meshopt_compression'),'required mesh data compression');
+assert.ok(json.extensionsRequired.includes('EXT_texture_webp'),'required embedded texture codec');
+mkdirSync(dirname(dest),{recursive:true});
+writeFileSync(dest,model);
+console.log('materialize-striker: wing-corrected high fidelity '+actualSha+' from '+fragments.length+' segments');

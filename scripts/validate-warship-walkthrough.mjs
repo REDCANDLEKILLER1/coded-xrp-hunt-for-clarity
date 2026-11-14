@@ -27,7 +27,7 @@ assert.match(scene,/if\(!this\.walkthrough\)this\.spawnRoom\(this\.room\)/,'no i
 assert.match(scene,/if\(this\.walkthrough\)\{this\.updateWalkthrough\(dt\);return;\}/,'early combat simulation bypass');
 assert.match(scene,/if\(this\.walkthrough\)\{this\.paintWalkthroughHUD\(\);return;\}/,'walkthrough does not use combat HUD');
 assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);return;\}/,'no old virtual-stick input');
-assert.match(scene,/this\.play\(walking\?'Walk':'Idle'\)/,'no grasshopper dodge-jump or forced running');
+assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
 assert.match(scene,/for\(const \{mesh\} of this\.doorPanels\)mesh\.visible=false/,'quest door blockers hidden in walkthrough');
 assert.match(scene,/if\(room\.id!==this\.room\)\{this\.room=room\.id;this\.walkthroughVisited\.add\(room\.id\);\}/,'room position changes only in local walkthrough state');
 assert.match(map,/if\(this\.host\.walkthrough\)return 'discovered'/,'map previews all sectors, not locked progression');

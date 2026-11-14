@@ -1,5 +1,6 @@
 import { BufferGeometry, Material, Object3D, Skeleton, Texture } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { loadAssetCatalog } from '../core/AssetCatalog';
 
 export async function loadModel(id: string, signal: AbortSignal): Promise<GLTF> {
@@ -14,7 +15,7 @@ export async function loadModel(id: string, signal: AbortSignal): Promise<GLTF> 
   if(bytes.byteLength<20||view.getUint32(0,true)!==0x46546c67||view.getUint32(8,true)!==bytes.byteLength)throw new Error(`Invalid model container: ${id}`);
   const document=JSON.parse(new TextDecoder().decode(bytes.slice(20,20+view.getUint32(12,true)))) as {buffers?:{uri?:string}[];images?:{uri?:string;bufferView?:number}[];textures?:unknown[]};
   if(document.buffers?.some(buffer=>buffer.uri)||document.images?.some(image=>image.uri||!Number.isInteger(image.bufferView)))throw new Error(`Model textures must be embedded: ${id}`);
-  const gltf = await new GLTFLoader().parseAsync(bytes, entry.src.slice(0, entry.src.lastIndexOf('/') + 1));
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(bytes, entry.src.slice(0, entry.src.lastIndexOf('/') + 1));
   // GLTFLoader can otherwise return a white, partly loaded model after image errors.
   try{
     const textures=await Promise.all((document.textures??[]).map((_,index)=>gltf.parser.getDependency('texture',index)));

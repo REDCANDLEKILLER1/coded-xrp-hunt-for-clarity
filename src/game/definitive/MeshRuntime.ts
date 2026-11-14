@@ -241,16 +241,16 @@ export class MeshRuntime {
     const loaded = await this.controller.change(async signal => {
       const before=save.snapshot;
       const entryRoom=before.location.mode==='boarding'||before.location.mode==='hub'?quest.checkpoint:before.warshipOwned?'bridge':'hangar';
-      const [hero,crew,fighter,deck] = await loadModels([walkthrough ? 'xrpman_sentinel_nov08' : 'xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck'], signal);
+      const [hero,crew,fighter,deck,striker] = await loadModels([walkthrough ? 'xrpman_sentinel_nov08' : 'xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck',...(walkthrough?['xrpl_striker_landed_optimized']:[])], signal);
       let scene:BoardingScene|undefined;
       try {
-        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, entryRoom, walkthrough, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
+        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, striker, entryRoom, walkthrough, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         if(save.snapshot.revision!==before.revision)throw new Error('The saved route changed while the bridge was loading');
         if(!walkthrough&&!quest.begin(before.fighterShipKey).ok)throw new Error('The boarding checkpoint could not be saved');
         return scene;
       }
-      catch (error) { if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(fighter.scene);disposeObject(deck.scene);}throw error; }
+      catch (error) { if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(fighter.scene);disposeObject(deck.scene);if(striker)disposeObject(striker.scene);}throw error; }
     });
     if (loaded) this.hud.hidden = true;
     else if (this.controller.lastError) {

@@ -19,3 +19,4 @@ raw-archives/
 
 # Generated from integrity-checked build-assets segments; never check in redundant runtime copy.
 public/assets/models/xrpman_sentinel_nov08.glb
+public/assets/models/xrpl_striker_landed_optimized.glb
