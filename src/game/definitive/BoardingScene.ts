@@ -139,7 +139,7 @@ export class BoardingScene implements ManagedScene {
       const visual=host.striker.scene;
       visual.name='XRPL_Striker_Landed_Optimized';
       visual.scale.setScalar(4.5); // 1.90 m Meshy long-axis span -> ~8.56 m landed craft
-      visual.rotation.y=-Math.PI/2; // Meshy nose -X -> deck nose -Z
+      visual.rotation.y=Math.PI/2; // Meshy nose -X -> deck +Z: same heading as boarding approach
       const sourceFoot=new Box3().setFromObject(visual).min.y;
       visual.position.set(0,-PARKED_HEIGHT-sourceFoot+.015,0);
       fighter.add(visual);

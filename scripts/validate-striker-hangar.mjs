@@ -43,6 +43,7 @@ assert.match(runtime,/walkthrough\?\['xrpl_striker_landed_optimized'\]:\[\]/,'sh
 assert.match(scene,/if\(this\.walkthrough&&host\.striker\)/,'legacy ship unchanged outside preview');
 assert.match(scene,/fighter\.traverse\(node=>\{if\(node instanceof Mesh\)node\.visible=false;\}\)/,'legacy visual mesh hidden in review');
 assert.match(scene,/fighter\.add\(visual\)/,'Meshy model attached to parked fighter anchor');
+assert.match(scene,/visual\.rotation\.y=Math\.PI\/2/,'Striker nose must face +Z along the landing approach, not back toward the entry bay');
 assert.match(scene,/getWorldPosition\(this\.hero\.position\)/,'Pilot_Exit socket preserved');
 // Cold runtime validation: decode meshopt buffer through real GLTFLoader, not just JSON metadata.
 globalThis.self=globalThis;
