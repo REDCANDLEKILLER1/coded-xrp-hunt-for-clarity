@@ -5,9 +5,9 @@ import {dirname} from 'node:path';
 
 const source='build-assets/xrpl_striker_landed_optimized.glb';
 const dest='public/assets/models/xrpl_striker_landed_optimized.glb';
-const segmentBytes=[307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,10512];
-const expectedSize=4004112;
-const expectedSha='8e7342d021d14fece961d23b92c199c61045998cee0bab51b98f731bc15c6e4e';
+const segmentBytes=[307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,307200,261780];
+const expectedSize=8248980;
+const expectedSha='d305c217eddfe314c17c84f4de65634f0573b6c4329924a1b088cb8c31763aff';
 const fragments=segmentBytes.map((length,index)=>{
   const chunk=readFileSync(source+'.part'+index);
   assert.equal(chunk.length,length,'Striker high-fidelity source segment '+index+' size mismatch');
@@ -30,4 +30,4 @@ assert.ok(json.extensionsRequired.includes('EXT_meshopt_compression'),'required 
 assert.ok(json.extensionsRequired.includes('EXT_texture_webp'),'required embedded texture codec');
 mkdirSync(dirname(dest),{recursive:true});
 writeFileSync(dest,model);
-console.log('materialize-striker: verified HIGH-FIDELITY 4MB runtime GLB '+actualSha+' from '+fragments.length+' source fragments');
+console.log('materialize-striker: wing-corrected high fidelity '+actualSha+' from '+fragments.length+' segments');

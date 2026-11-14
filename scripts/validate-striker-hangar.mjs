@@ -9,8 +9,8 @@ assert.ok(entry,'Meshy XRPL Striker must be registered');
 assert.equal(entry.src,'/assets/models/xrpl_striker_landed_optimized.glb');
 assert.equal(entry.type,'model');
 assert.deepEqual(entry.scenes,['boarding']);
-assert.equal(entry.bytes,4004112);
-assert.equal(entry.sha256,'8e7342d021d14fece961d23b92c199c61045998cee0bab51b98f731bc15c6e4e');
+assert.equal(entry.bytes,8248980);
+assert.equal(entry.sha256,'d305c217eddfe314c17c84f4de65634f0573b6c4329924a1b088cb8c31763aff');
 assert.equal(manifest.models.fighter_xrpl_striker.sha256,'80cb43c0501b491ee2b4c248b11ca55b7a95aa686e50b2874c5ffbe97bf0bdc1','legacy fighter remains original');
 const bytes=readFileSync('public'+entry.src);
 assert.equal(bytes.byteLength,entry.bytes);
@@ -30,8 +30,8 @@ assert.ok(gltf.extensionsRequired.includes('KHR_mesh_quantization'),'high precis
 assert.ok(gltf.extensionsRequired.includes('EXT_texture_webp'),'WebP textures required');
 assert.ok(!gltf.extensionsRequired.includes('KHR_draco_mesh_compression'),'no Draco dependency');
 const primitive=gltf.meshes[0].primitives[0];
-assert.equal(gltf.accessors[primitive.attributes.POSITION].count,156084,'preserve full high-detail vertex budget');
-assert.equal(gltf.accessors[primitive.indices].count/3,258404,'no melt-style destructive simplification');
+assert.equal(gltf.accessors[primitive.attributes.POSITION].count,566879,'wing symmetry keeps the full high-detail geometry');
+assert.equal(gltf.accessors[primitive.indices].count/3,1067330,'no destructive low-poly shape reduction');
 assert.ok(gltf.materials[0].pbrMetallicRoughness?.baseColorTexture,'PBR albedo preserved');
 assert.ok(gltf.materials[0].pbrMetallicRoughness?.metallicRoughnessTexture,'PBR metallic-roughness preserved');
 assert.ok(gltf.materials[0].normalTexture,'normal detail preserved');
@@ -57,7 +57,7 @@ try{
   let triangles=0,meshes=0;
   decoded.scene.traverse(node=>{if(node.isMesh){meshes++;triangles+=(node.geometry.index?.count??node.geometry.attributes.position.count)/3;}});
   assert.equal(meshes,1,'1 real visible 3D ship mesh');
-  assert.equal(triangles,258404,'all detailed hull triangles decode');
+  assert.equal(triangles,1067330,'actual symmetrical wings decode fully');
   disposeObject(decoded.scene);
 }finally{globalThis.fetch=earlier;}
-console.log('striker-hangar: high-fidelity Meshy GLB SHA, 258404 decoded triangles, embedded PBR and socket isolation PASS');
+console.log('striker-hangar: high-fidelity symmetric Meshy geometry, +Z landing, complete PBR and pilot sockets PASS');

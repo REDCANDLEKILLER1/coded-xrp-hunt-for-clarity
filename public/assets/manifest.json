@@ -1429,9 +1429,9 @@
       "scenes": [
         "boarding"
       ],
-      "bytes": 4004112,
-      "sha256": "8e7342d021d14fece961d23b92c199c61045998cee0bab51b98f731bc15c6e4e",
-      "notes": "Approved Meshy XRPL Striker original, careful high-fidelity 258,404-triangle / 156,084-vertex optimized render, 2K WebP embedded PBR textures, Meshopt transport compression ~4.0 MB. Only isolated no-combat Warship walkthrough; old fighter remains socket carrier/rollback. Private unoptimized master stays outside deploy repo. User phone visual acceptance required."
+      "bytes": 8248980,
+      "sha256": "d305c217eddfe314c17c84f4de65634f0573b6c4329924a1b088cb8c31763aff",
+      "notes": "Review-only symmetrical wing repair derived from untouched Meshy XRPL Striker Landed, retaining 1,067,330 triangles/566,879 vertices. Meshopt-compressed 8.25MB GLB with 3 embedded 2K WebP PBR textures; original 56.85MB master archived privately. Isolated no-combat Arrival Bay only. XRPMan visual phone acceptance still required."
     }
   },
   "audio": {

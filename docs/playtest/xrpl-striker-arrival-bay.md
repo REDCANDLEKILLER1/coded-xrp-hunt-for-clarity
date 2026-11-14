@@ -1,17 +1,19 @@
-# CODED — XRPL Striker high-fidelity Arrival Bay review (DRAFT / HOLD)
+# CODED — XRPL Striker parked fighter correction (DRAFT, NO MERGE)
 
-## Why replaced
-XRPMan inspected the prior 1.20 MB / 22,738-triangle GLB on Android and rejected it: severe body deformation, melted-wax appearance, lost original details. **Do not reuse that mobile LOD.** Automated HTTP 200, asset hash and build alone are not visual acceptance.
+## User-reported defects
+- Phone screenshot 2026-11-14: parked fighter faces the wrong direction relative to positive-Z boarding approach; wings look malformed / asymmetric.
+- Previous 1.20 MB / 22,738-triangle LOD was rejected. Later 4.00 MB / 258,404-triangle LOD still displayed visibly wrong wings.
+- Direct inspection of the untouched Meshy GLB confirmed **wing asymmetry exists in the original single-view 3D reconstruction**, before optimization.
 
-## Higher-detail asset
-- Source: original textured Meshy `XRPL Striker Landed` task `29349f2b-57b5-425f-bbba-b4864e3feeb1`. Raw GLB `Meshy_AI_XRPL_Striker_Landed_1110050339_image-to-3d-texture (1).glb`, 56,853,620 bytes, SHA-256 `1bf34af09f6c52afdedca59c435f6654277ffe76e5bbdef6fbc5778adda9cec3`, 1,033,630 triangles.
-- Master original is reported archived in private Google Drive, with matching checksum verified by the upload lane; **GPT has not independently fetched the private archive**. No raw 56.85 MB source in public repo.
-- New runtime model: `public/assets/models/xrpl_striker_landed_optimized.glb`; 4,004,112 bytes, SHA-256 `8e7342d021d14fece961d23b92c199c61045998cee0bab51b98f731bc15c6e4e`. 258,404 triangles; 156,084 vertices; 3 embedded PBR WebP maps (albedo, normal, metallic/roughness) kept at up to 2048 px. Built by constrained mesh simplification from original, not voxel clustering, and geometry compressed with Meshopt high-precision 16-bit positions, 12-bit normals, 14-bit UVs. **Triangle reduction ~75%, geometry/UV detail much higher than rejected version**.
-- The intermediate 10.46 MB GLB had been rendered via VTK from a 2K PNG/JPEG-map representation, showing cockpit/wings/landing gear details; the Meshopt-compressed 4.00 MB file has independently passed a real Three.js mesh decode and must be visually inspected on the in-game Android walkthrough before acceptance.
-- 14 integrity-checked binary fragments in `build-assets/` reconstruct **one** GLB in predev/pretest/prebuild. Fragment inputs stay outside `public/`; generated GLB gitignored. Legacy old fighter remains available invisibly as Pilot_Exit/Canopy_Hinge carrier and rollback.
+## Review-only repair
+- Rotated the new Striker from -PI/2 to +PI/2, mapping its native nose -X to the docking approach's +Z. Normal landing/board routes are untouched.
+- Reconstructed a **symmetrical wing candidate** by mirroring the more faithful +Z half of the original model about its central longitudinal axis. Centerline triangles are clipped, vertices stitched, normals mirrored and UVs retained. This is a geometry revision and requires user approval after phone inspection.
+- New runtime GLB: 8248980 bytes (8.25 MB), sha256 `d305c217eddfe314c17c84f4de65634f0573b6c4329924a1b088cb8c31763aff`, 1067330 triangles, 566879 vertices, 3 embedded WebP PBR texture images up to 2K, Meshopt + quantization. **No polygon simplification** was applied to the mirrored geometry.
+- 27 verified Git binary fragments in `build-assets` reconstruct one runtime GLB in `public/assets/models` during predev/pretest/prebuild. The original 56.85MB unoptimized master remains untouched outside the deploy repo.
+- Old fighter stays as invisible `Pilot_Exit` / canopy anchor for rollback. No changes to enemies, combat, walking controls, map, scene graph outside walkthrough, or live campaign.
 
-## Scope and gates
-- ONLY `?review=walkthrough`: peaceful eight-room hangar, no enemies, no combat, same deck map, camera, movement, XRPMan Nov08 animations, landing slot and pilot exit.
-- `npm ci` / `npm test` / `npm run build` against exact PR head. There is a known inherited npm ci lockfile optional-dependency mismatch; do NOT edit lockfile in this scoped PR. Report it separately.
-- Phone acceptance: actual ship silhouette, black hull / green `#00FF00` accents and blue cockpit, wings, underside plating, gear, floor contact, proper size, map/touch/zoom/orbit, load time, both portrait and landscape. Screenshot from at least 2 angles and inspect against the original Meshy reference. Do not merge until XRPMan approves.
-- Stacked PR: main → #145 deck map → #146 peaceful walk → #147 Nov08 Sentinel XRPMan → this #150. #148 Clarity prototype superseded. Never merge without user approval.
+## Acceptance test
+Run `npm ci`, `npm test`, `npm run build`; note inherited npm ci optional dependency baseline defect separately. Inspect the exact PR preview `?review=walkthrough` on Android: ship facing inward with nose toward +Z, symmetrical wings from top and rear, landing gear resting on deck, green/blue PBR, free roaming and map working, **no enemies**. If the reconstructed shape differs from concept, reject and iterate on a genuine multi-view reference before merging. The historical concept picture is NOT itself a 3D GLB.
+
+## Scope
+PR #150 stacked on #147/#146/#145; draft, **HOLD** pending XRPMan approval. Main unchanged.
