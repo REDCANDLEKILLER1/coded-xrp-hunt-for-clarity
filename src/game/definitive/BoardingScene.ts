@@ -2,7 +2,8 @@ import { AmbientLight, AnimationMixer, Box3, BoxGeometry, CanvasTexture, Color, 
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
-import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, roomAt } from './BoardingLayout';
+import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin } from './BoardingLayout';
+import { CAPITAL_HANGAR, REVIEW_DECK, reviewDeckRoom, reviewRoomAt } from './CapitalHangarPreview';
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
 import type { ManagedScene } from './SceneController';
@@ -126,10 +127,11 @@ export class BoardingScene implements ManagedScene {
     this.room = host.entryRoom ?? host.quest.checkpoint;
     this.walkthroughVisited.add(this.room);
     this.deckMap=new WarshipDeckMap({root:host.root,quest:host.quest,position:()=>({x:this.hero.position.x,z:this.hero.position.z}),current:()=>this.room,walkthrough:this.walkthrough});
-    const start=deckRoom(this.room);
+    const start=this.walkthrough?reviewDeckRoom(this.room):deckRoom(this.room);
     this.hero.position.set(start.x,0,start.z-(this.room==='hangar'?5:this.room==='bridge'?start.depth*.5-.55:start.depth*.3));
     const fighter=host.fighter.scene;
-    fighter.position.set(DECK_LAYOUT.landing.center[0],PARKED_HEIGHT,DECK_LAYOUT.landing.center[1]);
+    const fighterZ=this.walkthrough?CAPITAL_HANGAR.z:DECK_LAYOUT.landing.center[1];
+    fighter.position.set(DECK_LAYOUT.landing.center[0],PARKED_HEIGHT,fighterZ);
     const canopy=fighter.getObjectByName('Canopy_Hinge');if(canopy)canopy.rotation.x=-1.15;
     fighter.updateMatrixWorld(true);this.scene.add(fighter);
     if(this.walkthrough&&host.striker){
@@ -150,7 +152,7 @@ export class BoardingScene implements ManagedScene {
       this.hero.position.y=0;
     }
     fighter.traverse(o=>{if(o instanceof Mesh)for(const m of Array.isArray(o.material)?o.material:[o.material])if(m.name.startsWith('Liquidity'))m.toneMapped=false;});
-    this.obstacles.push({x:0,z:-28,w:1.85,d:8.8},{x:0,z:-30.4,w:7.1,d:2.8});
+    this.obstacles.push({x:0,z:fighterZ,w:1.85,d:8.8},{x:0,z:fighterZ-2.4,w:7.1,d:2.8});
     this.scene.background=new Color(0x040911); this.scene.environment=host.environment; this.scene.environmentIntensity=.35;
     this.scene.add(this.hero,new AmbientLight(0xaec4db,.4));
     // The green chest point light previously washed out the character's face on phones.
@@ -320,7 +322,7 @@ export class BoardingScene implements ManagedScene {
     tileFloor.name='Walkthrough_Ceramic_Tile_Floor';
     tileFloor.position.set(x,.012,z);tileFloor.receiveShadow=true;
     group.add(tileFloor);
-    const height=1.25,thickness=.24;
+    const height=room.id==='hangar'?2.8:1.25,thickness=.24;
     const wall=(axis:'x'|'z',fixed:number,lo:number,hi:number):void=>{
       const cut=DECK_DOORS.filter(door=>door.axis===axis&&
         Math.abs((axis==='x'?door.x:door.z)-fixed)<.22&&
@@ -341,6 +343,16 @@ export class BoardingScene implements ManagedScene {
     };
     wall('x',x-w/2,z-d/2,z+d/2);wall('x',x+w/2,z-d/2,z+d/2);
     wall('z',z-d/2,x-w/2,x+w/2);wall('z',z+d/2,x-w/2,x+w/2);
+    // Long, low-cost perimeter gantries convey the scale of a capital carrier.
+    // No duplicate ships, console furniture, or bright painted floor decals.
+    if(room.id==='hangar'){
+      const gantryLight=new MeshBasicMaterial({color:0x376d69,toneMapped:false});
+      for(const side of [-1,1])for(const zOffset of [-36,-18,0,18,36]){
+        const pillarX=x+side*(w/2-.65),pillarZ=z+zOffset;
+        this.part(group,[pillarX,2.05,pillarZ],[.9,4.1,1.3],this.trim);
+        this.part(group,[pillarX-side*.52,3.6,pillarZ],[.08,.22,1.05],gantryLight);
+      }
+    }
     // Wall art remains; floor decals and bright lane stripes are deliberately omitted.
     this.buildRoomArt(group,room);
     const alarm=new PointLight(0xff2418,3,Math.max(w,d)*1.1,2);
@@ -363,7 +375,7 @@ export class BoardingScene implements ManagedScene {
         // hiding individual baked consoles is impossible without corrupting its geometry.
         // Keep the original scene graph as rollback, but render a clean room shell instead.
         group.visible=false;
-        this.buildEmptyWalkthroughRoom(room);
+        this.buildEmptyWalkthroughRoom(room.id==='hangar'?CAPITAL_HANGAR:room);
         continue;
       }
       this.roomGroups.set(room.id,group);
@@ -614,7 +626,7 @@ export class BoardingScene implements ManagedScene {
       const distance=Math.min(dt*4.2,this.walkthroughTarget?this.hero.position.distanceTo(this.walkthroughTarget):Infinity);
       for(const axis of ['x','z'] as const){
         const next=this.hero.position.clone();next[axis]+=direction[axis]*distance;
-        const room=roomAt(next.x,next.z);
+        const room=reviewRoomAt(next.x,next.z);
         if(!room||!insideWallMargin(room,next.x,next.z)||!canCross(this.room,room.id,next.x,next.z)||!this.doorIsPassable(this.room,room.id))continue;
         if(boardingObstacleBlocksMove(this.obstacles,this.hero.position,next))continue;
         this.hero.position.copy(next);
@@ -638,9 +650,9 @@ export class BoardingScene implements ManagedScene {
     this.statsClock+=dt;if(this.statsClock>.08){this.paintWalkthroughHUD();this.statsClock=0;}
   }
   private paintWalkthroughHUD():void{
-    this.health.textContent=deckRoom(this.room).title+'   ·   FREE ROAM / NO COMBAT';
+    this.health.textContent=reviewDeckRoom(this.room).title+'   ·   FREE ROAM / NO COMBAT';
     this.hint.textContent='HOLD + DRAG TO RUN  ·  TWO FINGERS TO ZOOM / ROTATE  ·  MAP TO INSPECT';
-    for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
+    for(const [id,group] of this.roomGroups)group.visible=id==='hangar'||Math.hypot(reviewDeckRoom(id).x-this.hero.position.x,reviewDeckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;
     ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
     for(const room of DECK){
