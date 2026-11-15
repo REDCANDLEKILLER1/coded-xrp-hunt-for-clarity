@@ -13,7 +13,7 @@ import {WarshipDeckMap} from './WarshipDeckMap';
 
 interface Enemy { mesh: Group; tell: Mesh; barrier?: Mesh; supportBarrier?: Mesh; supportShield:boolean; room: BoardingRoom; hp: number; maxHp:number; clock: number; charge: number; target: Vector3; base: Vector3; tactic: number; kind: BoardingEnemyKind }
 interface Bolt { mesh: Mesh; velocity: Vector3; life: number; owner: 'hero' | 'crew' | 'enemy'; damage: number }
-interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; striker?:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void; walkthrough?:boolean }
+interface SceneHost { renderer: WebGLRenderer; environment: Texture; root: HTMLElement; hud: HTMLElement; quest: BoardingQuest; hero: GLTF; crew: GLTF; fighter: GLTF; deck:GLTF; striker?:GLTF; doorFrame?:GLTF; entryRoom?:BoardingRoom; onDeparture: () => void; onCivic:()=>void; walkthrough?:boolean }
 
 /** Continuous deck prototype: real skinned actor, measured rooms and finite combat. */
 export class BoardingScene implements ManagedScene {
@@ -306,9 +306,20 @@ export class BoardingScene implements ManagedScene {
     }
     for(const material of replacedLights)material.dispose();
     this.refreshFactionLighting();
-    const frames=new InstancedMesh(this.box,this.trim,DECK_DOORS.length*3);const matrix=new Matrix4();let frameIndex=0;this.scene.add(frames);
+    const frames=new InstancedMesh(this.box,this.trim,DECK_DOORS.length*3);const matrix=new Matrix4();let frameIndex=0;
+    if(!this.walkthrough||!this.host.doorFrame)this.scene.add(frames);
     for(const door of DECK_DOORS){
       const frame=new Group();this.scene.add(frame);
+      if(this.walkthrough&&this.host.doorFrame){
+        // All seven placements reuse the one optimized, embedded-texture GLB geometry.
+        // The asset is an OPEN frame. Moving door leaves remain separate runtime meshes.
+        const visual=this.host.doorFrame.scene.clone(true);
+        visual.name='Regulatory_Blast_Door_Frame_V2';
+        visual.scale.set(7.2,5,.8); // Meshy native extents 1 x .6554 x .5133; clear opening ~3.6m.
+        visual.position.set(door.x,1.65,door.z);
+        visual.rotation.y=door.axis==='x'?Math.PI/2:0;
+        frame.add(visual);
+      }
       for(const sign of [-1,1]){matrix.makeScale(.35,3.4,.35);matrix.setPosition(door.x+(door.axis==='z'?sign*2:0),1.7,door.z+(door.axis==='x'?sign*2:0));frames.setMatrixAt(frameIndex++,matrix);}
       matrix.makeScale(door.axis==='z'?4.4:.4,.25,door.axis==='x'?4.4:.4);matrix.setPosition(door.x,3.3,door.z);frames.setMatrixAt(frameIndex++,matrix);
       // Both leaves share the canonical doorway. Slide along its width, never through a wall.
