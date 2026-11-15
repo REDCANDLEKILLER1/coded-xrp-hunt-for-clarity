@@ -3,6 +3,7 @@ import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
 import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, roomAt } from './BoardingLayout';
+import {makeNeutralXRPManIdle} from './CharacterNeutralIdle';
 import { CAPITAL_HANGAR, REVIEW_DECK, reviewDeckRoom, reviewRoomAt } from './CapitalHangarPreview';
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
@@ -115,6 +116,16 @@ export class BoardingScene implements ManagedScene {
     this.walkthrough=!!host.walkthrough;
     this.paused=host.quest.save.testSlot&&!this.walkthrough;
     this.hero = host.hero.scene; this.mixer = new AnimationMixer(this.hero);
+    if(this.walkthrough){
+      // Repair in memory ONLY: keep the uploaded Meshy mesh, skin, maps and Run.
+      // The sampled Walking Idle made one shoulder/upper arm project 50% wider.
+      const neutral=makeNeutralXRPManIdle(this.hero);
+      host.hero.animations=[...host.hero.animations.filter(clip=>clip.name!=='Idle'),neutral];
+    }
+    if(this.walkthrough){
+      // The corrected Meshy Sentinel has a 1.70m native silhouette. Keep CODED's 1.93m actor framing.
+      this.hero.scale.setScalar(1.9304/1.70);
+    }
     if(this.walkthrough){
       // The corrected Meshy Sentinel has a 1.70m native silhouette. Keep CODED's 1.93m actor framing.
       this.hero.scale.setScalar(1.9304/1.70);
@@ -635,7 +646,7 @@ export class BoardingScene implements ManagedScene {
       const angle=Math.atan2(direction.x,direction.z);
       this.hero.rotation.y+=Math.atan2(Math.sin(angle-this.hero.rotation.y),Math.cos(angle-this.hero.rotation.y))*Math.min(1,dt*10);
     }
-    // Actual November 8 Mixamo Running clip while moving; stable posed Idle after releasing touch.
+    // Actual Nov 8 Running clip while moving; symmetric rig-derived neutral pose when idle.
     this.play(walking?'Running':'Idle');this.mixer.update(dt);
     this.heroShield.visible=false;this.crew.visible=false;this.crewMarker.visible=false;
     // At close range move the orbit target from chest to face, and lower the
