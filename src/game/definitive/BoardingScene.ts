@@ -318,7 +318,7 @@ export class BoardingScene implements ManagedScene {
     for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*w/3,uv.getY(i)*d/3);
     const tileFloor=new Mesh(floorGeometry,this.getWalkthroughFloorMaterial());
     tileFloor.name='Walkthrough_Ceramic_Tile_Floor';
-    tileFloor.position.set(x,-.002,z);tileFloor.receiveShadow=true;
+    tileFloor.position.set(x,.012,z);tileFloor.receiveShadow=true;
     group.add(tileFloor);
     const height=1.25,thickness=.24;
     const wall=(axis:'x'|'z',fixed:number,lo:number,hi:number):void=>{
