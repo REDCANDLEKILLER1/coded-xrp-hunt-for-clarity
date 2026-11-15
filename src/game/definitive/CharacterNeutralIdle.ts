@@ -15,9 +15,11 @@ export function makeNeutralXRPManIdle(root:Object3D):AnimationClip {
   const tracks:KeyframeTrack[]=[];
   const frames=[0,1];
   root.traverse(object=>{
-    if(!(object instanceof Bone))return;
-    const path=object.uuid;
-    const position=object.position.toArray(),rotation=object.quaternion.toArray(),scale=object.scale.toArray();
+    // GLTFLoader nodes can cross Three.js module boundaries in validator bundles.
+    if(!(object as Bone).isBone)return;
+    const bone=object as Bone;
+    const path=bone.uuid;
+    const position=bone.position.toArray(),rotation=bone.quaternion.toArray(),scale=bone.scale.toArray();
     tracks.push(new VectorKeyframeTrack(`${path}.position`,frames,[...position,...position]));
     tracks.push(new QuaternionKeyframeTrack(`${path}.quaternion`,frames,[...rotation,...rotation]));
     tracks.push(new VectorKeyframeTrack(`${path}.scale`,frames,[...scale,...scale]));
