@@ -30,6 +30,14 @@ assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);retu
 assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
 assert.match(scene,/this\.updateWalkthroughDoors\(dt\)/,'every walkthrough frame advances all door animations');
 assert.match(scene,/this\.buildEmptyWalkthroughRoom\(room\)/,'walkthrough uses empty architecture in each room');
+assert.match(scene,/this\.walkthrough\?3\.1:7/,'chest point light reduced only in walkthrough');
+assert.match(scene,/const faceFill=new PointLight\(0xcfe8dc,\.7,2\.8,2\)/,'face visibility fill is subtle and walkthrough-only');
+assert.match(scene,/if\(this\.walkthrough\)return; \/\/ No old floor decals/,'all previous floor graphics are excluded from walkthrough');
+assert.match(scene,/this\.getWalkthroughFloorMaterial\(\)/,'all eight review rooms use one shared floor material');
+assert.match(scene,/texture\.wrapS=RepeatWrapping;texture\.wrapT=RepeatWrapping/,'floor image repeats seamlessly');
+assert.match(scene,/tileFloor\.name='Walkthrough_Ceramic_Tile_Floor'/,'every empty room gets a tiled floor mesh');
+assert.doesNotMatch(scene.slice(scene.indexOf('private buildEmptyWalkthroughRoom('),scene.indexOf('private buildDeck():void')),/this\.part\(group,\[x\+sign\*\(w\/2-\.5\)/,'walkthrough floor lane stripes removed');
+
 assert.match(scene,/group\.visible=false;\s*this\.buildEmptyWalkthroughRoom\(room\);\s*continue;/,'baked Blender furniture remains hidden');
 assert.match(scene,/const cut=DECK_DOORS\.filter/,'clean room walls preserve all canonical door apertures');
 assert.match(scene,/if\(this\.walkthrough\)\{[\s\S]*?this\.buildEmptyWalkthroughRoom\(room\);\s*continue;/,'runtime console, cover and machinery creation skipped in walkthrough');

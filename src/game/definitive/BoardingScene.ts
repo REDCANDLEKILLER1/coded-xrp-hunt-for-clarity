@@ -1,4 +1,4 @@
-import { AmbientLight, AnimationMixer, Box3, BoxGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, Plane, PlaneGeometry, PointLight, Raycaster, Scene, SphereGeometry, SRGBColorSpace, Texture, TextureLoader, Vector2, Vector3, WebGLRenderer } from 'three';
+import { AmbientLight, AnimationMixer, Box3, BoxGeometry, CanvasTexture, Color, CylinderGeometry, DirectionalLight, DoubleSide, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PerspectiveCamera, Plane, PlaneGeometry, PointLight, Raycaster, Scene, SphereGeometry, SRGBColorSpace, Texture, TextureLoader, RepeatWrapping, Vector2, Vector3, WebGLRenderer } from 'three';
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
@@ -92,6 +92,7 @@ export class BoardingScene implements ManagedScene {
   private hiddenPanel: Group | null = null;
   private readonly factionLights: PointLight[] = [];
   private readonly floorMaterials: MeshBasicMaterial[] = [];
+  private walkthroughFloorMaterial: MeshStandardMaterial|null=null;
   private readonly wallMaterials: MeshBasicMaterial[] = [];
   private pauseButton: HTMLButtonElement | null = null;
   private coreStarted = false;
@@ -152,7 +153,14 @@ export class BoardingScene implements ManagedScene {
     this.obstacles.push({x:0,z:-28,w:1.85,d:8.8},{x:0,z:-30.4,w:7.1,d:2.8});
     this.scene.background=new Color(0x040911); this.scene.environment=host.environment; this.scene.environmentIntensity=.35;
     this.scene.add(this.hero,new AmbientLight(0xaec4db,.4));
-    const liquidityLight=new PointLight(0x00ff00,7,7,2);liquidityLight.position.set(0,1.2,.25);this.hero.add(liquidityLight);
+    // The green chest point light previously washed out the character's face on phones.
+    // Preserve the mesh's green eye and chest materials; tune only the preview lighting.
+    const liquidityLight=new PointLight(0x00ff00,this.walkthrough?3.1:7,7,2);
+    liquidityLight.position.set(0,1.2,.25);this.hero.add(liquidityLight);
+    if(this.walkthrough){
+      const faceFill=new PointLight(0xcfe8dc,.7,2.8,2);
+      faceFill.position.set(0,1.85,.9);this.hero.add(faceFill);
+    }
     this.heroShield.scale.set(.78,1.1,.78);this.heroShield.visible=false;this.scene.add(this.heroShield);
     this.exitField.position.set(0,.025,DECK_LAYOUT.core.exitFieldZ);this.exitField.scale.set(9,.025,.45);this.scene.add(this.exitField);
     const key=this.keyLight;key.castShadow=true;key.shadow.mapSize.set(1024,1024);
@@ -206,6 +214,7 @@ export class BoardingScene implements ManagedScene {
       drawWallArt(minX,Math.max(minX,rearDoor.x-rearDoor.width/2-.18));
       drawWallArt(Math.min(maxX,rearDoor.x+rearDoor.width/2+.18),maxX);
     }else drawWallArt(minX,maxX);
+    if(this.walkthrough)return; // No old floor decals/graphics in empty-room review.
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');if(!ctx)return;
     ctx.fillStyle='#07111c';ctx.fillRect(0,0,512,256);ctx.strokeStyle='#ffffff';ctx.lineWidth=18;ctx.strokeRect(12,12,488,232);
     ctx.strokeStyle='#ffffff';ctx.lineWidth=5;for(let x=-80;x<560;x+=64){ctx.beginPath();ctx.moveTo(x,232);ctx.lineTo(x+46,24);ctx.stroke();}
@@ -265,6 +274,36 @@ export class BoardingScene implements ManagedScene {
     this.part(parent,[x,.36,z],[w,.72,d]);this.part(parent,[x,.74,z],[w*.9,.05,d*.86],this.blue);
     this.obstacles.push({x,z,w,d,cover:true});
   }
+  /** One repeating, seamless texture for all eight floors: no decals, text or glowing lane art. */
+  private getWalkthroughFloorMaterial():MeshStandardMaterial{
+    if(this.walkthroughFloorMaterial)return this.walkthroughFloorMaterial;
+    const canvas=document.createElement('canvas');canvas.width=256;canvas.height=256;
+    const ctx=canvas.getContext('2d');
+    if(ctx){
+      ctx.fillStyle='#141d25';ctx.fillRect(0,0,256,256);
+      for(let row=0;row<2;row++)for(let column=0;column<2;column++){
+        const x=column*128,y=row*128;
+        ctx.fillStyle=(row+column)%2?'#27343e':'#2b3944';
+        ctx.fillRect(x+3,y+3,122,122);
+        ctx.fillStyle='#35454f';ctx.fillRect(x+8,y+8,112,2);
+        ctx.fillStyle='#1b252d';ctx.fillRect(x+8,y+118,112,2);
+        ctx.fillStyle='#202c35';ctx.fillRect(x+8,y+11,2,106);
+        ctx.fillStyle='#394a53';ctx.fillRect(x+118,y+11,2,106);
+        ctx.fillStyle='#53616a';
+        for(const dx of [13,113])for(const dy of [14,112]){
+          ctx.beginPath();ctx.arc(x+dx,y+dy,2.1,0,Math.PI*2);ctx.fill();
+        }
+        // Subtle brushed steel grain, no painted symbols or logos.
+        ctx.strokeStyle='rgba(174,195,206,.055)';ctx.lineWidth=1;
+        for(let v=22;v<111;v+=13){ctx.beginPath();ctx.moveTo(x+16,y+v);ctx.lineTo(x+112,y+v);ctx.stroke();}
+      }
+    }
+    const texture=new CanvasTexture(canvas);texture.colorSpace=SRGBColorSpace;
+    texture.wrapS=RepeatWrapping;texture.wrapT=RepeatWrapping;
+    texture.anisotropy=4;
+    this.walkthroughFloorMaterial=new MeshStandardMaterial({map:texture,color:0xaab8c4,roughness:.77,metalness:.35});
+    return this.walkthroughFloorMaterial;
+  }
   /** Empty preview shell: preserve the room footprint and all seven door apertures,
    * but omit both runtime furnishings and Blender-baked decorative modules. */
   private buildEmptyWalkthroughRoom(room:typeof DECK[number]):void {
@@ -273,7 +312,14 @@ export class BoardingScene implements ManagedScene {
     const {x,z,width:w,depth:d}=room;
     // Permanent architectural surfaces only; no consoles, cover, machinery or collision props.
     this.part(group,[x,-.13,z],[w,.25,d],this.metal);
-    this.part(group,[x,-.001,z],[w-.3,.018,d-.3],this.trim);
+    const floorGeometry=new PlaneGeometry(w,d);
+    floorGeometry.rotateX(-Math.PI/2);
+    const uv=floorGeometry.getAttribute('uv');
+    for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*w/3,uv.getY(i)*d/3);
+    const tileFloor=new Mesh(floorGeometry,this.getWalkthroughFloorMaterial());
+    tileFloor.name='Walkthrough_Ceramic_Tile_Floor';
+    tileFloor.position.set(x,.012,z);tileFloor.receiveShadow=true;
+    group.add(tileFloor);
     const height=1.25,thickness=.24;
     const wall=(axis:'x'|'z',fixed:number,lo:number,hi:number):void=>{
       const cut=DECK_DOORS.filter(door=>door.axis===axis&&
@@ -295,8 +341,7 @@ export class BoardingScene implements ManagedScene {
     };
     wall('x',x-w/2,z-d/2,z+d/2);wall('x',x+w/2,z-d/2,z+d/2);
     wall('z',z-d/2,x-w/2,x+w/2);wall('z',z+d/2,x-w/2,x+w/2);
-    // Low profile perimeter detail and wall graphics are architectural, not furniture.
-    for(const sign of [-1,1])this.part(group,[x+sign*(w/2-.5),.025,z],[.08,.035,d-.8],this.green);
+    // Wall art remains; floor decals and bright lane stripes are deliberately omitted.
     this.buildRoomArt(group,room);
     const alarm=new PointLight(0xff2418,3,Math.max(w,d)*1.1,2);
     alarm.position.set(x,2.7,z);group.add(alarm);this.factionLights.push(alarm);
