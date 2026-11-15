@@ -1,4 +1,5 @@
-import {DECK,DECK_DOORS} from './BoardingLayout';
+import {DECK,DECK_DOORS,type DeckRoom} from './BoardingLayout';
+import {REVIEW_DECK} from './CapitalHangarPreview';
 import type {BoardingRoom,BoardingQuest} from './BoardingQuest';
 import {
   deckMapBounds,projectDeckPoint,unprojectDeckPoint,pickDeckRoom,clampDeckZoom,clampDeckPan,
@@ -14,7 +15,7 @@ interface MapHost {
   walkthrough?:boolean;
 }
 
-const BOUNDS=deckMapBounds(DECK);
+// Canonical campaign dimensions stay unchanged. Preview uses an extended Bay only.
 const COLORS={bg:'#07111b',line:'#254555',visited:'#164a3c',current:'#00ff00',
   secure:'#1c7762',locked:'#8e3942',unknown:'#1c2a35',door:'#719b9e',text:'#e0fff0'};
 
@@ -32,11 +33,15 @@ export class WarshipDeckMap {
   private readonly origins=new Map<number,Position>();
   private readonly view:DeckMapView={width:320,height:440,zoom:1,panX:0,panY:0};
   private selected:BoardingRoom|null=null;
+  private readonly mappedRooms:readonly DeckRoom[];
+  private readonly bounds:ReturnType<typeof deckMapBounds>;
   private pinchDistance:number|null=null;
   private moved=false;
   isOpen=false;
 
   constructor(private readonly host:MapHost){
+    this.mappedRooms=host.walkthrough?REVIEW_DECK:DECK;
+    this.bounds=deckMapBounds(this.mappedRooms);
     this.panel.className='boarding-deck-overlay';
     this.panel.setAttribute('role','dialog');this.panel.setAttribute('aria-modal','true');
     this.panel.setAttribute('aria-label','Regulatory Warship deck map');
@@ -151,8 +156,8 @@ export class WarshipDeckMap {
       if(this.pointers.size===0){
         if(wasOnly&&!this.moved&&origin&&Math.hypot(origin.x-event.clientX,origin.z-event.clientY)<9&&event.type==='pointerup'){
           const rect=this.canvas.getBoundingClientRect();
-          const point=unprojectDeckPoint(BOUNDS,this.view,event.clientX-rect.left,event.clientY-rect.top);
-          const chosen=pickDeckRoom(DECK,point.x,point.z);
+          const point=unprojectDeckPoint(this.bounds,this.view,event.clientX-rect.left,event.clientY-rect.top);
+          const chosen=pickDeckRoom(this.mappedRooms,point.x,point.z);
           if(chosen)this.select(chosen as BoardingRoom);
         }
         this.moved=false;
@@ -178,7 +183,7 @@ export class WarshipDeckMap {
     if(!this.isOpen)return;
     const quest=this.host.quest;
     this.rooms.replaceChildren();
-    for(const [index,room] of DECK.entries()){
+    for(const [index,room] of this.mappedRooms.entries()){
       const known=this.visible(room.id);
       const button=document.createElement('button');button.type='button';
       button.className='boarding-deck-room-option';
@@ -190,7 +195,7 @@ export class WarshipDeckMap {
       this.rooms.append(button);
     }
     const target=this.selected??this.host.current();
-    const room=DECK.find(r=>r.id===target)!;
+    const room=this.mappedRooms.find(r=>r.id===target)!;
     const known=this.visible(target);
     const status=this.status(target);
     const title=document.createElement('strong');
@@ -220,17 +225,17 @@ export class WarshipDeckMap {
     ctx.lineWidth=1;ctx.strokeStyle='#142837';
     for(let x=0;x<width;x+=28){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,height);ctx.stroke();}
     for(let y=0;y<height;y+=28){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(width,y);ctx.stroke();}
-    const pt=(x:number,z:number)=>projectDeckPoint(BOUNDS,this.view,x,z);
+    const pt=(x:number,z:number)=>projectDeckPoint(this.bounds,this.view,x,z);
     for(const door of DECK_DOORS){
-      const from=pt(DECK.find(r=>r.id===door.a)!.x,DECK.find(r=>r.id===door.a)!.z);
-      const to=pt(DECK.find(r=>r.id===door.b)!.x,DECK.find(r=>r.id===door.b)!.z);
+      const from=pt(this.mappedRooms.find(r=>r.id===door.a)!.x,this.mappedRooms.find(r=>r.id===door.a)!.z);
+      const to=pt(this.mappedRooms.find(r=>r.id===door.b)!.x,this.mappedRooms.find(r=>r.id===door.b)!.z);
       const locked=!this.host.walkthrough&&!!this.host.quest.lockReason(door.b);
       const found=this.visible(door.a)&&this.visible(door.b);
       ctx.strokeStyle=locked?'#b74149':found?'#25a879':'#294255';
       ctx.lineWidth=found?6:4;ctx.setLineDash(found?[]:[7,6]);
       ctx.beginPath();ctx.moveTo(from.x,from.y);ctx.lineTo(to.x,to.y);ctx.stroke();ctx.setLineDash([]);
     }
-    for(const room of DECK){
+    for(const room of this.mappedRooms){
       const center=pt(room.x,room.z);
       const topLeft=pt(room.x-room.width/2,room.z+room.depth/2);
       const bottomRight=pt(room.x+room.width/2,room.z-room.depth/2);
