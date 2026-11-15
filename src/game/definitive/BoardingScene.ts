@@ -126,10 +126,6 @@ export class BoardingScene implements ManagedScene {
       // The corrected Meshy Sentinel has a 1.70m native silhouette. Keep CODED's 1.93m actor framing.
       this.hero.scale.setScalar(1.9304/1.70);
     }
-    if(this.walkthrough){
-      // The corrected Meshy Sentinel has a 1.70m native silhouette. Keep CODED's 1.93m actor framing.
-      this.hero.scale.setScalar(1.9304/1.70);
-    }
     this.crew=host.crew.scene;this.crewMixer=new AnimationMixer(this.crew);
     this.playCrew('Idle');
     this.crewMarker=new Mesh(new CylinderGeometry(0,.13,.26,4),this.green);this.scene.add(this.crewMarker);
