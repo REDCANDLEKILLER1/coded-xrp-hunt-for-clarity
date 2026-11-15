@@ -2,7 +2,7 @@ import { AmbientLight, AnimationMixer, Box3, BoxGeometry, CanvasTexture, Color, 
 import type { GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { sfx } from '../audio/Sfx';
 import { BoardingQuest, type BoardingRoom, type BoardingStep } from './BoardingQuest';
-import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin } from './BoardingLayout';
+import { DECK, DECK_DOORS, DECK_LAYOUT, canCross, deckRoom, insideWallMargin, roomAt } from './BoardingLayout';
 import { CAPITAL_HANGAR, REVIEW_DECK, reviewDeckRoom, reviewRoomAt } from './CapitalHangarPreview';
 import { BOARDING_DIALOGUE, Dialogue, type DialogueScene } from './Dialogue';
 import { disposeObject } from './ModelAssets';
