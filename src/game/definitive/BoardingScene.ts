@@ -536,7 +536,7 @@ export class BoardingScene implements ManagedScene {
       if(fingers.length===2){
         const distance=this.walkthroughFingerDistance();
         if(distance&&this.walkthroughPinch&&this.walkthroughPinch>6){
-          this.walkthroughZoom=Math.max(.55,Math.min(2.15,this.walkthroughZoom*this.walkthroughPinch/distance));
+          this.walkthroughZoom=Math.max(.085,Math.min(2.15,this.walkthroughZoom*this.walkthroughPinch/distance));
         }
         this.walkthroughPinch=distance;
         this.walkthroughYaw-=(e.clientX-previous.x)*.006;
@@ -553,7 +553,7 @@ export class BoardingScene implements ManagedScene {
     };
     for(const type of ['pointerup','pointercancel','lostpointercapture'] as const)canvas.addEventListener(type,stop,{signal});
     canvas.addEventListener('wheel',e=>{if(!this.active||this.deckMap.isOpen)return;
-      this.walkthroughZoom=Math.max(.55,Math.min(2.15,this.walkthroughZoom*Math.exp(e.deltaY*.0015)));e.preventDefault();
+      this.walkthroughZoom=Math.max(.085,Math.min(2.15,this.walkthroughZoom*Math.exp(e.deltaY*.0015)));e.preventDefault();
     },{signal,passive:false});
     window.addEventListener('keydown',e=>{
       if(!this.active||this.deckMap.isOpen)return;
@@ -626,9 +626,13 @@ export class BoardingScene implements ManagedScene {
     // Actual November 8 Mixamo Running clip while moving; stable posed Idle after releasing touch.
     this.play(walking?'Running':'Idle');this.mixer.update(dt);
     this.heroShield.visible=false;this.crew.visible=false;this.crewMarker.visible=false;
-    const focus=this.hero.position.clone().add(new Vector3(0,1.05,0));
+    // At close range move the orbit target from chest to face, and lower the
+    // camera's elevation. Otherwise maximum zoom points above XRPMan's head.
+    const closeUp=Math.max(0,Math.min(1,(.65-this.walkthroughZoom)/.565));
+    const focus=this.hero.position.clone().add(new Vector3(0,1.05+.64*closeUp,0));
     const radius=8.3*this.walkthroughZoom;
-    const offset=new Vector3(Math.sin(this.walkthroughYaw)*radius,5.4*this.walkthroughZoom,-Math.cos(this.walkthroughYaw)*radius);
+    const height=5.4*this.walkthroughZoom*(1-closeUp)+.12*closeUp;
+    const offset=new Vector3(Math.sin(this.walkthroughYaw)*radius,height,-Math.cos(this.walkthroughYaw)*radius);
     this.camera.position.lerp(focus.clone().add(offset),1-Math.exp(-dt*8));
     this.camera.lookAt(focus);
     this.statsClock+=dt;if(this.statsClock>.08){this.paintWalkthroughHUD();this.statsClock=0;}
