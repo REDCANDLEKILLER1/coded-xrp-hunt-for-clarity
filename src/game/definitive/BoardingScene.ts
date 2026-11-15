@@ -54,7 +54,7 @@ export class BoardingScene implements ManagedScene {
   private readonly roomLights = new Map<BoardingRoom, Mesh[]>();
   private factionRevision = -1;
   private readonly terminals = new Map<BoardingRoom, Mesh>();
-  private readonly doorPanels: { door: typeof DECK_DOORS[number]; mesh: Mesh }[] = [];
+  private readonly doorPanels: { door: typeof DECK_DOORS[number]; mesh: Mesh; other: Mesh; indicator: Mesh; openness: number }[] = [];
   private readonly enemies: Enemy[] = [];
   private readonly bolts: Bolt[] = [];
   private readonly obstacles: {x:number;z:number;w:number;d:number;cover?:boolean}[]=[];
@@ -166,7 +166,7 @@ export class BoardingScene implements ManagedScene {
     });
     this.buildDeck(); this.buildUI(); this.bindInput();
     if(!this.walkthrough)this.spawnRoom(this.room);
-    else{this.crew.visible=false;this.crewMarker.visible=false;for(const panel of this.doorPanels)panel.mesh.visible=false;}
+    else{this.crew.visible=false;this.crewMarker.visible=false;}
     this.scene.traverse(object=>{if(object instanceof Mesh&&!(object.material instanceof MeshBasicMaterial)){object.castShadow=true;object.receiveShadow=true;}});
     // Flat plates and trim receive contact shadows; only the pressure walls need
     // to cast them. This avoids redrawing the entire deck into the shadow map.
@@ -296,9 +296,13 @@ export class BoardingScene implements ManagedScene {
       const frame=new Group();this.scene.add(frame);
       for(const sign of [-1,1]){matrix.makeScale(.35,3.4,.35);matrix.setPosition(door.x+(door.axis==='z'?sign*2:0),1.7,door.z+(door.axis==='x'?sign*2:0));frames.setMatrixAt(frameIndex++,matrix);}
       matrix.makeScale(door.axis==='z'?4.4:.4,.25,door.axis==='x'?4.4:.4);matrix.setPosition(door.x,3.3,door.z);frames.setMatrixAt(frameIndex++,matrix);
-      const panel=this.part(frame,[door.x,1.45,door.z],[door.axis==='z'?door.width:.16,2.9,door.axis==='x'?door.width:.16],this.metal);
-      const indicator=new Mesh(this.box,this.red);indicator.scale.set(door.axis==='z'?.82:1.2,.025,door.axis==='x'?.82:1.2);indicator.position.y=.4;panel.add(indicator);
-      this.doorPanels.push({door,mesh:panel});
+      // Both leaves share the canonical doorway. Slide along its width, never through a wall.
+      const halfWidth=door.width/2;
+      const leafSize:[number,number,number]=door.axis==='z'?[halfWidth,.0+2.9,.16]:[.16,2.9,halfWidth];
+      const panel=this.part(frame,[door.x-(door.axis==='z'?door.width/4:0),1.45,door.z-(door.axis==='x'?door.width/4:0)],leafSize,this.metal);
+      const other=this.part(frame,[door.x+(door.axis==='z'?door.width/4:0),1.45,door.z+(door.axis==='x'?door.width/4:0)],leafSize,this.metal);
+      const indicator=this.part(frame,[door.x,3.43,door.z],[door.axis==='z'?1.1:.2,.12,door.axis==='x'?1.1:.2],this.red);
+      this.doorPanels.push({door,mesh:panel,other,indicator,openness:0});
     }
   }
   private refreshFactionLighting():void {
@@ -443,9 +447,37 @@ export class BoardingScene implements ManagedScene {
     this.walkthroughTarget=null;this.walkthroughPointer=null;this.walkthroughCameraPointer=null;
     this.walkthroughTouches.clear();this.walkthroughPinch=null;this.keys.clear();
   }
+  /** Reusable proximity mechanism: later mission gating only changes the access predicate. */
+  private doorAccessAllowed(door: typeof DECK_DOORS[number]):boolean {
+    return this.walkthrough || !this.host.quest.lockReason(door.a) && !this.host.quest.lockReason(door.b);
+  }
+  private updateWalkthroughDoors(dt:number):void {
+    for(const entry of this.doorPanels){
+      const {door,mesh,other,indicator}=entry;
+      const lateral=Math.abs(door.axis==='z'?this.hero.position.x-door.x:this.hero.position.z-door.z);
+      const normal=Math.abs(door.axis==='z'?this.hero.position.z-door.z:this.hero.position.x-door.x);
+      // Keep doors open while the actor is in the aperture so they cannot close on XRPMan.
+      const sensed=lateral<door.width/2+.45 && normal<2.8;
+      const target=this.doorAccessAllowed(door)&&sensed?1:0;
+      entry.openness+=Math.sign(target-entry.openness)*Math.min(Math.abs(target-entry.openness),dt*2.5);
+      const shift=door.width/2*entry.openness;
+      const lower=-door.width/4-shift,upper=door.width/4+shift;
+      if(door.axis==='z'){mesh.position.x=door.x+lower;other.position.x=door.x+upper;}
+      else{mesh.position.z=door.z+lower;other.position.z=door.z+upper;}
+      mesh.visible=true;other.visible=true;
+      indicator.material=this.doorAccessAllowed(door)?(entry.openness>.85?this.green:this.red):this.red;
+    }
+  }
+  private doorIsPassable(from:BoardingRoom,to:BoardingRoom):boolean {
+    if(from===to)return true;
+    return this.doorPanels.some(entry=>
+      ((entry.door.a===from&&entry.door.b===to)||(entry.door.a===to&&entry.door.b===from))
+      &&entry.openness>=.85&&this.doorAccessAllowed(entry.door));
+  }
   /** The walkthrough never spawns, targets, damages, or clears combat objectives. */
   private updateWalkthrough(dt:number):void{
     if(this.deckMap.isOpen){this.paintWalkthroughHUD();this.deckMap.render();return;}
+    this.updateWalkthroughDoors(dt);
     const x=Number(this.keys.has('KeyD')||this.keys.has('ArrowRight'))-Number(this.keys.has('KeyA')||this.keys.has('ArrowLeft'));
     const z=Number(this.keys.has('KeyW')||this.keys.has('ArrowUp'))-Number(this.keys.has('KeyS')||this.keys.has('ArrowDown'));
     const keyboard=new Vector3(x,0,z).clampLength(0,1);
@@ -457,7 +489,7 @@ export class BoardingScene implements ManagedScene {
       for(const axis of ['x','z'] as const){
         const next=this.hero.position.clone();next[axis]+=direction[axis]*distance;
         const room=roomAt(next.x,next.z);
-        if(!room||!insideWallMargin(room,next.x,next.z)||!canCross(this.room,room.id,next.x,next.z))continue;
+        if(!room||!insideWallMargin(room,next.x,next.z)||!canCross(this.room,room.id,next.x,next.z)||!this.doorIsPassable(this.room,room.id))continue;
         if(boardingObstacleBlocksMove(this.obstacles,this.hero.position,next))continue;
         this.hero.position.copy(next);
         if(room.id!==this.room){this.room=room.id;this.walkthroughVisited.add(room.id);}
@@ -478,7 +510,6 @@ export class BoardingScene implements ManagedScene {
   private paintWalkthroughHUD():void{
     this.health.textContent=deckRoom(this.room).title+'   ·   FREE ROAM / NO COMBAT';
     this.hint.textContent='HOLD + DRAG TO RUN  ·  TWO FINGERS TO ZOOM / ROTATE  ·  MAP TO INSPECT';
-    for(const {mesh} of this.doorPanels)mesh.visible=false;
     for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;
     ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
