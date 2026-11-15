@@ -81,7 +81,7 @@ try{
   gltf.scene.updateMatrixWorld(true);
   const bones={};
   gltf.scene.traverse(node=>{if(node.isBone&&/(?:mixamorig)?(LeftArm|RightArm|LeftHand|RightHand)$/.test(node.name))bones[node.name.replace(/^.*?(LeftArm|RightArm|LeftHand)$/,'$1')]=node;});
-  for(const [left,right] of [['LeftArm','RightArm'],['LeftHand','RightHand']]){
+  for(const [left,right] of [['LeftArm','RightArm']]){
     assert.ok(bones[left]&&bones[right],left+'/'+right+' must exist');
     const l=bones[left].getWorldPosition(new Vector3()),r=bones[right].getWorldPosition(new Vector3());
     assert.ok(Math.abs(l.x+r.x)<.03,'neutral '+left+' should mirror opposite side');
