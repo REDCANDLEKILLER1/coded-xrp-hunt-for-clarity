@@ -3,6 +3,7 @@ import { ACESFilmicToneMapping, AmbientLight, AnimationMixer, Box3, Color, Direc
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { disposeObject, loadModel, loadModels } from './ModelAssets';
+import {loadAssetCatalog} from '../core/AssetCatalog';
 import { SceneController, type ManagedScene } from './SceneController';
 import { BoardingScene } from './BoardingScene';
 import {CivicScene} from './CivicScene';
@@ -242,15 +243,19 @@ export class MeshRuntime {
       const before=save.snapshot;
       const entryRoom=before.location.mode==='boarding'||before.location.mode==='hub'?quest.checkpoint:before.warshipOwned?'bridge':'hangar';
       const [hero,crew,fighter,deck,striker] = await loadModels([walkthrough ? 'xrpman_sentinel_nov08' : 'xrpman','mr_zamn',fighterModel(save.snapshot.fighterShipKey),'boarding_deck',...(walkthrough?['xrpl_striker_landed_optimized']:[])], signal);
+      // Stage-only gate: use the approved Meshy frame only after its immutable GLB
+      // has been added to the manifest and the exact binary is present in the repo.
+      const catalog=walkthrough?await loadAssetCatalog():undefined;
+      const doorFrame=walkthrough&&catalog?.models?.['warship_door_frame_v2']?await loadModel('warship_door_frame_v2',signal):undefined;
       let scene:BoardingScene|undefined;
       try {
-        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, striker, entryRoom, walkthrough, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
+        scene=new BoardingScene({ renderer: this.renderer, environment: this.environment.texture, root: this.root, hud: this.hud, quest, hero, crew, fighter, deck, striker, doorFrame, entryRoom, walkthrough, onDeparture: () => void this.showSpace(save),onCivic:()=>void this.showDistrictConnector(save,'civic') });
         if(signal.aborted)throw new DOMException('Scene load cancelled','AbortError');
         if(save.snapshot.revision!==before.revision)throw new Error('The saved route changed while the bridge was loading');
         if(!walkthrough&&!quest.begin(before.fighterShipKey).ok)throw new Error('The boarding checkpoint could not be saved');
         return scene;
       }
-      catch (error) { if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(fighter.scene);disposeObject(deck.scene);if(striker)disposeObject(striker.scene);}throw error; }
+      catch (error) { if(scene)scene.dispose();else{disposeObject(hero.scene);disposeObject(crew.scene);disposeObject(fighter.scene);disposeObject(deck.scene);if(striker)disposeObject(striker.scene);if(doorFrame)disposeObject(doorFrame.scene);}throw error; }
     });
     if (loaded) this.hud.hidden = true;
     else if (this.controller.lastError) {

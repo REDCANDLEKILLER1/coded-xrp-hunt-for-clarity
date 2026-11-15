@@ -29,6 +29,11 @@ assert.match(scene,/if\(this\.walkthrough\)\{this\.paintWalkthroughHUD\(\);retur
 assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);return;\}/,'no old virtual-stick input');
 assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
 assert.match(scene,/this\.updateWalkthroughDoors\(dt\)/,'every walkthrough frame advances all door animations');
+assert.match(scene,/Regulatory_Blast_Door_Frame_V2/,'Meshy doorway named as shared visual');
+assert.match(scene,/this\.host\.doorFrame\.scene\.clone\(true\)/,'shared frame cloned for each canonical doorway');
+assert.match(scene,/visual\.rotation\.y=door\.axis==='x'\?Math\.PI\/2:0/,'both door orientations supported');
+assert.match(runtime,/loadAssetCatalog\(\)/,'doorframe asset gated on manifest registration');
+assert.match(runtime,/loadModel\('warship_door_frame_v2',signal\)/,'registered GLB must load through immutable asset catalog');
 assert.match(scene,/const rearDoor=DECK_DOORS.find/,'door openings subtract from room artwork');
 assert.match(scene,/drawWallArt\(minX,Math.max/,'wall graphic terminates before the aperture');
 assert.match(scene,/drawWallArt\(Math.min\(maxX/,'wall graphic resumes after the aperture');
