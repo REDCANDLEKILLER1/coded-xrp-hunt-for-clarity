@@ -264,7 +264,45 @@ export class BoardingScene implements ManagedScene {
   private addCover(parent:Object3D,x:number,z:number,w:number,d:number):void {
     this.part(parent,[x,.36,z],[w,.72,d]);this.part(parent,[x,.74,z],[w*.9,.05,d*.86],this.blue);
     this.obstacles.push({x,z,w,d,cover:true});
-  }  private buildDeck():void {
+  }
+  /** Empty preview shell: preserve the room footprint and all seven door apertures,
+   * but omit both runtime furnishings and Blender-baked decorative modules. */
+  private buildEmptyWalkthroughRoom(room:typeof DECK[number]):void {
+    const group=new Group();group.name='Empty_Deck_'+room.id;this.scene.add(group);
+    this.roomGroups.set(room.id,group);
+    const {x,z,width:w,depth:d}=room;
+    // Permanent architectural surfaces only; no consoles, cover, machinery or collision props.
+    this.part(group,[x,-.13,z],[w,.25,d],this.metal);
+    this.part(group,[x,-.001,z],[w-.3,.018,d-.3],this.trim);
+    const height=1.25,thickness=.24;
+    const wall=(axis:'x'|'z',fixed:number,lo:number,hi:number):void=>{
+      const cut=DECK_DOORS.filter(door=>door.axis===axis&&
+        Math.abs((axis==='x'?door.x:door.z)-fixed)<.22&&
+        (door.a===room.id||door.b===room.id))
+        .map(door=>[Math.max(lo,(axis==='x'?door.z:door.x)-door.width/2-.10),
+                    Math.min(hi,(axis==='x'?door.z:door.x)+door.width/2+.10)] as [number,number])
+        .filter(([a,b])=>b>a)
+        .sort((a,b)=>a[0]-b[0]);
+      let cursor=lo;
+      const segment=(a:number,b:number):void=>{
+        if(b-a<.12)return;
+        const mid=(a+b)/2,length=b-a;
+        if(axis==='x')this.part(group,[fixed,height/2,mid],[thickness,height,length],this.metal);
+        else this.part(group,[mid,height/2,fixed],[length,height,thickness],this.metal);
+      };
+      for(const [a,b] of cut){segment(cursor,a);cursor=Math.max(cursor,b);}
+      segment(cursor,hi);
+    };
+    wall('x',x-w/2,z-d/2,z+d/2);wall('x',x+w/2,z-d/2,z+d/2);
+    wall('z',z-d/2,x-w/2,x+w/2);wall('z',z+d/2,x-w/2,x+w/2);
+    // Low profile perimeter detail and wall graphics are architectural, not furniture.
+    for(const sign of [-1,1])this.part(group,[x+sign*(w/2-.5),.025,z],[.08,.035,d-.8],this.green);
+    this.buildRoomArt(group,room);
+    const alarm=new PointLight(0xff2418,3,Math.max(w,d)*1.1,2);
+    alarm.position.set(x,2.7,z);group.add(alarm);this.factionLights.push(alarm);
+    this.roomLights.set(room.id,[]);
+  }
+  private buildDeck():void {
     this.scene.add(this.host.deck.scene);
     const replacedLights = new Set<MeshStandardMaterial>();
     const cover:Partial<Record<BoardingRoom,readonly [number,number,number,number][]>>={
@@ -275,6 +313,14 @@ export class BoardingScene implements ManagedScene {
     for(const room of DECK){
       const group=this.host.deck.scene.getObjectByName('Deck_'+room.id) as Group;
       if(!group)throw new Error('Missing architecture room: '+room.id);
+      if(this.walkthrough){
+        // The imported GLB batches Blender props with structural plates by material:
+        // hiding individual baked consoles is impossible without corrupting its geometry.
+        // Keep the original scene graph as rollback, but render a clean room shell instead.
+        group.visible=false;
+        this.buildEmptyWalkthroughRoom(room);
+        continue;
+      }
       this.roomGroups.set(room.id,group);
       const serviceLights:Mesh[]=[];
       group.traverse(object=>{if(object instanceof Mesh&&object.material instanceof MeshStandardMaterial&&object.material.name==='Deck warm working light'){replacedLights.add(object.material);object.material=this.red;serviceLights.push(object);}});

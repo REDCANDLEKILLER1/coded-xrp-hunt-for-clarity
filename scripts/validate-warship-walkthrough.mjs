@@ -29,6 +29,12 @@ assert.match(scene,/if\(this\.walkthrough\)\{this\.paintWalkthroughHUD\(\);retur
 assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);return;\}/,'no old virtual-stick input');
 assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
 assert.match(scene,/this\.updateWalkthroughDoors\(dt\)/,'every walkthrough frame advances all door animations');
+assert.match(scene,/this\.buildEmptyWalkthroughRoom\(room\)/,'walkthrough uses empty architecture in each room');
+assert.match(scene,/group\.visible=false;\s*this\.buildEmptyWalkthroughRoom\(room\);\s*continue;/,'baked Blender furniture remains hidden');
+assert.match(scene,/const cut=DECK_DOORS\.filter/,'clean room walls preserve all canonical door apertures');
+assert.match(scene,/if\(this\.walkthrough\)\{[\s\S]*?this\.buildEmptyWalkthroughRoom\(room\);\s*continue;/,'runtime console, cover and machinery creation skipped in walkthrough');
+assert.match(scene,/this\.part\(group,\[x,-\.13,z\]/,'rooms retain full structural floors');
+
 assert.match(scene,/Regulatory_Blast_Door_Frame_V2/,'Meshy doorway named as shared visual');
 assert.match(scene,/this\.host\.doorFrame\.scene\.clone\(true\)/,'shared frame cloned for each canonical doorway');
 assert.match(scene,/visual\.rotation\.y=door\.axis==='x'\?Math\.PI\/2:0/,'both door orientations supported');
