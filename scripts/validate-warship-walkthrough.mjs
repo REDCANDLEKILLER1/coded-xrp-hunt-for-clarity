@@ -28,11 +28,16 @@ assert.match(scene,/if\(this\.walkthrough\)\{this\.updateWalkthrough\(dt\);retur
 assert.match(scene,/if\(this\.walkthrough\)\{this\.paintWalkthroughHUD\(\);return;\}/,'walkthrough does not use combat HUD');
 assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);return;\}/,'no old virtual-stick input');
 assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
-assert.match(scene,/for\(const \{mesh\} of this\.doorPanels\)mesh\.visible=false/,'quest door blockers hidden in walkthrough');
+assert.match(scene,/this\.updateWalkthroughDoors\(dt\)/,'every walkthrough frame advances all door animations');
+assert.match(scene,/this\.doorIsPassable\(this\.room,room\.id\)/,'walkthrough passage respects the physical doorway');
+assert.match(scene,/entry\.openness>=\.85/,'doorway blocks passage until physically open');
+assert.match(scene,/normal<2\.8/,'proximity sensor opens doors from either approach side');
+assert.match(scene,/this\.walkthrough \|\|/,'isolated walkthrough access override preserves campaign quest gates');
+assert.match(scene,/mesh\.visible=true;other\.visible=true/,'both sliding leaves remain visible in walkthrough');
 assert.match(scene,/if\(room\.id!==this\.room\)\{this\.room=room\.id;this\.walkthroughVisited\.add\(room\.id\);\}/,'room position changes only in local walkthrough state');
 assert.match(map,/if\(this\.host\.walkthrough\)return 'discovered'/,'map previews all sectors, not locked progression');
 const block=scene.slice(scene.indexOf('  private updateWalkthrough('),scene.indexOf('  private paintWalkthroughHUD('));
 for(const prohibited of ['this.enemy(', 'this.updateEnemies(', 'this.updateBolts(', 'this.host.quest.enter(', 'this.host.quest.complete(', 'this.host.quest.clear(', 'save.update(', 'save.claim(']){
   assert.ok(!block.includes(prohibited),'no gameplay mutation in walkthrough: '+prohibited);
 }
-console.log('warship-walkthrough: 8 rooms connected, no combat/quest mutation, drag walk and map isolation OK');
+console.log('warship-walkthrough: 8 rooms, 7 proximity sliding door pairs, safe passage, no combat/quest mutation OK');
