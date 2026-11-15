@@ -46,6 +46,12 @@ try{
   const bundled=await build({entryPoints:['src/game/definitive/ModelAssets.ts'],bundle:true,format:'esm',write:false,logLevel:'silent'});
   const {loadModel,disposeObject}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].text).toString('base64'));
   const gltf=await loadModel('xrpman_sentinel_nov08',new AbortController().signal);
+  // Capture neutral pose before running ANY source clips; animations mutate the bones.
+  const nb=await build({entryPoints:['src/game/definitive/CharacterNeutralIdle.ts'],bundle:true,format:'esm',write:false,logLevel:'silent'});
+  const {makeNeutralXRPManIdle}=await import('data:text/javascript;base64,'+Buffer.from(nb.outputFiles[0].text).toString('base64'));
+  const neutral=makeNeutralXRPManIdle(gltf.scene);
+  assert.equal(neutral.name,'Idle');
+  assert.equal(neutral.tracks.length,66*3,'66 joints with position, rotation and scale hold');
   assert.deepEqual(gltf.animations.map(a=>a.name),['Running','Walking','Idle']);
   let skinned=0;
   gltf.scene.traverse(node=>{if(node.isSkinnedMesh)skinned++;});
@@ -71,11 +77,6 @@ try{
   mixer.update(.1);const pose=hips.position.clone();
   mixer.update(.6);assert.ok(pose.distanceTo(hips.position)<.0001,'idle remains stationary');
   // Independently verify the neutral rest pose in the actual, unchanged 66-joint GLB.
-  const nb=await build({entryPoints:['src/game/definitive/CharacterNeutralIdle.ts'],bundle:true,format:'esm',write:false,logLevel:'silent'});
-  const {makeNeutralXRPManIdle}=await import('data:text/javascript;base64,'+Buffer.from(nb.outputFiles[0].text).toString('base64'));
-  const neutral=makeNeutralXRPManIdle(gltf.scene);
-  assert.equal(neutral.name,'Idle');
-  assert.equal(neutral.tracks.length,66*3,'66 joints with position, rotation and scale hold');
   mixer.stopAllAction();mixer.clipAction(neutral).reset().play();mixer.update(.25);
   gltf.scene.updateMatrixWorld(true);
   const bones={};
