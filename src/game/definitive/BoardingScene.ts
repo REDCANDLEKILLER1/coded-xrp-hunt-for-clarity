@@ -870,7 +870,7 @@ export class BoardingScene implements ManagedScene {
     this.health.textContent=deckRoom(this.room).title+'   VITALS '+Math.ceil(this.life)+'   '+weapon.label+(q.save.snapshot.heroUpgrades.ledger_shield?'   SHIELD '+Math.ceil(this.shield)+(this.shieldOn?' · ACTIVE':''):'')+(this.paused?'   PAUSED':'')+(this.captureClock>0?'   CAPTURE':'')+(this.room==='core'&&core?'   CORE '+Math.ceil(core.hp)+' · '+(this.coreExposed()?'EXPOSED':'SHIELDED'):elite?'   '+(elite.kind==='captain'?'BRIDGE CAPTAIN':'WARDEN')+' '+Math.ceil(elite.hp)+'/'+elite.maxHp:'');
     this.hint.textContent=this.messageClock>0?this.message:q.objective;
     if(this.deckMap.isOpen)this.deckMap.render();
-    for(const {door,mesh} of this.doorPanels)mesh.visible=!!q.lockReason(door.b);
+    for(const {door,mesh,other,indicator} of this.doorPanels){const locked=!!q.lockReason(door.b);mesh.visible=locked;other.visible=locked;indicator.material=locked?this.red:this.green;}
     for(const [id,group] of this.roomGroups)group.visible=Math.hypot(deckRoom(id).x-this.hero.position.x,deckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
     for(const room of DECK){ctx.fillStyle=room.id===this.room?'#00a822':q.lockReason(room.id)?'#70241f':'#243a4c';ctx.fillRect(65+(room.x-room.width/2)*2.2,159-(room.z+room.depth/2+37)*1.8,room.width*2.2-1,room.depth*1.8-1);}
