@@ -655,11 +655,17 @@ export class BoardingScene implements ManagedScene {
     for(const [id,group] of this.roomGroups)group.visible=id==='hangar'||Math.hypot(reviewDeckRoom(id).x-this.hero.position.x,reviewDeckRoom(id).z-this.hero.position.z)<35;
     const ctx=this.map.getContext('2d');if(!ctx)return;
     ctx.clearRect(0,0,130,170);ctx.fillStyle='#07101bd9';ctx.fillRect(0,0,130,170);
-    for(const room of DECK){
+    // Fixed 130x170 thumbnail now fits the enlarged Bay and all other rooms.
+    const all=REVIEW_DECK,minX=Math.min(...all.map(r=>r.x-r.width/2)),maxX=Math.max(...all.map(r=>r.x+r.width/2));
+    const minZ=Math.min(...all.map(r=>r.z-r.depth/2)),maxZ=Math.max(...all.map(r=>r.z+r.depth/2));
+    const scale=Math.min(114/(maxX-minX),154/(maxZ-minZ));
+    const mx=(x:number)=>65+(x-(minX+maxX)/2)*scale;
+    const my=(z:number)=>85-(z-(minZ+maxZ)/2)*scale;
+    for(const room of all){
       ctx.fillStyle=room.id===this.room?'#00b828':this.walkthroughVisited.has(room.id)?'#20594d':'#263849';
-      ctx.fillRect(65+(room.x-room.width/2)*2.2,159-(room.z+room.depth/2+37)*1.8,room.width*2.2-1,room.depth*1.8-1);
+      ctx.fillRect(mx(room.x-room.width/2),my(room.z+room.depth/2),room.width*scale-1,room.depth*scale-1);
     }
-    ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(65+this.hero.position.x*2.2,159-(this.hero.position.z+37)*1.8,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(mx(this.hero.position.x),my(this.hero.position.z),3,0,Math.PI*2);ctx.fill();
   }
   private mouseAim(event:PointerEvent):void {
     const bounds=this.host.renderer.domElement.getBoundingClientRect();
