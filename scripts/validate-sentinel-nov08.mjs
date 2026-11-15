@@ -36,6 +36,7 @@ assert.match(source,/walkthrough \? 'xrpman_sentinel_nov08' : 'xrpman'/,'correct
 assert.match(game,/this\.play\(walking\?'Running':'Idle'\)/,'actual running and idle animations');
 assert.match(game,/this\.hero\.scale\.setScalar\(1\.9304\/1\.70\)/,'adjust native Meshy scale');
 assert.ok(!game.includes("this.play(walking?'Walk':'Idle')"),'old walk clip not selected for new hero');
+assert.match(game,/makeNeutralXRPManIdle\(this\.hero\)/,'walkthrough replaces the walking-frame Idle with rig neutral');
 
 globalThis.self=globalThis;
 globalThis.createImageBitmap=async()=>({width:1024,height:1024,close(){}});
@@ -45,6 +46,12 @@ try{
   const bundled=await build({entryPoints:['src/game/definitive/ModelAssets.ts'],bundle:true,format:'esm',write:false,logLevel:'silent'});
   const {loadModel,disposeObject}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].text).toString('base64'));
   const gltf=await loadModel('xrpman_sentinel_nov08',new AbortController().signal);
+  // Capture neutral pose before running ANY source clips; animations mutate the bones.
+  const nb=await build({entryPoints:['src/game/definitive/CharacterNeutralIdle.ts'],bundle:true,format:'esm',write:false,logLevel:'silent'});
+  const {makeNeutralXRPManIdle}=await import('data:text/javascript;base64,'+Buffer.from(nb.outputFiles[0].text).toString('base64'));
+  const neutral=makeNeutralXRPManIdle(gltf.scene);
+  assert.equal(neutral.name,'Idle');
+  assert.equal(neutral.tracks.length,66*3,'66 joints with position, rotation and scale hold');
   assert.deepEqual(gltf.animations.map(a=>a.name),['Running','Walking','Idle']);
   let skinned=0;
   gltf.scene.traverse(node=>{if(node.isSkinnedMesh)skinned++;});
@@ -69,7 +76,18 @@ try{
   mixer.stopAllAction();mixer.clipAction(idle).reset().play();
   mixer.update(.1);const pose=hips.position.clone();
   mixer.update(.6);assert.ok(pose.distanceTo(hips.position)<.0001,'idle remains stationary');
+  // Independently verify the neutral rest pose in the actual, unchanged 66-joint GLB.
+  mixer.stopAllAction();mixer.clipAction(neutral).reset().play();mixer.update(.25);
+  gltf.scene.updateMatrixWorld(true);
+  const bones={};
+  gltf.scene.traverse(node=>{if(node.isBone&&/(?:mixamorig)?(LeftArm|RightArm|LeftHand|RightHand)$/.test(node.name))bones[node.name.replace(/^.*?(LeftArm|RightArm|LeftHand)$/,'$1')]=node;});
+  for(const [left,right] of [['LeftArm','RightArm']]){
+    assert.ok(bones[left]&&bones[right],left+'/'+right+' must exist');
+    const l=bones[left].getWorldPosition(new Vector3()),r=bones[right].getWorldPosition(new Vector3());
+    assert.ok(Math.abs(l.x+r.x)<.03,'neutral '+left+' should mirror opposite side');
+    assert.ok(Math.abs(l.y-r.y)<.04,'neutral '+left+' should match opposite height');
+  }
   disposeObject(gltf.scene);
 }catch(error){throw error;}
 finally{globalThis.fetch=priorFetch;}
-console.log('sentinel-nov08: model SHA, 66 joints, 1K embedded maps, real Run/Idle playback and legacy preservation PASS');
+console.log('sentinel-nov08: model SHA, 66 joints, 1K embedded maps, real Run, rig-neutral symmetric Idle and legacy preservation PASS');
