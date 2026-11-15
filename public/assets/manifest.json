@@ -1432,6 +1432,16 @@
       "bytes": 8248980,
       "sha256": "d305c217eddfe314c17c84f4de65634f0573b6c4329924a1b088cb8c31763aff",
       "notes": "Review-only symmetrical wing repair derived from untouched Meshy XRPL Striker Landed, retaining 1,067,330 triangles/566,879 vertices. Meshopt-compressed 8.25MB GLB with 3 embedded 2K WebP PBR textures; original 56.85MB master archived privately. Isolated no-combat Arrival Bay only. XRPMan visual phone acceptance still required."
+    },
+    "warship_door_frame_v2": {
+      "src": "/assets/models/warship_door_frame_v2.glb",
+      "type": "model",
+      "scenes": [
+        "boarding"
+      ],
+      "bytes": 261156,
+      "sha256": "e41ddf94d0bd76effc841e4c05f92cae5df105808264df8879fb46082984f02e",
+      "notes": "Approved Meshy open blast-doorframe with embedded 512px PBR maps, reused by all seven isolated Warship walkthrough doors. Textured master retained separately."
     }
   },
   "audio": {
