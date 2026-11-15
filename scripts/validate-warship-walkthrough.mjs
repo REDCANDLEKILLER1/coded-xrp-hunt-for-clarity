@@ -28,6 +28,11 @@ assert.match(scene,/if\(this\.walkthrough\)\{this\.updateWalkthrough\(dt\);retur
 assert.match(scene,/if\(this\.walkthrough\)\{this\.paintWalkthroughHUD\(\);return;\}/,'walkthrough does not use combat HUD');
 assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);return;\}/,'no old virtual-stick input');
 assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
+assert.match(scene,/Math\.max\(\.085,Math\.min\(2\.15,this\.walkthroughZoom\*this\.walkthroughPinch\/distance\)\)/,'pinch reaches face-level zoom');
+assert.match(scene,/Math\.max\(\.085,Math\.min\(2\.15,this\.walkthroughZoom\*Math\.exp/,'wheel reaches face-level zoom');
+assert.match(scene,/1\.05\+\.64\*closeUp/,'camera target moves from torso to face at close zoom');
+assert.match(scene,/const height=5\.4\*this\.walkthroughZoom\*\(1-closeUp\)\+\.12\*closeUp/,'face close-up lowers viewing angle');
+
 assert.match(scene,/this\.updateWalkthroughDoors\(dt\)/,'every walkthrough frame advances all door animations');
 assert.match(scene,/this\.buildEmptyWalkthroughRoom\(room\)/,'walkthrough uses empty architecture in each room');
 assert.match(scene,/this\.walkthrough\?3\.1:7/,'chest point light reduced only in walkthrough');
