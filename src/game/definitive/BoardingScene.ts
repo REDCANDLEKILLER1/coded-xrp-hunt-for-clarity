@@ -298,7 +298,7 @@ export class BoardingScene implements ManagedScene {
       matrix.makeScale(door.axis==='z'?4.4:.4,.25,door.axis==='x'?4.4:.4);matrix.setPosition(door.x,3.3,door.z);frames.setMatrixAt(frameIndex++,matrix);
       // Both leaves share the canonical doorway. Slide along its width, never through a wall.
       const halfWidth=door.width/2;
-      const leafSize:[number,number,number]=door.axis==='z'?[halfWidth,.0+2.9,.16]:[.16,2.9,halfWidth];
+      const leafSize:[number,number,number]=door.axis==='z'?[halfWidth,2.9,.16]:[.16,2.9,halfWidth];
       const panel=this.part(frame,[door.x-(door.axis==='z'?door.width/4:0),1.45,door.z-(door.axis==='x'?door.width/4:0)],leafSize,this.metal);
       const other=this.part(frame,[door.x+(door.axis==='z'?door.width/4:0),1.45,door.z+(door.axis==='x'?door.width/4:0)],leafSize,this.metal);
       const indicator=this.part(frame,[door.x,3.43,door.z],[door.axis==='z'?1.1:.2,.12,door.axis==='x'?1.1:.2],this.red);
