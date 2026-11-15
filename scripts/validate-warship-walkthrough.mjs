@@ -29,6 +29,10 @@ assert.match(scene,/if\(this\.walkthrough\)\{this\.paintWalkthroughHUD\(\);retur
 assert.match(scene,/if\(this\.walkthrough\)\{this\.bindWalkthroughInput\(\);return;\}/,'no old virtual-stick input');
 assert.match(scene,/this\.play\(walking\?'Running':'Idle'\)/,'corrected Nov 8 XRPMan Run/Idle clips, no combat or jumping');
 assert.match(scene,/this\.updateWalkthroughDoors\(dt\)/,'every walkthrough frame advances all door animations');
+assert.match(scene,/const rearDoor=DECK_DOORS.find/,'door openings subtract from room artwork');
+assert.match(scene,/drawWallArt\(minX,Math.max/,'wall graphic terminates before the aperture');
+assert.match(scene,/drawWallArt\(Math.min\(maxX/,'wall graphic resumes after the aperture');
+assert.match(scene,/for\(const leaf of \[panel,other\]\)/,'both physical leaves get detailed blast door treatment');
 assert.match(scene,/this\.doorIsPassable\(this\.room,room\.id\)/,'walkthrough passage respects the physical doorway');
 assert.match(scene,/entry\.openness>=\.85/,'doorway blocks passage until physically open');
 assert.match(scene,/normal<2\.8/,'proximity sensor opens doors from either approach side');

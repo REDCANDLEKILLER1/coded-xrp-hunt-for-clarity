@@ -189,8 +189,23 @@ export class BoardingScene implements ManagedScene {
     };
     const wallTexture=new TextureLoader().load(backgrounds[room.id]);wallTexture.colorSpace=SRGBColorSpace;
     const wallMaterial=new MeshBasicMaterial({map:wallTexture,color:0xff8c86,side:DoubleSide,toneMapped:false});this.wallMaterials.push(wallMaterial);
-    const panel=new Mesh(new PlaneGeometry(Math.min(12,room.width*.8),2.7),wallMaterial);
-    panel.position.set(room.x,1.62,room.z+room.depth/2-.08);panel.rotation.y=Math.PI;parent.add(panel);
+    // Wall graphics must respect the same clear apertures as the Blender deck architecture.
+    // A full texture plane formerly masked the real moving doors (most visibly in Arrival Bay).
+    const artWidth=Math.min(12,room.width*.8), rearZ=room.z+room.depth/2-.08;
+    const rearDoor=DECK_DOORS.find(d=>d.axis==='z'&&Math.abs(d.z-(room.z+room.depth/2))<.15);
+    const drawWallArt=(minX:number,maxX:number):void=>{
+      if(maxX-minX<.05)return;
+      const geometry=new PlaneGeometry(maxX-minX,2.7);
+      const uv=geometry.getAttribute('uv');
+      for(let i=0;i<uv.count;i++)uv.setX(i,(minX-room.x+artWidth/2)/(artWidth)+uv.getX(i)*(maxX-minX)/artWidth);
+      const panel=new Mesh(geometry,wallMaterial);
+      panel.position.set((minX+maxX)/2,1.62,rearZ);panel.rotation.y=Math.PI;parent.add(panel);
+    };
+    const minX=room.x-artWidth/2,maxX=room.x+artWidth/2;
+    if(rearDoor){
+      drawWallArt(minX,Math.max(minX,rearDoor.x-rearDoor.width/2-.18));
+      drawWallArt(Math.min(maxX,rearDoor.x+rearDoor.width/2+.18),maxX);
+    }else drawWallArt(minX,maxX);
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=256;const ctx=canvas.getContext('2d');if(!ctx)return;
     ctx.fillStyle='#07111c';ctx.fillRect(0,0,512,256);ctx.strokeStyle='#ffffff';ctx.lineWidth=18;ctx.strokeRect(12,12,488,232);
     ctx.strokeStyle='#ffffff';ctx.lineWidth=5;for(let x=-80;x<560;x+=64){ctx.beginPath();ctx.moveTo(x,232);ctx.lineTo(x+46,24);ctx.stroke();}
@@ -302,6 +317,15 @@ export class BoardingScene implements ManagedScene {
       const panel=this.part(frame,[door.x-(door.axis==='z'?door.width/4:0),1.45,door.z-(door.axis==='x'?door.width/4:0)],leafSize,this.metal);
       const other=this.part(frame,[door.x+(door.axis==='z'?door.width/4:0),1.45,door.z+(door.axis==='x'?door.width/4:0)],leafSize,this.metal);
       const indicator=this.part(frame,[door.x,3.43,door.z],[door.axis==='z'?1.1:.2,.12,door.axis==='x'?1.1:.2],this.red);
+      // Add inexpensive hard-surface detailing to each moving leaf; it travels with its parent.
+      for(const leaf of [panel,other]){
+        const verticalTrim=this.part(leaf,[0,0,door.axis==='z'?.55:0],[door.axis==='z'?.08:.5,.74,door.axis==='x'?.08:.5],this.trim);
+        verticalTrim.position.set(0,0,0.55);
+        this.part(leaf,[0,.30,door.axis==='z'?.55:0],[door.axis==='z'?.70:.12,.055,door.axis==='x'?.70:.12],this.green);
+        this.part(leaf,[0,-.40,door.axis==='z'?.55:0],[door.axis==='z'?.75:.12,.05,door.axis==='x'?.75:.12],this.bossMetal);
+      }
+      // Door sill and overhead status remain stationary while the leaves retract.
+      this.part(frame,[door.x,.04,door.z],[door.axis==='z'?door.width+.6:.35,.08,door.axis==='x'?door.width+.6:.35],this.trim);
       this.doorPanels.push({door,mesh:panel,other,indicator,openness:0});
     }
   }
